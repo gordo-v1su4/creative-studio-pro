@@ -85,7 +85,7 @@ G6. Winners promote to a reusable spec library (Directors Cut card model).
 | directors-cut (M3 Mac) | Comparison runs + answers.jsonl schema, concept approval gate, quote→confirm→generate flow, prompt-card library, `--dc-*` dark editorial token baseline | The table-first Projects UI as the primary metaphor (canvas replaces it) |
 | raycast-pro-bridge (M3 Mac) | Typed tool contract, Script Commands, multi-model creative-room run schema (`creative_concept_v1` extended with image_sequence_prompt + image_grid_prompt + teaser_trailer_prompt), auth/allowlist/audit | The HTTP server itself — CSP calls it, doesn't absorb it |
 | creative-studio-os (Racknerd) | Ops spine: cron digest, Linear roadmap, Discord reach, gates-as-review-blocks | Nothing UI — it coordinates from outside |
-| super-seed2 | Production methodology gates: pitch approval, Nano Banana vibe check, confidence ≥ 80 before video | Production project trees |
+| super-seed2 | **Logic backbone (user-stressed):** the mandatory creative-stage pipeline the whole product is modeled on — S0 Intake → S1 Interview → S2 Brief lock → S3 Story spine → S4 Layout pass (mandatory before prompts) → S5 Vibe check (Nano Banana 3x3) → S6 Asset registry → S7 LIRA/plates → S8 Prompt pack → S9 Generate → S10 Assemble, with confidence scoring, hard gates (nothing generated before gates clear), and operator-only force-advance (`pipeline/creative-stages.md`). Also: character-sheet formats, storytelling formats, `pipeline/higgsfield-skills` (LIRA, CINEDANCE, ACTING), and tried-and-true production examples in `projects/` (bloodrush, tiny-parka, china-man, etc.) | Production project trees themselves |
 
 ## 6. Users
 
@@ -94,6 +94,10 @@ and generation stack. Secondary: agent workers (Hermes profiles, coding agents)
 that operate the app via its bridge/API surface on his behalf.
 
 ## 7. Core workflows
+
+Every project moves through the super-seed2 stage map (S0–S10, see donor map)
+as its mandatory skeleton. The workflows below are how those stages feel in
+the product; the stage gates are the law underneath.
 
 ### 7.1 Creative Room (ideation)
 
