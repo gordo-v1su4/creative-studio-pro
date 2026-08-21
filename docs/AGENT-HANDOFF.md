@@ -29,7 +29,8 @@ Every PR: names the PRD workflow + UI-UX section it implements, passes type
 checks, browser-verified at 1440px and 375px, and stores no fabricated model
 output. Phases and acceptance criteria are in `docs/PRD.md` §11.
 
-## Kickoff spike
+## Kickoff
 
-PRD §13 lists the open decisions. First task: canvas library spike
-(Svelte-native vs wrapping React Flow) with a written decision record.
+PRD §13 lists the remaining open decisions. First build task is Phase 0:
+SvelteKit 5 scaffold + Svelte Flow canvas shell + Seed node + local
+persistence, per PRD §11 acceptance criteria.

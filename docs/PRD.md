@@ -182,9 +182,10 @@ The Ops spine (creative-studio-os) reads status; it does not own this data.
 
 ## 9. Technical architecture
 
-- Frontend: SvelteKit 5 + Tailwind 4 (matches Directors Cut), canvas via a
-  graph library (React Flow pattern from Storyception — evaluate Svelte
-  equivalents; do not port React).
+- Frontend: **SvelteKit 5 + Svelte 5 runes + Tailwind 4** (user directive:
+  this product is Svelte, matching Directors Cut). Canvas via **Svelte Flow**
+  (`@xyflow/svelte` — xyflow's native Svelte port of React Flow, same team and
+  same node/edge graph model Storyception uses, without pulling in React).
 - Local services consumed, not absorbed:
   - raycast-pro-bridge (HTTP, :8787, bearer token) — ideation + capture
   - splitter service (FastAPI + PySceneDetect + ffmpeg) — scene detection
@@ -238,7 +239,8 @@ Acceptance: approved concept appears in library; digest references it.
 
 ## 13. Open decisions for kickoff
 
-1. Canvas library choice (Svelte-native vs wrapping React Flow) — Phase 0 spike.
+1. ~~Canvas library choice~~ — RESOLVED (user directive 2026-08-21): Svelte
+   end to end. Canvas is Svelte Flow (`@xyflow/svelte`). No React anywhere.
 2. Repo home: fresh repo vs absorbing into pindeck (front-door candidate).
    Default: fresh repo `creative-studio-pro`, pindeck stays asset layer.
 3. Whether splitter service runs on Racknerd (Docker) or M3 Mac local.

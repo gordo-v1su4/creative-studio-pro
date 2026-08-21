@@ -273,10 +273,15 @@ anchors: 3 frames from grid node · cadence 0.4–0.8s → flash frames
 
 ## 9. Agent build notes
 
-- SvelteKit 5 + Tailwind 4, Bun only. Existing `--dc-*` token file is the
-  starting stylesheet (directors-cut `src/app.css`); extend, don't replace.
-- Canvas library: Phase 0 spike — prefer a Svelte-native flow library; only
-  wrap React Flow if the spike fails. Record the decision in the repo.
+- SvelteKit 5 + Svelte 5 runes + Tailwind 4, Bun only. Existing `--dc-*` token
+  file is the starting stylesheet (directors-cut `src/app.css`); extend, don't
+  replace.
+- Canvas library is **Svelte Flow (`@xyflow/svelte`)** — decided, no spike
+  needed. It carries React Flow's node/edge/viewport model natively in Svelte;
+  Storyception's `flow-canvas.tsx` patterns (custom node components, edge
+  styling, fit-view, minimap, background dot grid) translate directly to
+  Svelte Flow's `<SvelteFlow>`, `<Background>`, `<MiniMap>`, custom node
+  types. No React dependency is permitted in this repo.
 - Data: JSONL + file artifacts per project folder (Directors Cut pattern);
   index rebuilt on write; stable IDs.
 - All generation calls through raycast-pro-bridge typed contract; UI calls
