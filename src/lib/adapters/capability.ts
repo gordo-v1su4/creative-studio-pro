@@ -62,7 +62,7 @@ export async function checkCapabilities(
 	};
 
 	const [m3, splitter, desktop] = await Promise.all([
-		checked('m3-bridge', 'M3 Raycast bridge', 'machine', endpoints.m3BridgeUrl, '/health', 'CSP_M3_BRIDGE_URL is not set'),
+		checked('raycast-bridge', 'Raycast bridge', 'machine', endpoints.m3BridgeUrl, '/health', 'CSP_RAYCAST_BRIDGE_URL is not set (legacy CSP_M3_BRIDGE_URL also supported)'),
 		checked('splitter', 'Hosted Splitter service', 'service', endpoints.splitterUrl, '/openapi.json', 'CSP_SPLITTER_URL is not set'),
 		checked('desktop-stack', 'Desktop generation stack (SwarmUI/ComfyUI)', 'machine', endpoints.desktopUrl, '/health', 'CSP_DESKTOP_URL is not set')
 	]);

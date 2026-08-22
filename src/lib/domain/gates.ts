@@ -1,4 +1,5 @@
-import type { Project, StageId, GateHistoryEntry } from '$lib/domain/schemas';
+import type { Project, StageId, GateHistoryEntry, ConfidenceRound, BriefApproval } from '$lib/domain/schemas';
+import { CONFIDENCE_DIMENSIONS } from '$lib/domain/schemas';
 
 /**
  * super-seed2 gate engine (AD-7, FR-003/FR-004): the one module that owns
@@ -63,7 +64,7 @@ export type ForceAdvanceInput = {
 
 export type ForceAdvanceResult =
 	| { ok: true; project: Project }
-	| { ok: false; code: 'AT_FINAL_STAGE'; message: string };
+	| { ok: false; code: 'AT_FINAL_STAGE' | 'PROTECTED_STAGE'; message: string };
 
 /**
  * Operator-only force-advance (FR-004): moves exactly one stage forward,
@@ -76,6 +77,9 @@ export function applyForceAdvance(
 	input: ForceAdvanceInput
 ): ForceAdvanceResult {
 	const from = project.stage.id;
+	if (from === 'S0' || from === 'S1' || from === 'S2') {
+		return { ok: false, code: 'PROTECTED_STAGE', message: 'S1 interview and authenticated S2 brief lock cannot be skipped' };
+	}
 	const to = nextStageId(from);
 	if (!to) {
 		return {
@@ -100,5 +104,69 @@ export function applyForceAdvance(
 			stage: { id: to, state: 'FORCED', confidence: null },
 			gate_history: [...project.gate_history, entry]
 		}
+	};
+}
+
+export function evaluateInterviewRound(input: Omit<ConfidenceRound, 'status'>): ConfidenceRound {
+	const dimensions = new Set(input.scores.map((score) => score.dimension));
+	if (dimensions.size !== CONFIDENCE_DIMENSIONS.length || CONFIDENCE_DIMENSIONS.some((dimension) => !dimensions.has(dimension))) {
+		throw new Error('All eight confidence dimensions must be scored exactly once');
+	}
+	const minimum = Math.min(...input.scores.map((score) => score.score));
+	const passes = input.overall >= ADVANCE_CONFIDENCE_OVERALL && minimum >= ADVANCE_CONFIDENCE_DIMENSION_FLOOR;
+	const stalled = input.round_number >= 3 && input.overall < 60;
+	return { ...input, status: passes ? 'PASSED' : stalled ? 'STALLED' : 'BLOCKED' };
+}
+
+export function applyInterviewRound(project: Project, round: ConfidenceRound): Project {
+	if (project.stage.id !== 'S0' && project.stage.id !== 'S1') {
+		throw new Error(`Interview rounds are illegal while project is at ${project.stage.id}`);
+	}
+	if (project.interview.status === 'STALLED') {
+		throw new Error('Interview is STALLED; blockers require operator resolution before another round');
+	}
+	if (round.round_number !== project.interview.rounds.length + 1) {
+		throw new Error(`Interview round must be ${project.interview.rounds.length + 1}`);
+	}
+	if (round.status === 'STALLED') {
+		const missingBlockers = round.scores.filter((score) => score.score < ADVANCE_CONFIDENCE_DIMENSION_FLOOR && score.notes.trim().length === 0);
+		if (missingBlockers.length > 0) {
+			throw new Error(`STALLED round requires blocker notes for: ${missingBlockers.map((score) => score.dimension).join(', ')}`);
+		}
+	}
+	return {
+		...project,
+		interview: { status: round.status, rounds: [...project.interview.rounds, round] },
+		stage: round.status === 'PASSED'
+			? { id: 'S2', state: 'BLOCKED', confidence: round.overall }
+			: { id: 'S1', state: 'BLOCKED', confidence: round.overall }
+	};
+}
+
+export function applyBriefLock(
+	project: Project,
+	input: { briefVersion: number; briefHash: string; operator: string; now: string }
+): Project {
+	if (project.interview.status !== 'PASSED' || project.stage.id !== 'S2') {
+		throw new Error('S2 brief lock requires a passed S1 interview');
+	}
+	if (project.stage.state === 'PASSED') {
+		throw new Error('S2 brief is already locked');
+	}
+	const current = project.brief_state.versions.at(-1);
+	if (!current || project.brief_state.current_version !== current.version) {
+		throw new Error('A complete current brief is required');
+	}
+	if (current.version !== input.briefVersion || current.content_hash !== input.briefHash) {
+		throw new Error('Brief lock is stale; reload the current brief before approving');
+	}
+	const approval: BriefApproval = {
+		event: 'brief_locked', brief_id: current.brief_id, brief_version: current.version,
+		brief_hash: current.content_hash, operator: input.operator, timestamp: input.now
+	};
+	return {
+		...project,
+		stage: { id: 'S2', state: 'PASSED', confidence: project.stage.confidence },
+		approval_history: [...project.approval_history, approval]
 	};
 }

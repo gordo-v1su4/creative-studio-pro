@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { ProjectStore } from '$lib/adapters/project-store';
-import { M3Bridge, M3BridgeError, matchAnswerToLabel } from '$lib/adapters/m3-bridge';
+import { RaycastBridge, RaycastBridgeError, matchAnswerToLabel } from '$lib/adapters/m3-bridge';
 import {
 	createProjectCommandSchema,
 	updateSeedCommandSchema,
@@ -9,9 +9,12 @@ import {
 	harvestCatalogCommandSchema,
 	reshuffleRosterCommandSchema,
 	startCreativeRoomCommandSchema,
-	reconcileCreativeRoomCommandSchema
+	reconcileCreativeRoomCommandSchema,
+	recordInterviewRoundCommandSchema,
+	saveBriefCommandSchema,
+	lockBriefCommandSchema
 } from '$lib/domain/schemas';
-import { applyForceAdvance } from '$lib/domain/gates';
+import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock } from '$lib/domain/gates';
 import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import type { Project, ProjectSummary, CanvasLayout, Voice } from '$lib/domain/schemas';
@@ -54,14 +57,14 @@ const unavailable = (message: string): CommandFailure => ({
 });
 
 const bridgeFailure = (e: unknown): CommandFailure => {
-	if (e instanceof M3BridgeError) {
+	if (e instanceof RaycastBridgeError) {
 		return { ok: false, error: { code: e.code, message: e.message, retryable: e.retryable, source: 'm3-bridge' } };
 	}
 	return {
 		ok: false,
 		error: {
 			code: 'BRIDGE_ERROR',
-			message: e instanceof Error ? e.message : 'M3 bridge call failed',
+			message: e instanceof Error ? e.message : 'Raycast bridge call failed',
 			retryable: true,
 			source: 'm3-bridge'
 		}
@@ -79,7 +82,7 @@ function structuredString(value: unknown): string | null {
 export class ProjectCommandGateway {
 	constructor(
 		private readonly store: ProjectStore,
-		private readonly bridge: M3Bridge | null = null
+		private readonly bridge: RaycastBridge | null = null
 	) {}
 
 	async handle(raw: unknown): Promise<CommandOutcome<Project | CanvasLayout | ProjectSummary[]>> {
@@ -93,6 +96,12 @@ export class ProjectCommandGateway {
 				return this.saveCanvasLayout(raw);
 			case 'force_advance_stage':
 				return this.forceAdvanceStage(raw);
+			case 'record_interview_round':
+				return this.recordInterviewRound(raw);
+			case 'save_brief':
+				return this.saveBrief(raw);
+			case 'lock_brief':
+				return this.lockBrief(raw);
 			case 'harvest_catalog':
 				return this.harvestCatalog(raw);
 			case 'reshuffle_roster':
@@ -172,8 +181,92 @@ export class ProjectCommandGateway {
 			const message = e instanceof Error ? e.message : 'force-advance failed';
 			if (message.includes('Version conflict')) return conflict(message);
 			if (message.includes('not found')) return notFound(message);
-			if (message.includes('no later stage')) return invalid(message);
+			if (message.includes('no later stage') || message.includes('cannot be skipped')) return invalid(message);
 			return { ok: false, error: { code: 'STORE_ERROR', message, retryable: true, source: 'project-store' } };
+		}
+	}
+
+	async recordInterviewRound(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = recordInterviewRoundCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		try {
+			const project = await this.store.updateProject(
+				parsed.data.project_id,
+				parsed.data.expected_version,
+				(current) => {
+					const questions = parsed.data.questions.map((item) => ({ question_id: uuid7ish(), prompt: item.prompt }));
+					const scores = parsed.data.scores;
+					const lowest = scores.reduce((best, score) => score.score < best.score ? score : best);
+					const round = evaluateInterviewRound({
+						round_id: uuid7ish(),
+						round_number: current.interview.rounds.length + 1,
+						questions,
+						answers: questions.map((question, index) => ({ question_id: question.question_id, raw_text: parsed.data.questions[index].answer })),
+						scores,
+						overall: parsed.data.overall,
+						lowest_dimension: lowest.dimension,
+						lowest_score: lowest.score,
+						resolutions: parsed.data.resolutions,
+						created_at: new Date().toISOString()
+					});
+					return applyInterviewRound(current, round);
+				},
+				'project.interview_round_recorded.v1'
+			);
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'interview round failed';
+			if (message.includes('illegal') || message.includes('STALLED') || message.includes('must be')) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
+	async saveBrief(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = saveBriefCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Complete every S2 brief field');
+		try {
+			const project = await this.store.updateProject(
+				parsed.data.project_id,
+				parsed.data.expected_version,
+				(current) => {
+					if (current.interview.status !== 'PASSED' || current.stage.id !== 'S2') throw new Error('S1 must pass before editing S2');
+					if (current.stage.state === 'PASSED') throw new Error('The locked brief is immutable; create a new project version to change it');
+					const version = (current.brief_state.current_version ?? 0) + 1;
+					const created_at = new Date().toISOString();
+					const content_hash = sha256(JSON.stringify(parsed.data.brief));
+					const brief = { ...parsed.data.brief, brief_id: uuid7ish(), version, content_hash, created_at };
+					return { ...current, brief_state: { versions: [...current.brief_state.versions, brief], current_version: version } };
+				},
+				'project.brief_versioned.v1'
+			);
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'brief save failed';
+			if (message.includes('S1 must') || message.includes('immutable')) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
+	async lockBrief(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = lockBriefCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		try {
+			const project = await this.store.updateProject(
+				parsed.data.project_id,
+				parsed.data.expected_version,
+				(current) => applyBriefLock(current, {
+					briefVersion: parsed.data.brief_version,
+					briefHash: parsed.data.brief_hash,
+					operator: parsed.data.operator,
+					now: new Date().toISOString()
+				}),
+				'project.brief_locked.v1'
+			);
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'brief lock failed';
+			if (message.includes('requires') || message.includes('required') || message.includes('stale') || message.includes('locked')) return invalid(message);
+			return this.storeError(e);
 		}
 	}
 
@@ -193,7 +286,7 @@ export class ProjectCommandGateway {
 		const parsed = harvestCatalogCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
 		if (!this.bridge) {
-			return unavailable('CSP_M3_BRIDGE_URL or CSP_M3_BRIDGE_TOKEN is not configured');
+			return unavailable('CSP_RAYCAST_BRIDGE_URL/TOKEN is not configured (legacy CSP_M3_* aliases are supported)');
 		}
 		let harvested;
 		try {
@@ -275,7 +368,7 @@ export class ProjectCommandGateway {
 		const parsed = startCreativeRoomCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
 		if (!this.bridge) {
-			return unavailable('CSP_M3_BRIDGE_URL or CSP_M3_BRIDGE_TOKEN is not configured');
+			return unavailable('CSP_RAYCAST_BRIDGE_URL/TOKEN is not configured (legacy CSP_M3_* aliases are supported)');
 		}
 		const current = await this.store.readProject(parsed.data.project_id);
 		if (!current) return notFound(`Project ${parsed.data.project_id} not found`);
@@ -327,12 +420,10 @@ export class ProjectCommandGateway {
 		let captureMessage: string | null = null;
 		let captureFailed = false;
 		try {
-			// Official automated next_step from raycast-pro-bridge concept-run:
-			// prepare_concept_capture, then Capture Active Run — ChatGPT/Claude.
-			// Do not call run_concept_capture here — that driver types into Raycast
-			// root search instead of opening the named agents.
+			// Manual-assisted baseline: prepare the canonical prompt, then the
+			// operator verifies each exact named Agent before clipboard capture.
 			const prepared = await this.bridge.prepareConceptCapture(created.run_id);
-			captureMessage = `Prepared ${created.run_id} · open Sora 2 - ChatGPT, paste, then ${prepared.capture_commands.chatgpt} · repeat with Sora 2 - Haiku + ${prepared.capture_commands.claude}`;
+			captureMessage = `Prepared ${created.run_id} · ${current.catalog_snapshot.selected.map((slot) => `open ${slot.raycast_agent} for exact label ${slot.label}, then ${prepared.capture_commands.by_label?.[slot.label] ?? `Capture Directors Cut Answer with label ${slot.label}`}`).join(' · ')}`;
 		} catch (e) {
 			captureFailed = true;
 			captureMessage = e instanceof Error ? e.message : 'capture dispatch failed';
@@ -373,14 +464,14 @@ export class ProjectCommandGateway {
 		const parsed = reconcileCreativeRoomCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
 		if (!this.bridge) {
-			return unavailable('CSP_M3_BRIDGE_URL or CSP_M3_BRIDGE_TOKEN is not configured');
+			return unavailable('CSP_RAYCAST_BRIDGE_URL/TOKEN is not configured (legacy CSP_M3_* aliases are supported)');
 		}
 		const current = await this.store.readProject(parsed.data.project_id);
 		if (!current) return notFound(`Project ${parsed.data.project_id} not found`);
 		if (!current.creative_room) return invalid('No Creative Room run to reconcile');
 
 		let status;
-		let answers: Awaited<ReturnType<M3Bridge['readConceptAnswers']>> | null = null;
+		let answers: Awaited<ReturnType<RaycastBridge['readConceptAnswers']>> | null = null;
 		try {
 			status = await this.bridge.getConceptCaptureStatus(current.creative_room.bridge_run_id);
 			if (status.answers_count > 0) {
@@ -442,10 +533,10 @@ export class ProjectCommandGateway {
 	}
 }
 
-function applyReconcile(
+export function applyReconcile(
 	latest: Project,
-	status: Awaited<ReturnType<M3Bridge['getConceptCaptureStatus']>>,
-	answers: Awaited<ReturnType<M3Bridge['readConceptAnswers']>> | null
+	status: Awaited<ReturnType<RaycastBridge['getConceptCaptureStatus']>>,
+	answers: Awaited<ReturnType<RaycastBridge['readConceptAnswers']>> | null
 ): { project: Project; changed: boolean } {
 	if (!latest.creative_room) return { project: latest, changed: false };
 	const captureDone =
@@ -453,13 +544,13 @@ function applyReconcile(
 		status.capture_job_status === 'complete' ||
 		status.pending_count === 0;
 	const nextVoices = latest.voices.map((voice) => {
-		const answer = answers?.answers.find(
+		const answer = answers?.answers.findLast(
 			(row) => matchAnswerToLabel(row.model_name, [{ ...voice, model_class: 'raycast_ai' }])?.label === voice.label
 		);
 		if (!answer) {
 			const lane = status.models.find((model) => model.label === voice.label);
 			if (lane?.status === 'invalid' && voice.parse_status !== 'invalid') {
-				return { ...voice, job_status: 'succeeded' as const, parse_status: 'invalid' as const };
+				return { ...voice, job_status: 'failed' as const, parse_status: 'invalid' as const, error: 'Bridge returned an invalid structured capture.' };
 			}
 			if (
 				captureDone &&
@@ -480,7 +571,7 @@ function applyReconcile(
 		const valid = answer.structure_status === 'valid';
 		return {
 			...voice,
-			job_status: 'succeeded' as const,
+			job_status: valid ? ('succeeded' as const) : ('failed' as const),
 			parse_status: valid ? ('valid' as const) : ('invalid' as const),
 			raw_text: answer.answer_text,
 			parse_errors: answer.structure_errors,
@@ -490,14 +581,14 @@ function applyReconcile(
 			title: structuredString(structured.title),
 			logline: structuredString(structured.logline),
 			summary: structuredString(structured.summary),
-			error: null
+			error: valid ? null : `Invalid structured capture: ${answer.structure_errors.join('; ') || 'structure validation failed'}`
 		};
 	});
 	const pending = nextVoices.filter((voice) => voice.job_status === 'queued' || voice.job_status === 'running').length;
 	const failed = nextVoices.filter((voice) => voice.job_status === 'failed').length;
 	const roomStatus =
-		pending === 0 && (captureDone || failed === nextVoices.length)
-			? failed === nextVoices.length
+		pending === 0 && (captureDone || failed > 0)
+			? failed > 0
 				? ('failed' as const)
 				: ('succeeded' as const)
 			: ('running' as const);

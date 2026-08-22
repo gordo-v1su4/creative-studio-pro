@@ -3,23 +3,23 @@ import { catalogModelSchema } from '$lib/domain/schemas';
 import type { CatalogModel } from '$lib/domain/schemas';
 
 /**
- * M3 Raycast bridge adapter (FR-005, FR-009, AR-06, NFR-005): the only path
+ * Host-neutral Raycast bridge adapter (FR-005, FR-009, AR-06, NFR-005): the only path
  * for catalog harvest, prompt dispatch, and verbatim capture. Calls stay
  * server-side. No silent fallback to another machine or provider.
  */
 
-export class M3BridgeError extends Error {
+export class RaycastBridgeError extends Error {
 	constructor(
 		public readonly code: string,
 		message: string,
 		public readonly retryable: boolean
 	) {
 		super(message);
-		this.name = 'M3BridgeError';
+		this.name = 'RaycastBridgeError';
 	}
 }
 
-export interface M3BridgeConfig {
+export interface RaycastBridgeConfig {
 	baseUrl: string;
 	token: string;
 }
@@ -51,7 +51,8 @@ const prepareCaptureOutputSchema = z.object({
 	prompt_copied_to_clipboard: z.boolean(),
 	capture_commands: z.object({
 		chatgpt: z.string(),
-		claude: z.string()
+		claude: z.string(),
+		by_label: z.record(z.string(), z.string()).optional()
 	}),
 	message: z.string()
 });
@@ -113,8 +114,8 @@ const TIMEOUTS = {
 	poll: 30_000
 } as const;
 
-export class M3Bridge {
-	constructor(private readonly config: M3BridgeConfig) {}
+export class RaycastBridge {
+	constructor(private readonly config: RaycastBridgeConfig) {}
 
 	async getModelCatalog(): Promise<BridgeCatalog> {
 		return this.call('get_model_catalog', {}, catalogOutputSchema, TIMEOUTS.catalog);
@@ -196,13 +197,13 @@ export class M3Bridge {
 			});
 		} catch (e) {
 			const timeout = e instanceof Error && e.name === 'TimeoutError';
-			throw new M3BridgeError(
+			throw new RaycastBridgeError(
 				timeout ? 'TIMEOUT' : 'OFFLINE',
 				timeout
-					? `M3 bridge did not respond to ${tool} within ${timeoutMs / 1000}s`
+					? `Raycast bridge did not respond to ${tool} within ${timeoutMs / 1000}s`
 					: e instanceof Error
 						? e.message
-						: 'M3 bridge connection failed',
+						: 'Raycast bridge connection failed',
 				true
 			);
 		}
@@ -213,7 +214,7 @@ export class M3Bridge {
 				json && typeof json === 'object' && json !== null && 'error' in json
 					? String((json as { error?: { message?: string } }).error?.message ?? response.status)
 					: `HTTP ${response.status} from ${tool}`;
-			throw new M3BridgeError(
+			throw new RaycastBridgeError(
 				response.status === 401 || response.status === 403 ? 'UNAUTHORIZED' : 'BRIDGE_ERROR',
 				message,
 				response.status >= 500
@@ -222,9 +223,9 @@ export class M3Bridge {
 
 		const envelope = z.object({ ok: z.literal(true), result: schema }).safeParse(json);
 		if (!envelope.success) {
-			throw new M3BridgeError(
+			throw new RaycastBridgeError(
 				'INVALID_RESPONSE',
-				`M3 bridge ${tool} returned a payload that does not match the contract`,
+				`Raycast bridge ${tool} returned a payload that does not match the contract`,
 				false
 			);
 		}
@@ -233,11 +234,9 @@ export class M3Bridge {
 }
 
 export function matchAnswerToLabel(modelName: string, slots: CatalogModel[]): CatalogModel | undefined {
-	const exact = slots.find((slot) => slot.label === modelName);
-	if (exact) return exact;
-	const lower = modelName.toLowerCase();
-	return slots.find(
-		(slot) =>
-			lower.includes(slot.label.toLowerCase()) || slot.label.toLowerCase().includes(lower)
-	);
+	return slots.find((slot) => slot.label === modelName);
 }
+
+/** Legacy API aliases retained for existing CSP_M3_* deployments. */
+export { RaycastBridge as M3Bridge, RaycastBridgeError as M3BridgeError };
+export type M3BridgeConfig = RaycastBridgeConfig;

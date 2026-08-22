@@ -3,6 +3,8 @@
 	import { quintOut } from 'svelte/easing';
 	import { STAGES, stageIndex, stageName, nextStageId, legalActions } from '$lib/domain/gates';
 	import type { Project } from '$lib/domain/schemas';
+	import InterviewPanel from '$lib/ui/InterviewPanel.svelte';
+	import BriefPanel from '$lib/ui/BriefPanel.svelte';
 
 	let {
 		project,
@@ -87,6 +89,12 @@
 	{/each}
 </div>
 
+{#if project.interview.status !== 'PASSED'}
+	<InterviewPanel {project} {onUpdated} />
+{:else if project.stage.id === 'S2'}
+	<BriefPanel {project} {onUpdated} />
+{/if}
+
 <div
 	class="mt-2 rounded-sm border bg-surface-raised-2 p-2.5"
 	style:border-color="color-mix(in srgb, {stateColor[project.stage.state]} 30%, var(--color-border-default))"
@@ -118,7 +126,7 @@
 	{/each}
 </ul>
 
-{#if nextStage}
+{#if nextStage && stageIndex(project.stage.id) >= stageIndex('S3')}
 	<button type="button" class="btn mt-2.5 w-full justify-center" onclick={openDialog}>
 		Force advance to {nextStage}…
 	</button>

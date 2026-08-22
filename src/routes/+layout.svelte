@@ -103,6 +103,6 @@
 	</div>
 </div>
 
-<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} />
+<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={ui.activeProject} />
 <CapabilityDrawer />
 <CommandPalette bind:open={ui.paletteOpen} actions={paletteActions} />

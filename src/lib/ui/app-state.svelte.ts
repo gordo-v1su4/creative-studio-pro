@@ -1,4 +1,4 @@
-import type { CapabilityReport } from '$lib/domain/schemas';
+import type { CapabilityReport, Project } from '$lib/domain/schemas';
 
 /**
  * Shared UI chrome state (drawers, palette, capability cache). UI-only:
@@ -19,6 +19,7 @@ class AppUiState {
 	capabilitiesOpen = $state(false);
 	/** Canvas page context surfaced in global chrome (agent drawer). */
 	activeProjectTitle = $state('');
+	activeProject = $state<Project | null>(null);
 	/** Page-contributed palette actions, merged after the global set. */
 	pageActions = $state<PaletteAction[]>([]);
 	capabilities = $state<CapabilityReport[]>([]);

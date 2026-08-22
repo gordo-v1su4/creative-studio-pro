@@ -51,7 +51,7 @@
 	</div>
 	<h2 class="mt-3 text-[15px] font-semibold leading-snug">{seed.title || 'Untitled creative spurt'}</h2>
 	<p class="mt-1 line-clamp-3 text-text-muted">
-		{seed.brief || 'Drop a rough idea. Exact model labels appear only after the M3 bridge returns a catalog.'}
+		{seed.brief || 'Drop a rough idea. Exact model labels appear only after the Raycast bridge returns a catalog.'}
 	</p>
 	<div class="my-3 h-px bg-border-subtle"></div>
 	<div class="flex items-center gap-2">
@@ -102,7 +102,7 @@
 			class="btn"
 			onclick={() => seed.onRun?.()}
 			disabled={!canRun}
-			title={!catalog ? 'Harvest a catalog first' : !briefReady ? 'Brief needs 20+ characters' : roomActive ? 'Run already in flight' : 'Dispatch through the M3 bridge'}
+			title={!catalog ? 'Harvest a catalog first' : !briefReady ? 'Brief needs 20+ characters' : roomActive ? 'Run already in flight' : 'Dispatch through the Raycast bridge'}
 		>
 			{seed.roomBusy ? 'Dispatching…' : roomActive ? 'Capturing…' : 'Run creative room'}
 		</button>

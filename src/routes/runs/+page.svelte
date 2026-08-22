@@ -11,7 +11,7 @@
 			<span class="chip meta-label mx-auto">Empty</span>
 			<p class="mt-3 text-text-muted">No captured runs yet.</p>
 			<p class="mt-1 text-text-dim">
-				Runs appear after the first Creative Room dispatch through the M3 bridge (Epic 2).
+				Runs appear after the first Creative Room dispatch through the Raycast bridge (Epic 2).
 			</p>
 		</div>
 	</div>

@@ -10,7 +10,7 @@ import { checkCapabilities } from '$lib/adapters/capability';
  */
 export const GET: RequestHandler = async () => {
 	const reports = await checkCapabilities({
-		m3BridgeUrl: env.CSP_M3_BRIDGE_URL,
+		m3BridgeUrl: env.CSP_RAYCAST_BRIDGE_URL ?? env.CSP_M3_BRIDGE_URL,
 		splitterUrl: env.CSP_SPLITTER_URL,
 		desktopUrl: env.CSP_DESKTOP_URL
 	});

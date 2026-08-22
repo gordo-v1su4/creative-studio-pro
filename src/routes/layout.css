@@ -1,4 +1,16 @@
 @import 'tailwindcss';
+
+.work-area {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 768px) {
+	.work-area { grid-template-columns: 190px minmax(0, 1fr); }
+}
+
+@media (min-width: 1024px) {
+	.work-area { grid-template-columns: 190px minmax(0, 1fr) var(--inspector-width); }
+}
 @import '@xyflow/svelte/dist/style.css';
 
 /*

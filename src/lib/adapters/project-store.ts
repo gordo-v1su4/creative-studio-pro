@@ -6,6 +6,7 @@ import {
 	projectSchema,
 	canvasLayoutSchema
 } from '$lib/domain/schemas';
+import { idSchema } from '$lib/domain/schemas';
 import { uuid7ish } from '$lib/domain/ids';
 
 type LedgerEventType = LedgerEvent['type'];
@@ -26,13 +27,29 @@ const LAYOUT = 'canvas-layout.json';
 
 export class ProjectStore {
 	private readonly root: string;
+	private readonly projectLocks = new Map<string, Promise<void>>();
 
 	constructor(config: ProjectStoreConfig) {
 		this.root = config.root;
 	}
 
 	private projectDir(projectId: string): string {
-		return join(this.root, projectId);
+		return join(this.root, idSchema.parse(projectId));
+	}
+
+	private async withProjectLock<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+		const previous = this.projectLocks.get(projectId) ?? Promise.resolve();
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const tail = previous.then(() => gate);
+		this.projectLocks.set(projectId, tail);
+		await previous;
+		try {
+			return await operation();
+		} finally {
+			release();
+			if (this.projectLocks.get(projectId) === tail) this.projectLocks.delete(projectId);
+		}
 	}
 
 	private async ensureRoot(): Promise<void> {
@@ -120,6 +137,9 @@ export class ProjectStore {
 			version: 0,
 			stage: { id: 'S0', state: 'BLOCKED', confidence: null },
 			gate_history: [],
+			interview: { status: 'BLOCKED', rounds: [] },
+			brief_state: { versions: [], current_version: null },
+			approval_history: [],
 			catalog_snapshot: null,
 			creative_room: null,
 			voices: [],
@@ -177,6 +197,7 @@ export class ProjectStore {
 		mutate: (project: Project) => Project,
 		eventType: LedgerEventType = 'project.updated.v1'
 	): Promise<Project> {
+		return this.withProjectLock(idSchema.parse(projectId), async () => {
 		const current = await this.readProject(projectId);
 		if (!current) {
 			throw new Error(`Project ${projectId} not found`);
@@ -200,6 +221,7 @@ export class ProjectStore {
 		};
 		await appendFile(join(this.projectDir(projectId), LEDGER), JSON.stringify(event) + '\n', 'utf8');
 		return next;
+		});
 	}
 
 	async readCanvasLayout(projectId: string): Promise<CanvasLayout | null> {

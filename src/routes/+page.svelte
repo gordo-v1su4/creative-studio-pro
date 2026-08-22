@@ -101,6 +101,7 @@
 			editBrief = project.seed.brief;
 		}
 		ui.activeProjectTitle = project.title;
+		ui.activeProject = project;
 		layout = nextLayout;
 		nodes = projectToNodes(project, nextLayout);
 		edges = projectToEdges(project);
@@ -368,22 +369,23 @@
 
 <svelte:head><title>Creative Studio Pro</title></svelte:head>
 
-<div class="grid h-full" style="grid-template-rows: 40px minmax(0,1fr) 42px">
+<div class="grid h-full min-w-0 overflow-x-hidden" style="grid-template-rows: 40px minmax(0,1fr) 42px">
 	<!-- Project toolbar (40px) -->
-	<div class="flex items-center gap-2 border-b border-border-subtle bg-surface-raised px-3">
-		<span class="meta-label">Project</span>
-		<b class="truncate">{activeProject?.title ?? 'No project open'}</b>
+	<div class="flex min-w-0 items-center gap-2 border-b border-border-subtle bg-surface-raised px-3">
+		<span class="meta-label hidden sm:inline">Project</span>
+		<b class="min-w-0 truncate">{activeProject?.title ?? 'No project open'}</b>
 		{#if activeProject}
 			<span class="meta-label text-text-dim">v{activeProject.version}</span>
 		{/if}
 		<span class="grow"></span>
 		<button type="button" class="btn btn-accent" onclick={() => void createProject()} disabled={creating}>
-			{creating ? 'Creating…' : '+ New project'}
+			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
+			<span class="hidden sm:inline">{creating ? 'Creating…' : '+ New project'}</span>
 		</button>
-		<button type="button" class="btn" disabled title="Source video lane arrives in Phase 2">
+		<button type="button" class="btn hidden sm:flex" disabled title="Source video lane arrives in Phase 2">
 			+ Source
 		</button>
-		<button type="button" class="btn font-mono text-[11px]" onclick={() => (ui.paletteOpen = true)} title="Command palette">
+		<button type="button" class="btn hidden font-mono text-[11px] sm:flex" onclick={() => (ui.paletteOpen = true)} title="Command palette">
 			⌘K
 		</button>
 		<button
@@ -399,8 +401,8 @@
 
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
-		class="grid min-h-0 transition-[grid-template-columns] duration-300 ease-out"
-		style="grid-template-columns: 190px minmax(0,1fr) {inspectorOpen ? '300px' : '0px'}"
+		class="work-area grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
+		style={`--inspector-width: ${inspectorOpen ? '300px' : '0px'}`}
 	>
 		<aside class="hidden border-r border-border-default bg-surface-raised p-3 md:block" aria-label="Lanes">
 			<div class="meta-label">Lanes</div>
@@ -479,7 +481,10 @@
 
 		<aside
 			class={[
-				'hidden overflow-hidden bg-surface-raised lg:block',
+				'overflow-hidden bg-surface-raised',
+				inspectorOpen
+					? 'fixed bottom-[42px] right-0 top-[88px] z-30 block w-[min(92vw,360px)] border-l lg:static lg:w-auto'
+					: 'hidden',
 				inspectorOpen && 'border-l border-border-default'
 			]}
 			aria-label="Inspector"
@@ -566,7 +571,7 @@
 								activeProject?.catalog_snapshot ? 'bg-gate-approved' : 'bg-capability-offline'
 							]}
 						></span>
-						<strong class="meta-label text-text-primary">M3 Raycast bridge</strong>
+						<strong class="meta-label text-text-primary">Raycast bridge</strong>
 					</span>
 					<span class="text-text-muted">
 						{activeProject?.catalog_snapshot
@@ -586,13 +591,13 @@
 	</div>
 
 	<!-- Transport strip (42px) -->
-	<footer class="meta-label flex items-center gap-3 border-t border-border-default bg-surface-raised px-3">
+	<footer class="meta-label flex min-w-0 items-center gap-2 overflow-hidden border-t border-border-default bg-surface-raised px-3 sm:gap-3">
 		<span class="flex items-center gap-1.5 text-gate-pending">
 			<span class="block h-1.5 w-1.5 rounded-full bg-gate-pending"></span>
 			{activeProject ? `${activeProject.stage.id} · ${stageName(activeProject.stage.id).toUpperCase()}` : 'NO PROJECT'}
 		</span>
 		<span class="text-border-default">|</span>
-		<span>
+		<span class="hidden sm:inline">
 			Confidence {activeProject?.stage.confidence ?? '—'}
 		</span>
 		{#if activeProject?.creative_room}
@@ -605,7 +610,7 @@
 			</span>
 		{/if}
 		<span class="grow"></span>
-		<span aria-live="polite" class={['transition-opacity', savingLayout ? 'opacity-100' : 'opacity-0']}>
+		<span aria-live="polite" class={['hidden transition-opacity sm:inline', savingLayout ? 'opacity-100' : 'opacity-0']}>
 			Saving canvas…
 		</span>
 		<span class="text-border-default">|</span>

@@ -9,7 +9,8 @@ import { z } from 'zod';
  * - Time is UTC RFC3339; durations in integer milliseconds.
  */
 
-export const idSchema = z.string().min(1);
+export const idSchema = z.string().regex(/^[A-Za-z0-9_-]+$/, 'ID must contain only letters, numbers, underscore, or hyphen');
+const nonBlank = (max: number) => z.string().min(1).max(max).refine((value) => value.trim().length > 0, 'Must not be blank');
 export const rfc3339Schema = z.string();
 export const sha256Schema = z.string().length(64);
 
@@ -62,6 +63,97 @@ export const gateHistoryEntrySchema = z.object({
 });
 
 export type GateHistoryEntry = z.infer<typeof gateHistoryEntrySchema>;
+
+export const confidenceDimensionSchema = z.enum([
+	'goal_clarity', 'format_runtime', 'story_beats', 'visual_intent',
+	'asset_coverage', 'continuity_plan', 'constraints', 'executable_next_step'
+]);
+export type ConfidenceDimension = z.infer<typeof confidenceDimensionSchema>;
+export const CONFIDENCE_DIMENSIONS = confidenceDimensionSchema.options;
+
+export const interviewQuestionSchema = z.object({
+	question_id: idSchema,
+	prompt: nonBlank(1000)
+});
+export const interviewAnswerSchema = z.object({
+	question_id: idSchema,
+	raw_text: nonBlank(10_000)
+});
+export const confidenceScoreSchema = z.object({
+	dimension: confidenceDimensionSchema,
+	score: z.number().int().min(0).max(100),
+	notes: z.string().max(2000)
+});
+export const confidenceRoundSchema = z.object({
+	round_id: idSchema,
+	round_number: z.number().int().positive(),
+	questions: z.array(interviewQuestionSchema).min(1).max(5),
+	answers: z.array(interviewAnswerSchema).min(1).max(5),
+	scores: z.array(confidenceScoreSchema).length(8),
+	overall: z.number().int().min(0).max(100),
+	lowest_dimension: confidenceDimensionSchema,
+	lowest_score: z.number().int().min(0).max(100),
+	resolutions: z.array(z.string().min(1).max(2000)),
+	status: z.enum(['BLOCKED', 'PASSED', 'STALLED']),
+	created_at: rfc3339Schema
+}).superRefine((round, context) => {
+	const dimensions = new Set(round.scores.map((score) => score.dimension));
+	if (dimensions.size !== CONFIDENCE_DIMENSIONS.length) {
+		context.addIssue({ code: 'custom', message: 'All eight confidence dimensions must be scored exactly once' });
+	}
+	const questionIds = new Set(round.questions.map((question) => question.question_id));
+	if (round.answers.some((answer) => !questionIds.has(answer.question_id)) || new Set(round.answers.map((answer) => answer.question_id)).size !== round.questions.length) {
+		context.addIssue({ code: 'custom', message: 'Every question must have exactly one answer' });
+	}
+	const actualLowest = Math.min(...round.scores.map((score) => score.score));
+	const reported = round.scores.find((score) => score.dimension === round.lowest_dimension);
+	if (!reported || reported.score !== actualLowest || round.lowest_score !== actualLowest) {
+		context.addIssue({ code: 'custom', message: 'Lowest confidence dimension must match the scored minimum' });
+	}
+	if (round.status === 'STALLED' && round.scores.some((score) => score.score < 70 && score.notes.trim().length === 0)) {
+		context.addIssue({ code: 'custom', message: 'STALLED rounds require blocker notes for every below-floor dimension' });
+	}
+});
+export type ConfidenceRound = z.infer<typeof confidenceRoundSchema>;
+
+export const interviewStateSchema = z.object({
+	status: z.enum(['BLOCKED', 'PASSED', 'STALLED']),
+	rounds: z.array(confidenceRoundSchema)
+});
+export const briefFormatSchema = z.object({
+	type: nonBlank(200), runtime: nonBlank(200),
+	aspect: nonBlank(100), platform: nonBlank(200)
+});
+export const briefVersionSchema = z.object({
+	brief_id: idSchema,
+	version: z.number().int().positive(),
+	title: nonBlank(200),
+	slug: nonBlank(200),
+	logline: nonBlank(2000),
+	format: briefFormatSchema,
+	tone_visual_rules: nonBlank(5000),
+	must_haves: z.array(nonBlank(1000)).min(1),
+	must_nots: z.array(nonBlank(1000)).min(1),
+	continuity_model: nonBlank(2000),
+	audio_approach: nonBlank(2000),
+	success_criteria: z.array(nonBlank(1000)).min(1),
+	content_hash: sha256Schema,
+	created_at: rfc3339Schema
+});
+export type BriefVersion = z.infer<typeof briefVersionSchema>;
+export const briefStateSchema = z.object({
+	versions: z.array(briefVersionSchema),
+	current_version: z.number().int().positive().nullable()
+});
+export const briefApprovalSchema = z.object({
+	event: z.literal('brief_locked'),
+	brief_id: idSchema,
+	brief_version: z.number().int().positive(),
+	brief_hash: sha256Schema,
+	operator: z.string().min(1),
+	timestamp: rfc3339Schema
+});
+export type BriefApproval = z.infer<typeof briefApprovalSchema>;
 
 export const seedSchema = z.object({
 	seed_id: idSchema,
@@ -153,6 +245,9 @@ export const projectSchema = z.object({
 	stage: stageSchema,
 	/** Gate audit trail (FR-003): default [] keeps pre-existing v1 records valid. */
 	gate_history: z.array(gateHistoryEntrySchema).default([]),
+	interview: interviewStateSchema.default({ status: 'BLOCKED', rounds: [] }),
+	brief_state: briefStateSchema.default({ versions: [], current_version: null }),
+	approval_history: z.array(briefApprovalSchema).default([]),
 	seed: seedSchema,
 	catalog_snapshot: catalogSnapshotSchema.nullable().default(null),
 	creative_room: creativeRoomRunSchema.nullable().default(null),
@@ -244,6 +339,18 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 		payload: projectSchema
 	}),
 	z.object({
+		type: z.literal('project.interview_round_recorded.v1'), event_id: idSchema,
+		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
+	}),
+	z.object({
+		type: z.literal('project.brief_versioned.v1'), event_id: idSchema,
+		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
+	}),
+	z.object({
+		type: z.literal('project.brief_locked.v1'), event_id: idSchema,
+		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
+	}),
+	z.object({
 		type: z.literal('project.catalog_harvested.v1'),
 		event_id: idSchema,
 		project_id: idSchema,
@@ -303,6 +410,35 @@ export const forceAdvanceStageCommandSchema = z.object({
 	operator: z.string().min(1).default('gordo')
 });
 
+export const recordInterviewRoundCommandSchema = z.object({
+	command: z.literal('record_interview_round'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	questions: z.array(z.object({
+		prompt: nonBlank(1000),
+		answer: nonBlank(10_000)
+	})).min(1).max(5),
+	scores: z.array(confidenceScoreSchema).length(8),
+	overall: z.number().int().min(0).max(100),
+	resolutions: z.array(z.string().min(1).max(2000)).default([])
+});
+
+export const saveBriefCommandSchema = z.object({
+	command: z.literal('save_brief'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	brief: briefVersionSchema.omit({ brief_id: true, version: true, content_hash: true, created_at: true })
+});
+
+export const lockBriefCommandSchema = z.object({
+	command: z.literal('lock_brief'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	brief_version: z.number().int().positive(),
+	brief_hash: sha256Schema,
+	operator: z.string().min(1)
+});
+
 export const harvestCatalogCommandSchema = z.object({
 	command: z.literal('harvest_catalog'),
 	project_id: idSchema,
@@ -332,6 +468,9 @@ export type CreateProjectCommand = z.infer<typeof createProjectCommandSchema>;
 export type UpdateSeedCommand = z.infer<typeof updateSeedCommandSchema>;
 export type SaveCanvasLayoutCommand = z.infer<typeof saveCanvasLayoutCommandSchema>;
 export type ForceAdvanceStageCommand = z.infer<typeof forceAdvanceStageCommandSchema>;
+export type RecordInterviewRoundCommand = z.infer<typeof recordInterviewRoundCommandSchema>;
+export type SaveBriefCommand = z.infer<typeof saveBriefCommandSchema>;
+export type LockBriefCommand = z.infer<typeof lockBriefCommandSchema>;
 export type HarvestCatalogCommand = z.infer<typeof harvestCatalogCommandSchema>;
 export type ReshuffleRosterCommand = z.infer<typeof reshuffleRosterCommandSchema>;
 export type StartCreativeRoomCommand = z.infer<typeof startCreativeRoomCommandSchema>;

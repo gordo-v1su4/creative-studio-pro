@@ -73,8 +73,8 @@
 			Set these in the server environment, then recheck:
 		</p>
 		<ul class="mt-2 grid gap-1 font-mono text-[12px] text-text-muted">
-			<li><b class="text-text-primary">CSP_M3_BRIDGE_URL</b> — raycast-pro-bridge on the M3 Mac (Tailnet or localhost:8787)</li>
-			<li><b class="text-text-primary">CSP_M3_BRIDGE_TOKEN</b> — server-side bearer token; never sent to the browser</li>
+			<li><b class="text-text-primary">CSP_RAYCAST_BRIDGE_URL</b> — raycast-pro-bridge on this Windows PC or another allowed host</li>
+			<li><b class="text-text-primary">CSP_RAYCAST_BRIDGE_TOKEN</b> — server-side bearer token; never sent to the browser (legacy CSP_M3_* names remain supported)</li>
 			<li><b class="text-text-primary">CSP_SPLITTER_URL</b> — hosted Splitter service</li>
 			<li><b class="text-text-primary">CSP_DESKTOP_URL</b> — desktop generation stack health endpoint</li>
 		</ul>

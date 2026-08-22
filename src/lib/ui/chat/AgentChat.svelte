@@ -1,175 +1,39 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-
-	type Msg = { id: number; role: 'user' | 'agent'; text: string };
-
-	let { open = $bindable(false), projectTitle = '' }: { open?: boolean; projectTitle?: string } =
-		$props();
-
-	let messages = $state<Msg[]>([
-		{
-			id: 0,
-			role: 'agent',
-			text: "hey! i'm the studio agent ✦ the M3 bridge isn't wired up yet, so i can't run models — but i can hold notes against your seed while you sketch."
-		}
-	]);
-	let draft = $state('');
-	let thinking = $state(false);
-	let spinnerFrame = $state('⠋');
-	let scroller = $state<HTMLDivElement>();
-	let nextId = 1;
-
-	const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-	const timers = new Set<ReturnType<typeof setInterval>>();
-
-	// Staged persona until a real agent endpoint exists (Phase 1+).
-	const cannedReplies = [
-		'noted ✦ once the M3 Raycast bridge returns a live catalog, i can route this to the creative room. until then it stays draft-only in S0.',
-		"filed against the seed. no model names promised — the roster resolves when the catalog is real. anything else brewing?",
-		'got it. S0 intake keeps everything reversible, so riff freely — nothing is spent until a gate approves it.'
-	];
-	let replyIndex = 0;
-
-	function clearTimers() {
-		for (const t of timers) clearInterval(t);
-		timers.clear();
-	}
-
-	onDestroy(clearTimers);
-
-	async function scrollToEnd() {
-		await tick();
-		scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
-	}
-
-	function send() {
-		const text = draft.trim();
-		if (!text || thinking) return;
-		messages.push({ id: nextId++, role: 'user', text });
-		draft = '';
-		void scrollToEnd();
-
-		thinking = true;
-		let frame = 0;
-		const spin = setInterval(() => {
-			spinnerFrame = spinnerFrames[++frame % spinnerFrames.length];
-		}, 80);
-		timers.add(spin);
-
-		const reply = cannedReplies[replyIndex++ % cannedReplies.length];
-		setTimeout(() => {
-			clearInterval(spin);
-			timers.delete(spin);
-			thinking = false;
-			messages.push({ id: nextId++, role: 'agent', text: '' });
-			const idx = messages.length - 1;
-			let i = 0;
-			const typewriter = setInterval(() => {
-				messages[idx].text = reply.slice(0, ++i);
-				void scrollToEnd();
-				if (i >= reply.length) {
-					clearInterval(typewriter);
-					timers.delete(typewriter);
-				}
-			}, 16);
-			timers.add(typewriter);
-		}, 850);
-	}
+	import type { Project } from '$lib/domain/schemas';
+	let { open = $bindable(false), projectTitle = '', project = null }: { open?: boolean; projectTitle?: string; project?: Project | null } = $props();
+	let latest = $derived(project?.interview.rounds.at(-1));
 </script>
 
 {#if open}
-	<aside
-		class="fixed inset-y-0 right-0 z-40 flex w-[380px] max-w-[92vw] flex-col border-l border-border-default bg-surface-raised shadow-[-16px_0_48px_rgba(0,0,0,0.55)]"
-		transition:fly={{ x: 420, duration: 380, easing: quintOut }}
-		aria-label="Agent chat"
-	>
-		<!-- Gradient spine on the drawer edge -->
-		<span
-			class="pointer-events-none absolute inset-y-0 left-0 w-px opacity-60 bg-[linear-gradient(180deg,var(--color-charm-pink),var(--color-charm-purple),var(--color-charm-mint))]"
-		></span>
-
+	<aside class="fixed inset-y-0 right-0 z-40 flex w-[380px] max-w-[92vw] flex-col border-l border-border-default bg-surface-raised shadow-[-16px_0_48px_rgba(0,0,0,0.55)]" transition:fly={{ x: 420, duration: 380, easing: quintOut }} aria-label="Agent interview record">
 		<header class="flex items-center gap-2 border-b border-border-subtle px-3.5 py-3">
-			<span class="font-mono text-[13px] text-text-dim">╭─</span>
-			<span class="font-mono text-[12px] font-semibold tracking-[0.08em] uppercase text-text-primary">
-				<span class="charm-gradient-text">✦</span> agent
-			</span>
-			<span class="grow"></span>
-			<span
-				class="chip meta-label border-[color-mix(in_srgb,var(--color-charm-purple)_30%,var(--color-border-default))] text-text-dim"
-			>
-				OFFLINE · NO CATALOG
-			</span>
-			<button
-				type="button"
-				class="btn px-2 py-1 font-mono text-[11px]"
-				onclick={() => (open = false)}
-				aria-label="Close agent chat"
-			>
-				esc
-			</button>
+			<span class="charm-gradient-text font-bold">✦</span><span class="meta-label text-text-primary">Stage agent</span><span class="grow"></span>
+			<span class="chip meta-label">{project?.interview.status ?? 'NO PROJECT'}</span>
+			<button type="button" class="btn" onclick={() => (open = false)} aria-label="Close agent panel">esc</button>
 		</header>
-
-		{#if projectTitle}
-			<div class="border-b border-border-subtle px-3.5 py-2 font-mono text-[11px] text-text-dim">
-				<span class="text-charm-mint">❯</span> context: <span class="text-text-muted">{projectTitle}</span>
-			</div>
-		{/if}
-
-		<div bind:this={scroller} class="grow space-y-3 overflow-y-auto px-3.5 py-4">
-			{#each messages as msg (msg.id)}
-				<div
-					class={['flex', msg.role === 'user' ? 'justify-end' : 'justify-start']}
-					in:fly={{ y: 10, duration: 220, easing: quintOut }}
-				>
-					<div
-						class={[
-							'max-w-[85%] rounded-md px-3 py-2 font-mono text-[12px] leading-relaxed text-text-primary',
-							msg.role === 'user'
-								? 'rounded-br-[2px] border border-[color-mix(in_srgb,var(--color-charm-pink)_28%,var(--color-border-default))] bg-surface-raised-2'
-								: 'rounded-bl-[2px] border border-border-default bg-surface-raised-2'
-						]}
-					>
-						{#if msg.role === 'agent'}
-							<span class="meta-label mb-1 block text-charm-mint">agent</span>
-						{/if}
-						{msg.text}
+		<div class="grow overflow-y-auto px-3.5 py-4">
+			{#if !project}
+				<p class="text-text-muted">Open a project to begin the S1 interview.</p>
+			{:else}
+				<p class="meta-label text-text-dim">{projectTitle} · {project.stage.id} {project.stage.state}</p>
+				<p class="mt-3 text-text-muted">The inspector is the authoritative S1/S2 command surface. Answers, scores, brief versions, and approvals are persisted through the project gateway; this drawer never keeps private shadow notes.</p>
+				{#if latest}
+					<div class="mt-4 rounded-sm border border-border-default bg-surface-raised-2 p-3" aria-live="polite">
+						<h3 class="meta-label">Confidence round {latest.round_number} · {latest.status}</h3>
+						<p class="mt-2">Overall {latest.overall}/100 · lowest {latest.lowest_dimension.replaceAll('_', ' ')} {latest.lowest_score}</p>
+						{#each latest.questions as question, index (question.question_id)}
+							<div class="mt-3"><strong class="block">{index + 1}. {question.prompt}</strong><p class="mt-1 whitespace-pre-wrap text-text-muted">{latest.answers.find((answer) => answer.question_id === question.question_id)?.raw_text}</p></div>
+						{/each}
 					</div>
-				</div>
-			{/each}
-
-			{#if thinking}
-				<div class="flex items-center gap-2 font-mono text-[12px] text-charm-purple" aria-live="polite">
-					<span class="text-[14px]">{spinnerFrame}</span>
-					<span class="text-text-dim">brewing…</span>
-				</div>
+				{:else}
+					<p class="mt-4 rounded-sm border border-border-subtle p-3 text-text-muted">No interview round has been recorded. Use the Stage gate inspector; each round accepts no more than five owner-decision questions.</p>
+				{/if}
+				{#if project.stage.id === 'S2'}
+					<p class="mt-4 rounded-sm border border-border-subtle p-3 text-text-muted">Brief versions: {project.brief_state.versions.length}. S2 passes only after the authenticated operator locks the current complete version.</p>
+				{/if}
 			{/if}
 		</div>
-
-		<form
-			class="border-t border-border-subtle px-3.5 py-3"
-			onsubmit={(e) => {
-				e.preventDefault();
-				send();
-			}}
-		>
-			<div class="charm-ring flex items-center gap-2 rounded-md bg-surface-base px-3 py-2">
-				<span class="charm-gradient-text font-mono text-[13px] font-bold">❯</span>
-				<input
-					{@attach (node: HTMLInputElement) => node.focus()}
-					bind:value={draft}
-					class="grow bg-transparent font-mono text-[12px] text-text-primary outline-none placeholder:text-text-dim"
-					style="caret-color: var(--color-charm-mint)"
-					placeholder="tell the agent something…"
-					aria-label="Message the agent"
-				/>
-				{#if !draft}<span class="charm-cursor" aria-hidden="true"></span>{/if}
-			</div>
-			<div class="mt-2 flex items-center justify-between font-mono text-[10px] tracking-[0.06em] text-text-dim">
-				<span><b class="text-text-muted">enter</b> send · <b class="text-text-muted">esc</b> close</span>
-				<span class="text-text-dim">╰─</span>
-			</div>
-		</form>
 	</aside>
 {/if}

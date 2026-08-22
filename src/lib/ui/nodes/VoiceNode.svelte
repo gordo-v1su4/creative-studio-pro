@@ -43,7 +43,7 @@
 	{:else if voice.error}
 		<p class="mt-1 text-gate-failed">{voice.error}</p>
 	{:else}
-		<p class="mt-1 text-text-dim">Waiting for a verbatim reply from the M3 bridge.</p>
+		<p class="mt-1 text-text-dim">Waiting for a verbatim reply from the Raycast bridge.</p>
 	{/if}
 
 	{#if voice.parse_errors.length > 0}

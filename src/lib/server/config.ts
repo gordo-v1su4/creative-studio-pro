@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { ProjectStore } from '$lib/adapters/project-store';
 import type { ProjectStoreConfig } from '$lib/adapters/project-store';
-import { M3Bridge } from '$lib/adapters/m3-bridge';
+import { RaycastBridge } from '$lib/adapters/m3-bridge';
 import { ProjectCommandGateway } from '$lib/application/gateway';
 
 /**
@@ -22,13 +22,16 @@ export function getProjectStore(): ProjectStore {
 	return cachedStore;
 }
 
-export function getM3Bridge(): M3Bridge | null {
-	const baseUrl = env.CSP_M3_BRIDGE_URL;
-	const token = env.CSP_M3_BRIDGE_TOKEN;
+export function getRaycastBridge(): RaycastBridge | null {
+	const baseUrl = env.CSP_RAYCAST_BRIDGE_URL ?? env.CSP_M3_BRIDGE_URL;
+	const token = env.CSP_RAYCAST_BRIDGE_TOKEN ?? env.CSP_M3_BRIDGE_TOKEN;
 	if (!baseUrl || !token) return null;
-	return new M3Bridge({ baseUrl, token });
+	return new RaycastBridge({ baseUrl, token });
 }
 
+/** Legacy name retained for callers during CSP_M3_* migration. */
+export const getM3Bridge = getRaycastBridge;
+
 export function getGateway(): ProjectCommandGateway {
-	return new ProjectCommandGateway(getProjectStore(), getM3Bridge());
+	return new ProjectCommandGateway(getProjectStore(), getRaycastBridge());
 }
