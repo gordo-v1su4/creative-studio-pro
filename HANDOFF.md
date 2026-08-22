@@ -22,6 +22,8 @@ cd ../creative-studio-pro
 #   CSP_PROJECT_ROOT=.../creative-studio-pro/data/projects
 #   CSP_M3_BRIDGE_URL=http://127.0.0.1:8787
 #   CSP_M3_BRIDGE_TOKEN=<same token>
+#   CSP_OPERATOR_ID=gordo
+#   CSP_OPERATOR_TOKEN=<strong operator credential>
 bun run dev -- --port 5174
 ```
 

@@ -23,13 +23,20 @@
 
 	let dialogOpen = $state(false);
 	let reason = $state('');
+	let operatorToken = $state('');
 	let submitting = $state(false);
 	let dialogError = $state<string | null>(null);
 
 	function openDialog() {
 		reason = '';
+		operatorToken = '';
 		dialogError = null;
 		dialogOpen = true;
+	}
+
+	function closeDialog() {
+		operatorToken = '';
+		dialogOpen = false;
 	}
 
 	async function confirmForceAdvance() {
@@ -39,18 +46,20 @@
 		try {
 			const response = await fetch(`/api/projects/${project.project_id}/stage`, {
 				method: 'POST',
-				headers: { 'content-type': 'application/json' },
+				headers: {
+					'content-type': 'application/json',
+					authorization: `Bearer ${operatorToken}`
+				},
 				body: JSON.stringify({
 					expected_version: project.version,
-					reason: reason.trim(),
-					operator: 'gordo'
+					reason: reason.trim()
 				})
 			});
 			const body = (await response.json()) as
 				| { ok: true; data: Project }
 				| { ok: false; error: { message: string } };
 			if (!body.ok) throw new Error(body.error.message);
-			dialogOpen = false;
+			closeDialog();
 			onUpdated(body.data);
 		} catch (e) {
 			dialogError = e instanceof Error ? e.message : 'Force-advance failed';
@@ -140,7 +149,7 @@
 		type="button"
 		class="fixed inset-0 z-50 cursor-default bg-black/50 backdrop-blur-[2px]"
 		transition:fade={{ duration: 150 }}
-		onclick={() => (dialogOpen = false)}
+		onclick={closeDialog}
 		aria-label="Cancel force advance"
 		tabindex="-1"
 	></button>
@@ -167,16 +176,24 @@
 			class="mt-1.5 w-full resize-none rounded-sm border border-border-default bg-surface-base p-2 font-mono text-[12px] text-text-primary outline-none placeholder:text-text-dim focus:border-text-dim"
 			placeholder="why this gate is being bypassed…"
 		></textarea>
+		<label class="meta-label mt-3 block" for="operator-token">Operator credential (required)</label>
+		<input
+			id="operator-token"
+			bind:value={operatorToken}
+			type="password"
+			autocomplete="current-password"
+			class="mt-1.5 w-full rounded-sm border border-border-default bg-surface-base p-2 font-mono text-[12px] text-text-primary outline-none focus:border-text-dim"
+		/>
 		{#if dialogError}
 			<div class="mt-2 text-gate-failed" role="alert">{dialogError}</div>
 		{/if}
 		<div class="mt-3 flex justify-end gap-2">
-			<button type="button" class="btn" onclick={() => (dialogOpen = false)}>Cancel</button>
+			<button type="button" class="btn" onclick={closeDialog}>Cancel</button>
 			<button
 				type="button"
 				class="btn border-[color-mix(in_srgb,var(--color-gate-failed)_50%,var(--color-border-default))] text-gate-failed"
 				onclick={() => void confirmForceAdvance()}
-				disabled={reason.trim().length < 5 || submitting}
+				disabled={reason.trim().length < 5 || operatorToken.length === 0 || submitting}
 			>
 				{submitting ? 'Recording…' : 'Force advance'}
 			</button>
