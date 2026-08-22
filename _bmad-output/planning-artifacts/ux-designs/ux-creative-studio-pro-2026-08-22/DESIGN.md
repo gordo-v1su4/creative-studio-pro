@@ -1,13 +1,11 @@
 ---
 name: Creative Studio Pro
 description: Canvas-first AI creative workbench. Dark editorial, image-forward, compact, provenance-visible, and gate-led.
-status: draft
+status: final
 updated: 2026-08-22
 sources:
   - ../../prds/prd-creative-studio-pro-2026-08-22/prd.md
   - ../../../../docs/UI-UX.md
-  - directors-cut/src/app.css
-  - storyception/app/globals.css
 colors:
   surface-base: '#09090b'
   surface-raised: '#111113'
@@ -202,6 +200,30 @@ metadata and controls sit below rather than over decorative image gradients.
   uses `{colors.focus-ring}` without introducing another accent.
 - **Seek/scrub preview bar** — compact frame-accurate review interaction derived
   from Review Room/Directors Cut; visual review only, not a rebuilt review app.
+- **Lane rail** — `{colors.surface-raised}` with hairline right border, compact
+  mono labels, and selected lane in `{colors.text-primary}`; collapsed state
+  preserves a 44px control target.
+- **Live roster** — wrapping chip group inside Seed node; pinned, random, and
+  operator-added slots use shape/text differences plus the dynamic voice palette.
+- **Source node** — Canvas node variant with 16:9 poster, source metadata, and
+  truthful job-state strip.
+- **Character-sheet task** — one container with three equal output frames;
+  missing/failed slots keep their frame and explicit state rather than collapse.
+- **Trailer node** — wide Canvas node variant with target tabs, gate chips,
+  pacing summary, prompt/source hashes, and quote affordance.
+- **Artifact node** — image/video first, then provider/model/runtime/cost metadata,
+  version control, lineage, and prompt-match status.
+- **SpecCard** — Library row/card using the same 2px frame, target settings,
+  source labels, and immutable version marker.
+- **Media lightbox** — `{colors.surface-base}` backdrop, 4px media frame,
+  close control, provenance summary, and seek/scrub when video is present.
+
+Composition references: [`Project Canvas`](mockups/key-project-canvas-creative-room.html),
+[`Model Voice Compare`](mockups/key-model-voice-compare.html),
+[`Storyboard + Scrub`](mockups/key-storyboard-grid-scrub.html),
+[`Trailer Quote Gate`](mockups/key-trailer-quote-gate.html), and
+[`Capability Drawer`](mockups/key-capability-drawer.html). `DESIGN.md` and
+`EXPERIENCE.md` win on conflict with these illustrative screens.
 
 ## Do's and Don'ts
 

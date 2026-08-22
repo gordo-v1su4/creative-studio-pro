@@ -9,8 +9,10 @@ Founding documents (read both before writing code):
 - `_bmad-output/planning-artifacts/prds/prd-creative-studio-pro-2026-08-22/prd.md`
   — canonical BMAD product requirements, donor blend map, workflows, data
   model, architecture, phases.
-- `docs/UI-UX.md` — design DNA, canvas spec, node types, tokens, interaction
-  inventory, wireframes, build notes.
+- `_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
+  — canonical BMAD visual identity and tokens.
+- `_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/EXPERIENCE.md`
+  — canonical BMAD behavior, states, interactions, accessibility, and flows.
 
 Rules (inherited from creative-studio-os and the bridge):
 

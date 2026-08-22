@@ -8,7 +8,8 @@ For any agent picking up this repo.
 2. `_bmad-output/planning-artifacts/prds/prd-creative-studio-pro-2026-08-22/prd.md`
    — canonical requirements; the donor map tells you exactly which existing
    repo owns which pattern.
-3. `docs/UI-UX.md` — how it looks and behaves.
+3. `_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
+   and `EXPERIENCE.md` — canonical visual and behavioral UX contracts.
 4. `gordo-v1su4/super-seed2` — authoritative production methodology. Read its
    `AGENTS.md`, `pipeline/creative-stages.md`, and the active production-type
    playbook before changing story, teaser, prompt, or generation behavior.

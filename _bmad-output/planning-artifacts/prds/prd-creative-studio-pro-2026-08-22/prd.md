@@ -11,8 +11,10 @@ Version: 1.0.0 (BMAD final)
 Date: 2026-08-22
 Owner: Gordo
 Status: Final — ready for BMAD UX and architecture planning
-Companion UX input: `docs/UI-UX.md` — founding design source that must be
-reconciled through `bmad-ux` before implementation.
+Companion UX contracts:
+`../ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md` and
+`../ux-designs/ux-creative-studio-pro-2026-08-22/EXPERIENCE.md` — finalized
+BMAD visual and behavioral spines; they govern implementation.
 
 ---
 

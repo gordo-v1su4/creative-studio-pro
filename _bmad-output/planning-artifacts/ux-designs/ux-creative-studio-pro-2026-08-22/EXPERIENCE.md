@@ -1,6 +1,6 @@
 ---
 name: Creative Studio Pro
-status: draft
+status: final
 updated: 2026-08-22
 sources:
   - ../../prds/prd-creative-studio-pro-2026-08-22/prd.md
@@ -40,6 +40,14 @@ provenance remain visible throughout the experience.
 | Media Lightbox | Artifact/thumbnail click | Review image/video at useful scale with seek/scrub controls |
 | Command Palette | `⌘K` / `Ctrl+K` | Navigate, create, focus lanes, and run context-safe actions |
 
+Composition references (spines win on conflict):
+
+- [`mockups/key-project-canvas-creative-room.html`](mockups/key-project-canvas-creative-room.html) — Project Canvas and live roster before catalog fetch.
+- [`mockups/key-model-voice-compare.html`](mockups/key-model-voice-compare.html) — Compare with valid, invalid, and pending voice states.
+- [`mockups/key-storyboard-grid-scrub.html`](mockups/key-storyboard-grid-scrub.html) — Splitter result, segment preview, seek/scrub, and separate EXTEND action.
+- [`mockups/key-trailer-quote-gate.html`](mockups/key-trailer-quote-gate.html) — Target/runtime switcher and quote/confirm separation.
+- [`mockups/key-capability-drawer.html`](mockups/key-capability-drawer.html) — Available, planned, and not-checked capability states.
+
 Desktop chrome: 48px top nav, project toolbar, collapsible lane rail, canvas,
 collapsible inspector, and bottom transport strip. Modal stacks stop at one
 level. A quote dialog may open over the canvas; it cannot open another dialog.
@@ -67,7 +75,10 @@ with a plain-language location label.
 ## Product-Specific Spine: S0–S10 Stage Control
 
 The transport strip always displays current stage, confidence, gate state, and
-next legal action. Selecting it opens the full gate log.
+next legal action. Selecting it opens the full gate log. Visual state treatment
+uses `DESIGN.md` tokens `{colors.gate-pending}`, `{colors.gate-approved}`,
+`{colors.gate-quoted}`, `{colors.gate-failed}`, and
+`{colors.capability-offline}`; labels remain mandatory.
 
 | State | Meaning | Available actions |
 |---|---|---|
@@ -89,6 +100,11 @@ Behavioral rules; visual tokens live in `DESIGN.md.Components`.
 
 | Component | Use | Behavioral rules |
 |---|---|---|
+| Canvas node | Every project lane | Single click selects; double-click opens Node Focus; drag changes persisted layout only; edge ports expose legal branch/remix actions. |
+| Stage/gate strip | Node and global transport | Opens gate log; exposes only the next legal action; Force Advance is operator-only and requires reason. |
+| Inspector | Selected node | Edits user-owned fields inline; exact model output, hashes, quotes, and audit fields remain read-only. |
+| Command palette | Global | Fuzzy searches surfaces and context-safe actions; Enter activates, Escape closes, results announce through `aria-live`. |
+| Media lightbox | Artifact/segment | Opens one media item with provenance and keyboard/touch seek controls; Escape closes; media failure preserves metadata and error. |
 | Lane rail | Canvas left | Seeds, Voices, Sources, Storyboard, Trailer, Output. Click focuses/filter lane; collapse preserves labels through tooltips and accessible names. |
 | Seed node | S0/Creative Room | Edits title, brief, focus, requested voice count. Run action remains disabled when M3 catalog is unavailable. |
 | Live roster | Seed inspector | Fetch exact Raycast catalog; default random count 5. Reshuffle changes seed, Pin preserves a model, Add/Remove edits operator overrides. Never show unavailable desired families as selectable. |
@@ -148,6 +164,18 @@ percentage completion when the API provides only a state.
 - No Runs: `No captured runs yet.`
 - No available M3 catalog: `No model catalog returned by the M3 Raycast bridge.`
 
+### Surface-specific states
+
+| Surface | Cold/loading | Empty | Error/offline | Focus/selection |
+|---|---|---|---|---|
+| Project Canvas | Restore project skeleton and persisted viewport | Seed-only `Drop an idea…` | Project read failure names the file/record; no blank canvas | Selected node + lineage; Node Focus dims neighbors |
+| Compare | Skeleton columns only for selected stable IDs | Fewer than two compatible voices returns to canvas | Failed/invalid voices retain raw state per column | Active column and section remain keyboard-visible |
+| Library | Rebuild/read index without hiding canonical cards | `No promoted specs yet.` | Index failure offers rebuild; canonical SpecCards remain untouched | Selected version opens detail/lightbox |
+| Runs | Load audit rows by stable run ID | `No captured runs yet.` | Read failure preserves filter and names source | Focused row exposes raw/catalog/job links |
+| Settings | Per-capability check states independently | Unconfigured capability says `NOT CONFIGURED` | Offline, timeout, auth, and contract errors remain distinct | Focused service exposes test/configure action |
+| Media Lightbox | Poster/skeleton while media opens | Metadata remains if media asset is absent | Playback/load error appears beside provenance | Seek focus is visible and keyboard-operable |
+| Command Palette | Results update as query changes | `No matching surface or available action.` | Search failure closes no current work | Active result announced and visibly highlighted |
+
 ## Interaction Primitives
 
 - Single click/tap selects; double-click opens Node Focus.
@@ -170,7 +198,8 @@ history replacement.
 ## Accessibility Floor
 
 - WCAG 2.2 AA behavior across responsive web surfaces.
-- Text contrast ≥4.5:1; focus indicators ≥3:1; state always includes text.
+- Text contrast ≥4.5:1; focus indicators ≥3:1 using
+  `{components.focus-ring}` / `{colors.focus-ring}`; state always includes text.
 - Canvas exposes an `application` region plus a DOM node-list fallback in
   reading/lineage order.
 - Every node announces type, title, stage/state, and available actions.
