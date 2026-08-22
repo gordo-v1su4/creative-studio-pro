@@ -1,30 +1,32 @@
 ---
 title: Creative Studio Pro — Product Requirements Document
-status: draft
+status: final
 created: 2026-08-21
 updated: 2026-08-22
 ---
 
 # Creative Studio Pro — Product Requirements Document
 
-Version: 0.2.0 (BMAD reconciliation)
+Version: 1.0.0 (BMAD final)
 Date: 2026-08-22
 Owner: Gordo
-Status: Draft for BMAD update
-Companion document: `docs/UI-UX.md` (the two documents are a set — implement against both)
+Status: Final — ready for BMAD UX and architecture planning
+Companion UX input: `docs/UI-UX.md` — founding design source that must be
+reconciled through `bmad-ux` before implementation.
 
 ---
 
 ## 1. Vision
 
-One canvas-first creative studio that takes a rough idea all the way to a reviewed,
-reusable teaser/trailer asset — without leaving the app.
+One canvas-first creative studio that takes a rough idea all the way to a
+reviewed, reusable trailer, cold open, or first short episode without leaving
+the app.
 
 The product's spine:
 
     IDEA → CREATIVE ROOM (multi-model) → CANVAS (compare/branch/select)
         → SOURCE SPLIT (scene detect → storyboard → extend clips)
-        → ASSEMBLE (teaser/trailer) → GATE (human approval)
+        → ASSEMBLE (trailer / cold open / short episode) → GATE
         → GENERATE (image/video, gated) → LIBRARY (promoted specs)
 
 Creative Studio Pro is not another tool. It is the front door and the workbench
@@ -334,3 +336,219 @@ Acceptance: approved concept appears in library; digest references it.
    home server for durable hosting.
 6. **Machine boundaries:** resolved — Raycast bridge only on the M3; SwarmUI
    and ComfyUI only on the desktop.
+
+## 14. Functional requirements
+
+### Project, canvas, and stage control
+
+- **FR-001 — Project persistence:** CSP shall create and reopen a project as one
+  local-first project folder with stable IDs and reconstructable indexes.
+- **FR-002 — Canvas persistence:** CSP shall persist node positions, edges,
+  selections, user-authored edits, and lane assignments so reloading restores
+  the same canvas state.
+- **FR-003 — Stage state:** Every project shall expose the super-seed2 S0–S10
+  stage, gate status, confidence score, and gate history from one authoritative
+  project state record.
+- **FR-004 — Gate enforcement:** CSP shall block submit-ready prompts and
+  generation actions until the corresponding super-seed2 gates pass. Only the
+  human operator may force-advance, and every force-advance shall record stage,
+  reason, prior confidence, operator, and timestamp.
+
+### Creative Room and Raycast roster
+
+- **FR-005 — Live catalog:** Before each initial Creative Room run, CSP shall
+  request the model catalog from raycast-pro-bridge on the M3 Mac rather than
+  use a hard-coded provider roster.
+- **FR-006 — Catalog snapshot:** CSP shall persist the exact displayed Raycast
+  labels, harvest timestamp, bridge version, and catalog hash used by the run.
+- **FR-007 — Random rotation:** CSP shall use an operator-configurable voice
+  count whose initial default is five, selecting a varied available roster with
+  a persisted random seed. If fewer than the requested count are eligible, it
+  shall select all available voices and show the shortfall.
+- **FR-008 — Operator control:** Before dispatch, Gordo shall be able to
+  reshuffle, pin, add, or remove models without losing the catalog snapshot.
+- **FR-009 — M3-only dispatch:** All Raycast model discovery, prompt dispatch,
+  and response capture shall route through the approved M3 bridge contract.
+- **FR-010 — Verbatim capture:** CSP shall store each raw response unchanged,
+  its exact displayed model label, content hash, prompt hash, parse status, and
+  parse errors. Invalid structure shall remain visible and shall not be
+  silently repaired.
+- **FR-011 — Creative package:** Each successful voice shall provide title,
+  logline, summary, image-sequence prompt, 3x3-grid prompt, Sora 2 12-second
+  teaser concept, Seedance 2.0 15-second teaser concept, and Seedance 2.5 teaser
+  concept at an approved duration up to 30 seconds.
+- **FR-012 — Draft boundary:** Before S4, every teaser concept shall display
+  `DRAFT — not for Studio`, and no generation control shall accept it as a
+  submit-ready prompt.
+- **FR-013 — Review actions:** Gordo shall be able to compare two to four Model
+  Voice cards, inspect raw output, approve, reject with a note, branch, remix,
+  and promote a selected voice into the gated pipeline.
+
+### Character-sheet system
+
+- **FR-014 — Character-sheet trigger:** Any image intake shall offer the
+  built-in character-sheet workflow without requiring a separate application.
+- **FR-015 — Character-sheet outputs:** An approved character-sheet task shall
+  create three identity-consistent, separately generated outputs: 16:9
+  full-body front with the head removed, full-body back, and high-resolution
+  close-up face. CSP shall never derive the close-up by cropping the wide view.
+  If the selected provider is billable, the task shall require a live quote and
+  matching explicit confirmation. Ad-hoc launch creates or links the task at S6;
+  it does not force-advance the parent project's stage gates.
+
+### Source Split lane
+
+- **FR-016 — Hosted Splitter client:** CSP shall validate against the live
+  `splitter.serving.cloud/openapi.json` contract, upload videos through
+  `POST /api/jobs`, poll job state, retrieve the result, and resolve returned
+  assets through documented routes.
+- **FR-017 — Storyboard result:** A completed split shall create a Storyboard
+  Grid node containing ordered segment IDs, frame ranges, durations, stills,
+  and playable previews from the returned manifest.
+- **FR-018 — Non-destructive edits:** CSP shall store trim and merge choices as
+  project metadata without mutating or inventing Splitter service results.
+- **FR-019 — Clip extension:** EXTEND shall create a separate gated generation
+  task anchored to the selected segment's observed final frame. It shall not
+  call an undocumented Splitter endpoint.
+
+### Teaser assembly and generation
+
+- **FR-020 — Trailer specification:** CSP shall assemble an approved concept,
+  selected clips, references, anchors, source methodology commit, target model,
+  runtime, pacing contract, audio arc, and title device into a versioned
+  TrailerSpec.
+- **FR-021 — Proven pacing:** Teaser specifications shall preserve the selected
+  super-seed2 production-type outline and the successful Directors Cut pacing:
+  hook in the first 2 seconds, accelerating montage, 0.3–0.8-second cuts,
+  0.2–0.3-second climax flashes, audio-led silence beat, and hard title/CTA.
+- **FR-022 — Model-specific compilation:** After S4 layout and S5 vibe approval,
+  S8 shall compile the selected concept into the chosen target format: Sora 2
+  at 12 seconds, explicit Seedance 2.0 at 15 seconds, or Seedance 2.5 strict
+  format at up to 30 seconds.
+- **FR-023 — Pilot gate:** S8 shall permit one pilot prompt and one pilot
+  generation. Batch generation shall remain blocked until both are approved.
+- **FR-024 — Spend confirmation:** Every billable generation shall require an
+  approved concept, current live quote, quote expiry display, and explicit
+  human confirmation tied to that quote.
+- **FR-025 — No automatic fallback:** A failed or unavailable provider shall
+  produce its real error and an explicit operator choice. CSP shall never
+  silently submit to another provider or model.
+- **FR-026 — Desktop routing:** SwarmUI and ComfyUI jobs shall route only to the
+  desktop. When the desktop is unavailable, those actions shall be disabled
+  and labeled unavailable.
+- **FR-027 — Artifact provenance:** Every returned artifact shall record its
+  parent node, source brief hash, approved prompt hash, provider, exact model,
+  job ID, quote/confirmation event, cost when reported, target runtime, aspect
+  ratio, and methodology source commit.
+- **FR-028 — Prompt-match guard:** CSP shall flag an artifact when its submitted
+  prompt hash does not match the approved prompt hash and shall prevent that
+  artifact from being promoted as an approved result.
+
+### Library and operations
+
+- **FR-029 — Spec promotion:** Gordo shall be able to promote an approved
+  concept or artifact into a reusable SpecCard containing final prompt text,
+  target-specific settings, references, pacing contract, and provenance.
+- **FR-030 — Version history:** CSP shall retain every artifact and SpecCard
+  version and preserve parent/child lineage rather than overwrite prior
+  accepted work.
+- **FR-031 — Operations read model:** creative-studio-os shall be able to read
+  project stage, gate, due/stalled state, and approved artifact references
+  without becoming the owner of project data.
+- **FR-032 — Capability state:** CSP shall expose whether the Racknerd app,
+  home-server target, M3 bridge, desktop generation stack, Splitter service,
+  and configured generation providers are available, degraded, or offline.
+
+## 15. Nonfunctional requirements
+
+### Integrity and auditability
+
+- **NFR-001:** Raw model responses, gate events, quotes, confirmations, prompt
+  hashes, and artifact provenance shall be append-only audit records.
+- **NFR-002:** No user-facing count, model label, provider status, quote, cost,
+  or generated output may be fabricated or inferred when its source did not
+  return that value.
+- **NFR-003:** A project reload shall preserve all committed project, canvas,
+  gate, and provenance state; a rebuildable index may be regenerated, but the
+  canonical records shall not depend on index survival.
+
+### Security and service boundaries
+
+- **NFR-004:** Bridge and provider credentials shall remain server-side and
+  outside browser bundles, logs, project artifacts, and Git history.
+- **NFR-005:** Raycast access shall use only the approved bridge contract—no
+  Raycast2API, account spoofing, or arbitrary shell/AppleScript input from CSP.
+- **NFR-006:** External service calls shall use explicit allowlisted origins,
+  per-service configured connection and operation timeouts, and real error
+  propagation. A timeout shall become an explicit terminal failure state rather
+  than an indefinite spinner; architecture owns the numeric defaults.
+- **NFR-007:** CSP shall not broaden a machine or service boundary when a
+  capability is offline; unavailable M3 or desktop features remain unavailable.
+
+### Contract compatibility
+
+- **NFR-008:** The Splitter client shall be generated from or checked against
+  the live OpenAPI schema. CI shall fail when required job/result/asset routes
+  disappear or become incompatible.
+- **NFR-009:** Raycast catalog and response contracts shall tolerate models
+  appearing, disappearing, or changing displayed versions without code changes
+  to a static enum.
+- **NFR-010:** Every Creative Room run shall be reproducible from its catalog
+  snapshot, selection seed, operator overrides, canonical brief, and prompt
+  hash, subject to the historical models still being available.
+
+### UX, accessibility, and responsiveness
+
+- **NFR-011:** Page chrome shall have no horizontal overflow at 375px, 768px,
+  or 1440px; the canvas itself may pan internally.
+- **NFR-012:** Interactive controls shall provide default, hover,
+  focus-visible, active, disabled, loading, error, and success states.
+- **NFR-013:** Text contrast shall meet 4.5:1, focus indicators shall meet 3:1,
+  and status shall never be communicated by color alone.
+- **NFR-014:** Model answers and audit records shall remain keyboard-accessible
+  and readable without requiring canvas pointer gestures.
+- **NFR-015:** Reduced-motion mode shall replace decorative canvas and panel
+  animations with instant state changes.
+
+### Product performance and spend safety
+
+- **NFR-016:** A normal initial creative-spurt run shall reach five returned or
+  explicitly failed Model Voice terminal states within the product success
+  target of 10 minutes; pending voices shall show their real state.
+- **NFR-017:** No billable request shall execute without a confirmation event
+  matching the same provider, model, prompt hash, quote amount, and unexpired
+  quote displayed to the operator.
+- **NFR-018:** Phase 0 shall pass browser verification at 1440px and 375px and
+  shall prove project/canvas persistence across a real application restart.
+
+## 16. Counter-metrics
+
+The product is failing even if output volume rises when any of these occur:
+
+- Any fabricated model output, label, status, count, quote, or cost.
+- Any billable generation without a matching human confirmation.
+- Any silent model/provider substitution.
+- Any submit-ready prompt or video generation that bypasses its super-seed2
+  stage gate.
+- Any loss of accepted project or provenance state after restart.
+- Any Creative Room run whose selected roster cannot be explained from its
+  persisted catalog snapshot and selection record.
+
+## 17. Glossary
+
+- **Creative spurt:** Initial Raycast-only ideation run that returns several
+  contrasting Model Voice packages.
+- **Model Voice:** One model's exact captured response and parsed creative
+  package, always paired with its raw text and displayed Raycast label.
+- **Catalog snapshot:** Immutable record of the models Raycast exposed when a
+  Creative Room run was created.
+- **Gate:** Human or confidence-controlled transition in the authoritative
+  super-seed2 S0–S10 pipeline.
+- **Draft concept prompt:** Pre-S4 teaser language for ideation only, visibly
+  marked `DRAFT — not for Studio`.
+- **Submit-ready prompt:** Model-specific prompt compiled after required gates
+  and eligible for the S8 pilot.
+- **TrailerSpec:** Versioned contract joining concept, anchors, references,
+  target model/runtime, pacing, provenance, and generation settings.
+- **SpecCard:** Promoted reusable creative specification derived from an
+  approved concept or artifact.
