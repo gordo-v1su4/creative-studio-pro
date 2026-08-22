@@ -68,6 +68,7 @@ context:
 ## Spec Change Log
 
 - 2026-08-22: Windows implementation, exact-label correction handling, S1/S2 persistence, and authenticated brief locking were verified against the live persistent project `The Midnight Archive`. The final E2E task remains open until Computer can target and visibly verify the native Raycast Quick AI/Agent composer; manual-assisted PowerShell capture is proven but is not represented as native composer proof.
+- 2026-08-22: Computer opened the installed Raycast 2.0.5.0 root overlay with this workstation's configured `Ctrl+Space` hotkey and visibly verified the `Quick AI · Tab`, AI Chat, Search Files, and Raycast AI entries. The overlay is visible in Computer screenshots but is not returned as a targetable window, so a second input closes it by reactivating the underlying app; composer submission remains unclaimed. The persistent project now also has three accepted Nano Banana Pro 2K 16:9 Unlimited plates with hashes and provenance in `assets/manifest.json` plus an image README.
 
 ## Design Notes
 
@@ -89,4 +90,5 @@ Windows is the implementation and live E2E priority. Manual-assisted capture is 
 - CSP: 15 tests / 46 assertions, Svelte check with zero errors and warnings, production build, and `git diff --check` all pass.
 - Bridge: 6 tests / 38 assertions with 3 Darwin-only skips, TypeScript, contract 25/25, security 29/29, concept decisions 13/13, image 8/8, video 28/28, and Hermes 7/7 all pass.
 - Persistent Browser walkthrough: corrected exact-label voice captures reconcile to full title/logline; S1 passes at confidence 88; S2 brief v1 locks as `gordo`; a fresh CSP process reopens the same project at S2 PASSED.
-- Native Raycast application is installed and running on Windows, but Computer currently reports no targetable Raycast window. The bridge/PowerShell path and provenance are verified as manual-assisted only; no Quick AI/Agent composer claim is made.
+- Native Raycast 2.0.5.0 is installed and running on Windows. Computer visibly opens its Root Search overlay with `Ctrl+Space` and verifies that Quick AI is offered separately from Search Files, but Raycast still does not expose the overlay as a targetable window for the next input. The bridge/PowerShell path and provenance remain verified as manual-assisted only; no Quick AI/Agent answer claim is made.
+- Persistent example assets: three accepted Higgsfield Nano Banana Pro plates are stored at `C:/Users/Gordo/Documents/Creative Studio Pro/projects/01a02aa1-3f1e-75b3-b882-48f237813bfc/assets`; the manifest records 2K, 16:9, Unlimited-on, exact SHA-256 hashes, visual acceptance rules, and zero video generation.

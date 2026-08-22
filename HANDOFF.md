@@ -32,7 +32,7 @@ bun run dev -- --port 5174
 ## Windows Raycast capture contract
 
 1. CSP calls `prepare_concept_capture`. The bridge runs `directors-cut-prepare-automated-capture.ps1`, writes the active capture files, and copies the exact prompt.
-2. With Computer, verify the visible native Raycast surface is Quick AI or the named Agent composer. `Search Files`, `No Results`, and Root Search are not composers and are never fallback targets.
+2. With Computer, open Raycast using its configured launcher hotkey, then verify the visible native surface is Quick AI or the named Agent composer. On the verified Windows workstation the current launcher hotkey is `Ctrl+Space`; do not assume the documented default. `Search Files`, `No Results`, and Root Search are not composers and are never fallback targets.
 3. Paste/send the prepared prompt. Copy the complete raw answer.
 4. Run `directors-cut-capture-active-answer.ps1 -Label ChatGPT` or `-Label Claude` in native PowerShell.
 5. CSP reconciles `get_concept_capture_status` + `read_concept_answers`. Matching is exact-label only; raw text and SHA-256 are preserved unchanged.
@@ -52,6 +52,20 @@ The existing Bash/AppleScript and Shortcuts drivers remain intact. On Darwin, `p
 | Lock current brief | `POST /api/projects/:id/brief` | Bearer operator auth plus current brief version/hash |
 
 Canonical records live in each project ledger and reconstruct identically after restart. The browser is a projection; it never supplies the approval identity.
+
+## Persistent Windows example
+
+The live example project is `The Midnight Archive`, project id
+`01a02aa1-3f1e-75b3-b882-48f237813bfc`, under the configured
+`CSP_PROJECT_ROOT`. Its ledger reconstructs at S2 `PASSED`, confidence 88, brief
+v1 locked by `gordo`, with two exact-label Creative Room replies.
+
+The accepted image examples live beside that ledger in `assets/`. The asset
+folder contains three Nano Banana Pro 2K 16:9 plates plus `manifest.json` and a
+visual `README.md`. The manifest records the Higgsfield Hearted-assets quality
+bar, the Unlimited-on observation, immutable SHA-256 values, and the rejected
+UI-heavy generation. These are persistent project examples, not promoted
+Library artifacts; promotion remains a later epic.
 
 ## Verification
 
