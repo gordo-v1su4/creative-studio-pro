@@ -2,7 +2,9 @@
 
 Version: 0.1.0 (founding spec)
 Date: 2026-08-21
-Companion document: `docs/PRD.md` — read both before implementing.
+Companion requirements document:
+`../_bmad-output/planning-artifacts/prds/prd-creative-studio-pro-2026-08-22/prd.md`
+— read both before implementing.
 
 ---
 

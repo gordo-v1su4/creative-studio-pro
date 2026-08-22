@@ -61,6 +61,22 @@ and S10 Assemble. Confidence scoring and hard gates control advancement.
 Nothing generates before its gate clears, and only the operator can
 force-advance.
 
+## Production methodology source
+
+The private repository
+[`gordo-v1su4/super-seed2`](https://github.com/gordo-v1su4/super-seed2) is
+the authoritative creative-production directive, not merely a donor reference.
+CSP must read and preserve its rules from `AGENTS.md`,
+`pipeline/creative-stages.md`, `pipeline/production-types/`,
+`pipeline/prompt-format/`, `pipeline/higgsfield-skills/`, and proven project
+examples. The source baseline reviewed for this brief is commit `84f61f1`.
+
+Every production keeps a stage state and obeys confidence ≥80, S4 layout before
+submit-ready prompts, S5 3x3 vibe approval before video, and the S8 pilot before
+batch generation. The initial Raycast creative spurt may return **draft concept
+prompts**, but before S4 they are labeled `DRAFT — not for Studio` and cannot
+trigger generation.
+
 ## Hard rules
 
 - Capture model output verbatim with provenance; never fabricate or silently
@@ -84,7 +100,18 @@ super-seed2 deliberately has no brainstorming stage. Two systems fill that gap:
   never assumed: unavailable models are omitted, every run records the exact
   displayed Raycast labels, and Gordo can override the random selection. Each
   response returns a title, logline, summary, image-sequence prompt, 3x3 grid
-  prompt, and teaser-trailer prompt, captured verbatim with provenance.
+  prompt, and three parallel teaser concepts adapted to the target model:
+  **Sora 2 at 12 seconds**, **Seedance 2.0 at 15 seconds**, and **Seedance 2.5
+  at up to 30 seconds**. Each is captured verbatim with provenance.
+
+  Teaser pacing inherits proven super-seed2 and Directors Cut patterns: hook in
+  the first 2 seconds, fast montage beats accelerating into short flash frames,
+  an audio-driven silence beat, then a readable hard title/CTA ending. Sora's
+  12-second variant uses the established savage 0.3–0.8-second cut language
+  with 0.2–0.3-second climax flashes. Seedance 2.0 compresses the same causal
+  arc into 15 seconds. Seedance 2.5 uses its strict four-block format and may
+  expand the arc to 30 seconds with consecutive time ranges and visible state
+  handoffs.
 - **Pindeck** — remains a standalone app for collecting raw images and building
   storyboards. It pushes material one way into CSP as intake for S0, S3, or S4.
   A brainstorming and clarification moment sits between that push and the next

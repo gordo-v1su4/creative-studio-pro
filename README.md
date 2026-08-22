@@ -6,7 +6,8 @@ reusable spec library.
 
 Founding documents (read both before writing code):
 
-- `docs/PRD.md` — product requirements, donor blend map, workflows, data
+- `_bmad-output/planning-artifacts/prds/prd-creative-studio-pro-2026-08-22/prd.md`
+  — canonical BMAD product requirements, donor blend map, workflows, data
   model, architecture, phases.
 - `docs/UI-UX.md` — design DNA, canvas spec, node types, tokens, interaction
   inventory, wireframes, build notes.

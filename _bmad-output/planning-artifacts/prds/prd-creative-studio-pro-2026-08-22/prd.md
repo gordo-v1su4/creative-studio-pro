@@ -65,7 +65,9 @@ G2. The first input step is a multi-model creative room reached only through
     and Raycast's latest available Claude Haiku. Exact versions are never
     hard-coded or assumed. Each selected voice returns a structured creative
     package: title, logline, summary, image-sequence prompt, 3x3 grid prompt,
-    and teaser-trailer prompt.
+    plus parallel teaser prompt variants for Sora 2 (12s), Seedance 2.0 (15s),
+    and Seedance 2.5 (up to 30s). Before S4 these are concept drafts marked
+    `DRAFT — not for Studio`, not generation-ready prompts.
 G3. Source video splitting through the hosted `splitter.serving.cloud` OpenAPI
     service is a first-class canvas lane: submit a job, poll status, retrieve
     the result and assets, show the storyboard grid, and preview each clip.
@@ -99,7 +101,7 @@ G6. Winners promote to a reusable spec library (Directors Cut card model).
 | directors-cut (M3 Mac) | Comparison runs + answers.jsonl schema, concept approval gate, quote→confirm→generate flow, prompt-card library, `--dc-*` dark editorial token baseline | The table-first Projects UI as the primary metaphor (canvas replaces it) |
 | raycast-pro-bridge (M3 Mac) | Typed tool contract, Script Commands, multi-model creative-room run schema (`creative_concept_v1` extended with image_sequence_prompt + image_grid_prompt + teaser_trailer_prompt), auth/allowlist/audit | The HTTP server itself — CSP calls it, doesn't absorb it |
 | creative-studio-os (Racknerd) | Ops spine: cron digest, Linear roadmap, Discord reach, gates-as-review-blocks | Nothing UI — it coordinates from outside |
-| super-seed2 | **Logic backbone (user-stressed):** the mandatory creative-stage pipeline the whole product is modeled on — S0 Intake → S1 Interview → S2 Brief lock → S3 Story spine → S4 Layout pass (mandatory before prompts) → S5 Vibe check (Nano Banana 3x3) → S6 Asset registry → S7 LIRA/plates → S8 Prompt pack → S9 Generate → S10 Assemble, with confidence scoring, hard gates (nothing generated before gates clear), and operator-only force-advance (`pipeline/creative-stages.md`). Also: character-sheet formats, storytelling formats, `pipeline/higgsfield-skills` (LIRA, CINEDANCE, ACTING), and tried-and-true production examples in `projects/` (bloodrush, tiny-parka, china-man, etc.) | Production project trees themselves |
+| [`gordo-v1su4/super-seed2`](https://github.com/gordo-v1su4/super-seed2) | **Authoritative production methodology, not an optional donor:** `AGENTS.md`; mandatory S0–S10 gates and confidence math in `pipeline/creative-stages.md`; teaser/commercial story shape in `pipeline/production-types/commercial.md`; Seedance 2.5 strict prompt format; LIRA/CINEDANCE/ACTING skills; and proven project pacing/examples. Agents must inspect the live repository before changing story, prompt, or generation requirements. Baseline reviewed: `84f61f1`. | Production project media itself; CSP references the methodology and service contracts rather than copying active project trees |
 
 ## 6. Users
 
@@ -136,8 +138,29 @@ Structured package per model answer (`creative_concept_v1`, extended):
     TITLE · LOGLINE · SUMMARY
     IMAGE SEQUENCE PROMPT (still-image board, no timing)
     3X3 GRID PROMPT (one 16:9 image, nine edge-to-edge panels)
-    TEASER TRAILER PROMPT — 12 SECONDS (savage-cut cadence, audio arc,
-    silence beat, hard title device)
+    SORA 2 TEASER CONCEPT — 12 SECONDS
+    SEEDANCE 2.0 TEASER CONCEPT — 15 SECONDS
+    SEEDANCE 2.5 TEASER CONCEPT — UP TO 30 SECONDS
+
+All three teaser variants express the same concept at model-appropriate duration
+and syntax. They inherit the proven super-seed2 commercial/teaser outline:
+hook in the first 2 seconds, montage middle accelerating toward the drop, and a
+readable title/CTA ending. They also preserve the successful Directors Cut
+savage-cut language: fast 0.3–0.8-second cuts, 0.2–0.3-second climax flashes,
+audio driving the edit, a dead-silence beat, and a hard title slam.
+
+- **Sora 2 / 12s:** compact savage-cut trailer prompt; connective shots remain
+  the model's director's liberty.
+- **Seedance 2.0 / 15s:** compress the same causal arc into one 15-second clip;
+  use the explicit 2.0 workflow and never silently apply 2.5-only syntax.
+- **Seedance 2.5 / ≤30s:** use the strict four-block format — asset roles,
+  one-sentence summary, consecutive timeline/shot plan, and continuity plus
+  exclusions. For a 30-second arc, follow the 0–6 / 6–12 / 12–18 / 18–25 /
+  25–30 state-change map; shorter jobs compress it proportionally.
+
+Before S4 these are idea-room drafts labeled `DRAFT — not for Studio`. After S4
+layout and S5 vibe approval, S8 recompiles the selected concept into a
+submit-ready prompt and requires one approved pilot generation before batch.
 
 ### 7.2 Canvas compare / branch
 
@@ -187,8 +210,10 @@ no clip-extension route.
 
 ### 7.6 Library
 
-- Approved concepts promote to spec cards (Directors Cut schema):
-  final prompt text + container settings (12s, 720p/2k, 16:9).
+- Approved concepts promote to spec cards (Directors Cut schema): final prompt
+  text plus target-specific container settings — Sora 2 at 12s, Seedance 2.0
+  at 15s, or Seedance 2.5 at the approved duration up to 30s — with resolution,
+  aspect ratio, mode, references, and pacing contract preserved.
 - Library is a canvas-adjacent view, not the primary metaphor.
 
 ## 8. Data model (v0.1)
@@ -207,7 +232,9 @@ Entities (stable IDs everywhere; never array position or display name):
 - SourceVideo (path, fps, frame count, hash)
 - SceneSegment (segment_id, source_id, start_frame, end_frame, keyframe_still,
   preview_clip, detection params snapshot)
-- TrailerSpec (concept ref + clip refs + teaser prompt + anchors)
+- TrailerSpec (concept ref, clip refs, anchors, methodology source commit,
+  pacing contract, and target variants: sora_2_12s, seedance_2_0_15s,
+  seedance_2_5_up_to_30s)
 - GenerationJob (provider, model, quote, cost, status, job_id, result_url)
 - Artifact (versioned, provenance-stamped, parent node ref)
 - SpecCard (promoted library entry)

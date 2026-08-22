@@ -5,9 +5,13 @@ For any agent picking up this repo.
 ## Read first (in order)
 
 1. `README.md` — rules.
-2. `docs/PRD.md` — what we're building and why; the donor map in §5 tells you
-   exactly which existing repo owns which pattern.
+2. `_bmad-output/planning-artifacts/prds/prd-creative-studio-pro-2026-08-22/prd.md`
+   — canonical requirements; the donor map tells you exactly which existing
+   repo owns which pattern.
 3. `docs/UI-UX.md` — how it looks and behaves.
+4. `gordo-v1su4/super-seed2` — authoritative production methodology. Read its
+   `AGENTS.md`, `pipeline/creative-stages.md`, and the active production-type
+   playbook before changing story, teaser, prompt, or generation behavior.
 
 ## Source material on disk
 
@@ -19,18 +23,20 @@ For any agent picking up this repo.
 | directors-cut | M3 Mac: `/Users/robertspaniolo/Documents/Github/directors-cut` | `src/app.css` (`--dc-*` tokens), `schemas/`, `content/comparisons/` |
 | raycast-pro-bridge | M3 Mac: `/Users/robertspaniolo/Documents/Github/raycast-pro-bridge` | `TOOL_CONTRACT.md`, `src/contracts/tools.ts`, `script-commands/` |
 | creative-studio-os | Racknerd: `/root/Github/creative-studio-os` | `docs/ARCHITECTURE.md` |
+| super-seed2 | Racknerd: `/root/Github/super-seed2`; GitHub: `gordo-v1su4/super-seed2` | `AGENTS.md`, `pipeline/creative-stages.md`, `pipeline/production-types/commercial.md`, `.cursor/skills/cubenatic-pipeline/SKILL.md`, `.cursor/skills/seedance-2.5-prompt-format/SKILL.md`, proven projects |
 
 Remote access: `ssh robertspaniolo@100.107.134.15` (M3 Mac over Tailscale).
 Note: non-login SSH shells lack bun/node — use `$HOME/.bun/bin` or `zsh -lc`.
 
 ## Definition of done per phase
 
-Every PR: names the PRD workflow + UI-UX section it implements, passes type
-checks, browser-verified at 1440px and 375px, and stores no fabricated model
-output. Phases and acceptance criteria are in `docs/PRD.md` §11.
+Every PR: names the canonical PRD workflow + UI-UX section it implements,
+passes type checks, is browser-verified at 1440px and 375px, and stores no
+fabricated model output. Phases and acceptance criteria are in canonical PRD
+§11.
 
 ## Kickoff
 
-PRD §13 lists the remaining open decisions. First build task is Phase 0:
-SvelteKit 5 scaffold + Svelte Flow canvas shell + Seed node + local
-persistence, per PRD §11 acceptance criteria.
+Canonical PRD §13 records the resolved kickoff decisions. First build task is
+Phase 0: SvelteKit 5 scaffold + Svelte Flow canvas shell + Seed node + local
+persistence, per canonical PRD §11 acceptance criteria.
