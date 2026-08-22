@@ -13,6 +13,8 @@ Founding documents (read both before writing code):
   — canonical BMAD visual identity and tokens.
 - `_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/EXPERIENCE.md`
   — canonical BMAD behavior, states, interactions, accessibility, and flows.
+- `_bmad-output/planning-artifacts/architecture/architecture-creative-studio-pro-2026-08-22/ARCHITECTURE-SPINE.md`
+  — canonical BMAD architecture invariants and dependency rules.
 
 Rules (inherited from creative-studio-os and the bridge):
 

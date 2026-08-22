@@ -10,7 +10,9 @@ For any agent picking up this repo.
    repo owns which pattern.
 3. `_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
    and `EXPERIENCE.md` — canonical visual and behavioral UX contracts.
-4. `gordo-v1su4/super-seed2` — authoritative production methodology. Read its
+4. `_bmad-output/planning-artifacts/architecture/architecture-creative-studio-pro-2026-08-22/ARCHITECTURE-SPINE.md`
+   — canonical build invariants; every epic/story must cite governing ADs.
+5. `gordo-v1su4/super-seed2` — authoritative production methodology. Read its
    `AGENTS.md`, `pipeline/creative-stages.md`, and the active production-type
    playbook before changing story, teaser, prompt, or generation behavior.
 

@@ -13,9 +13,9 @@ sources:
 ## Foundation
 
 Creative Studio Pro is a desktop-first responsive web workbench built with
-SvelteKit 5, Svelte 5 runes, Tailwind 4, and Svelte Flow. The product starts on
-Racknerd and later moves durable hosting to the home server without changing its
-interaction model. `DESIGN.md` owns visual identity; this document owns behavior.
+SvelteKit 2.70.3, Svelte 5 runes, Tailwind 4, and Svelte Flow. The product
+starts on Racknerd and later moves durable hosting to the home server without
+changing its interaction model. `DESIGN.md` owns visual identity; this document owns behavior.
 
 The canvas is the primary product surface. M3-only Raycast, desktop-only
 SwarmUI/ComfyUI, hosted Splitter, Higgsfield, Sora, and other providers are
