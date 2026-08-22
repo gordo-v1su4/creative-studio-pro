@@ -25,13 +25,21 @@ the whole Tailnet rather than living on one machine.
 
 ## Critical runtime and platform constraints
 
-- **Initial deployment** — local web app over Tailscale, with the orchestrator
-  agent on Racknerd. The longer-term shape can follow Pindeck: home-server
-  storage with a Vercel frontend.
-- **5090 PC** — ComfyUI image and video generation. It is currently on the back
-  burner but should be connected as soon as practical.
-- **M3 and M2 Macs** — Raycast bridge for multi-model ideation and free-first
-  generation. Higgsfield is the primary image and video provider today.
+- **Deployment** — start the CSP web app on Racknerd for Phase 0, then move
+  durable hosting to the home server. The creative orchestrator can remain a
+  separate Racknerd service unless later architecture work moves it.
+- **Desktop only** — SwarmUI and ComfyUI image/video generation are reachable
+  only through the desktop; CSP must treat that machine as a remote capability,
+  never as a local dependency.
+- **M3 Mac only** — the Raycast bridge is available only from the M3. All
+  Raycast model discovery, creative-spurt dispatch, and verbatim capture route
+  through that bridge. The bridge harvests the models Raycast actually exposes
+  at run time; CSP does not hard-code provider versions.
+- **Splitter service** — CSP consumes the hosted API at
+  `https://splitter.serving.cloud` using its published OpenAPI/Swagger
+  contract; it does not require a local M3 Splitter process.
+- **Higgsfield** — remains the primary image and video provider today, reached
+  through its existing service/CLI contracts rather than the desktop runtime.
 - **Sora 2 deadline** — API access closes at the end of September 2026. CSP must
   maximize Sora 2 handoffs for early teaser and trailer exploration before the
   shutdown. It uses the existing Directors Cut bridge contract, not a new
@@ -68,11 +76,15 @@ force-advance.
 
 super-seed2 deliberately has no brainstorming stage. Two systems fill that gap:
 
-- **Directors Cut's multi-model creative room** — one brief fans out through
-  the Raycast bridge to ChatGPT, Claude, Gemini, Grok, Kimi, and other useful
-  contrasts. Each response returns a title, logline, summary, image-sequence
-  prompt, 3x3 grid prompt, and teaser-trailer prompt, captured verbatim with
-  exact model provenance.
+- **Directors Cut's multi-model creative room** — the Raycast bridge first
+  harvests the models currently available in Raycast, then randomly rotates a
+  varied subset for each initial creative spurt. Candidate voices include
+  ChatGPT, Gemini, Grok, Kimi, DeepSeek V4 Flash, GLM 5.3, the newest available
+  Qwen family, and Raycast's latest available Claude Haiku. Exact versions are
+  never assumed: unavailable models are omitted, every run records the exact
+  displayed Raycast labels, and Gordo can override the random selection. Each
+  response returns a title, logline, summary, image-sequence prompt, 3x3 grid
+  prompt, and teaser-trailer prompt, captured verbatim with provenance.
 - **Pindeck** — remains a standalone app for collecting raw images and building
   storyboards. It pushes material one way into CSP as intake for S0, S3, or S4.
   A brainstorming and clarification moment sits between that push and the next

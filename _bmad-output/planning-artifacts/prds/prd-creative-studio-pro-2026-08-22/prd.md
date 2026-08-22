@@ -57,14 +57,21 @@ many model brains, see it spatially, feed it real footage, and ship a teaser.
 G1. A single canvas environment is the main UI. All creative state — concepts,
     model answers, story beats, source clips, prompts, generated media — lives
     as nodes on one canvas per project.
-G2. The first input step is a multi-model creative room: one brief is sent to
-    multiple Raycast model families (default ChatGPT, Claude, Gemini, Grok,
-    Kimi; any contrasting model is substitutable), each returning a structured
-    creative package: title, logline, summary, image-sequence prompt,
-    3x3 grid prompt, teaser-trailer prompt.
-G3. Source video splitting (splitter-pro2 pattern) is a first-class canvas
-    lane: detect scenes, show the storyboard grid, preview each clip, and
-    extend clips (drag edges / extend with generated continuation).
+G2. The first input step is a multi-model creative room reached only through
+    the Raycast bridge. Before each initial creative spurt, the bridge harvests
+    the models Raycast currently exposes and CSP randomly rotates a varied
+    subset, with an operator override. Candidate families include ChatGPT,
+    Gemini, Grok, Kimi, DeepSeek V4 Flash, GLM 5.3, the newest available Qwen,
+    and Raycast's latest available Claude Haiku. Exact versions are never
+    hard-coded or assumed. Each selected voice returns a structured creative
+    package: title, logline, summary, image-sequence prompt, 3x3 grid prompt,
+    and teaser-trailer prompt.
+G3. Source video splitting through the hosted `splitter.serving.cloud` OpenAPI
+    service is a first-class canvas lane: submit a job, poll status, retrieve
+    the result and assets, show the storyboard grid, and preview each clip.
+    CSP owns non-destructive merge/trim metadata. Clip extension is a separate
+    gated generation workflow seeded from a segment's final frame; Splitter's
+    current v0.2.0 contract does not advertise an extend operation.
 G4. Generation is always behind an explicit human gate with a live quote.
     Raycast/free image generation first, Higgsfield/Sora as paid escalation.
 G5. Every artifact carries full provenance: exact model label, prompt hash,
@@ -87,7 +94,7 @@ G6. Winners promote to a reusable spec library (Directors Cut card model).
 | Donor | What Creative Studio Pro takes | What it does NOT take |
 |---|---|---|
 | storyception (M3 Mac) | Canvas/graph environment as main UI; beat cards (320x400), branch nodes, reference/character rail above story nodes, 2x2 variant option boards → selected option → 3x3 expansion; dark premium aesthetic, mono micro-labels | Its Gemini/Vertex-specific pipeline, its persistence layer, its archetype catalog verbatim |
-| splitter-pro2 (Racknerd) | Scene detection (PySceneDetect, frame-index based), storyboard grid with per-clip still + preview, contact-sheet export, clip extend/split UX, dark minimalist UI | Its standalone deployment; FastAPI backend stays a service, UI patterns port to the canvas |
+| splitter-pro2 / `splitter.serving.cloud` | Hosted FastAPI/OpenAPI service for PySceneDetect video jobs, job polling, result manifests, clip/thumbnail assets, and image-grid splitting; CSP ports the storyboard/preview UX onto the canvas | Its standalone UI or a local M3 deployment; CSP consumes the published service contract |
 | trailercraft (M3 Mac) | Trailer assembly workflow, trailer-specific pacing/structure steps | React/Vite implementation details; license is absent — conceptual transfer only |
 | directors-cut (M3 Mac) | Comparison runs + answers.jsonl schema, concept approval gate, quote→confirm→generate flow, prompt-card library, `--dc-*` dark editorial token baseline | The table-first Projects UI as the primary metaphor (canvas replaces it) |
 | raycast-pro-bridge (M3 Mac) | Typed tool contract, Script Commands, multi-model creative-room run schema (`creative_concept_v1` extended with image_sequence_prompt + image_grid_prompt + teaser_trailer_prompt), auth/allowlist/audit | The HTTP server itself — CSP calls it, doesn't absorb it |
@@ -108,16 +115,21 @@ the product; the stage gates are the law underneath.
 
 ### 7.1 Creative Room (ideation)
 
-1. User enters title + rough brief on the canvas (Seed node).
-2. User picks model families (default: ChatGPT, Claude, Gemini, Grok, Kimi)
-   and a creative focus (full room / image-grid / teaser / logline-summary).
-3. Bridge creates a creative-room run and prepares the canonical brief;
-   Raycast runs it in fresh chats per model.
-4. Each model answer is captured verbatim with its exact displayed Raycast
-   model label, parsed into the structured package, and appears on the canvas
-   as a Model Voice card fanned from the Seed.
-5. User compares on canvas, approves/rejects per package. Approval is the gate
-   to any downstream generation.
+1. User enters a title and rough brief on the canvas (Seed node).
+2. CSP asks the Raycast bridge for the models currently available in Raycast.
+   The response is runtime capability data, not a static model catalog.
+3. CSP randomly selects a varied subset from the available pool for the initial
+   creative spurt. The user can reshuffle, pin, add, or remove voices before
+   dispatch. Desired families include ChatGPT, Gemini, Grok, Kimi, DeepSeek,
+   GLM, Qwen, and Claude Haiku, but no family or version is guaranteed.
+4. User chooses a creative focus (full room / image-grid / teaser /
+   logline-summary), and the bridge prepares the canonical brief.
+5. Raycast runs the prompt in fresh chats for the selected models.
+6. Each answer is captured verbatim with the exact displayed Raycast model
+   label and parsed into the structured package. Model Voice cards fan out from
+   the Seed.
+7. User approves or rejects each package. Approval is the gate to downstream
+   generation.
 
 Structured package per model answer (`creative_concept_v1`, extended):
 
@@ -137,15 +149,24 @@ Structured package per model answer (`creative_concept_v1`, extended):
 ### 7.3 Source Split lane
 
 1. User drops source video onto the canvas (Source node).
-2. Scene detection runs (PySceneDetect AdaptiveDetector, frame-index cuts,
-   env-tunable `SPLITTER_*` thresholds) via the splitter service.
-3. A Storyboard Grid node appears: one still + playable preview per segment,
-   numbered, duration-labeled.
-4. User can re-split (tune thresholds), merge adjacent segments (with the
-   "these shots may be the same shot — keep separate or merge?" prompt when
-   keyframes look near-identical), trim, and EXTEND a clip: request a
-   generated continuation that starts from the clip's final frame.
-5. Selected/extended clips become canvas media nodes with provenance.
+2. CSP uploads the video to `POST https://splitter.serving.cloud/api/jobs`
+   using the published multipart OpenAPI schema.
+3. CSP polls `GET /api/jobs/{job_id}` until the hosted job reaches a terminal
+   state, then reads `GET /api/jobs/{job_id}/result` and resolves returned
+   clips/thumbnails through `/api/jobs/{job_id}/assets/{asset_path}`.
+4. A Storyboard Grid node appears: one still and playable preview per segment,
+   numbered and duration-labeled.
+5. CSP stores non-destructive trim and merge choices in its own project model.
+   When adjacent keyframes look near-identical, it prompts, "These shots may be
+   the same shot — keep separate or merge?"
+6. EXTEND starts a separate gated generation task anchored to the segment's
+   final frame; it is not sent to an undocumented Splitter route.
+7. Selected or extended clips become canvas media nodes with provenance.
+
+CSP must generate its client from or validate it against the live OpenAPI
+contract at `https://splitter.serving.cloud/openapi.json`; undocumented routes
+or a local Splitter process are not assumed. The verified v0.2.0 contract has
+no clip-extension route.
 
 ### 7.4 Assemble teaser
 
@@ -176,7 +197,11 @@ Entities (stable IDs everywhere; never array position or display name):
 
 - Project (canvas root)
 - Seed (title, brief, creative_focus, created_by)
-- CreativeRoomRun (run_id, models_requested[], deliverables[], status)
+- RaycastModelCatalogSnapshot (snapshot_id, harvested_at, exact_labels[],
+  bridge_version, content_sha256)
+- CreativeRoomRun (run_id, catalog_snapshot_id, models_available[],
+  models_selected[], selection_mode, selection_seed, operator_overrides[],
+  deliverables[], status)
 - ModelAnswer (answer_id, model_label exact, raw text verbatim, structured
   package, content_sha256, prompt_sha256, structure_status)
 - SourceVideo (path, fps, frame count, hash)
@@ -197,9 +222,25 @@ The Ops spine (creative-studio-os) reads status; it does not own this data.
   this product is Svelte, matching Directors Cut). Canvas via **Svelte Flow**
   (`@xyflow/svelte` — xyflow's native Svelte port of React Flow, same team and
   same node/edge graph model Storyception uses, without pulling in React).
-- Local services consumed, not absorbed:
-  - raycast-pro-bridge (HTTP, :8787, bearer token) — ideation + capture
-  - splitter service (FastAPI + PySceneDetect + ffmpeg) — scene detection
+- Deployment and machine boundaries:
+  - Phase 0 web app starts on Racknerd; the durable hosting target is the home
+    server. Migration timing is an architecture/operations decision, not a
+    feature fork.
+  - raycast-pro-bridge exists only on the M3 Mac. CSP must route all Raycast
+    capability discovery, randomized creative-spurt dispatch, and capture to
+    that machine over the approved bridge contract.
+  - SwarmUI and ComfyUI exist only on the desktop. CSP treats the desktop as a
+    remote generation capability and must report it unavailable when that
+    machine is offline; it never silently substitutes another provider.
+- Services consumed, not absorbed:
+  - raycast-pro-bridge (typed authenticated bridge) — the only route for
+    initial creative spurts, live Raycast model harvesting, randomized roster
+    selection, dispatch, and verbatim capture. The current bridge still
+    hard-codes ChatGPT/Claude defaults, so Phase 1 must add a typed model-catalog
+    operation sourced from the M3's live Raycast UI before CSP relies on random
+    rotation.
+  - `https://splitter.serving.cloud` — hosted FastAPI service; Swagger at
+    `/docs`, machine contract at `/openapi.json`, video jobs under `/api/jobs`
   - generation providers via bridge quote/confirm contract
 - Auth/secrets: tokens in `.env.local` / BWS; never in static client code;
   bridge calls from UI go through SvelteKit server routes.
@@ -223,10 +264,13 @@ Phase 0 — Foundation: repo scaffold, design tokens (docs/UI-UX.md), canvas
 shell with pan/zoom + Seed node + local persistence. Acceptance: create a
 project, see it on canvas, reload and it persists.
 
-Phase 1 — Creative Room: bridge integration, model-family picker, creative-room
-run creation, Model Voice cards, verbatim capture, approve/reject.
-Acceptance: one real run with ≥3 model families captured through Raycast,
-zero fabricated content.
+Phase 1 — Creative Room: M3 bridge model-catalog harvesting, randomized roster
+selection with reshuffle/pin overrides, creative-room run creation, Model Voice
+cards, verbatim capture, approve/reject. Acceptance: one real run with five
+available model voices selected through the Raycast-only route, exact displayed
+labels and catalog snapshot persisted, and zero fabricated content. If Raycast
+exposes fewer than five eligible voices, use all available voices and show the
+shortfall explicitly.
 
 Phase 2 — Source Split: splitter service integration, Storyboard Grid node,
 preview, merge/trim/extend interactions.
@@ -248,13 +292,18 @@ Acceptance: approved concept appears in library; digest references it.
 - Every generated dollar has a matched human confirm event.
 - One app open for the whole loop.
 
-## 13. Open decisions for kickoff
+## 13. Kickoff decisions
 
-1. ~~Canvas library choice~~ — RESOLVED (user directive 2026-08-21): Svelte
-   end to end. Canvas is Svelte Flow (`@xyflow/svelte`). No React anywhere.
-2. Repo home: fresh repo vs absorbing into pindeck (front-door candidate).
-   Default: fresh repo `creative-studio-pro`, pindeck stays asset layer.
-3. Whether splitter service runs on Racknerd (Docker) or M3 Mac local.
-   Default: M3 Mac local during Phases 0–2 (footage is local), containerize later.
-4. Model family defaults per creative focus (image-grid focus may want
-   different families than logline focus).
+1. **Canvas:** resolved — Svelte Flow (`@xyflow/svelte`), Svelte end to end,
+   with no React.
+2. **Repository:** resolved — `creative-studio-pro` is the focused product;
+   Pindeck remains a standalone asset/intake layer.
+3. **Splitter:** resolved — consume `https://splitter.serving.cloud` through
+   its live OpenAPI contract; do not run a local Splitter service.
+4. **Creative Room models:** resolved — Raycast-bridge-only for initial
+   creative spurts. Harvest current availability, randomly rotate a varied
+   subset, let Gordo override it, and record exact displayed model labels.
+5. **Hosting:** resolved for kickoff — start Phase 0 on Racknerd and target the
+   home server for durable hosting.
+6. **Machine boundaries:** resolved — Raycast bridge only on the M3; SwarmUI
+   and ComfyUI only on the desktop.
