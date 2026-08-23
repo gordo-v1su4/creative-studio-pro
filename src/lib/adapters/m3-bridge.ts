@@ -1,0 +1,243 @@
+import { z } from 'zod';
+import { catalogModelSchema } from '$lib/domain/schemas';
+import type { CatalogModel } from '$lib/domain/schemas';
+
+/**
+ * Host-neutral Creative Room bridge adapter. The bridge exposes an explicitly
+ * configured provider (Kimi or Raycast); CSP never silently switches providers.
+ */
+
+export class RaycastBridgeError extends Error {
+	constructor(
+		public readonly code: string,
+		message: string,
+		public readonly retryable: boolean
+	) {
+		super(message);
+		this.name = 'RaycastBridgeError';
+	}
+}
+
+export interface RaycastBridgeConfig {
+	baseUrl: string;
+	token: string;
+}
+
+const catalogOutputSchema = z.object({
+	bridge_version: z.string(),
+	harvested_at: z.string(),
+	catalog_hash: z.string().length(64),
+	models: z.array(catalogModelSchema),
+	source: z.enum(['agents_file', 'built_in_defaults', 'kimi_config'])
+});
+
+export type BridgeCatalog = z.infer<typeof catalogOutputSchema>;
+
+const createRunOutputSchema = z.object({
+	run_id: z.string().min(1),
+	title: z.string(),
+	capture_mode: z.enum(['manual', 'automated']),
+	run_status: z.string(),
+	models_requested: z.array(z.string()),
+	next_step: z.string()
+});
+
+const prepareCaptureOutputSchema = z.object({
+	run_id: z.string().min(1),
+	title: z.string(),
+	active_capture_path: z.string(),
+	prompt_file: z.string(),
+	prompt_copied_to_clipboard: z.boolean(),
+	capture_commands: z.object({
+		chatgpt: z.string(),
+		claude: z.string(),
+		by_label: z.record(z.string(), z.string()).optional()
+	}),
+	message: z.string()
+});
+
+export type BridgePrepareCapture = z.infer<typeof prepareCaptureOutputSchema>;
+
+const runCaptureOutputSchema = z.object({
+	run_id: z.string().min(1),
+	started: z.boolean(),
+	workflow: z.literal('computer_use'),
+	log_file: z.string().optional(),
+	message: z.string()
+});
+
+const captureStatusOutputSchema = z.object({
+	run_id: z.string().min(1),
+	run_status: z.string(),
+	capture_workflow: z.enum(['computer_use', 'script_commands', 'direct_api']).optional(),
+	capture_job_status: z.enum(['idle', 'running', 'complete']).optional(),
+	models: z.array(
+		z.object({
+			label: z.string(),
+			raycast_agent: z.string(),
+			status: z.enum(['pending', 'captured', 'invalid', 'failed']),
+			answer_id: z.string().optional(),
+			error: z.string().optional()
+		})
+	),
+	answers_count: z.number().int().nonnegative(),
+	captured_valid_count: z.number().int().nonnegative(),
+	invalid_count: z.number().int().nonnegative(),
+	pending_count: z.number().int().nonnegative(),
+	ready_for_projects: z.boolean()
+});
+
+const conceptAnswerSchema = z.looseObject({
+	answer_id: z.string(),
+	run_id: z.string(),
+	model_name: z.string(),
+	answer_text: z.string(),
+	structure_status: z.string(),
+	structure_errors: z.array(z.string()),
+	created_at: z.string(),
+	content_sha256: z.string(),
+	prompt_sha256: z.string().nullable(),
+	structured_prompt: z.record(z.string(), z.unknown()).nullable()
+});
+
+const readAnswersOutputSchema = z.object({
+	run_id: z.string().min(1),
+	answers: z.array(conceptAnswerSchema),
+	answers_count: z.number().int().nonnegative()
+});
+
+export type BridgeCaptureStatus = z.infer<typeof captureStatusOutputSchema>;
+export type BridgeConceptAnswer = z.infer<typeof conceptAnswerSchema>;
+
+const TIMEOUTS = {
+	catalog: 10_000,
+	submit: 120_000,
+	poll: 30_000
+} as const;
+
+export class RaycastBridge {
+	constructor(private readonly config: RaycastBridgeConfig) {}
+
+	async getModelCatalog(): Promise<BridgeCatalog> {
+		return this.call('get_model_catalog', {}, catalogOutputSchema, TIMEOUTS.catalog);
+	}
+
+	async createComparisonRun(input: {
+		title: string;
+		question: string;
+		models_requested: string[];
+	}): Promise<z.infer<typeof createRunOutputSchema>> {
+		return this.call(
+			'create_comparison_run',
+			{
+				title: input.title,
+				question: input.question,
+				capture_mode: 'automated',
+				models_requested: input.models_requested,
+				target_models: ['sora-2']
+			},
+			createRunOutputSchema,
+			TIMEOUTS.submit
+		);
+	}
+
+	async prepareConceptCapture(runId: string): Promise<BridgePrepareCapture> {
+		return this.call(
+			'prepare_concept_capture',
+			{ run_id: runId },
+			prepareCaptureOutputSchema,
+			TIMEOUTS.submit
+		);
+	}
+
+	async runConceptCapture(runId: string, prepareFirst = false): Promise<z.infer<typeof runCaptureOutputSchema>> {
+		return this.call(
+			'run_concept_capture',
+			{ run_id: runId, prepare_first: prepareFirst },
+			runCaptureOutputSchema,
+			TIMEOUTS.submit
+		);
+	}
+
+	async getConceptCaptureStatus(runId: string): Promise<BridgeCaptureStatus> {
+		return this.call(
+			'get_concept_capture_status',
+			{ run_id: runId },
+			captureStatusOutputSchema,
+			TIMEOUTS.poll
+		);
+	}
+
+	async readConceptAnswers(runId: string): Promise<z.infer<typeof readAnswersOutputSchema>> {
+		return this.call(
+			'read_concept_answers',
+			{ run_id: runId },
+			readAnswersOutputSchema,
+			TIMEOUTS.poll
+		);
+	}
+
+	private async call<T>(
+		tool: string,
+		body: unknown,
+		schema: z.ZodType<T>,
+		timeoutMs: number
+	): Promise<T> {
+		const url = `${this.config.baseUrl.replace(/\/$/, '')}/tools/${tool}`;
+		let response: Response;
+		try {
+			response = await fetch(url, {
+				method: 'POST',
+				headers: {
+					authorization: `Bearer ${this.config.token}`,
+					'content-type': 'application/json',
+					'x-caller': 'creative-studio-pro'
+				},
+				body: JSON.stringify(body ?? {}),
+				signal: AbortSignal.timeout(timeoutMs)
+			});
+		} catch (e) {
+			const timeout = e instanceof Error && e.name === 'TimeoutError';
+			throw new RaycastBridgeError(
+				timeout ? 'TIMEOUT' : 'OFFLINE',
+				timeout
+					? `Raycast bridge did not respond to ${tool} within ${timeoutMs / 1000}s`
+					: e instanceof Error
+						? e.message
+						: 'Raycast bridge connection failed',
+				true
+			);
+		}
+
+		const json: unknown = await response.json().catch(() => null);
+		if (!response.ok) {
+			const message =
+				json && typeof json === 'object' && json !== null && 'error' in json
+					? String((json as { error?: { message?: string } }).error?.message ?? response.status)
+					: `HTTP ${response.status} from ${tool}`;
+			throw new RaycastBridgeError(
+				response.status === 401 || response.status === 403 ? 'UNAUTHORIZED' : 'BRIDGE_ERROR',
+				message,
+				response.status >= 500
+			);
+		}
+
+		const envelope = z.object({ ok: z.literal(true), result: schema }).safeParse(json);
+		if (!envelope.success) {
+			throw new RaycastBridgeError(
+				'INVALID_RESPONSE',
+				`Raycast bridge ${tool} returned a payload that does not match the contract`,
+				false
+			);
+		}
+		return envelope.data.result;
+	}
+}
+
+export function matchAnswerToLabel(modelName: string, slots: CatalogModel[]): CatalogModel | undefined {
+	return slots.find((slot) => slot.label === modelName);
+}
+
+/** Legacy API aliases retained for existing CSP_M3_* deployments. */
+export { RaycastBridge as M3Bridge, RaycastBridgeError as M3BridgeError };
+export type M3BridgeConfig = RaycastBridgeConfig;

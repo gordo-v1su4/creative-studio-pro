@@ -1,0 +1,288 @@
+@import 'tailwindcss';
+
+.work-area {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 768px) {
+	.work-area { grid-template-columns: var(--rail-width, 0px) minmax(0, 1fr); }
+}
+
+@media (min-width: 1024px) {
+	.work-area { grid-template-columns: var(--rail-width, 0px) minmax(0, 1fr) var(--inspector-width); }
+}
+@import '@xyflow/svelte/dist/style.css';
+
+/*
+ * Creative Studio Pro visual tokens — canonical source:
+ * _bmad-output/.../ux-designs/.../DESIGN.md. Dark editorial control room;
+ * verified Directors Cut neutrals; dynamic voice palette for model lanes.
+ */
+@theme {
+	--color-surface-base: #09090b;
+	--color-surface-raised: #111113;
+	--color-surface-raised-2: #18181b;
+	--color-border-default: #27272a;
+	--color-border-subtle: #202023;
+	--color-text-primary: #fafafa;
+	--color-text-muted: #a1a1aa;
+	--color-text-dim: #71717a;
+	--color-gate-pending: #fbbf24;
+	--color-gate-approved: #4ade80;
+	--color-gate-quoted: #60a5fa;
+	--color-gate-failed: #f87171;
+	--color-capability-offline: #71717a;
+	--color-focus-ring: oklch(0.72 0.18 195);
+	--color-voice-1: oklch(0.72 0.18 195);
+	--color-voice-2: oklch(0.65 0.15 175);
+	--color-voice-3: oklch(0.8 0.18 85);
+	--color-voice-4: oklch(0.627 0.265 303.9);
+	--color-voice-5: oklch(0.645 0.246 16.439);
+	--color-voice-6: oklch(0.488 0.243 264.376);
+	--color-voice-7: oklch(0.696 0.17 162.48);
+	--color-voice-8: #d4d4d8;
+
+	/* Charm / Bubble Tea palette: pastel-neon TUI accents for agent surfaces. */
+	--color-charm-purple: #8174e8;
+	--color-charm-mint: #5cffbe;
+	--color-charm-blue: #4ab8ff;
+	--color-charm-gold: #ffd75f;
+
+	--font-sans: Inter, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+	--font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+
+	--radius-none: 0px;
+	--radius-sm: 2px;
+	--radius-md: 4px;
+}
+
+/* Base: 13px body, dark mode is the product surface, never a theme toggle. */
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+	background: var(--color-surface-base);
+	color: var(--color-text-primary);
+	font-family: var(--font-sans);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+/* Page chrome never scrolls horizontally (NFR-011); the canvas pans inside. */
+body {
+	overflow-x: clip;
+}
+
+/* Custom component classes live in the components layer so Tailwind
+   utilities (which sit in the later utilities layer) can override them. */
+@layer components {
+/* Mono micro-label layer: uppercase, tracked (DESIGN.md Typography). */
+.meta-label {
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 500;
+	line-height: 1.4;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--color-text-muted);
+}
+
+/* Shared control chrome: quiet neutral buttons, one cyan accent. */
+.btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid var(--color-border-default);
+	border-radius: var(--radius-sm);
+	background: var(--color-surface-raised-2);
+	color: var(--color-text-primary);
+	padding: 6px 12px;
+	font: inherit;
+	font-size: 12px;
+	line-height: 1.3;
+	cursor: pointer;
+	white-space: nowrap;
+	transition:
+		border-color 120ms ease,
+		background-color 120ms ease,
+		color 120ms ease;
+}
+.btn:hover:not(:disabled) {
+	border-color: var(--color-text-dim);
+	background: color-mix(in srgb, var(--color-text-primary) 6%, var(--color-surface-raised-2));
+}
+.btn:active:not(:disabled) {
+	background: var(--color-surface-raised);
+}
+.btn:disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+.btn-accent {
+	border-color: transparent;
+	background: color-mix(in srgb, var(--color-voice-1) 17%, var(--color-surface-raised-2));
+	color: color-mix(in srgb, var(--color-voice-1) 75%, white);
+}
+.btn-accent:hover:not(:disabled) {
+	border-color: transparent;
+	background: color-mix(in srgb, var(--color-voice-1) 25%, var(--color-surface-raised-2));
+}
+.btn-accent:active:not(:disabled) {
+	background: color-mix(in srgb, var(--color-voice-1) 10%, var(--color-surface-raised-2));
+}
+
+/* Status chip: pairs with .meta-label; border/tint set per state at call site. */
+.chip {
+	display: inline-flex;
+	align-items: center;
+	width: fit-content;
+	border: 1px solid var(--color-border-default);
+	border-radius: var(--radius-sm);
+	padding: 3px 8px;
+}
+
+/* Charm surfaces: animated gradient text, gradient-ring borders, TUI cursor. */
+.charm-gradient-text {
+	background: linear-gradient(
+		90deg,
+		var(--color-charm-mint),
+		var(--color-charm-blue),
+		var(--color-charm-purple),
+		var(--color-charm-mint)
+	);
+	background-size: 300% 100%;
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	animation: charm-shift 7s linear infinite;
+}
+
+@keyframes charm-shift {
+	to {
+		background-position: 300% 0;
+	}
+}
+
+/* Gradient 1px ring that respects border-radius (mask punch-out). */
+.charm-ring {
+	position: relative;
+}
+.charm-ring::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: inherit;
+	padding: 1px;
+	background: linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--color-charm-mint) 65%, var(--color-border-default)),
+		color-mix(in srgb, var(--color-charm-blue) 65%, var(--color-border-default)) 55%,
+		color-mix(in srgb, var(--color-charm-purple) 65%, var(--color-border-default))
+	);
+	-webkit-mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask:
+		linear-gradient(#000 0 0) content-box,
+		linear-gradient(#000 0 0);
+	mask-composite: exclude;
+	pointer-events: none;
+	opacity: 0.4;
+}
+
+.btn-charm {
+	border-color: transparent;
+	background:
+		linear-gradient(color-mix(in srgb, var(--color-charm-mint) 8%, var(--color-surface-raised-2)), color-mix(in srgb, var(--color-charm-blue) 7%, var(--color-surface-raised-2))) padding-box,
+		linear-gradient(90deg, var(--color-charm-mint), var(--color-charm-blue), var(--color-charm-purple), var(--color-charm-mint)) border-box;
+	background-size: 100% 100%, 300% 100%;
+	color: color-mix(in srgb, var(--color-charm-mint) 68%, white);
+	animation: charm-button-shift 6s linear infinite;
+}
+.btn-charm:hover:not(:disabled) {
+	border-color: transparent;
+	background:
+		linear-gradient(color-mix(in srgb, var(--color-charm-mint) 14%, var(--color-surface-raised-2)), color-mix(in srgb, var(--color-charm-blue) 12%, var(--color-surface-raised-2))) padding-box,
+		linear-gradient(90deg, var(--color-charm-mint), var(--color-charm-blue), var(--color-charm-purple), var(--color-charm-mint)) border-box;
+	background-size: 100% 100%, 300% 100%;
+}
+
+@keyframes charm-button-shift {
+	to { background-position: 0 0, 300% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.btn-charm { animation: none; }
+}
+
+.charm-cursor {
+	display: inline-block;
+	width: 7px;
+	height: 14px;
+	margin-left: 2px;
+	vertical-align: text-bottom;
+	background: var(--color-charm-mint);
+	animation: charm-blink 1.1s steps(1) infinite;
+}
+
+/* Empty state sits on the same dot grid the live canvas uses. */
+.canvas-empty {
+	background-image: radial-gradient(#3a3a40 1.4px, transparent 1.4px);
+	background-size: 22px 22px;
+}
+}
+
+@keyframes charm-blink {
+	50% {
+		opacity: 0;
+	}
+}
+
+:focus-visible {
+	outline: 2px solid var(--color-focus-ring);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		scroll-behavior: auto !important;
+		transition: none !important;
+		animation: none !important;
+	}
+}
+
+/* Svelte Flow canvas theming: dark editorial, dot grid like the reference. */
+.svelte-flow {
+	--xy-background-color: var(--color-surface-base);
+	--xy-edge-stroke: var(--color-border-default);
+	--xy-edge-stroke-selected: var(--color-focus-ring);
+	--xy-handle-background-color: var(--color-border-default);
+	--xy-handle-border-color: var(--color-text-dim);
+	--xy-attribution-background-color: transparent;
+	--xy-controls-button-background-color: var(--color-surface-raised);
+	--xy-controls-button-background-color-hover: var(--color-surface-raised-2);
+	--xy-controls-button-color: var(--color-text-muted);
+	--xy-controls-button-color-hover: var(--color-text-primary);
+	--xy-controls-button-border-color: var(--color-border-default);
+	--xy-controls-box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.svelte-flow__attribution {
+	display: none;
+}
+
+.svelte-flow__node {
+	font-family: var(--font-sans);
+	font-size: 13px;
+	color: var(--color-text-primary);
+}
+
+.svelte-flow__controls {
+	border-radius: var(--radius-md);
+	overflow: hidden;
+	border: 1px solid var(--color-border-default);
+}
