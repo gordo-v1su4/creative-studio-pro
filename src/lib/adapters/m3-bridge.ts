@@ -3,9 +3,8 @@ import { catalogModelSchema } from '$lib/domain/schemas';
 import type { CatalogModel } from '$lib/domain/schemas';
 
 /**
- * Host-neutral Raycast bridge adapter (FR-005, FR-009, AR-06, NFR-005): the only path
- * for catalog harvest, prompt dispatch, and verbatim capture. Calls stay
- * server-side. No silent fallback to another machine or provider.
+ * Host-neutral Creative Room bridge adapter. The bridge exposes an explicitly
+ * configured provider (Kimi or Raycast); CSP never silently switches providers.
  */
 
 export class RaycastBridgeError extends Error {
@@ -29,7 +28,7 @@ const catalogOutputSchema = z.object({
 	harvested_at: z.string(),
 	catalog_hash: z.string().length(64),
 	models: z.array(catalogModelSchema),
-	source: z.enum(['agents_file', 'built_in_defaults'])
+	source: z.enum(['agents_file', 'built_in_defaults', 'kimi_config'])
 });
 
 export type BridgeCatalog = z.infer<typeof catalogOutputSchema>;
@@ -70,13 +69,15 @@ const runCaptureOutputSchema = z.object({
 const captureStatusOutputSchema = z.object({
 	run_id: z.string().min(1),
 	run_status: z.string(),
+	capture_workflow: z.enum(['computer_use', 'script_commands', 'direct_api']).optional(),
 	capture_job_status: z.enum(['idle', 'running', 'complete']).optional(),
 	models: z.array(
 		z.object({
 			label: z.string(),
 			raycast_agent: z.string(),
-			status: z.enum(['pending', 'captured', 'invalid']),
-			answer_id: z.string().optional()
+			status: z.enum(['pending', 'captured', 'invalid', 'failed']),
+			answer_id: z.string().optional(),
+			error: z.string().optional()
 		})
 	),
 	answers_count: z.number().int().nonnegative(),
@@ -110,7 +111,7 @@ export type BridgeConceptAnswer = z.infer<typeof conceptAnswerSchema>;
 
 const TIMEOUTS = {
 	catalog: 10_000,
-	submit: 60_000,
+	submit: 120_000,
 	poll: 30_000
 } as const;
 

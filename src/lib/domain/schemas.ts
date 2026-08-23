@@ -166,13 +166,15 @@ export const seedSchema = z.object({
 export type Seed = z.infer<typeof seedSchema>;
 
 // ---------------------------------------------------------------------------
-// Live Raycast catalog + Creative Room (FR-005..012)
+// Live Creative Room provider catalog (FR-005..012)
 // ---------------------------------------------------------------------------
 
 export const catalogModelSchema = z.object({
 	label: z.string().min(1).max(100),
+	/** Exact external model/agent identifier; legacy field name retained in v1 records. */
 	raycast_agent: z.string().min(1).max(200),
-	model_class: z.literal('raycast_ai')
+	model_class: z.enum(['raycast_ai', 'kimi_api']),
+	provider: z.enum(['raycast', 'kimi']).default('raycast')
 });
 
 export type CatalogModel = z.infer<typeof catalogModelSchema>;
@@ -187,7 +189,7 @@ export const catalogSnapshotSchema = z.object({
 	bridge_version: z.string().min(1),
 	harvested_at: rfc3339Schema,
 	catalog_hash: sha256Schema,
-	source: z.enum(['agents_file', 'built_in_defaults']),
+	source: z.enum(['agents_file', 'built_in_defaults', 'kimi_config']),
 	models: z.array(catalogModelSchema),
 	requested_count: z.number().int().positive().max(20),
 	selection_seed: z.string().min(1),
@@ -204,6 +206,7 @@ export const voiceSchema = z.object({
 	voice_id: idSchema,
 	label: z.string().min(1),
 	raycast_agent: z.string().min(1),
+	provider: z.enum(['raycast', 'kimi']).default('raycast'),
 	job_status: jobStatusSchema,
 	parse_status: voiceParseStatusSchema,
 	/** Verbatim model output. Null until the bridge returns a row (NFR-002). */
@@ -224,6 +227,7 @@ export const creativeRoomRunSchema = z.object({
 	run_id: idSchema,
 	/** Exact bridge comparison-run id (external correlation). */
 	bridge_run_id: z.string().min(1),
+	provider: z.enum(['raycast', 'kimi']).default('raycast'),
 	catalog_hash: sha256Schema,
 	prompt_hash: sha256Schema,
 	status: jobStatusSchema,

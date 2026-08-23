@@ -404,6 +404,7 @@ export class ProjectCommandGateway {
 			voice_id: uuid7ish(),
 			label: slot.label,
 			raycast_agent: slot.raycast_agent,
+			provider: slot.provider,
 			job_status: 'queued',
 			parse_status: 'pending',
 			raw_text: null,
@@ -420,10 +421,11 @@ export class ProjectCommandGateway {
 		let captureMessage: string | null = null;
 		let captureFailed = false;
 		try {
-			// Manual-assisted baseline: prepare the canonical prompt, then the
-			// operator verifies each exact named Agent before clipboard capture.
 			const prepared = await this.bridge.prepareConceptCapture(created.run_id);
-			captureMessage = `Prepared ${created.run_id} · ${current.catalog_snapshot.selected.map((slot) => `open ${slot.raycast_agent} for exact label ${slot.label}, then ${prepared.capture_commands.by_label?.[slot.label] ?? `Capture Directors Cut Answer with label ${slot.label}`}`).join(' · ')}`;
+			const directApi = current.catalog_snapshot.selected.every((slot) => slot.provider === 'kimi');
+			captureMessage = directApi
+				? prepared.message
+				: `Prepared ${created.run_id} · ${current.catalog_snapshot.selected.map((slot) => `open ${slot.raycast_agent} for exact label ${slot.label}, then ${prepared.capture_commands.by_label?.[slot.label] ?? `Capture Directors Cut Answer with label ${slot.label}`}`).join(' · ')}`;
 		} catch (e) {
 			captureFailed = true;
 			captureMessage = e instanceof Error ? e.message : 'capture dispatch failed';
@@ -438,6 +440,7 @@ export class ProjectCommandGateway {
 					creative_room: {
 						run_id: uuid7ish(),
 						bridge_run_id: created.run_id,
+						provider: current.catalog_snapshot!.selected[0]?.provider ?? 'raycast',
 						catalog_hash: latest.catalog_snapshot?.catalog_hash ?? current.catalog_snapshot!.catalog_hash,
 						prompt_hash: promptHash,
 						status: captureFailed ? 'failed' : 'running',
@@ -544,13 +547,23 @@ export function applyReconcile(
 		status.capture_job_status === 'complete' ||
 		status.pending_count === 0;
 	const nextVoices = latest.voices.map((voice) => {
+		const lane = status.models.find((model) => model.label === voice.label);
+		const raycastAgent = lane?.raycast_agent ?? voice.raycast_agent;
 		const answer = answers?.answers.findLast(
 			(row) => matchAnswerToLabel(row.model_name, [{ ...voice, model_class: 'raycast_ai' }])?.label === voice.label
 		);
 		if (!answer) {
-			const lane = status.models.find((model) => model.label === voice.label);
+			if (lane?.status === 'failed' && voice.job_status !== 'failed') {
+				return {
+					...voice,
+					raycast_agent: raycastAgent,
+					job_status: 'failed' as const,
+					parse_status: 'unknown' as const,
+					error: lane.error ?? 'Creative Room provider request failed.'
+				};
+			}
 			if (lane?.status === 'invalid' && voice.parse_status !== 'invalid') {
-				return { ...voice, job_status: 'failed' as const, parse_status: 'invalid' as const, error: 'Bridge returned an invalid structured capture.' };
+				return { ...voice, raycast_agent: raycastAgent, job_status: 'failed' as const, parse_status: 'invalid' as const, error: 'Bridge returned an invalid structured capture.' };
 			}
 			if (
 				captureDone &&
@@ -559,18 +572,22 @@ export function applyReconcile(
 			) {
 				return {
 					...voice,
+					raycast_agent: raycastAgent,
 					job_status: 'failed' as const,
 					parse_status: 'unknown' as const,
 					error: 'Bridge capture finished without a verbatim reply for this voice.'
 				};
 			}
-			return voice;
+			return raycastAgent === voice.raycast_agent ? voice : { ...voice, raycast_agent: raycastAgent };
 		}
-		if (voice.answer_id === answer.answer_id && voice.raw_text === answer.answer_text) return voice;
+		if (voice.answer_id === answer.answer_id && voice.raw_text === answer.answer_text) {
+			return raycastAgent === voice.raycast_agent ? voice : { ...voice, raycast_agent: raycastAgent };
+		}
 		const structured = answer.structured_prompt ?? {};
 		const valid = answer.structure_status === 'valid';
 		return {
 			...voice,
+			raycast_agent: raycastAgent,
 			job_status: valid ? ('succeeded' as const) : ('failed' as const),
 			parse_status: valid ? ('valid' as const) : ('invalid' as const),
 			raw_text: answer.answer_text,

@@ -537,7 +537,7 @@
 							<span class="block h-1.5 w-1.5 rounded-full" style:background={voiceStatusColor[voiceSurfaceStatus(selectedVoice)]}></span>
 							<strong>{selectedVoice.label}</strong>
 						</span>
-						<div class="meta-label mt-1 text-text-dim">{selectedVoice.raycast_agent}</div>
+						<div class="meta-label mt-1 text-text-dim">{selectedVoice.provider} · {selectedVoice.raycast_agent}</div>
 						<div class="meta-label mt-1" style:color={voiceStatusColor[voiceSurfaceStatus(selectedVoice)]}>
 							{voiceSurfaceStatus(selectedVoice)}
 						</div>
@@ -571,7 +571,7 @@
 								activeProject?.catalog_snapshot ? 'bg-gate-approved' : 'bg-capability-offline'
 							]}
 						></span>
-						<strong class="meta-label text-text-primary">Raycast bridge</strong>
+						<strong class="meta-label text-text-primary">Creative Room bridge</strong>
 					</span>
 					<span class="text-text-muted">
 						{activeProject?.catalog_snapshot

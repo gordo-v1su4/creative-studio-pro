@@ -1,4 +1,4 @@
-# HANDOFF — Creative Studio Pro S1/S2 + Raycast
+# HANDOFF — Creative Studio Pro S1/S2 + Creative Room Providers
 
 Last updated: 2026-08-22. Companion repo: `gordo-v1su4/raycast-pro-bridge`.
 
@@ -29,15 +29,24 @@ bun run dev -- --port 5174
 
 `CSP_M3_BRIDGE_URL` and `CSP_M3_BRIDGE_TOKEN` remain supported aliases. Prefer the host-neutral names above. All tokens remain server-only.
 
+## Temporary Kimi provider
+
+Kimi is the temporary default for completing the remaining BMAD epics. Raycast remains an explicit optional provider and never becomes an automatic fallback.
+
+Before starting the bridge, retrieve `KIMI_API_KEY` from BWS project `hermes_keys` into the process environment, then set `CREATIVE_ROOM_PROVIDER=kimi`, `KIMI_API_BASE_URL=https://api.kimi.com/coding/v1`, `KIMI_MODEL=k3`, and `KIMI_MODEL_LABEL=Kimi K3`. The bridge uses the official OpenAI-compatible chat-completion endpoint, sends the text-only/no-tools story contract, and persists the verbatim answer plus hashes inside the same durable comparison-run folder. A restart reads the terminal result and never resubmits it.
+
+The key is also available in the gitignored local `.env` for this workstation. Never commit it. The BWS copy is canonical for runtime injection.
+
 ## Windows Raycast capture contract
 
-1. CSP calls `prepare_concept_capture`. The bridge runs `directors-cut-prepare-automated-capture.ps1`, writes the active capture files, and copies the exact prompt.
-2. With Computer, open Raycast using its configured launcher hotkey, then verify the visible native surface is Quick AI or the named Agent composer. On the verified Windows workstation the current launcher hotkey is `Ctrl+Space`; do not assume the documented default. `Search Files`, `No Results`, and Root Search are not composers and are never fallback targets.
-3. Paste/send the prepared prompt. Copy the complete raw answer.
-4. Run `directors-cut-capture-active-answer.ps1 -Label ChatGPT` or `-Label Claude` in native PowerShell.
-5. CSP reconciles `get_concept_capture_status` + `read_concept_answers`. Matching is exact-label only; raw text and SHA-256 are preserved unchanged.
+1. CSP calls `prepare_concept_capture`. The bridge runs `directors-cut-prepare-automated-capture.ps1`, atomically records the exact roster and prompt hashes, and copies a structured prompt beginning with the text-only/no-tools guard.
+2. Run **CSP Show Active Capture** and **CSP Copy Active Prompt**. Use its exact next label and Agent; do not infer either from an older run.
+3. With Computer, open persistent Raycast AI Chat using physical `Ctrl`, `Ctrl`. Start an empty chat, type `/`, type the exact model or Agent name, press `Enter`, verify the visible header, and verify automatic extension discovery is off. `Search Files`, `No Results`, and Root Search are never composers or fallback targets.
+4. Paste/send the prepared prompt once. Wait for a terminal text response and use Raycast's visible native Copy Response action to copy the complete last reply.
+5. Run **CSP Confirm Active Model** with the exact label and visible header, then **CSP Capture Last Text Reply** with the exact label. The commands fail closed on stale prompt/roster hashes, wrong labels, unconfirmed headers, empty replies, or duplicates.
+6. Repeat for remaining lanes, then CSP reconciles `get_concept_capture_status` + `read_concept_answers`. Matching is exact-label only; raw text and SHA-256 are preserved unchanged. Restart reuses the same active state without resubmitting completed lanes.
 
-`run_concept_capture` deliberately rejects Windows automation because opening/pasting is legal only after Computer has verified the composer. Manual-assisted capture is the portable baseline.
+`run_concept_capture` deliberately rejects Windows GUI automation because opening, selecting, and copying are legal only after Computer has visibly verified persistent AI Chat and the exact header. The repo-level `.agents/skills/raycast-creative-room-windows/SKILL.md` owns the complete operator workflow. No capture chat may browse, invoke extensions, or generate image/video media.
 
 ## macOS compatibility
 

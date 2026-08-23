@@ -31,7 +31,7 @@
 		</span>
 	</div>
 	<h2 class="mt-3 text-[15px] font-semibold leading-snug">{voice.label}</h2>
-	<p class="mt-1 font-mono text-[11px] text-text-dim">{voice.raycast_agent}</p>
+	<p class="mt-1 font-mono text-[11px] text-text-dim">{voice.provider} · {voice.raycast_agent}</p>
 
 	{#if voice.title}
 		<p class="mt-2 text-[13px] font-medium">{voice.title}</p>
@@ -43,7 +43,7 @@
 	{:else if voice.error}
 		<p class="mt-1 text-gate-failed">{voice.error}</p>
 	{:else}
-		<p class="mt-1 text-text-dim">Waiting for a verbatim reply from the Raycast bridge.</p>
+		<p class="mt-1 text-text-dim">Waiting for a verbatim reply from the selected Creative Room provider.</p>
 	{/if}
 
 	{#if voice.parse_errors.length > 0}

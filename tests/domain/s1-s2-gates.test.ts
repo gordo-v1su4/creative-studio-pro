@@ -72,9 +72,16 @@ describe('S2 lock', () => {
 });
 
 test('Raycast reconciliation never fuzzy-matches labels', () => {
-	const slots = [{ label: 'ChatGPT', raycast_agent: 'Sora 2 - ChatGPT', model_class: 'raycast_ai' as const }];
+	const slots = [{ label: 'ChatGPT', raycast_agent: 'Sora 2 - ChatGPT', model_class: 'raycast_ai' as const, provider: 'raycast' as const }];
 	expect(matchAnswerToLabel('ChatGPT', slots)?.label).toBe('ChatGPT');
 	expect(matchAnswerToLabel('ChatGPT Reasoning', slots)).toBeUndefined();
+});
+
+test('Raycast reconciliation adopts an exact model header renamed by the live bridge', () => {
+	const project = projectSchema.parse({ ...base, creative_room: { run_id: 'run', bridge_run_id: 'bridge', catalog_hash: 'a'.repeat(64), prompt_hash: 'b'.repeat(64), status: 'running', started_at: 'now', updated_at: 'now', message: null }, voices: [{ voice_id: 'voice', label: 'Claude', raycast_agent: 'Sora 2 - Haiku', job_status: 'running', parse_status: 'pending', raw_text: null, parse_errors: [], content_hash: null, prompt_hash: null, answer_id: null, title: null, logline: null, summary: null, error: null }] });
+	const result = applyReconcile(project, { run_id: 'bridge', run_status: 'running', capture_job_status: 'running', models: [{ label: 'Claude', raycast_agent: 'Claude Haiku 4.5', status: 'pending' }], answers_count: 0, captured_valid_count: 0, invalid_count: 0, pending_count: 1, ready_for_projects: false }, null);
+	expect(result.changed).toBeTrue();
+	expect(result.project.voices[0]?.raycast_agent).toBe('Claude Haiku 4.5');
 });
 
 test('invalid structured capture fails the voice and run instead of succeeding', () => {
