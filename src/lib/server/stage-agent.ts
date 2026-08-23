@@ -148,7 +148,7 @@ export function createStageAgent(config: StageAgentConfig): StageAgent {
 		model: modelId,
 		async start(project) {
 			const latest = project.interview.rounds.at(-1);
-			const dimension = latest?.lowest_dimension ?? 'format_runtime';
+			const dimension = latest?.lowest_dimension ?? 'story_beats';
 			return {
 				message: latest
 					? `I have the decisions from round ${latest.round_number}. Let’s resolve the next lowest-confidence choice.`

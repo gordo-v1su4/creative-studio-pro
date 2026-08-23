@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { CONFIDENCE_DIMENSIONS, projectSchema } from '../../src/lib/domain/schemas';
-import { buildStageAgentProjectEvidence, extractJsonObject, fallbackQuestion, stageAgentEvaluationSchema, stageAgentStartSchema } from '../../src/lib/server/stage-agent';
+import { buildStageAgentProjectEvidence, createStageAgent, extractJsonObject, fallbackQuestion, stageAgentEvaluationSchema, stageAgentStartSchema } from '../../src/lib/server/stage-agent';
 
 describe('Stage Agent response contract', () => {
 	test('accepts strict start and complete eight-dimension evaluation objects', () => {
@@ -36,5 +36,13 @@ describe('Stage Agent response contract', () => {
 		expect(evidence.locked_brief.logline).toBe('Exact logline');
 		expect(evidence.locked_brief.content_hash).toBe(hash);
 		expect(evidence.locked_brief.approval.operator).toBe('gordo');
+	});
+
+	test('starts from an unresolved story choice instead of re-asking locked format facts', async () => {
+		const project = projectSchema.parse({ schema_version: 1, project_id: 'p', title: 'Pilot', created_at: 'now', updated_at: 'now', version: 2,
+			stage: { id: 'S1', state: 'BLOCKED', confidence: null }, seed: { seed_id: 's', title: 'Pilot', brief: '', creative_focus: 'full room', created_by: 'gordo' }, catalog_snapshot: null, creative_room: null, voices: [] });
+		const opening = await createStageAgent({ apiKey: 'not-used-for-start' }).start(project);
+		expect(opening.next_question).toContain('climax shape');
+		expect(opening.next_question).not.toContain('delivery format');
 	});
 });
