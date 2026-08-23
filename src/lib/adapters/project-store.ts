@@ -143,6 +143,7 @@ export class ProjectStore {
 			catalog_snapshot: null,
 			creative_room: null,
 			voices: [],
+			production: { status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null },
 			seed: {
 				seed_id: uuid7ish(),
 				title: input.title,

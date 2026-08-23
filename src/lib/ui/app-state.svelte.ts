@@ -15,11 +15,13 @@ export type PaletteAction = {
 
 class AppUiState {
 	chatOpen = $state(false);
+	chatMode = $state<'focus' | 'dock'>('focus');
 	paletteOpen = $state(false);
 	capabilitiesOpen = $state(false);
 	/** Canvas page context surfaced in global chrome (agent drawer). */
 	activeProjectTitle = $state('');
 	activeProject = $state<Project | null>(null);
+	activeProjectUpdater: ((project: Project) => void) | null = null;
 	/** Page-contributed palette actions, merged after the global set. */
 	pageActions = $state<PaletteAction[]>([]);
 	capabilities = $state<CapabilityReport[]>([]);
@@ -28,6 +30,11 @@ class AppUiState {
 
 	get capabilitiesChecked(): boolean {
 		return this.capabilities.length > 0;
+	}
+
+	adoptActiveProject(project: Project): void {
+		if (this.activeProjectUpdater) this.activeProjectUpdater(project);
+		else this.activeProject = project;
 	}
 
 	async refreshCapabilities(): Promise<void> {

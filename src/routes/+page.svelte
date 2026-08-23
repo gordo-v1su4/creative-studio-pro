@@ -11,13 +11,16 @@
 	} from '@xyflow/svelte';
 	import SeedNode from '$lib/ui/nodes/SeedNode.svelte';
 	import VoiceNode from '$lib/ui/nodes/VoiceNode.svelte';
+	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
+	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
+	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
-	const nodeTypes = { seed: SeedNode, voice: VoiceNode };
+	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
 
 	let projects = $state<ProjectSummary[]>([]);
 	let activeProject = $state<Project | null>(null);
@@ -33,6 +36,8 @@
 	let loadError = $state<string | null>(null);
 	let creating = $state(false);
 	let inspectorOpen = $state(true);
+	let canvasOpen = $state(true);
+	let productionTab = $state<ProductionTab>('story');
 
 	// Seed editing (update_seed command; user-authored fields only).
 	let editTitle = $state('');
@@ -49,7 +54,16 @@
 	let selectedVoice = $derived(
 		activeProject?.voices.find((voice) => voice.voice_id === selectedNodeId) ?? null
 	);
-	const lanes = ['Seeds', 'Voices', 'Sources', 'Storyboard', 'Trailer', 'Output'];
+	const workspaceTabs: Array<{ label: string; tab: 'canvas' | ProductionTab }> = [
+		{ label: 'Board', tab: 'canvas' }, { label: 'Story', tab: 'story' }, { label: 'Cards', tab: 'cards' },
+		{ label: 'Media', tab: 'media' }, { label: 'Preview', tab: 'preview' }, { label: 'Export', tab: 'export' }
+	];
+
+	function openWorkspace(tab: 'canvas' | ProductionTab) {
+		canvasOpen = tab === 'canvas';
+		if (tab !== 'canvas') productionTab = tab;
+		localStorage.setItem('csp.workspace-tab', tab);
+	}
 
 	function projectToNodes(project: Project, saved: CanvasLayout | null): Node[] {
 		const seedSaved = saved?.nodes.find((n) => n.node_id === project.seed.seed_id);
@@ -82,15 +96,40 @@
 				ariaLabel: `Model Voice, ${voice.label}, ${voiceSurfaceStatus(voice).toLowerCase()}`
 			};
 		});
-		return [seedNode, ...voiceNodes];
+		const cardRecords = project.production.cards.length > 0
+			? project.production.cards.map((card) => ({ id: card.card_id, card }))
+			: Array.from({ length: 6 }, (_, order) => ({ id: `story-placeholder-${order}`, card: null }));
+		const storyNodes: Node[] = cardRecords.map(({ id, card }, index) => {
+			const savedNode = saved?.nodes.find((n) => n.node_id === id);
+			const image = card ? project.production.assets.findLast((asset) => asset.card_id === card.card_id && asset.kind === 'image') : null;
+			const video = card ? project.production.assets.findLast((asset) => asset.card_id === card.card_id && asset.kind === 'video') : null;
+			return {
+				id,
+				type: 'story_card',
+				position: { x: savedNode?.x ?? 760 + (index % 3) * 350, y: savedNode?.y ?? Math.floor(index / 3) * 310 },
+				data: { card, order: index, imageUrl: image?.url ?? null, videoUrl: video?.url ?? null },
+				ariaLabel: card ? `Story card ${index + 1}, ${card.title}` : `Story card ${index + 1}, awaiting draft`
+			};
+		});
+		return [seedNode, ...voiceNodes, ...storyNodes];
 	}
 
 	function projectToEdges(project: Project): Edge[] {
-		return project.voices.map((voice) => ({
+		const voiceEdges = project.voices.map((voice) => ({
 			id: `${project.seed.seed_id}->${voice.voice_id}`,
 			source: project.seed.seed_id,
 			target: voice.voice_id
 		}));
+		const storyIds = project.production.cards.length > 0
+			? project.production.cards.map((card) => card.card_id)
+			: Array.from({ length: 6 }, (_, order) => `story-placeholder-${order}`);
+		const storyEdges = storyIds.map((id, index) => ({
+			id: index === 0 ? `${project.seed.seed_id}->${id}` : `${storyIds[index - 1]}->${id}`,
+			source: index === 0 ? project.seed.seed_id : storyIds[index - 1],
+			target: id,
+			animated: project.production.cards.length === 0
+		}));
+		return [...voiceEdges, ...storyEdges];
 	}
 
 	function adoptProject(project: Project, nextLayout: CanvasLayout | null = layout) {
@@ -200,13 +239,13 @@
 			const next: CanvasLayout = {
 				schema_version: 1,
 				project_id: activeProject.project_id,
-				nodes: nodes.map((n) => {
+				nodes: nodes.filter((n) => !n.id.startsWith('story-placeholder-')).map((n) => {
 					const previous = layout?.nodes.find((p) => p.node_id === n.id);
-					const type = n.type === 'voice' ? 'voice' : 'seed';
+					const type = n.type === 'voice' ? 'voice' : n.type === 'story_card' ? 'story_card' : 'seed';
 					return {
 						node_id: n.id,
 						type,
-						lane: previous?.lane ?? (type === 'voice' ? 'voices' : 'seeds'),
+						lane: previous?.lane ?? (type === 'voice' ? 'voices' : type === 'story_card' ? 'storyboard' : 'seeds'),
 						x: n.position.x,
 						y: n.position.y,
 						width: previous?.width ?? 320,
@@ -351,6 +390,11 @@
 	}
 
 	onMount(() => {
+		const savedWorkspace = localStorage.getItem('csp.workspace-tab');
+		if (savedWorkspace && ['canvas', 'story', 'cards', 'media', 'preview', 'export'].includes(savedWorkspace)) {
+			openWorkspace(savedWorkspace as 'canvas' | ProductionTab);
+		}
+		ui.activeProjectUpdater = (project) => adoptProject(project, layout);
 		ui.pageActions = [
 			{ id: 'new-project', label: 'new project', hint: 'seed · s0', run: () => void createProject() },
 			{ id: 'toggle-inspector', label: 'toggle inspector', hint: 'panel', run: () => (inspectorOpen = !inspectorOpen) }
@@ -363,6 +407,7 @@
 			if (pollTimer) clearInterval(pollTimer);
 			ui.pageActions = [];
 			ui.activeProjectTitle = '';
+			ui.activeProjectUpdater = null;
 		};
 	});
 </script>
@@ -377,7 +422,15 @@
 		{#if activeProject}
 			<span class="meta-label text-text-dim">v{activeProject.version}</span>
 		{/if}
+		<div class="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto lg:flex">
+			{#each workspaceTabs as item (item.label)}
+				<button type="button" class={['px-2 py-1 font-mono text-[10px] uppercase tracking-[0.06em]', (item.tab === 'canvas' ? canvasOpen : !canvasOpen && productionTab === item.tab) ? 'bg-[color-mix(in_srgb,var(--color-voice-1)_12%,var(--color-surface-raised-2))] text-[color-mix(in_srgb,var(--color-voice-1)_75%,white)]' : 'text-text-dim hover:text-text-muted']} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
+			{/each}
+		</div>
 		<span class="grow"></span>
+		<button type="button" class="btn btn-charm" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+			<span class="charm-gradient-text font-bold">✦</span> Agent
+		</button>
 		<button type="button" class="btn btn-accent" onclick={() => void createProject()} disabled={creating}>
 			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
 			<span class="hidden sm:inline">{creating ? 'Creating…' : '+ New project'}</span>
@@ -402,30 +455,20 @@
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
 		class="work-area grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
-		style={`--inspector-width: ${inspectorOpen ? '300px' : '0px'}`}
+		style={`--inspector-width: ${inspectorOpen ? '300px' : '0px'}; --rail-width: ${canvasOpen ? '190px' : '0px'}`}
 	>
-		<aside class="hidden border-r border-border-default bg-surface-raised p-3 md:block" aria-label="Lanes">
-			<div class="meta-label">Lanes</div>
-			<div class="mt-3 grid gap-1">
-				{#each lanes as lane, i (lane)}
-					{@const active = i === 0 || (i === 1 && (activeProject?.voices.length ?? 0) > 0)}
-					<span
-						class={[
-							'flex items-center gap-2 rounded-sm px-2 py-1.5 transition-colors',
-							active ? 'bg-surface-raised-2 font-medium text-text-primary' : 'text-text-dim'
-						]}
-					>
-						<span
-							class={[
-								'block h-1.5 w-1.5 rounded-full',
-								active ? 'bg-gate-pending' : 'border border-border-default bg-transparent'
-							]}
-						></span>
-						{lane}
-					</span>
-				{/each}
-			</div>
-		</aside>
+		{#if canvasOpen}
+			<aside class="hidden overflow-hidden border-r border-border-default bg-surface-raised p-3 md:block" aria-label="Canvas layers">
+				<div class="meta-label">Canvas layers</div>
+				<div class="mt-3 grid gap-1.5">
+					<div class="layer-row"><span class="bg-voice-1"></span><b>Seed</b><small>1</small></div>
+					<div class="layer-row"><span class="bg-[#4ab8ff]"></span><b>Voices</b><small>{activeProject?.voices.length ?? 0}</small></div>
+					<div class="layer-row"><span class="bg-[#5cffbe]"></span><b>Story cards</b><small>{activeProject?.production.cards.length || 6}</small></div>
+					<div class="layer-row"><span class="bg-[#8174e8]"></span><b>Media</b><small>{activeProject?.production.assets.length ?? 0}</small></div>
+				</div>
+				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Flip each card between text, image, and video.</p>
+			</aside>
+		{/if}
 
 		<main class="relative min-w-0">
 			{#if loadError}
@@ -437,7 +480,7 @@
 				</div>
 			{/if}
 
-			{#if activeProject}
+			{#if activeProject && canvasOpen}
 				<div class="h-full">
 					<SvelteFlow
 						bind:nodes
@@ -461,6 +504,8 @@
 						<Controls showLock={false} position="bottom-left" />
 					</SvelteFlow>
 				</div>
+			{:else if activeProject}
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} bind:tab={productionTab} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">
@@ -617,3 +662,10 @@
 		<span class="text-text-dim">{activeProject?.stage.state ?? '—'}</span>
 	</footer>
 </div>
+
+<style>
+	.layer-row { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 8px; padding: 6px 7px; background: #151519; color: #8d9ca1; }
+	.layer-row > span { width: 6px; height: 6px; }
+	.layer-row b { font-size: 11px; font-weight: 500; }
+	.layer-row small { font: 9px var(--font-mono); color: #626b70; }
+</style>

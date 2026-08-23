@@ -21,6 +21,9 @@ colors:
   gate-quoted: '#60a5fa'
   gate-failed: '#f87171'
   capability-offline: '#71717a'
+  charm-mint: '#5cffbe'
+  charm-blue: '#4ab8ff'
+  charm-violet: '#8174e8'
   voice-1: 'oklch(0.72 0.18 195)'
   voice-2: 'oklch(0.65 0.15 175)'
   voice-3: 'oklch(0.8 0.18 85)'
@@ -99,7 +102,8 @@ visible without competing with the work.
 
 Dark mode is the product surface, not an optional theme. Hierarchy comes from
 image scale, tonal layering, thin borders, typography, and spatial grouping.
-Glow is restrained to selection/focus. No gradients, glass-card decoration,
+Glow is restrained to selection/focus. No gradients except the user-approved
+animated Agent-button outline, no glass-card decoration,
 fake browser chrome, oversized marketing headings, or ornamental dashboards.
 
 ## Colors
@@ -179,6 +183,12 @@ metadata and controls sit below rather than over decorative image gradients.
 
 - **Canvas node** — `{components.node}`. Image/content first, metadata second,
   actions last. Selected state uses `{components.node-selected}`.
+- **Story card node** — one persistent beat with Text, Image, and Video faces.
+  Face controls use flat fill states; media replaces the prompt placeholder
+  without creating a second card. Cards connect in story order on the Board.
+- **Agent button** — the single animated-outline exception. Its 1px outline
+  cycles `{colors.charm-mint}` → `{colors.charm-blue}` →
+  `{colors.charm-violet}` around a dark interior; never use pink.
 - **Seed node** — title, brief excerpt, focus, harvested roster, and one compact
   Run Creative Room action.
 - **Model Voice card** — dynamic family accent, exact Raycast label, parse state,
@@ -237,4 +247,5 @@ Composition references: [`Project Canvas`](mockups/key-project-canvas-creative-r
 | Show real empty/offline/failure language | Invent counts, progress, availability, quotes, or costs |
 | Keep billable confirmation visually separate from quote | Collapse quote and generation into one CTA |
 | Use a 2px tool-like shape language | Turn every control into a rounded pill |
+| Keep the animated teal/cyan/violet outline exclusive to Agent | Spread gradient outlines across ordinary actions |
 | Preserve one visible focus ring and keyboard order | Depend on canvas pointer gestures alone |

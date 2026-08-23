@@ -23,7 +23,7 @@
 		{ id: 'nav-library', label: 'go to library', hint: '/library', run: () => void goto('/library') },
 		{ id: 'nav-runs', label: 'go to runs', hint: '/runs', run: () => void goto('/runs') },
 		{ id: 'nav-settings', label: 'go to settings', hint: '/settings', run: () => void goto('/settings') },
-		{ id: 'toggle-chat', label: 'toggle agent chat', hint: '✦ agent', run: () => (ui.chatOpen = !ui.chatOpen) },
+		{ id: 'toggle-chat', label: 'toggle agent chat', hint: '✦ agent', run: () => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; } },
 		{ id: 'toggle-caps', label: 'open capability drawer', hint: 'status', run: () => (ui.capabilitiesOpen = true) }
 	];
 
@@ -58,12 +58,12 @@
 
 <div class="flex h-screen flex-col bg-surface-base text-text-primary">
 	<!-- Top nav (48px), shared across all surfaces -->
-	<header class="flex h-12 shrink-0 items-center justify-between border-b border-border-default bg-surface-base px-4">
+	<header class="flex h-12 shrink-0 items-center border-b border-border-default bg-surface-base px-4">
 		<div class="flex items-center gap-2.5">
 			<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
 			<span class="text-[13px] font-semibold tracking-[0.06em]">CREATIVE STUDIO PRO</span>
 		</div>
-		<nav class="hidden items-center gap-1 md:flex" aria-label="Primary">
+		<nav class="ml-6 hidden items-center gap-1 md:flex" aria-label="Primary">
 			{#each navItems as item (item.href)}
 				{@const active = page.url.pathname === item.href}
 				<a
@@ -80,11 +80,13 @@
 				</a>
 			{/each}
 		</nav>
-		<div class="flex items-center gap-2">
-			<button type="button" class="btn btn-charm" onclick={() => (ui.chatOpen = !ui.chatOpen)}>
-				<span class="charm-gradient-text font-bold">✦</span>
-				Agent
-			</button>
+		<div class="ml-auto flex items-center gap-2">
+			{#if page.url.pathname !== '/'}
+				<button type="button" class="btn btn-charm" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+					<span class="charm-gradient-text font-bold">✦</span>
+					Agent
+				</button>
+			{/if}
 			<button
 				type="button"
 				class="chip meta-label cursor-pointer transition-colors hover:border-text-dim"

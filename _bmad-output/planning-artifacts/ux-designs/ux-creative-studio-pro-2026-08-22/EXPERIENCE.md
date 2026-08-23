@@ -31,6 +31,12 @@ provenance remain visible throughout the experience.
 | Surface | Reached from | Purpose |
 |---|---|---|
 | Project Canvas `/` | App open, project picker | Create and spatially operate one project |
+| Board | Default view inside Project Canvas | Arrange Seed, Voice, and connected Story Card nodes spatially |
+| Story | Project view switcher | Edit the canonical logline, premise, theme, and story spine |
+| Cards | Project view switcher | Review the ordered story beats as compact Text/Image/Video card faces |
+| Media | Project view switcher, card face/action | Attach and inspect returned image/video assets and prompts by card |
+| Preview | Project view switcher | Play or inspect the ordered card sequence using the same attached assets |
+| Export | Project view switcher | Package the canonical story, cards, prompts, media references, and timing |
 | Node Focus | Double-click node, inspector Open | Center one node, dim neighbors, preserve lineage context |
 | Compare | Multi-select 2–4 Model Voices | Align exact outputs and approve/reject per voice |
 | Library `/library` | Top nav, Promote action | Browse versioned SpecCards and approved artifacts |
@@ -48,7 +54,7 @@ Composition references (spines win on conflict):
 - [`mockups/key-trailer-quote-gate.html`](mockups/key-trailer-quote-gate.html) — Target/runtime switcher and quote/confirm separation.
 - [`mockups/key-capability-drawer.html`](mockups/key-capability-drawer.html) — Available, planned, and not-checked capability states.
 
-Desktop chrome: 48px top nav, project toolbar, collapsible lane rail, canvas,
+Desktop chrome: 48px top nav, project toolbar, contextual Canvas Layers rail, canvas,
 collapsible inspector, and bottom transport strip. Modal stacks stop at one
 level. A quote dialog may open over the canvas; it cannot open another dialog.
 
@@ -101,11 +107,12 @@ Behavioral rules; visual tokens live in `DESIGN.md.Components`.
 | Component | Use | Behavioral rules |
 |---|---|---|
 | Canvas node | Every project lane | Single click selects; double-click opens Node Focus; drag changes persisted layout only; edge ports expose legal branch/remix actions. |
+| Story card | Board and Cards | One canonical beat exposes Text, Image, and Video faces. Arrow keys/buttons or face labels switch the view in place. Missing media shows its prompt placeholder; attaching media replaces only that face. |
 | Stage/gate strip | Node and global transport | Opens gate log; exposes only the next legal action; Force Advance is operator-only and requires reason. |
 | Inspector | Selected node | Edits user-owned fields inline; exact model output, hashes, quotes, and audit fields remain read-only. |
 | Command palette | Global | Fuzzy searches surfaces and context-safe actions; Enter activates, Escape closes, results announce through `aria-live`. |
 | Media lightbox | Artifact/segment | Opens one media item with provenance and keyboard/touch seek controls; Escape closes; media failure preserves metadata and error. |
-| Lane rail | Canvas left | Seeds, Voices, Sources, Storyboard, Trailer, Output. Click focuses/filter lane; collapse preserves labels through tooltips and accessible names. |
+| Canvas Layers rail | Board left | Summarizes Seed, Voices, Story Cards, and Media counts. It appears only on Board and does not duplicate the project view switcher. |
 | Seed node | S0/Creative Room | Edits title, brief, focus, requested voice count. Run action remains disabled when M3 catalog is unavailable. |
 | Live roster | Seed inspector | Fetch exact Raycast catalog; default random count 5. Reshuffle changes seed, Pin preserves a model, Add/Remove edits operator overrides. Never show unavailable desired families as selectable. |
 | Model Voice card | Creative Room result | Exact Raycast label; raw text immutable. Parse state can be valid/invalid. Approve/reject/branch/remix act on stable answer ID. |
@@ -179,6 +186,10 @@ percentage completion when the API provides only a state.
 ## Interaction Primitives
 
 - Single click/tap selects; double-click opens Node Focus.
+- A project opens on Board inside the global Canvas area. Story, Cards, Media,
+  Preview, and Export are focused projections of the same project records.
+- On a story card, Text/Image/Video labels and previous/next arrows rotate the
+  visible face without changing the selected beat or creating new data.
 - Space-drag/two-finger pans canvas. Wheel/pinch zooms 25%–200%.
 - Shift-click multi-selects up to four compatible Model Voice cards for Compare.
 - Drag from an output port to empty canvas opens Branch / Remix / New Seed.

@@ -223,6 +223,46 @@ export const voiceSchema = z.object({
 
 export type Voice = z.infer<typeof voiceSchema>;
 
+// ---------------------------------------------------------------------------
+// End-to-end production workspace (story -> cards -> media -> assembly)
+// ---------------------------------------------------------------------------
+
+export const storyCardSchema = z.object({
+	card_id: idSchema,
+	order: z.number().int().nonnegative(),
+	title: nonBlank(200),
+	beat: nonBlank(4000),
+	purpose: nonBlank(1000),
+	duration_ms: z.number().int().positive().max(120_000),
+	image_prompt: nonBlank(5000),
+	video_prompt: nonBlank(5000),
+	status: z.enum(['draft', 'approved']).default('draft')
+});
+export type StoryCard = z.infer<typeof storyCardSchema>;
+
+export const productionAssetSchema = z.object({
+	asset_id: idSchema,
+	card_id: idSchema,
+	kind: z.enum(['image', 'video', 'audio']),
+	name: nonBlank(500),
+	mime_type: nonBlank(200),
+	url: nonBlank(2000),
+	created_at: rfc3339Schema
+});
+export type ProductionAsset = z.infer<typeof productionAssetSchema>;
+
+export const productionStateSchema = z.object({
+	status: z.enum(['empty', 'draft', 'approved']).default('empty'),
+	title: z.string().max(200).default(''),
+	logline: z.string().max(2000).default(''),
+	premise: z.string().max(8000).default(''),
+	theme: z.string().max(2000).default(''),
+	cards: z.array(storyCardSchema).max(40).default([]),
+	assets: z.array(productionAssetSchema).max(500).default([]),
+	updated_at: rfc3339Schema.nullable().default(null)
+});
+export type ProductionState = z.infer<typeof productionStateSchema>;
+
 export const creativeRoomRunSchema = z.object({
 	run_id: idSchema,
 	/** Exact bridge comparison-run id (external correlation). */
@@ -255,7 +295,10 @@ export const projectSchema = z.object({
 	seed: seedSchema,
 	catalog_snapshot: catalogSnapshotSchema.nullable().default(null),
 	creative_room: creativeRoomRunSchema.nullable().default(null),
-	voices: z.array(voiceSchema).default([])
+	voices: z.array(voiceSchema).default([]),
+	production: productionStateSchema.default({
+		status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null
+	})
 });
 
 export const Project = {
@@ -294,7 +337,7 @@ export type Lane = z.infer<typeof laneSchema>;
 
 export const canvasNodeSchema = z.object({
 	node_id: idSchema,
-	type: z.enum(['seed', 'voice']),
+	type: z.enum(['seed', 'voice', 'story_card']),
 	lane: laneSchema,
 	x: z.number(),
 	y: z.number(),
@@ -370,6 +413,13 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	}),
 	z.object({
 		type: z.literal('project.creative_room_reconciled.v1'),
+		event_id: idSchema,
+		project_id: idSchema,
+		timestamp: rfc3339Schema,
+		payload: projectSchema
+	}),
+	z.object({
+		type: z.literal('project.production_updated.v1'),
 		event_id: idSchema,
 		project_id: idSchema,
 		timestamp: rfc3339Schema,
@@ -468,6 +518,13 @@ export const reconcileCreativeRoomCommandSchema = z.object({
 	expected_version: z.number().int().nonnegative()
 });
 
+export const saveProductionCommandSchema = z.object({
+	command: z.literal('save_production'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	production: productionStateSchema
+});
+
 export type CreateProjectCommand = z.infer<typeof createProjectCommandSchema>;
 export type UpdateSeedCommand = z.infer<typeof updateSeedCommandSchema>;
 export type SaveCanvasLayoutCommand = z.infer<typeof saveCanvasLayoutCommandSchema>;
@@ -479,6 +536,7 @@ export type HarvestCatalogCommand = z.infer<typeof harvestCatalogCommandSchema>;
 export type ReshuffleRosterCommand = z.infer<typeof reshuffleRosterCommandSchema>;
 export type StartCreativeRoomCommand = z.infer<typeof startCreativeRoomCommandSchema>;
 export type ReconcileCreativeRoomCommand = z.infer<typeof reconcileCreativeRoomCommandSchema>;
+export type SaveProductionCommand = z.infer<typeof saveProductionCommandSchema>;
 
 // ---------------------------------------------------------------------------
 // Capability state (FR-032 / AR-06): real availability only, never fabricated.

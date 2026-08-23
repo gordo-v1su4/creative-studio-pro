@@ -10,6 +10,7 @@ import {
 	reshuffleRosterCommandSchema,
 	startCreativeRoomCommandSchema,
 	reconcileCreativeRoomCommandSchema,
+	saveProductionCommandSchema,
 	recordInterviewRoundCommandSchema,
 	saveBriefCommandSchema,
 	lockBriefCommandSchema
@@ -110,6 +111,8 @@ export class ProjectCommandGateway {
 				return this.startCreativeRoom(raw);
 			case 'reconcile_creative_room':
 				return this.reconcileCreativeRoom(raw);
+			case 'save_production':
+				return this.saveProduction(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -183,6 +186,22 @@ export class ProjectCommandGateway {
 			if (message.includes('not found')) return notFound(message);
 			if (message.includes('no later stage') || message.includes('cannot be skipped')) return invalid(message);
 			return { ok: false, error: { code: 'STORE_ERROR', message, retryable: true, source: 'project-store' } };
+		}
+	}
+
+	async saveProduction(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = saveProductionCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Invalid production workspace');
+		try {
+			const project = await this.store.updateProject(
+				parsed.data.project_id,
+				parsed.data.expected_version,
+				(current) => ({ ...current, production: { ...parsed.data.production, updated_at: new Date().toISOString() } }),
+				'project.production_updated.v1'
+			);
+			return { ok: true, data: project };
+		} catch (e) {
+			return this.storeError(e);
 		}
 	}
 
