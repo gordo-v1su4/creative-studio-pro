@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fade, fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
-	import { STAGES, stageIndex, stageName, nextStageId, legalActions } from '$lib/domain/gates';
+	import { STAGES, stageIndex, stageName, nextStageId, legalActions, isCurrentBriefLocked } from '$lib/domain/gates';
 	import type { Project } from '$lib/domain/schemas';
 	import BriefPanel from '$lib/ui/BriefPanel.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
@@ -22,6 +22,7 @@
 	let actions = $derived(legalActions(project));
 	let nextStage = $derived(nextStageId(project.stage.id));
 	let wasForced = $derived(project.gate_history.some((h) => h.event === 'force_advance'));
+	let briefLocked = $derived(isCurrentBriefLocked(project));
 
 	let dialogOpen = $state(false);
 	let reason = $state('');
@@ -89,13 +90,15 @@
 	{/each}
 </div>
 
-{#if project.interview.status !== 'PASSED'}
+<BriefPanel {project} {onUpdated} />
+
+{#if briefLocked && project.interview.status !== 'PASSED'}
 	<section class="mt-3 rounded-sm border border-border-default bg-surface-raised-2 p-2.5" aria-labelledby="interview-heading">
 		<div class="flex items-center justify-between gap-2">
 			<h3 id="interview-heading" class="meta-label">S1 Agent interview</h3>
 			<span class="meta-label text-text-dim">{project.interview.status}</span>
 		</div>
-		<p class="mt-1.5 text-text-muted">The agent asks unresolved owner questions and calculates confidence. You answer in the conversation.</p>
+		<p class="mt-1.5 text-text-muted">The agent reads the locked brief, asks only unresolved owner questions, and calculates confidence.</p>
 		<button type="button" class="btn btn-accent mt-2.5 w-full justify-center" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = true; }}>Open Stage Agent</button>
 		{#if project.interview.rounds.length}
 			<div class="mt-2 grid gap-1">
@@ -105,8 +108,6 @@
 			</div>
 		{/if}
 	</section>
-{:else if project.stage.id === 'S2'}
-	<BriefPanel {project} {onUpdated} />
 {/if}
 
 <div

@@ -13,6 +13,7 @@ check → S6 Asset registry → S7 LIRA → S8 Prompt pack → S9 Generate → S
 Assemble`.
 
 - No stage skipping.
+- S0 ends with an owner-edited, versioned, authenticated brief lock. S1 interviews only unresolved decisions against that exact hash; when S1 passes, S2 recognizes the same approved brief as PASSED without a second lock.
 - Advance at overall confidence ≥80 with no dimension <70.
 - Operator alone may force-advance; record stage, reason, prior confidence.
 - S4 layout before submit-ready Seedance prompts.

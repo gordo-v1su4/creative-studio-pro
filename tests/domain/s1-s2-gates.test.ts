@@ -11,6 +11,17 @@ const base = projectSchema.parse({
 	catalog_snapshot: null, creative_room: null, voices: []
 });
 
+const briefVersion = briefVersionSchema.parse({
+	brief_id: 'b1', version: 1, title: 'Title', slug: 'title', logline: 'Logline',
+	format: { type: 'spot', runtime: '15s', aspect: '16:9', platform: 'web' },
+	tone_visual_rules: 'Rules', must_haves: ['One'], must_nots: ['Two'], continuity_model: 'Chain',
+	audio_approach: 'Score', success_criteria: ['Done'], content_hash: 'a'.repeat(64), created_at: '2026-08-22T00:00:00Z'
+});
+const baseWithBrief = projectSchema.parse({ ...base, brief_state: { current_version: 1, versions: [briefVersion] } });
+const lockedBase = applyBriefLock(baseWithBrief, {
+	briefVersion: 1, briefHash: briefVersion.content_hash, operator: 'gordo', now: '2026-08-22T00:30:00Z'
+});
+
 function round(number: number, overall: number, floor = 80) {
 	const questions = [{ question_id: `q-${number}`, prompt: 'Owner decision?' }];
 	return evaluateInterviewRound({ round_id: `r-${number}`, round_number: number, questions,
@@ -26,7 +37,7 @@ describe('S1 confidence gate', () => {
 		expect(round(1, 79, 90).status).toBe('BLOCKED');
 	});
 	test('persists STALLED after three loops below 60', () => {
-		let project = applyInterviewRound(base, round(1, 55, 55));
+		let project = applyInterviewRound(lockedBase, round(1, 55, 55));
 		project = applyInterviewRound(project, round(2, 58, 58));
 		project = applyInterviewRound(project, round(3, 59, 59));
 		expect(project.interview.status).toBe('STALLED');
@@ -34,11 +45,14 @@ describe('S1 confidence gate', () => {
 		expect(project.interview.rounds.at(-1)?.scores.find((score) => score.score < 70)?.notes).toBe('Resolve this blocker');
 	});
 	test('rejects a stalled round without explicit notes for every below-floor dimension', () => {
-		let project = applyInterviewRound(base, round(1, 55, 55));
+		let project = applyInterviewRound(lockedBase, round(1, 55, 55));
 		project = applyInterviewRound(project, round(2, 55, 55));
 		const third = round(3, 55, 55);
 		third.scores[0].notes = '   ';
 		expect(() => applyInterviewRound(project, third)).toThrow('blocker notes');
+	});
+	test('rejects interview evidence before the current brief is locked', () => {
+		expect(() => applyInterviewRound(baseWithBrief, round(1, 85, 80))).toThrow('Lock the current brief');
 	});
 	test('rejects more than five owner questions', () => {
 		const parsed = recordInterviewRoundCommandSchema.safeParse({ command: 'record_interview_round', project_id: 'p', expected_version: 0,
@@ -56,18 +70,14 @@ test('IDs are path-safe and S1/S2 required text rejects whitespace-only values',
 	expect(briefVersionSchema.safeParse({ brief_id: 'b', version: 1, title: ' ', slug: 'ok', logline: 'ok', format: { type: 'ok', runtime: 'ok', aspect: 'ok', platform: 'ok' }, tone_visual_rules: 'ok', must_haves: [' '], must_nots: ['ok'], continuity_model: 'ok', audio_approach: 'ok', success_criteria: ['ok'], content_hash: 'a'.repeat(64), created_at: 'now' }).success).toBeFalse();
 });
 
-describe('S2 lock', () => {
-	test('rejects stale hash and records authenticated identity for current brief', () => {
-		const passed = applyInterviewRound(base, round(1, 85, 80));
-		const project = projectSchema.parse({ ...passed, brief_state: { current_version: 1, versions: [{ brief_id: 'b1', version: 1,
-			title: 'Title', slug: 'title', logline: 'Logline', format: { type: 'spot', runtime: '15s', aspect: '16:9', platform: 'web' },
-			tone_visual_rules: 'Rules', must_haves: ['One'], must_nots: ['Two'], continuity_model: 'Chain', audio_approach: 'Score',
-			success_criteria: ['Done'], content_hash: 'a'.repeat(64), created_at: '2026-08-22T00:00:00Z' }] } });
-		expect(() => applyBriefLock(project, { briefVersion: 1, briefHash: 'b'.repeat(64), operator: 'gordo', now: '2026-08-22T01:00:00Z' })).toThrow('stale');
-		const locked = applyBriefLock(project, { briefVersion: 1, briefHash: 'a'.repeat(64), operator: 'gordo', now: '2026-08-22T01:00:00Z' });
-		expect(locked.stage).toEqual({ id: 'S2', state: 'PASSED', confidence: 85 });
+describe('brief-first lock', () => {
+	test('rejects a stale hash, records the owner, then lets a passing interview satisfy S2', () => {
+		expect(() => applyBriefLock(baseWithBrief, { briefVersion: 1, briefHash: 'b'.repeat(64), operator: 'gordo', now: '2026-08-22T01:00:00Z' })).toThrow('stale');
+		const locked = applyBriefLock(baseWithBrief, { briefVersion: 1, briefHash: 'a'.repeat(64), operator: 'gordo', now: '2026-08-22T01:00:00Z' });
+		expect(locked.stage).toEqual({ id: 'S1', state: 'BLOCKED', confidence: null });
 		expect(locked.approval_history[0]?.operator).toBe('gordo');
 		expect(() => applyBriefLock(locked, { briefVersion: 1, briefHash: 'a'.repeat(64), operator: 'gordo', now: '2026-08-22T01:01:00Z' })).toThrow('already locked');
+		expect(applyInterviewRound(locked, round(1, 85, 80)).stage).toEqual({ id: 'S2', state: 'PASSED', confidence: 85 });
 	});
 });
 
