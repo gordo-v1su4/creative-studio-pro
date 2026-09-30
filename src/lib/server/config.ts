@@ -17,13 +17,17 @@ let cachedStore: ProjectStore | null = null;
 let cachedStageAgent: StageAgent | null | undefined;
 let cachedStoryBuilder: StoryBuilder | null | undefined;
 
-export function getProjectStore(): ProjectStore {
-	if (cachedStore) return cachedStore;
+export function getProjectRoot(): string {
 	const root = env.CSP_PROJECT_ROOT;
 	if (!root || root.length === 0) {
 		throw new Error('CSP_PROJECT_ROOT is not configured; refusing to start with an implicit project root');
 	}
-	const config: ProjectStoreConfig = { root };
+	return root;
+}
+
+export function getProjectStore(): ProjectStore {
+	if (cachedStore) return cachedStore;
+	const config: ProjectStoreConfig = { root: getProjectRoot() };
 	cachedStore = new ProjectStore(config);
 	return cachedStore;
 }
