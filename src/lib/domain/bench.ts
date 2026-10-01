@@ -4,7 +4,8 @@ import type { TakeResult } from './takes';
 /**
  * Benched beats (CONTEXT.md: Benched). A benched beat stays on the board and
  * keeps its place on the spine, but is skipped wherever the spine is played
- * or assembled. Benching never touches takes, picks or existing cuts.
+ * or assembled (see liveSpine in spine.ts). Benching never touches takes,
+ * picks or existing cuts.
  */
 
 export function applyBench(production: ProductionState, cardId: string, benched: boolean): TakeResult {
@@ -22,16 +23,6 @@ export function applyBench(production: ProductionState, cardId: string, benched:
 	};
 }
 
-/** The beats in story order. */
-export function spineBeats(production: ProductionState): StoryCard[] {
-	return production.cards.toSorted((a, b) => a.order - b.order);
-}
-
-/** The beats that play: story order with benched beats skipped. */
-export function liveSpine(production: ProductionState): StoryCard[] {
-	return spineBeats(production).filter((card) => !card.benched);
-}
-
 export function benchedBeats(production: ProductionState): StoryCard[] {
-	return spineBeats(production).filter((card) => card.benched);
+	return production.cards.filter((card) => card.benched).toSorted((a, b) => a.order - b.order);
 }

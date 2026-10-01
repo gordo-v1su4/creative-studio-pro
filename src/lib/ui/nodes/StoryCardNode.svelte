@@ -11,6 +11,8 @@
 	type StoryCardNodeData = {
 		card: StoryCard | null;
 		order: number;
+		/** 0-based place on the spine; null when off the spine. */
+		spineIndex?: number | null;
 		/** Every take on the beat in creation order, rejected ones included. */
 		takes?: Take[];
 		pickId?: string | null;
@@ -24,6 +26,8 @@
 	let story = $derived(data as StoryCardNodeData);
 	let card = $derived(story.card);
 	let benched = $derived(card?.benched === true);
+	// 1-based place on the spine; null when the beat is unhooked from the chain.
+	let number = $derived(story.spineIndex === null || story.spineIndex === undefined ? null : story.spineIndex + 1);
 	let takes = $derived(story.takes ?? []);
 	let pick = $derived(takes.find((take) => take.asset_id === story.pickId) ?? null);
 	let rejectedCount = $derived(takes.filter((take) => take.rejected).length);
@@ -88,11 +92,11 @@
 		benched && 'benched',
 		inSequence ? 'border-[#f2c14e] shadow-[0_0_18px_rgba(242,193,78,.18)]' : selected ? 'border-[#55dfd5] shadow-[0_0_18px_rgba(85,223,213,.14)]' : 'border-[#26383f]'
 	]}
-	aria-label={card ? `Story card ${story.order + 1}, ${card.title}` : `Story card ${story.order + 1}, awaiting draft`}
+	aria-label={card ? `Story card ${number ?? 'off the spine'}, ${card.title}` : `Story card ${story.order + 1}, awaiting draft`}
 >
 	<header class="flex items-center gap-2 border-b border-[#24343b] px-2 py-1.5">
 		{#if inSequence}<span class="bg-[#f2c14e] px-1 font-mono text-[10px] font-bold text-black" title="Sequence position">{inSequence}</span>{/if}
-		<span class="font-mono text-[10px] font-bold text-[#55dfd5]">{String(story.order + 1).padStart(2, '0')}</span>
+		<span class={['font-mono text-[10px] font-bold', number ? 'text-[#55dfd5]' : 'text-[#55747c]']} title={number ? 'Place on the spine' : 'Off the spine: hook a connector in to give it a place'}>{number ? String(number).padStart(2, '0') : '--'}</span>
 		<strong class="min-w-0 grow truncate text-[11px] text-[#bce6e8]">{card?.title ?? `Story beat ${story.order + 1}`}</strong>
 		{#if benched}<span class="benched-mark">Benched</span>{/if}
 		<span class="font-mono text-[9px] uppercase text-[#55747c]">{card ? `${card.duration_ms / 1000}s` : 'placeholder'}</span>

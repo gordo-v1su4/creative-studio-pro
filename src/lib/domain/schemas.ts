@@ -262,6 +262,8 @@ export const productionAssetSchema = z.object({
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
 
+export const spineLinkSchema = z.object({ from: idSchema, to: idSchema });
+
 export const productionStateSchema = z.object({
 	status: z.enum(['empty', 'draft', 'approved']).default('empty'),
 	title: z.string().max(200).default(''),
@@ -270,6 +272,8 @@ export const productionStateSchema = z.object({
 	theme: z.string().max(2000).default(''),
 	cards: z.array(storyCardSchema).max(200).default([]),
 	assets: z.array(productionAssetSchema).max(500).default([]),
+	/** Spine links on the board (from 'seed' or a beat, to a beat). Absent = seed then beats in card order. */
+	links: z.array(spineLinkSchema).max(400).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
 export type ProductionState = z.infer<typeof productionStateSchema>;
@@ -440,7 +444,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.take_rejected.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_restored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_benched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
-	z.object({ type: z.literal('project.beat_unbenched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.beat_unbenched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.spine_rewired.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
@@ -569,6 +574,14 @@ export const benchBeatCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	card_id: idSchema
+});
+
+/** The board's full set of spine links after an unhook/rehook; the gateway derives and stores the new story order. */
+export const rewireSpineCommandSchema = z.object({
+	command: z.literal('rewire_spine'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	links: z.array(spineLinkSchema).max(400)
 });
 
 export type CreateProjectCommand = z.infer<typeof createProjectCommandSchema>;

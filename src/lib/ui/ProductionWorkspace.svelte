@@ -2,7 +2,7 @@
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
-	import { liveSpine } from '$lib/domain/bench';
+	import { liveSpine } from '$lib/domain/spine';
 
 	export type ProductionTab = 'story' | 'cards' | 'media' | 'preview' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {

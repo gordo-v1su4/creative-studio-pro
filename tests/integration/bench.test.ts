@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
-import { benchedBeats, liveSpine } from '../../src/lib/domain/bench';
+import { benchedBeats } from '../../src/lib/domain/bench';
+import { liveSpine } from '../../src/lib/domain/spine';
 import type { Project, StoryCard } from '../../src/lib/domain/schemas';
 
 const roots: string[] = [];

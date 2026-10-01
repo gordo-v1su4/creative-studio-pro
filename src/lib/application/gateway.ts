@@ -17,13 +17,15 @@ import {
 	setPickCommandSchema,
 	rejectTakeCommandSchema,
 	restoreTakeCommandSchema,
-	benchBeatCommandSchema
+	benchBeatCommandSchema,
+	rewireSpineCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
 import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from '$lib/domain/takes';
 import { applyBench } from '$lib/domain/bench';
+import { applyRewire } from '$lib/domain/spine';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 
 type LedgerEventType = LedgerEvent['type'];
@@ -130,6 +132,8 @@ export class ProjectCommandGateway {
 			case 'bench_beat':
 			case 'unbench_beat':
 				return this.benchBeat(raw);
+			case 'rewire_spine':
+				return this.rewireSpine(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -252,11 +256,17 @@ export class ProjectCommandGateway {
 		);
 	}
 
+	async rewireSpine(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = rewireSpineCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateBoard(parsed.data, (production) => applyRewire(production, parsed.data.links), 'project.spine_rewired.v1');
+	}
+
 	/** Board edits to beats and takes: a pure production change, refused as INVALID_COMMAND when it doesn't apply. */
 	private async updateBoard(
 		command: { project_id: string; expected_version: number },
 		apply: (production: Project['production']) => TakeResult,
-		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}`>
+		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1'>
 	): Promise<CommandOutcome<Project>> {
 		let refusal: string | null = null;
 		try {

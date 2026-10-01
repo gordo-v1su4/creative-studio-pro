@@ -12,6 +12,7 @@
 	import SeedNode from '$lib/ui/nodes/SeedNode.svelte';
 	import VoiceNode from '$lib/ui/nodes/VoiceNode.svelte';
 	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
+	import SpineEdge from '$lib/ui/edges/SpineEdge.svelte';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
@@ -22,9 +23,11 @@
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { benchedBeats } from '$lib/domain/bench';
+	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
 	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
+	const edgeTypes = { spine: SpineEdge };
 
 	let projects = $state<ProjectSummary[]>([]);
 	let activeProject = $state<Project | null>(null);
@@ -104,22 +107,26 @@
 		const cardRecords = project.production.cards.length > 0
 			? project.production.cards.map((card) => ({ id: card.card_id, card }))
 			: Array.from({ length: 6 }, (_, order) => ({ id: `story-placeholder-${order}`, card: null }));
+		const chain = spineOf(project.production).chain.map((card) => card.card_id);
 		const storyNodes: Node[] = cardRecords.map(({ id, card }, index) => {
 			const savedNode = saved?.nodes.find((n) => n.node_id === id);
 			const takes = card ? takesFor(project.production, card.card_id, true) : [];
 			const pick = card ? pickFor(project.production, card) : null;
+			const spineIndex = card ? chain.indexOf(card.card_id) : index;
 			return {
 				id,
 				type: 'story_card',
 				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 210 },
 				data: {
-					card, order: index, takes, pickId: pick?.asset_id ?? null,
+					card, order: index, spineIndex: spineIndex < 0 ? null : spineIndex, takes, pickId: pick?.asset_id ?? null,
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
 					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
 					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched)
 				},
-				ariaLabel: card ? `Story card ${index + 1}, ${card.title}${card.benched ? ', benched' : ''}` : `Story card ${index + 1}, awaiting draft`
+				ariaLabel: card
+					? `Story card ${spineIndex < 0 ? 'off the spine' : spineIndex + 1}, ${card.title}${card.benched ? ', benched' : ''}`
+					: `Story card ${index + 1}, awaiting draft`
 			};
 		});
 		return [seedNode, ...voiceNodes, ...storyNodes];
@@ -131,16 +138,64 @@
 			source: project.seed.seed_id,
 			target: voice.voice_id
 		}));
-		const storyIds = project.production.cards.length > 0
-			? project.production.cards.map((card) => card.card_id)
-			: Array.from({ length: 6 }, (_, order) => `story-placeholder-${order}`);
-		const storyEdges = storyIds.map((id, index) => ({
-			id: index === 0 ? `${project.seed.seed_id}->${id}` : `${storyIds[index - 1]}->${id}`,
-			source: index === 0 ? project.seed.seed_id : storyIds[index - 1],
-			target: id,
-			animated: project.production.cards.length === 0
-		}));
-		return [...voiceEdges, ...storyEdges];
+		if (project.production.cards.length === 0) {
+			const placeholders = Array.from({ length: 6 }, (_, order) => `story-placeholder-${order}`);
+			return [...voiceEdges, ...placeholders.map((id, index) => {
+				const source = index === 0 ? project.seed.seed_id : placeholders[index - 1];
+				return { id: `${source}->${id}`, source, target: id, animated: true, deletable: false };
+			})];
+		}
+		// Spine links are the editable connectors: drag an end to rehook, drop it on empty canvas or press Delete to unhook.
+		const storyEdges = linksOf(project.production).map(({ from, to }) => {
+			const source = from === SEED ? project.seed.seed_id : from;
+			return { id: `${source}->${to}`, type: 'spine', source, target: to, reconnectable: true, data: { spine: true } };
+		});
+		return [...voiceEdges.map((edge) => ({ ...edge, deletable: false })), ...storyEdges];
+	}
+
+	// --- Spine rewiring (rewire_spine): the board sends the full new link set; the server derives the order.
+	const linkEnd = (nodeId: string) => (nodeId === activeProject?.seed.seed_id ? SEED : nodeId);
+	const isBeat = (nodeId: string) => activeProject?.production.cards.some((card) => card.card_id === nodeId) ?? false;
+
+	function rewire(links: SpineLink[]) {
+		sendBoardCommand({ command: 'rewire_spine', links });
+	}
+
+	function wouldConnect(from: string, to: string): SpineLink[] | null {
+		if (!activeProject || !isBeat(to) || (from !== SEED && !isBeat(from)) || from === to) return null;
+		const links = connect(linksOf(activeProject.production), from, to);
+		return deriveSpine(activeProject.production.cards, links).ok ? links : null;
+	}
+
+	function validSpineConnection(connection: { source: string; target: string }) {
+		return wouldConnect(linkEnd(connection.source), connection.target) !== null;
+	}
+
+	function onSpineConnect(connection: { source: string; target: string }) {
+		const links = wouldConnect(linkEnd(connection.source), connection.target);
+		if (links) rewire(links);
+	}
+
+	function onSpineReconnect(oldEdge: Edge, connection: { source: string; target: string }) {
+		if (!activeProject) return;
+		const from = linkEnd(connection.source);
+		const links = connect(disconnect(linksOf(activeProject.production), linkEnd(oldEdge.source), oldEdge.target), from, connection.target);
+		if (deriveSpine(activeProject.production.cards, links).ok) rewire(links);
+		else adoptProject(activeProject);
+	}
+
+	function onSpineReconnectEnd(_event: MouseEvent | TouchEvent, edge: Edge, _handle: unknown, state: { isValid: boolean | null }) {
+		// Dropped on empty canvas: the connector comes off.
+		if (!activeProject || state.isValid || !edge.data?.spine) return;
+		rewire(disconnect(linksOf(activeProject.production), linkEnd(edge.source), edge.target));
+	}
+
+	async function beforeBoardDelete({ edges: doomed }: { nodes: Node[]; edges: Edge[] }) {
+		// Only spine connectors can be deleted from the board; beats, seed and voices stay.
+		const spine = doomed.filter((edge) => edge.data?.spine);
+		if (spine.length === 0 || !activeProject) return false;
+		rewire(spine.reduce((links, edge) => disconnect(links, linkEnd(edge.source), edge.target), linksOf(activeProject.production)));
+		return { nodes: [], edges: spine };
 	}
 
 	function adoptProject(project: Project, nextLayout: CanvasLayout | null = layout) {
@@ -570,10 +625,16 @@
 						bind:edges
 						bind:viewport
 						{nodeTypes}
+						{edgeTypes}
 						minZoom={0.25}
 						maxZoom={2}
 						fitView={false}
-						nodesConnectable={false}
+						nodesConnectable={(activeProject?.production.cards.length ?? 0) > 0}
+						isValidConnection={validSpineConnection}
+						onconnect={onSpineConnect}
+						onreconnect={onSpineReconnect}
+						onreconnectend={onSpineReconnectEnd}
+						onbeforedelete={beforeBoardDelete}
 						selectionKey={null}
 						onnodeclick={({ node }) => (selectedNodeId = node.id)}
 						onnodedragstop={scheduleLayoutSave}
