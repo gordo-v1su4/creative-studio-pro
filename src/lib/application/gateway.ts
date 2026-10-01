@@ -11,11 +11,14 @@ import {
 	startCreativeRoomCommandSchema,
 	reconcileCreativeRoomCommandSchema,
 	saveProductionCommandSchema,
+	setProjectModelCommandSchema,
+	lockProjectModelCommandSchema,
 	recordInterviewRoundCommandSchema,
 	saveBriefCommandSchema,
 	lockBriefCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
+import { applyProjectModelChoice, applyProjectModelLock } from '$lib/domain/model-provider';
 import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import type { Project, ProjectSummary, CanvasLayout, Voice } from '$lib/domain/schemas';
@@ -113,6 +116,10 @@ export class ProjectCommandGateway {
 				return this.reconcileCreativeRoom(raw);
 			case 'save_production':
 				return this.saveProduction(raw);
+			case 'set_project_model':
+				return this.setProjectModel(raw);
+			case 'lock_project_model':
+				return this.lockProjectModel(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -526,6 +533,64 @@ export class ProjectCommandGateway {
 			await this.ensureVoiceNodes(project);
 			return { ok: true, data: project };
 		} catch (e) {
+			return this.storeError(e);
+		}
+	}
+
+	// --- Agent model provider (V1S-117): override, first-run lock, explicit switch.
+
+	async setProjectModel(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = setProjectModelCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		let eventType: 'project.agent_model_set.v1' | 'project.agent_model_switched.v1' = 'project.agent_model_set.v1';
+		try {
+			const preview = await this.store.readProject(parsed.data.project_id);
+			if (preview?.agent_model.locked_at) eventType = 'project.agent_model_switched.v1';
+			const project = await this.store.updateProject(
+				parsed.data.project_id,
+				parsed.data.expected_version,
+				(current) => {
+					const result = applyProjectModelChoice(current.agent_model, {
+						choice: parsed.data.choice,
+						operator: parsed.data.operator,
+						reason: parsed.data.reason,
+						confirm_switch: parsed.data.confirm_switch,
+						now: new Date().toISOString()
+					});
+					if ((result.event === 'switched') !== (eventType === 'project.agent_model_switched.v1')) {
+						throw new Error('Version conflict: project model lock changed during the switch');
+					}
+					return { ...current, agent_model: result.state };
+				},
+				eventType
+			);
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'model change failed';
+			if (message.includes('already uses') || message.includes('is locked')) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
+	async lockProjectModel(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = lockProjectModelCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const now = new Date().toISOString();
+		try {
+			const current = await this.store.readProject(parsed.data.project_id);
+			if (!current) return notFound(`Project ${parsed.data.project_id} not found`);
+			const preview = applyProjectModelLock(current.agent_model, { choice: parsed.data.choice, operator: parsed.data.operator, now });
+			if (!preview.changed) return { ok: true, data: current };
+			const project = await this.store.updateProject(
+				parsed.data.project_id,
+				parsed.data.expected_version,
+				(latest) => ({ ...latest, agent_model: applyProjectModelLock(latest.agent_model, { choice: parsed.data.choice, operator: parsed.data.operator, now }).state }),
+				'project.agent_model_locked.v1'
+			);
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'model lock failed';
+			if (message.includes('is locked') || message.includes('override is')) return invalid(message);
 			return this.storeError(e);
 		}
 	}

@@ -41,6 +41,12 @@ async function probe(
 	}
 }
 
+/** Model provider gate (V1S-117): the Raycast bridge is offered only when this passes. */
+export async function checkRaycastBridgeConnected(url: string | undefined): Promise<boolean> {
+	if (!url) return false;
+	return (await probe(url, '/health')).state === 'available';
+}
+
 export async function checkCapabilities(
 	endpoints: CapabilityEndpoints
 ): Promise<CapabilityReport[]> {

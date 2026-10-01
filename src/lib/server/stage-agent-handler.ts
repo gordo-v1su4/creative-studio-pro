@@ -6,6 +6,22 @@ import type { StageAgent } from '$lib/server/stage-agent';
 import { fallbackQuestion } from '$lib/server/stage-agent';
 import { commandStatus } from '$lib/server/http';
 import { isCurrentBriefLocked } from '$lib/domain/gates';
+import { describeModelChoice, matchesPinnedChoice, modelChoiceSchema } from '$lib/domain/model-provider';
+import type { ModelChoice } from '$lib/domain/model-provider';
+import { AgentRuleBreakError } from '$lib/server/model-provider';
+
+export type StageAgentResolution =
+	| { ok: true; agent: StageAgent }
+	| { ok: false; code: 'NOT_CONFIGURED' | 'MODEL_UNAVAILABLE'; message: string };
+
+/** A fixed agent (tests), none, or a per-project resolver (app: lock → default → env). */
+export type StageAgentSource = StageAgent | null | ((project: Project) => Promise<StageAgentResolution>);
+
+function agentChoice(agent: StageAgent): ModelChoice | null {
+	if (agent.choice) return agent.choice;
+	const parsed = modelChoiceSchema.safeParse({ provider: agent.provider, model: agent.model, base_url: null });
+	return parsed.success ? parsed.data : null;
+}
 
 export const stageAgentRequestSchema = z.discriminatedUnion('mode', [
 	z.object({ mode: z.literal('start') }),
@@ -19,8 +35,10 @@ export const stageAgentRequestSchema = z.discriminatedUnion('mode', [
 
 type Dependencies = {
 	store: Pick<ProjectStore, 'readProject'>;
-	gateway: Pick<ProjectCommandGateway, 'recordInterviewRound'>;
-	agent: StageAgent | null;
+	gateway: Pick<ProjectCommandGateway, 'recordInterviewRound' | 'lockProjectModel'>;
+	agent: StageAgentSource;
+	/** Attributed on the first-run model lock. */
+	operator?: string;
 };
 
 export type StageAgentHttpResult = { status: number; body: Record<string, unknown> };
@@ -59,7 +77,21 @@ export async function handleStageAgent(projectId: string, raw: unknown, dependen
 	if (!isCurrentBriefLocked(project)) {
 		return error(409, 'BRIEF_NOT_LOCKED', 'Save and lock the current brief before starting the Stage Agent interview.', false, 'stage-agent');
 	}
-	if (!dependencies.agent) return error(503, 'NOT_CONFIGURED', 'KIMI_API_KEY is not configured for the Stage Agent', true, 'kimi');
+	let agent: StageAgent;
+	if (typeof dependencies.agent === 'function') {
+		const resolved = await dependencies.agent(project);
+		if (!resolved.ok) return error(resolved.code === 'NOT_CONFIGURED' ? 503 : 409, resolved.code, resolved.message, true, 'model-provider');
+		agent = resolved.agent;
+	} else if (dependencies.agent) {
+		agent = dependencies.agent;
+	} else {
+		return error(503, 'NOT_CONFIGURED', 'No Agent model is configured. Pick one in Settings → Agent model (or set KIMI_API_KEY).', true, 'model-provider');
+	}
+	const choice = agentChoice(agent);
+	const pinned = project.agent_model.override;
+	if (project.agent_model.locked_at && pinned && (!choice || !matchesPinnedChoice(pinned, choice))) {
+		return error(409, 'MODEL_LOCKED', `This project is locked to ${describeModelChoice(pinned)}; switch the project model explicitly before using ${agent.provider} · ${agent.model}.`, false, 'model-provider');
+	}
 
 	if (parsed.data.mode === 'answer' && project.version !== parsed.data.expected_version) {
 		return error(409, 'VERSION_CONFLICT', `Version conflict: expected ${parsed.data.expected_version}, current ${project.version}`, true, 'project-store');
@@ -67,15 +99,25 @@ export async function handleStageAgent(projectId: string, raw: unknown, dependen
 
 	try {
 		if (parsed.data.mode === 'start') {
-			const turn = await dependencies.agent.start(project);
-			return { status: 200, body: { ok: true, data: { project, ...turn, provider: dependencies.agent.provider, model: dependencies.agent.model } } };
+			const turn = await agent.start(project);
+			return { status: 200, body: { ok: true, data: { project, ...turn, provider: agent.provider, model: agent.model } } };
 		}
 
-		const evaluation = await dependencies.agent.evaluate(project, parsed.data.question, parsed.data.answer);
+		const evaluation = await agent.evaluate(project, parsed.data.question, parsed.data.answer);
+		// First real model run pins the model into the project (logged).
+		let expectedVersion = parsed.data.expected_version;
+		if (choice && !project.agent_model.locked_at) {
+			const locked = await dependencies.gateway.lockProjectModel({
+				command: 'lock_project_model', project_id: projectId, expected_version: expectedVersion,
+				choice, operator: dependencies.operator ?? 'operator'
+			});
+			if (!locked.ok) return { status: commandStatus(locked.error), body: locked as unknown as Record<string, unknown> };
+			expectedVersion = locked.data.version;
+		}
 		const outcome = await dependencies.gateway.recordInterviewRound({
 			command: 'record_interview_round',
 			project_id: projectId,
-			expected_version: parsed.data.expected_version,
+			expected_version: expectedVersion,
 			questions: [{ prompt: parsed.data.question, answer: parsed.data.answer }],
 			scores: evaluation.scores,
 			overall: evaluation.overall,
@@ -103,13 +145,14 @@ export async function handleStageAgent(projectId: string, raw: unknown, dependen
 					project: outcome.data,
 					message: `${evaluation.message}${suffix}`,
 					next_question: nextQuestion,
-					provider: dependencies.agent.provider,
-					model: dependencies.agent.model
+					provider: agent.provider,
+					model: agent.model
 				}
 			}
 		};
 	} catch (cause) {
-		const message = cause instanceof Error ? cause.message : 'Kimi Stage Agent request failed';
-		return error(502, 'STAGE_AGENT_ERROR', message, true, 'kimi');
+		if (cause instanceof AgentRuleBreakError) return error(422, 'AGENT_RULE_BREAK', cause.message, true, 'model-provider');
+		const message = cause instanceof Error ? cause.message : 'Agent model request failed';
+		return error(502, 'STAGE_AGENT_ERROR', message, true, agent.provider);
 	}
 }

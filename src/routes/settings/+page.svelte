@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import type { CapabilityState } from '$lib/domain/schemas';
+	import ModelProviderSettings from '$lib/ui/settings/ModelProviderSettings.svelte';
 
 	const stateColor: Record<CapabilityState, string> = {
 		available: 'var(--color-gate-approved)',
@@ -68,6 +69,8 @@
 			{/each}
 		</div>
 
+		<ModelProviderSettings />
+
 		<div class="meta-label mt-8">Endpoint configuration</div>
 		<p class="mt-1 text-text-muted">
 			Set these in the server environment, then recheck:
@@ -77,6 +80,8 @@
 			<li><b class="text-text-primary">CSP_RAYCAST_BRIDGE_TOKEN</b> — server-side bearer token; never sent to the browser (legacy CSP_M3_* names remain supported)</li>
 			<li><b class="text-text-primary">CSP_SPLITTER_URL</b> — hosted Splitter service</li>
 			<li><b class="text-text-primary">CSP_DESKTOP_URL</b> — desktop generation stack health endpoint</li>
+			<li><b class="text-text-primary">KIMI_API_KEY / KIMI_API_BASE / KIMI_MODEL</b> — fallback Agent model when no app default is picked</li>
+			<li><b class="text-text-primary">CSP_APP_SETTINGS_PATH</b> — optional; where provider keys are stored (default: beside CSP_PROJECT_ROOT, never inside it)</li>
 		</ul>
 	</div>
 </div>
