@@ -22,7 +22,8 @@ import {
 	benchBeatCommandSchema,
 	rewireSpineCommandSchema,
 	addTakeCommandSchema,
-	addBeatCommandSchema
+	addBeatCommandSchema,
+	linkDraftJobsCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
 import { applyProjectModelChoice, applyProjectModelLock } from '$lib/domain/model-provider';
@@ -33,6 +34,7 @@ import { applyBench } from '$lib/domain/bench';
 import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
+import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset } from '$lib/domain/schemas';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema } from '$lib/domain/schemas';
@@ -282,6 +284,25 @@ export class ProjectCommandGateway {
 	}
 
 	/** Animate (server-internal, after the send gate passed and the provider accepted): note the pending generation. */
+	async linkDraftJobs(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = linkDraftJobsCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateBoard(parsed.data, (production) => applyLinkDraftJobs(production, parsed.data.links), 'project.take_drafts_linked.v1');
+	}
+
+	/** Finalize (server-internal, after the price was confirmed and the provider accepted each job): note them as pending. */
+	async recordFinalizes(projectId: string, expectedVersion: number, generations: Generation[]): Promise<CommandOutcome<Project>> {
+		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => {
+			let next = production;
+			for (const generation of generations) {
+				const result = applyRecordGeneration(next, generation);
+				if (!result.ok) return result;
+				next = result.production;
+			}
+			return { ok: true, production: next };
+		}, 'project.finalize_sent.v1');
+	}
+
 	async recordGeneration(projectId: string, expectedVersion: number, generation: Generation): Promise<CommandOutcome<Project>> {
 		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => applyRecordGeneration(production, generation), 'project.generation_sent.v1');
 	}
@@ -323,7 +344,7 @@ export class ProjectCommandGateway {
 	private async updateBoard(
 		command: { project_id: string; expected_version: number },
 		apply: (production: Project['production']) => TakeResult,
-		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}`>
+		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}` | 'project.finalize_sent.v1'>
 	): Promise<CommandOutcome<Project>> {
 		let refusal: string | null = null;
 		try {

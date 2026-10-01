@@ -2,6 +2,7 @@ import type { Generation, ProductionAsset, ProductionState } from './schemas';
 import { lintPrompt } from './prompt-lint';
 import { isUnder2K, MIN_LONG_EDGE } from './media';
 import type { TakeResult } from './takes';
+import { finalizedTake } from './finalize';
 
 /**
  * Animate (CONTEXT.md: Animate): a beat's still sent to Seedance as the start
@@ -119,6 +120,20 @@ export function applySettleGeneration(
 	};
 	const generations = (production.generations ?? []).map((entry) => (entry.request_id === requestId ? settled : entry));
 	if (!outcome.take) return { ok: true, production: { ...production, generations } };
+	if (generation.finalizes) {
+		// A finalize swaps the draft take's media for the 1080p render; the take, its trims and ramps stay.
+		const target = production.assets.find((asset) => asset.asset_id === generation.finalizes);
+		if (!target) return { ok: false, message: `Finalized take ${generation.finalizes} not found` };
+		const finalized = finalizedTake(target, outcome.take, generation.request_id, now);
+		return {
+			ok: true,
+			production: {
+				...production,
+				generations: generations.map((entry) => (entry.request_id === requestId ? { ...entry, take_id: target.asset_id } : entry)),
+				assets: production.assets.map((asset) => (asset.asset_id === target.asset_id ? finalized : asset))
+			}
+		};
+	}
 	return {
 		ok: true,
 		production: {

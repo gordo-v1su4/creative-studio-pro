@@ -5,6 +5,7 @@ import type { ProjectStore } from '$lib/adapters/project-store';
 import { animateGate, pendingGenerations, seedanceRequest, type AnimateSettings, type SendMode } from '$lib/domain/animate';
 import { uuid7ish } from '$lib/domain/ids';
 import { pickFor, type Take } from '$lib/domain/takes';
+import { draftWindow, finalizeRequest } from '$lib/domain/finalize';
 import type { Project, StoryCard } from '$lib/domain/schemas';
 import { SEEDANCE_JOB_TYPE, type VideoGenerator } from './higgsfield';
 
@@ -178,4 +179,69 @@ export async function pollGenerations(deps: AnimateDeps, projectId: string): Pro
 		if (settled.ok) project = settled.data;
 	}
 	return { ok: true, project };
+}
+
+// --- Finalize (V1S-124): price a set of draft takes, then send them after an explicit confirm of that price.
+
+export interface FinalizeQuote {
+	items: Array<{ take_id: string; card_id: string; name: string; credits: number; closes_at: string }>;
+	total_credits: number;
+	balance: { credits: number; plan: string | null } | null;
+}
+
+export async function quoteFinalize(deps: AnimateDeps, project: Project, takeIds: string[], now = Date.now()): Promise<{ ok: true; quote: FinalizeQuote } | Failure> {
+	if (!deps.generator) return failure(503, 'NOT_CONFIGURED', 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)');
+	const items: FinalizeQuote['items'] = [];
+	for (const takeId of [...new Set(takeIds)]) {
+		const take = project.production.assets.find((asset) => asset.asset_id === takeId);
+		if (!take) return failure(404, 'NOT_FOUND', `Take ${takeId} not found`);
+		const window = draftWindow(take, now);
+		if (window.state !== 'open' && window.state !== 'closing') return failure(400, 'INVALID_COMMAND', `${take.name} is not a draft that can still be finalized`);
+		const request = finalizeRequest(take)!;
+		try {
+			const { credits } = await deps.generator.estimate(request);
+			items.push({ take_id: take.asset_id, card_id: take.card_id, name: take.name, credits, closes_at: window.closes_at });
+		} catch (cause) {
+			return failure(502, 'PROVIDER_ERROR', cause instanceof Error ? cause.message : 'Price check failed');
+		}
+	}
+	return { ok: true, quote: { items, total_credits: items.reduce((sum, item) => sum + item.credits, 0), balance: await deps.generator.balance() } };
+}
+
+/** Re-quote, refuse on a higher price or a short balance, then submit each finalize and note them as pending. */
+export async function sendFinalize(
+	deps: AnimateDeps,
+	input: { project_id: string; expected_version: number; take_ids: string[]; confirmed_credits: number }
+): Promise<{ ok: true; project: Project; quote: FinalizeQuote } | Failure> {
+	const project = await deps.store.readProject(input.project_id);
+	if (!project) return failure(404, 'NOT_FOUND', 'Project not found');
+	if (project.version !== input.expected_version) return failure(409, 'VERSION_CONFLICT', `Version conflict: expected ${input.expected_version}, current ${project.version}`);
+	const quoted = await quoteFinalize(deps, project, input.take_ids);
+	if (!quoted.ok) return quoted;
+	const { quote } = quoted;
+	const reasons: string[] = [];
+	if (quote.total_credits > input.confirmed_credits + 1e-6) reasons.push(`The price is now ${quote.total_credits} credits, above the ${input.confirmed_credits} you confirmed`);
+	if (quote.balance && quote.balance.credits < quote.total_credits) reasons.push(`Not enough credits: ${quote.total_credits} needed, ${quote.balance.credits} left`);
+	if (reasons.length) return failure(422, 'GATE_BLOCKED', 'Blocked before any spend', reasons);
+
+	const generations = [];
+	for (const item of quote.items) {
+		const take = project.production.assets.find((asset) => asset.asset_id === item.take_id)!;
+		const request = finalizeRequest(take)!;
+		try {
+			const { job_id } = await deps.generator!.submit(request);
+			generations.push({
+				request_id: job_id, card_id: take.card_id, provider: 'higgsfield' as const, model: SEEDANCE_JOB_TYPE, prompt: request.prompt,
+				duration_s: request.duration, resolution: '1080p', draft: false, estimate_credits: item.credits,
+				status: 'queued' as const, submitted_at: new Date().toISOString(), finalizes: take.asset_id
+			});
+		} catch (cause) {
+			// Note what was already sent before reporting, so nothing in flight is lost.
+			if (generations.length) await deps.gateway.recordFinalizes(input.project_id, project.version, generations);
+			return failure(502, 'PROVIDER_ERROR', `${cause instanceof Error ? cause.message : 'Send failed'} (${generations.length} of ${quote.items.length} sent)`);
+		}
+	}
+	const recorded = await deps.gateway.recordFinalizes(input.project_id, project.version, generations);
+	if (!recorded.ok) return failure(409, recorded.error.code, `Sent, but noting them failed: ${recorded.error.message}`);
+	return { ok: true, project: recorded.data, quote };
 }

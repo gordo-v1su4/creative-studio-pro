@@ -265,7 +265,17 @@ export const productionAssetSchema = z.object({
 	duration_s: z.number().positive().optional(),
 	/** Generated takes: the provider's job id and what was asked for (Finalize and source info read these). */
 	job_id: z.string().min(1).max(200).optional(),
-	generation: z.object({ provider: z.string(), model: z.string(), resolution: z.string(), prompt: z.string().max(10_000), duration_s: z.number().positive().optional(), draft: z.boolean().optional() }).optional(),
+	generation: z.object({
+		provider: z.string(), model: z.string(), resolution: z.string(), prompt: z.string().max(10_000),
+		duration_s: z.number().positive().optional(), generate_audio: z.boolean().optional(),
+		/** A Seedance draft: finalizable to 1080p from the same render until seven days after draft_created_at. */
+		draft: z.boolean().optional(),
+		draft_created_at: rfc3339Schema.optional(),
+		/** Set once finalized: the media is the 1080p render of the same job; the draft file is kept. */
+		finalized_at: rfc3339Schema.optional(),
+		finalize_job_id: z.string().min(1).max(200).optional(),
+		draft_url: z.string().max(2000).optional()
+	}).optional(),
 	created_at: rfc3339Schema
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
@@ -312,6 +322,8 @@ export const generationSchema = z.object({
 	submitted_at: rfc3339Schema,
 	settled_at: rfc3339Schema.optional(),
 	take_id: idSchema.optional(),
+	/** A finalize: on completion its 1080p video replaces this take's media instead of adding a take. */
+	finalizes: idSchema.optional(),
 	error: z.string().max(2000).optional()
 });
 export type Generation = z.infer<typeof generationSchema>;
@@ -525,7 +537,9 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Animate (V1S-120): a generation sent, then settled (its video lands as a take, or it failed).
 	z.object({ type: z.literal('project.generation_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
-	z.object({ type: z.literal('project.generation_settled.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.generation_settled.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_drafts_linked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.finalize_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
@@ -678,6 +692,21 @@ export const addBeatCommandSchema = z.object({
 	card_id: idSchema,
 	title: nonBlank(200),
 	take: newTakeSchema
+});
+
+/** Link existing takes to the Seedance draft jobs they came from (found by matching files), so they can be finalized. */
+export const linkDraftJobsCommandSchema = z.object({
+	command: z.literal('link_draft_jobs'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	links: z.array(z.object({
+		take_id: idSchema,
+		job_id: z.string().min(1).max(200),
+		draft_created_at: rfc3339Schema,
+		prompt: z.string().min(1).max(10_000),
+		duration_s: z.number().positive(),
+		generate_audio: z.boolean()
+	})).min(1).max(500)
 });
 
 /** The board's full set of spine links after an unhook/rehook; the gateway derives and stores the new story order. */
