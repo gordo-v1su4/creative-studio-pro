@@ -128,7 +128,8 @@
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
 					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
-					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched)
+					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched),
+					onHold: (options: { length_s: number; push_in: boolean; fade: boolean }) => card && makeHold(card.card_id, card.title, options)
 				},
 				ariaLabel: card
 					? `Story card ${spineIndex < 0 ? 'off the spine' : spineIndex + 1}, ${card.title}${card.benched ? ', benched' : ''}`
@@ -258,6 +259,20 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ ...body, expected_version: project.version })
 		}));
+	}
+
+	/** Render a Hold of the beat's still pick (local ffmpeg); it lands as the beat's new take. */
+	function makeHold(cardId: string, title: string, options: { length_s: number; push_in: boolean; fade: boolean }) {
+		for (const [pendingCard, pending] of pendingPicks) flushPick(pendingCard, pending);
+		notify(`Rendering a ${options.length_s}s Hold of ${title}…`);
+		enqueueBoard(
+			(project) => fetch(`/api/projects/${project.project_id}/hold`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ expected_version: project.version, card_id: cardId, ...options })
+			}),
+			() => notify(`Hold ready on ${title}; the still stays a take.`)
+		);
 	}
 
 	// --- Drag and drop: a file on a beat becomes its new take (and pick); on empty canvas, a new benched beat there.

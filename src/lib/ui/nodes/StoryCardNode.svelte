@@ -21,6 +21,7 @@
 		onReject?: (takeId: string) => void;
 		onRestore?: (takeId: string) => void;
 		onBench?: (benched: boolean) => void;
+		onHold?: (options: { length_s: number; push_in: boolean; fade: boolean }) => void;
 	};
 
 	let { data, selected }: NodeProps = $props();
@@ -74,6 +75,24 @@
 		if (!shown?.rejected) return;
 		story.onRestore?.(shown.asset_id);
 		viewingId = null;
+	}
+
+	// Make Hold: a still pick held as a video take (rendered locally, no credits).
+	let holdOpen = $state(false);
+	let holdLength = $state(3);
+	let holdPushIn = $state(true);
+	let holdFade = $state(false);
+	let canHold = $derived(!!shown && shown === pick && pick?.kind === 'image');
+
+	function openHold() {
+		holdLength = Math.min(30, Math.max(0.5, (card?.duration_ms ?? 3000) / 1000));
+		holdOpen = true;
+		face = 'take';
+	}
+
+	function makeHold() {
+		story.onHold?.({ length_s: holdLength, push_in: holdPushIn, fade: holdFade });
+		holdOpen = false;
 	}
 
 	// Shift-click adds the beat's pick to the review selection (click order = play order).
@@ -155,6 +174,17 @@
 						</div>
 					{/key}
 					{#if shown.rejected}<span class="rejected-mark">Rejected</span>{:else if isUnder2K(shown)}<span class="rejected-mark" title={`${shown.width}×${shown.height}: under 2K on the long edge`}>Under 2K</span>{/if}
+					{#if holdOpen && canHold}
+						<form class="hold-form nodrag" onsubmit={(event) => { event.preventDefault(); makeHold(); }} aria-label={`Make a Hold of ${card.title}`}>
+							<label>Length <input type="number" min="0.5" max="30" step="0.5" bind:value={holdLength} />s</label>
+							<label><input type="checkbox" bind:checked={holdPushIn} /> Push-in</label>
+							<label><input type="checkbox" bind:checked={holdFade} /> Fade</label>
+							<span class="flex gap-1">
+								<button type="submit" class="take-btn active">Make Hold</button>
+								<button type="button" class="take-btn" onclick={() => (holdOpen = false)}>Cancel</button>
+							</span>
+						</form>
+					{/if}
 				{:else}
 					<div class="flex h-full flex-col justify-end bg-[#0a0d12] p-3">
 						<span class="font-mono text-[9px] text-[#6dbff3]">VIDEO PROMPT</span>
@@ -173,6 +203,9 @@
 				<button type="button" class="take-btn" onclick={() => step(1)} aria-label={`Next take for ${card.title}`}>›</button>
 			{/if}
 			<span class="grow"></span>
+			{#if canHold}
+				<button type="button" class="take-btn" onclick={openHold} aria-label={`Make a Hold of ${card.title}'s still`} title="Make a video take from this still (local, no credits)">Hold</button>
+			{/if}
 			{#if rejectedCount > 0}
 				<button type="button" class="take-btn" class:active={showRejected} onclick={() => (showRejected = !showRejected)} aria-pressed={showRejected}>{rejectedCount} rejected</button>
 			{/if}
@@ -192,6 +225,9 @@
 	.take-btn { border: 0; background: transparent; padding: 2px 6px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
 	.take-btn:hover, .take-btn.active { background: #14232a; color: #84cbd0; }
 	.rejected-mark { position: absolute; top: 6px; left: 6px; border: 1px solid #6b3a3a; background: #1a0f10; padding: 1px 5px; color: #d98a8a; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.hold-form { position: absolute; inset: auto 6px 6px 6px; display: grid; gap: 4px; border: 1px solid #31545a; background: #0b0f13f2; padding: 6px; color: #84cbd0; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.hold-form label { display: flex; align-items: center; gap: 5px; }
+	.hold-form input[type='number'] { width: 52px; border: 1px solid #26383f; background: #0d1116; padding: 1px 4px; color: #bce6e8; font: inherit; }
 	.dropping { outline: 1px dashed #55dfd5; outline-offset: 3px; }
 	.benched > :not(header) { opacity: .4; }
 	.benched header { opacity: .7; }
