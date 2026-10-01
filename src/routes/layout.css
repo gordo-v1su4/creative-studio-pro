@@ -15,7 +15,7 @@
 
 /*
  * Creative Studio Pro visual tokens — canonical source:
- * _bmad-output/.../ux-designs/.../DESIGN.md. Dark editorial control room;
+ * docs/planning/ux-designs/.../DESIGN.md. Dark editorial control room;
  * verified Directors Cut neutrals; dynamic voice palette for model lanes.
  */
 @theme {
@@ -61,6 +61,7 @@ html,
 body {
 	margin: 0;
 	min-height: 100%;
+	color-scheme: dark;
 	background: var(--color-surface-base);
 	color: var(--color-text-primary);
 	font-family: var(--font-sans);
@@ -123,6 +124,35 @@ body {
 	border-color: transparent;
 	background: color-mix(in srgb, var(--color-voice-1) 17%, var(--color-surface-raised-2));
 	color: color-mix(in srgb, var(--color-voice-1) 75%, white);
+}
+
+/* Keep native overflow/edit chrome inside the dark control-room palette. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: #237b85 #0b1116;
+}
+
+*::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+	background: #0b1116;
+}
+
+*::-webkit-scrollbar-thumb {
+	border: 1px solid #0b1116;
+	border-radius: 6px;
+	background: linear-gradient(180deg, #238b91, #275f83);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+	background: linear-gradient(180deg, #35aab0, #347ca4);
+}
+
+textarea::-webkit-resizer {
+	background: linear-gradient(135deg, transparent 45%, #237b85 46% 57%, transparent 58% 67%, #347ca4 68% 79%, #0b1116 80%);
 }
 .btn-accent:hover:not(:disabled) {
 	border-color: transparent;

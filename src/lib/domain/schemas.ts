@@ -247,6 +247,11 @@ export const productionAssetSchema = z.object({
 	name: nonBlank(500),
 	mime_type: nonBlank(200),
 	url: nonBlank(2000),
+	/** Review trim for video takes: the usable span in seconds. Absent = whole clip. */
+	in_s: z.number().nonnegative().optional(),
+	out_s: z.number().positive().optional(),
+	/** Speed ramp over the kept span (x 0..1), speed-up only. Absent = 1x. */
+	speed: z.array(z.object({ x: z.number().min(0).max(1), rate: z.number().min(1).max(4) })).max(64).optional(),
 	created_at: rfc3339Schema
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
@@ -257,7 +262,7 @@ export const productionStateSchema = z.object({
 	logline: z.string().max(2000).default(''),
 	premise: z.string().max(8000).default(''),
 	theme: z.string().max(2000).default(''),
-	cards: z.array(storyCardSchema).max(40).default([]),
+	cards: z.array(storyCardSchema).max(200).default([]),
 	assets: z.array(productionAssetSchema).max(500).default([]),
 	updated_at: rfc3339Schema.nullable().default(null)
 });

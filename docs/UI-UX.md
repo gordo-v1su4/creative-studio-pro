@@ -1,10 +1,9 @@
 # Creative Studio Pro — UX pointer
 
-The founding UI/UX specification has been reconciled into the canonical BMAD
-spines:
+The founding UI/UX specification lives in the planning workspace:
 
-- `../_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
-- `../_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/EXPERIENCE.md`
+- `planning/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
+- `planning/ux-designs/ux-creative-studio-pro-2026-08-22/EXPERIENCE.md`
 
 Those files govern implementation and link the five verified HTML composition
 references under their adjacent `mockups/` directory. This founding document

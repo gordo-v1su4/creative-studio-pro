@@ -1,7 +1,10 @@
 <script lang="ts">
 	import type { Project, BriefVersion } from '$lib/domain/schemas';
+	import { isCurrentBriefLocked } from '$lib/domain/gates';
 	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
 	let current = $derived(project.brief_state.versions.at(-1));
+	let locked = $derived(isCurrentBriefLocked(project));
+	let approval = $derived(current ? project.approval_history.findLast((item) => item.brief_id === current?.brief_id && item.brief_hash === current?.content_hash) : undefined);
 	let title = $state(''), slug = $state('');
 	let logline = $state(''), type = $state('');
 	let runtime = $state(''), aspect = $state('');
@@ -11,11 +14,12 @@
 	let success = $state(''), token = $state('');
 	let busy = $state(false), error = $state<string | null>(null);
 	const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
+	const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 	let complete = $derived([title, slug, logline, type, runtime, aspect, platform, tone, continuity, audio].every((value) => value.trim()) && lines(mustHaves).length > 0 && lines(mustNots).length > 0 && lines(success).length > 0);
 	let dirty = $derived(Boolean(current) && JSON.stringify({ title, slug, logline, type, runtime, aspect, platform, tone, mustHaves: lines(mustHaves), mustNots: lines(mustNots), continuity, audio, success: lines(success) }) !== JSON.stringify(current && { title: current.title, slug: current.slug, logline: current.logline, type: current.format.type, runtime: current.format.runtime, aspect: current.format.aspect, platform: current.format.platform, tone: current.tone_visual_rules, mustHaves: current.must_haves, mustNots: current.must_nots, continuity: current.continuity_model, audio: current.audio_approach, success: current.success_criteria }));
 
 	function initialize(brief: BriefVersion | undefined) {
-		title = brief?.title ?? project.title; slug = brief?.slug ?? ''; logline = brief?.logline ?? '';
+		title = brief?.title ?? project.title; slug = brief?.slug ?? slugify(project.title); logline = brief?.logline ?? project.production.logline;
 		type = brief?.format.type ?? ''; runtime = brief?.format.runtime ?? ''; aspect = brief?.format.aspect ?? '';
 		platform = brief?.format.platform ?? ''; tone = brief?.tone_visual_rules ?? '';
 		mustHaves = brief?.must_haves.join('\n') ?? ''; mustNots = brief?.must_nots.join('\n') ?? '';
@@ -42,9 +46,25 @@
 </script>
 
 <section class="mt-3" aria-labelledby="brief-heading">
-	<h3 id="brief-heading" class="meta-label">S2 brief {current ? `v${current.version}` : 'draft'}</h3>
-	{#if project.stage.id === 'S2' && project.stage.state === 'PASSED'}
-		<p class="mt-2 rounded-sm border border-gate-approved p-2 text-gate-approved" role="status">PASSED · locked by {project.approval_history.at(-1)?.operator}</p>
+	<h3 id="brief-heading" class="meta-label">Owner brief {current ? `v${current.version}` : 'draft'}</h3>
+	{#if locked && current}
+		<p class="mt-2 rounded-sm border border-gate-approved bg-[color-mix(in_srgb,var(--color-gate-approved)_6%,var(--color-surface-raised-2))] p-2 text-gate-approved" role="status">
+			{project.interview.status === 'PASSED' ? 'S2 PASSED' : 'LOCKED · interview source'} · {approval?.operator ?? 'operator'}
+		</p>
+		<details class="mt-2 rounded-sm border border-border-default bg-surface-raised-2 p-2">
+			<summary class="cursor-pointer text-text-muted">Read locked brief</summary>
+			<div class="mt-2 grid gap-1.5 text-text-muted">
+				<strong class="text-text-primary">{current.title}</strong>
+				<p>{current.logline}</p>
+				<p class="meta-label text-text-dim">{current.format.type} · {current.format.runtime} · {current.format.aspect} · {current.format.platform}</p>
+				<p>{current.tone_visual_rules}</p>
+				<p><span class="meta-label text-text-dim">Must have</span><br />{current.must_haves.join(' · ')}</p>
+				<p><span class="meta-label text-text-dim">Must not</span><br />{current.must_nots.join(' · ')}</p>
+				<p><span class="meta-label text-text-dim">Continuity</span><br />{current.continuity_model}</p>
+				<p><span class="meta-label text-text-dim">Audio</span><br />{current.audio_approach}</p>
+				<p><span class="meta-label text-text-dim">Success</span><br />{current.success_criteria.join(' · ')}</p>
+			</div>
+		</details>
 	{:else}
 		<div class="mt-2 grid gap-2">
 			<input aria-label="Brief title" placeholder="Title" bind:value={title} class="rounded-sm border border-border-default bg-surface-base p-2" />
@@ -58,7 +78,7 @@
 			<textarea aria-label="Audio approach" placeholder="Audio approach" bind:value={audio} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
 			<textarea aria-label="Success criteria" placeholder="Success criteria, one per line" bind:value={success} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
 		</div>
-		<button type="button" class="btn btn-accent mt-2 w-full justify-center" disabled={!complete || busy} onclick={() => void save()}>{busy ? 'Saving…' : 'Save new brief version'}</button>
+		<button type="button" class="btn btn-accent mt-2 w-full justify-center" disabled={!complete || busy} onclick={() => void save()}>{busy ? 'Saving…' : current ? 'Save changed brief as new version' : 'Save brief version'}</button>
 		{#if current}
 			{#if dirty}<p class="mt-2 text-gate-pending" role="status">Save or revert unsaved changes before locking.</p><button type="button" class="btn mt-1 w-full justify-center" onclick={() => initialize(current)}>Revert unsaved changes</button>{/if}
 			<label for="brief-token" class="meta-label mt-3 block">Operator credential</label><input id="brief-token" type="password" autocomplete="current-password" bind:value={token} class="mt-1 w-full rounded-sm border border-border-default bg-surface-base p-2" />

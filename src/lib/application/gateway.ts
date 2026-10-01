@@ -15,7 +15,7 @@ import {
 	saveBriefCommandSchema,
 	lockBriefCommandSchema
 } from '$lib/domain/schemas';
-import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock } from '$lib/domain/gates';
+import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
 import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import type { Project, ProjectSummary, CanvasLayout, Voice } from '$lib/domain/schemas';
@@ -235,7 +235,7 @@ export class ProjectCommandGateway {
 			return { ok: true, data: project };
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'interview round failed';
-			if (message.includes('illegal') || message.includes('STALLED') || message.includes('must be')) return invalid(message);
+			if (message.includes('illegal') || message.includes('STALLED') || message.includes('must be') || message.includes('Lock the current brief')) return invalid(message);
 			return this.storeError(e);
 		}
 	}
@@ -248,20 +248,30 @@ export class ProjectCommandGateway {
 				parsed.data.project_id,
 				parsed.data.expected_version,
 				(current) => {
-					if (current.interview.status !== 'PASSED' || current.stage.id !== 'S2') throw new Error('S1 must pass before editing S2');
-					if (current.stage.state === 'PASSED') throw new Error('The locked brief is immutable; create a new project version to change it');
+					const preInterview = current.interview.rounds.length === 0 && (current.stage.id === 'S0' || current.stage.id === 'S1');
+					const legacyPostInterview = current.interview.status === 'PASSED' && current.stage.id === 'S2' && current.stage.state !== 'PASSED';
+					if (!preInterview && !legacyPostInterview) {
+						throw new Error('The brief cannot change after interview evidence has been recorded');
+					}
+					if (isCurrentBriefLocked(current) && !preInterview) {
+						throw new Error('The locked brief is immutable');
+					}
 					const version = (current.brief_state.current_version ?? 0) + 1;
 					const created_at = new Date().toISOString();
 					const content_hash = sha256(JSON.stringify(parsed.data.brief));
 					const brief = { ...parsed.data.brief, brief_id: uuid7ish(), version, content_hash, created_at };
-					return { ...current, brief_state: { versions: [...current.brief_state.versions, brief], current_version: version } };
+					return {
+						...current,
+						stage: preInterview ? { id: 'S0', state: 'BLOCKED', confidence: null } : current.stage,
+						brief_state: { versions: [...current.brief_state.versions, brief], current_version: version }
+					};
 				},
 				'project.brief_versioned.v1'
 			);
 			return { ok: true, data: project };
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'brief save failed';
-			if (message.includes('S1 must') || message.includes('immutable')) return invalid(message);
+			if (message.includes('cannot change') || message.includes('immutable')) return invalid(message);
 			return this.storeError(e);
 		}
 	}
@@ -284,7 +294,7 @@ export class ProjectCommandGateway {
 			return { ok: true, data: project };
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'brief lock failed';
-			if (message.includes('requires') || message.includes('required') || message.includes('stale') || message.includes('locked')) return invalid(message);
+			if (message.includes('requires') || message.includes('required') || message.includes('stale') || message.includes('locked') || message.includes('unavailable')) return invalid(message);
 			return this.storeError(e);
 		}
 	}

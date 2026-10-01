@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 
 	export type ProductionTab = 'story' | 'cards' | 'media' | 'preview' | 'export';
@@ -69,7 +70,8 @@
 	}
 
 	function faceFor(cardId: string): CardFace {
-		return cardFaces[cardId] ?? 'text';
+		if (cardFaces[cardId]) return cardFaces[cardId];
+		return assetFor(cardId, 'video') ? 'video' : assetFor(cardId, 'image') ? 'image' : 'text';
 	}
 
 	function setFace(cardId: string, face: CardFace) {
@@ -116,7 +118,7 @@
 			</div>
 		</div>
 	{:else if tab === 'cards'}
-		<div class="grid gap-3 p-4 xl:grid-cols-2">
+		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
 			{#each draft.cards as card (card.card_id)}
 				{@const image = assetFor(card.card_id, 'image')}
 				{@const video = assetFor(card.card_id, 'video')}
@@ -135,7 +137,7 @@
 								{:else if face === 'image'}
 									<div class="card-result">{#if image}<img src={image.url} alt={`${card.title} image result`} />{:else}<div><b>IMAGE PROMPT</b><p>{card.image_prompt}</p></div>{/if}</div>
 								{:else}
-									<div class="card-result">{#if video}<!-- svelte-ignore a11y_media_has_caption --><video src={video.url} controls preload="metadata"></video>{:else}<div><b>VIDEO PROMPT</b><p>{card.video_prompt}</p></div>{/if}</div>
+									<div class="card-result">{#if video}<ClipHoverPlayer src={video.url} label={card.title} maxHeight={270} inS={video.in_s} outS={video.out_s} speed={video.speed} />{:else}<div><b>VIDEO PROMPT</b><p>{card.video_prompt}</p></div>{/if}</div>
 								{/if}
 							</div>
 						{/key}
@@ -199,18 +201,19 @@
 	.workspace-field { display: grid; gap: 7px; color: #63d9d0; font: 600 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 	.workspace-field textarea, .story-card input, .story-card textarea, .url-field input { width: 100%; border: 1px solid #26383f; background: #0d1116; color: #a8cbd2; padding: 10px; outline: none; font: 12px/1.6 var(--font-mono); }
 	.workspace-field textarea:focus, .story-card input:focus, .story-card textarea:focus, .url-field input:focus { border-color: #4ee8d2; }
-	.story-card, .media-card { border: 1px solid #26383f; background: #11161c; padding: 14px; box-shadow: inset 2px 0 #3b7f89; }
+	.story-card, .media-card { border: 1px solid #26383f; background: #11161c; padding: 10px; box-shadow: inset 2px 0 #3b7f89; }
 	.story-card input { border: 0; padding: 4px 6px; font-weight: 700; color: #bee7e9; }
 	.story-card textarea { margin-top: 10px; }
 	.card-face-nav { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 9px; padding: 3px; background: #0b0f13; }
 	.card-face-nav button { border: 0; background: transparent; padding: 6px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.card-face-nav button:hover { background: #14232a; color: #84cbd0; }
 	.card-face-nav button.active { background: linear-gradient(120deg, rgba(77,224,208,.16), rgba(78,174,244,.1), rgba(118,104,220,.08)); color: #7de5dc; }
-	.card-face-stage { min-height: 150px; }
+	.card-face-stage { aspect-ratio: 16/9; overflow: hidden; }
+	.card-face-panel { height: 100%; overflow: auto; }
 	.card-face-panel { animation: card-face-in 140ms ease-out; }
-	.card-result { display: flex; min-height: 150px; align-items: end; overflow: hidden; background: linear-gradient(145deg,#101a20,#0a0d12); }
-	.card-result img, .card-result video { width: 100%; height: 190px; object-fit: cover; }
-	.card-result > div { max-height: 150px; overflow: auto; padding: 12px; color: #6f949c; font: 10px/1.55 var(--font-mono); }
+	.card-result { display: flex; height: 100%; align-items: end; overflow: hidden; background: #05070a; }
+	.card-result img { width: 100%; height: 100%; object-fit: contain; }
+	.card-result > div { max-height: 100%; overflow: auto; padding: 12px; color: #6f949c; font: 10px/1.55 var(--font-mono); }
 	.card-result b { color: #55d8d0; font-size: 9px; }
 	.card-result p { margin-top: 7px; }
 	.face-arrow { border: 0; background: transparent; padding: 5px 9px; color: #668d95; }
@@ -219,7 +222,7 @@
 	.agent-mini { border: 1px solid #31565d; background: #101b20; color: #71c9cf; padding: 5px 8px; font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
 	.media-slot { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; overflow: hidden; border: 1px dashed #31565d; background: #090c10; color: #4d6c73; font: 600 9px var(--font-mono); letter-spacing: .08em; }
-	.media-slot img, .media-slot video { width: 100%; height: 100%; object-fit: cover; }
+	.media-slot img, .media-slot video { width: 100%; height: 100%; object-fit: contain; }
 	details summary { color: #65b7c0; cursor: pointer; font: 600 10px var(--font-mono); }
 	.prompt-block { margin-top: 8px; max-height: 180px; overflow: auto; border-left: 1px solid #31565d; padding-left: 10px; color: #718f98; font: 10px/1.55 var(--font-mono); }
 	.prompt-block b { color: #4ee8d2; }

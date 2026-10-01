@@ -44,6 +44,12 @@ export function nextStageId(id: StageId): StageId | null {
  * blocked before gates pass; only the operator sees Force advance.
  */
 export function legalActions(project: Project): string[] {
+	if (!isCurrentBriefLocked(project)) {
+		return ['Edit brief', 'Save brief version', 'Lock brief'];
+	}
+	if (project.stage.id === 'S1' && project.interview.status !== 'PASSED') {
+		return ['Open Stage Agent', 'Answer questions'];
+	}
 	switch (project.stage.state) {
 		case 'BLOCKED':
 			return ['Inspect gaps', 'Answer questions'];
@@ -78,7 +84,7 @@ export function applyForceAdvance(
 ): ForceAdvanceResult {
 	const from = project.stage.id;
 	if (from === 'S0' || from === 'S1' || from === 'S2') {
-		return { ok: false, code: 'PROTECTED_STAGE', message: 'S1 interview and authenticated S2 brief lock cannot be skipped' };
+		return { ok: false, code: 'PROTECTED_STAGE', message: 'The authenticated brief lock and S1 interview cannot be skipped' };
 	}
 	const to = nextStageId(from);
 	if (!to) {
@@ -107,6 +113,17 @@ export function applyForceAdvance(
 	};
 }
 
+/** The interview may only consume the exact brief version the owner approved. */
+export function isCurrentBriefLocked(project: Project): boolean {
+	const current = project.brief_state.versions.at(-1);
+	if (!current || project.brief_state.current_version !== current.version) return false;
+	return project.approval_history.some((approval) =>
+		approval.brief_id === current.brief_id &&
+		approval.brief_version === current.version &&
+		approval.brief_hash === current.content_hash
+	);
+}
+
 export function evaluateInterviewRound(input: Omit<ConfidenceRound, 'status'>): ConfidenceRound {
 	const dimensions = new Set(input.scores.map((score) => score.dimension));
 	if (dimensions.size !== CONFIDENCE_DIMENSIONS.length || CONFIDENCE_DIMENSIONS.some((dimension) => !dimensions.has(dimension))) {
@@ -119,7 +136,10 @@ export function evaluateInterviewRound(input: Omit<ConfidenceRound, 'status'>): 
 }
 
 export function applyInterviewRound(project: Project, round: ConfidenceRound): Project {
-	if (project.stage.id !== 'S0' && project.stage.id !== 'S1') {
+	if (!isCurrentBriefLocked(project)) {
+		throw new Error('Lock the current brief before starting the S1 interview');
+	}
+	if (project.stage.id !== 'S1') {
 		throw new Error(`Interview rounds are illegal while project is at ${project.stage.id}`);
 	}
 	if (project.interview.status === 'STALLED') {
@@ -138,7 +158,7 @@ export function applyInterviewRound(project: Project, round: ConfidenceRound): P
 		...project,
 		interview: { status: round.status, rounds: [...project.interview.rounds, round] },
 		stage: round.status === 'PASSED'
-			? { id: 'S2', state: 'BLOCKED', confidence: round.overall }
+			? { id: 'S2', state: 'PASSED', confidence: round.overall }
 			: { id: 'S1', state: 'BLOCKED', confidence: round.overall }
 	};
 }
@@ -147,12 +167,6 @@ export function applyBriefLock(
 	project: Project,
 	input: { briefVersion: number; briefHash: string; operator: string; now: string }
 ): Project {
-	if (project.interview.status !== 'PASSED' || project.stage.id !== 'S2') {
-		throw new Error('S2 brief lock requires a passed S1 interview');
-	}
-	if (project.stage.state === 'PASSED') {
-		throw new Error('S2 brief is already locked');
-	}
 	const current = project.brief_state.versions.at(-1);
 	if (!current || project.brief_state.current_version !== current.version) {
 		throw new Error('A complete current brief is required');
@@ -160,13 +174,23 @@ export function applyBriefLock(
 	if (current.version !== input.briefVersion || current.content_hash !== input.briefHash) {
 		throw new Error('Brief lock is stale; reload the current brief before approving');
 	}
+	if (isCurrentBriefLocked(project)) {
+		throw new Error('The current brief is already locked');
+	}
+	const preInterview = project.interview.status !== 'PASSED' && (project.stage.id === 'S0' || project.stage.id === 'S1');
+	const legacyPostInterview = project.interview.status === 'PASSED' && project.stage.id === 'S2';
+	if (!preInterview && !legacyPostInterview) {
+		throw new Error('Brief lock is unavailable at the current stage');
+	}
 	const approval: BriefApproval = {
 		event: 'brief_locked', brief_id: current.brief_id, brief_version: current.version,
 		brief_hash: current.content_hash, operator: input.operator, timestamp: input.now
 	};
 	return {
 		...project,
-		stage: { id: 'S2', state: 'PASSED', confidence: project.stage.confidence },
+		stage: preInterview
+			? { id: 'S1', state: 'BLOCKED', confidence: null }
+			: { id: 'S2', state: 'PASSED', confidence: project.stage.confidence },
 		approval_history: [...project.approval_history, approval]
 	};
 }
