@@ -3,6 +3,8 @@
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
 	import { liveSpine } from '$lib/domain/spine';
+	import { cutLength, cutsOf } from '$lib/domain/cuts';
+	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 
 	export type ProductionTab = 'story' | 'beats' | 'cuts' | 'sound' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {
@@ -90,6 +92,27 @@
 	// The preview plays the spine: story order, benched beats skipped.
 	let spine = $derived(liveSpine(draft));
 	let previewCard = $derived(spine.find((card) => card.card_id === previewCardId) ?? spine[0] ?? null);
+
+	// Cuts are stored state, read from the project (not the draft) and changed only by cut commands.
+	const cuts = $derived(cutsOf(project.production));
+	let openCutId = $state<string | null>(null);
+	let renaming = $state<{ cutId: string; name: string } | null>(null);
+
+	async function rename() {
+		const target = renaming;
+		if (!target?.name.trim()) return;
+		error = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/cuts`, {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ command: 'rename_cut', expected_version: project.version, cut_id: target.cutId, name: target.name.trim() })
+			});
+			const result = await response.json() as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			onUpdated(result.data);
+			renaming = null;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Rename failed'; }
+	}
 </script>
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
@@ -154,8 +177,36 @@
 		<div class="mx-auto max-w-5xl p-5">
 			<div class="mb-4 border-b border-[#223039] pb-4">
 				<div class="meta-label text-[#59d9cf]">CUTS</div>
-				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Shift-click beats on the board to preview a selection. Pushing a selection into a named cut lands next; until then, step through the spine below (benched and unhooked beats are skipped).</p>
+				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Shift-click beats on the board, play the selection, and push it into a named cut. A cut keeps its own order, trims and ramps: board edits never change it, and editing it never changes the takes.</p>
 			</div>
+			{#if cuts.length === 0}
+				<p class="mb-6 border border-dashed border-[#29434a] p-4 text-[12px] text-[#668d98]">No cuts yet.</p>
+			{:else}
+				<ul class="mb-6 grid gap-2" aria-label="Cuts">
+					{#each cuts as cut (cut.cut_id)}
+						<li class="cut-row">
+							{#if renaming?.cutId === cut.cut_id}
+								<!-- svelte-ignore a11y_autofocus -->
+								<input class="cut-name" bind:value={renaming.name} onkeydown={(event) => { if (event.key === 'Enter') void rename(); else if (event.key === 'Escape') renaming = null; }} aria-label="Cut name" autofocus />
+								<button type="button" class="agent-mini" onclick={() => void rename()} disabled={!renaming.name.trim()}>save</button>
+								<button type="button" class="agent-mini" onclick={() => (renaming = null)}>cancel</button>
+							{:else}
+								<b>{cut.name}</b>
+								<button type="button" class="agent-mini" onclick={() => (renaming = { cutId: cut.cut_id, name: cut.name })}>rename</button>
+							{/if}
+							<span class="grow"></span>
+							<span class="meta-label text-[#63838c]">{cut.entries.length} {cut.entries.length === 1 ? 'take' : 'takes'} · {cutLength(cut).toFixed(1)}s{cut.locked ? ' · locked' : ''}</span>
+							<button type="button" class="btn btn-accent" onclick={() => (openCutId = cut.cut_id)}>Open</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+			{#if openCutId}
+				{#key openCutId}
+					<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCutId }} onclose={() => (openCutId = null)} />
+				{/key}
+			{/if}
+			<div class="meta-label mb-2 text-[#59d9cf]">SPINE</div>
 			<div class="preview-stage">
 				{#if draft.cards.length === 0}<span>No cards to preview.</span>{:else}
 					{@const leadVideo = previewCard ? assetFor(previewCard.card_id, 'video') : null}
@@ -209,6 +260,9 @@
 	.face-arrow:hover { background: #15242a; color: #7de5dc; }
 	.card-index { color: #4ee8d2; font: 700 10px var(--font-mono); }
 	.agent-mini { border: 1px solid #31565d; background: #101b20; color: #71c9cf; padding: 5px 8px; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.cut-row { display: flex; align-items: center; gap: 8px; border: 1px solid #26383f; background: #11161c; padding: 8px 10px; color: #bce6e8; }
+	.cut-row b { font-size: 12px; font-weight: 600; }
+	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
 	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }
 	.preview-stage div { max-width: 520px; padding: 30px; }

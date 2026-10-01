@@ -269,6 +269,30 @@ export type ProductionAsset = z.infer<typeof productionAssetSchema>;
 
 export const spineLinkSchema = z.object({ from: idSchema, to: idSchema });
 
+// Cuts (CONTEXT.md: Cut, Push): a snapshot of a selection that owns its own trims, ramps and order.
+export const cutEntrySchema = z.object({
+	entry_id: idSchema,
+	/** The beat and take this entry was pushed from; the take itself is never changed by the cut. */
+	card_id: idSchema,
+	asset_id: idSchema,
+	in_s: z.number().nonnegative(),
+	out_s: z.number().positive(),
+	speed: z.array(z.object({ x: z.number().min(0).max(1), rate: z.number().min(1).max(4) })).max(64).optional()
+});
+export type CutEntry = z.infer<typeof cutEntrySchema>;
+
+export const cutSchema = z.object({
+	cut_id: idSchema,
+	name: nonBlank(120),
+	version: z.number().int().positive(),
+	/** Locked cuts can no longer be trimmed, ramped or reordered (locking lands with V1S-125). */
+	locked: z.boolean(),
+	entries: z.array(cutEntrySchema).min(1).max(200),
+	created_at: rfc3339Schema,
+	updated_at: rfc3339Schema
+});
+export type Cut = z.infer<typeof cutSchema>;
+
 export const productionStateSchema = z.object({
 	status: z.enum(['empty', 'draft', 'approved']).default('empty'),
 	title: z.string().max(200).default(''),
@@ -279,6 +303,8 @@ export const productionStateSchema = z.object({
 	assets: z.array(productionAssetSchema).max(500).default([]),
 	/** Spine links on the board (from 'seed' or a beat, to a beat). Absent = seed then beats in card order. */
 	links: z.array(spineLinkSchema).max(400).optional(),
+	/** Cuts pushed from selections; changed only by cut commands, never by board edits. */
+	cuts: z.array(cutSchema).max(100).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
 export type ProductionState = z.infer<typeof productionStateSchema>;
@@ -467,7 +493,11 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({
 		type: z.literal('project.agent_model_switched.v1'), event_id: idSchema,
 		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
-	})
+	}),
+	// Cuts (V1S-121): push a selection, edit a cut's entries, rename it.
+	z.object({ type: z.literal('project.cut_pushed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_edited.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
@@ -665,6 +695,38 @@ export const lockProjectModelCommandSchema = z.object({
 
 export type SetProjectModelCommand = z.infer<typeof setProjectModelCommandSchema>;
 export type LockProjectModelCommand = z.infer<typeof lockProjectModelCommandSchema>;
+
+// Cut commands (V1S-121). Entries carry their own trim and ramp; the gateway assigns ids on push.
+const cutEntryInputSchema = cutEntrySchema.omit({ entry_id: true });
+
+export const pushCutCommandSchema = z.object({
+	command: z.literal('push_cut'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	name: nonBlank(120),
+	entries: z.array(cutEntryInputSchema).min(1).max(200)
+});
+
+/** A cut's whole entry list after an edit: order, trims, ramps, dropped entries. */
+export const editCutCommandSchema = z.object({
+	command: z.literal('edit_cut'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	cut_id: idSchema,
+	entries: z.array(cutEntrySchema).min(1).max(200)
+});
+
+export const renameCutCommandSchema = z.object({
+	command: z.literal('rename_cut'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	cut_id: idSchema,
+	name: nonBlank(120)
+});
+
+export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;
+export type EditCutCommand = z.infer<typeof editCutCommandSchema>;
+export type RenameCutCommand = z.infer<typeof renameCutCommandSchema>;
 
 // ---------------------------------------------------------------------------
 // Capability state (FR-032 / AR-06): real availability only, never fabricated.

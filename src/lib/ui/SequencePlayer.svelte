@@ -1,19 +1,31 @@
+<script lang="ts" module>
+	/**
+	 * What the player plays and where its edits go. A selection (the shift-clicked beats)
+	 * saves trims and ramps onto the takes themselves, as their defaults, and can be pushed
+	 * into a new cut. A cut saves trims, ramps and order onto the cut only.
+	 */
+	export type PlayerSource = { kind: 'selection' } | { kind: 'cut'; cutId: string };
+</script>
+
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import type { Project } from '$lib/domain/schemas';
+	import type { CutEntry, Project } from '$lib/domain/schemas';
+	import { cutsOf, nextCutName } from '$lib/domain/cuts';
 	import { attachCanvas, loadBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
 
 	/**
-	 * Rough-cut review of the shift-selected clips: each clip's kept span (in → out) plays
-	 * back to back in sequence order with its own sound and speed ramp, looping. Trims,
-	 * ramps and order are edited on the timeline below and saved to the clips, so they
-	 * carry to the cards. Keys: space pause · ←/→ one frame (shift: 10) · ↑/↓ previous/next clip ·
+	 * Rough-cut review of a selection or a cut: each clip's kept span (in → out) plays
+	 * back to back in order with its own sound and speed ramp, looping. Trims, ramps and
+	 * order are edited on the timeline below and saved per the source (see PlayerSource).
+	 * Keys: space pause · ←/→ one frame (shift: 10) · ↑/↓ previous/next clip ·
 	 * I / O set in / out · Esc close.
 	 */
-	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
+	let { project, onUpdated, source = { kind: 'selection' }, onclose }: {
+		project: Project; onUpdated: (project: Project) => void; source?: PlayerSource; onclose?: () => void
+	} = $props();
 
 	const MAX_HEIGHT = 288;
 	const MIN_SPAN = 0.2;
@@ -21,14 +33,25 @@
 	let canvas = $state<HTMLCanvasElement>();
 	/** One preloaded audio element per clip, so a cut switches sound instantly instead of reloading. */
 	const voices = new Map<string, HTMLAudioElement>();
-	let clips = $state<Array<TimelineClip & { src: string; assetId: string }>>([]);
+	/** id is the beat for a selection, the cut entry for a cut. */
+	type Clip = TimelineClip & { src: string; assetId: string; cardId: string };
+	let clips = $state<Clip[]>([]);
 	let index = $state(0);
 	let playhead = $state(0);
 	let paused = $state(false);
 	let loading = $state(0);
+	let expected = $state(0);
 	let error = $state('');
 	let saveState = $state<'' | 'saving' | 'saved'>('');
 	let scrubbing = false;
+	/** Push: the name being typed (null = closed), and the last pushed cut's name. */
+	let pushName = $state<string | null>(null);
+	let pushing = $state(false);
+	let pushed = $state('');
+	/** A cut whose takes are missing plays what it can but is not saved, so nothing is dropped from it. */
+	let readOnly = $state(false);
+
+	const cut = $derived(source.kind === 'cut' ? cutsOf(project.production).find((entry) => entry.cut_id === source.cutId) : undefined);
 
 	let draw: ((view: GPUTextureView) => void) | null = null;
 	let frame = 0;
@@ -89,7 +112,8 @@
 
 	function close() {
 		pauseAll();
-		reviewSequence.playing = false;
+		if (source.kind === 'selection') reviewSequence.playing = false;
+		onclose?.();
 	}
 
 	function seekProgram(seconds: number) {
@@ -129,8 +153,9 @@
 		const playing = clips[index]?.id;
 		clips = next;
 		index = Math.max(0, next.findIndex((c) => c.id === playing));
-		// Keep the card badges in the new order.
-		reviewSequence.items = next.map((c) => reviewSequence.items.find((item) => item.id === c.id)).filter((item) => item !== undefined);
+		// A cut keeps its order; a selection's order lives in the card badges.
+		if (source.kind === 'cut') scheduleSave();
+		else reviewSequence.items = next.map((c) => reviewSequence.items.find((item) => item.id === c.id)).filter((item) => item !== undefined);
 	}
 
 	function speed(i: number, points: SpeedPoint[]) {
@@ -172,33 +197,104 @@
 	}
 
 	function scheduleSave() {
+		if (readOnly) return;
 		saveState = 'saving';
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => void save(), 500);
 	}
 
-	async function save() {
-		const byAsset = new Map(clips.map((clip) => [clip.assetId, clip]));
-		const assets = project.production.assets.map((asset) => {
-			const clip = byAsset.get(asset.asset_id);
-			if (!clip) return asset;
-			const { speed: _old, ...rest } = asset;
-			return { ...rest, in_s: clip.in, out_s: clip.out, ...(clip.speed ? { speed: clip.speed } : {}) };
+	/** Write any pending edit now (before a push, so it carries the same version). */
+	async function flushSave() {
+		if (!saveTimer || saveState !== 'saving') return;
+		clearTimeout(saveTimer);
+		saveTimer = null;
+		await save();
+	}
+
+	async function post(path: string, body: Record<string, unknown>): Promise<Project> {
+		const response = await fetch(`/api/projects/${project.project_id}/${path}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(body)
 		});
+		const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+		if (!result.ok) throw new Error(result.error.message);
+		onUpdated(result.data);
+		return result.data;
+	}
+
+	/** The clips as cut entries: their order, takes, trims and ramps. */
+	const entriesOf = (list: Clip[]) => list.map((clip) => ({
+		card_id: clip.cardId, asset_id: clip.assetId, in_s: clip.in, out_s: clip.out, ...(clip.speed ? { speed: clip.speed } : {})
+	}));
+
+	async function save() {
+		saveTimer = null;
 		try {
-			const response = await fetch(`/api/projects/${project.project_id}/production`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ mode: 'save', expected_version: project.version, production: { ...project.production, assets } })
-			});
-			const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
-			if (!result.ok) throw new Error(result.error.message);
-			onUpdated(result.data);
+			if (source.kind === 'cut') {
+				const entries: CutEntry[] = entriesOf(clips).map((entry, i) => ({ entry_id: clips[i].id, ...entry }));
+				await post('cuts', { command: 'edit_cut', expected_version: project.version, cut_id: source.cutId, entries });
+			} else {
+				// A selection's trims and ramps are the takes' own defaults.
+				const byAsset = new Map(clips.map((clip) => [clip.assetId, clip]));
+				const assets = project.production.assets.map((asset) => {
+					const clip = byAsset.get(asset.asset_id);
+					if (!clip) return asset;
+					const { speed: _old, ...rest } = asset;
+					return { ...rest, in_s: clip.in, out_s: clip.out, ...(clip.speed ? { speed: clip.speed } : {}) };
+				});
+				await post('production', { mode: 'save', expected_version: project.version, production: { ...project.production, assets } });
+			}
 			saveState = 'saved';
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : 'Save failed';
 			saveState = '';
 		}
+	}
+
+	async function push() {
+		const name = pushName?.trim();
+		if (!name || pushing) return;
+		pushing = true;
+		error = '';
+		try {
+			await flushSave();
+			await post('cuts', { command: 'push_cut', expected_version: project.version, name, entries: entriesOf(clips) });
+			pushed = name;
+			pushName = null;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : 'Push failed';
+		} finally {
+			pushing = false;
+		}
+	}
+
+	function pushKey(event: KeyboardEvent) {
+		if (event.key === 'Enter') { event.preventDefault(); void push(); }
+		else if (event.key === 'Escape') { event.preventDefault(); pushName = null; }
+	}
+
+	/** What to load: each clip's beat, take and starting trim and ramp. */
+	function sources(): Array<{ id: string; cardId: string; assetId: string; title: string; src: string; in?: number; out?: number; speed?: SpeedPoint[] }> {
+		const assetOf = (id: string) => project.production.assets.find((entry) => entry.asset_id === id);
+		if (source.kind === 'selection') {
+			// Start from the take's saved trim and ramp; untouched takes keep their whole length at 1×.
+			return reviewSequence.items.map((item) => {
+				const asset = assetOf(item.assetId);
+				return { id: item.id, cardId: item.id, assetId: item.assetId, title: item.title, src: item.src, in: asset?.in_s, out: asset?.out_s, speed: asset?.speed };
+			});
+		}
+		if (!cut) throw new Error('Cut not found');
+		const found = cut.entries.flatMap((entry) => {
+			const asset = assetOf(entry.asset_id);
+			const title = project.production.cards.find((card) => card.card_id === entry.card_id)?.title ?? entry.card_id;
+			return asset ? [{ id: entry.entry_id, cardId: entry.card_id, assetId: entry.asset_id, title, src: asset.url, in: entry.in_s, out: entry.out_s, speed: entry.speed }] : [];
+		});
+		if (found.length < cut.entries.length) {
+			readOnly = true;
+			error = `${cut.entries.length - found.length} of this cut's takes are missing; playing the rest, edits are not saved`;
+		}
+		return found;
 	}
 
 	onMount(() => {
@@ -210,17 +306,17 @@
 				canvas!.width = Math.round(canvas!.clientWidth * ratio);
 				canvas!.height = Math.round(canvas!.clientHeight * ratio);
 				const loaded: typeof clips = [];
-				for (const item of reviewSequence.items) {
+				const items = sources();
+				expected = items.length;
+				for (const item of items) {
 					const bank = await loadBank(item.src, MAX_HEIGHT);
 					if (disposed) return;
 					loading = loaded.length + 1;
-					// Start from the clip's saved trim and ramp; untouched clips keep their whole length at 1×.
-					const asset = project.production.assets.find((entry) => entry.asset_id === item.assetId);
-					const out = Math.min(asset?.out_s ?? bank.duration, bank.duration);
+					const out = Math.min(item.out ?? bank.duration, bank.duration);
 					const voice = new Audio(item.src);
 					voice.preload = 'auto';
 					voices.set(item.id, voice);
-					loaded.push({ id: item.id, title: item.title, src: item.src, assetId: item.assetId, bank, duration: bank.duration, in: Math.min(asset?.in_s ?? 0, out - MIN_SPAN), out, speed: asset?.speed });
+					loaded.push({ id: item.id, title: item.title, src: item.src, assetId: item.assetId, cardId: item.cardId, bank, duration: bank.duration, in: Math.min(item.in ?? 0, out - MIN_SPAN), out, speed: item.speed });
 				}
 				clips = loaded;
 				startClip(0);
@@ -242,13 +338,32 @@
 
 <svelte:window onkeydown={key} />
 
-<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-[#050607]/95 px-6 py-4" role="dialog" aria-label="Sequence player">
+<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-[#050607]/95 px-6 py-4" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
 	<div class="w-full max-w-[1180px]">
 		<div class="mb-2 flex items-center gap-3 font-mono text-[10px] text-[#8fb3b8]">
-			<span class="tracking-[.14em] text-[#99f6e4]">SEQUENCE</span>
-			<span>{clips.length ? `${clips.length} clips` : `loading ${loading}/${reviewSequence.items.length}`}</span>
+			{#if source.kind === 'cut'}
+				<span class="tracking-[.14em] text-[#99f6e4]">CUT</span>
+				<span class="text-[#e6fff8]">{cut?.name ?? ''}</span>
+			{:else}
+				<span class="tracking-[.14em] text-[#99f6e4]">SEQUENCE</span>
+			{/if}
+			<span>{clips.length ? `${clips.length} clips · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
+			<span class="text-[#4c5b5a]" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and beats are untouched' : 'Trims and ramps save to the takes'}>
+				{source.kind === 'cut' ? (readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
+			</span>
 			<span class="grow"></span>
 			{#if saveState}<span class="text-[#55747c]">{saveState === 'saving' ? 'saving…' : 'saved'}</span>{/if}
+			{#if source.kind === 'selection'}
+				{#if pushName !== null}
+					<!-- svelte-ignore a11y_autofocus -->
+					<input class="name" bind:value={pushName} onkeydown={pushKey} aria-label="Cut name" autofocus />
+					<button type="button" class="ctl push" onclick={() => void push()} disabled={pushing || !pushName.trim() || !clips.length}>{pushing ? 'pushing…' : 'push'}</button>
+					<button type="button" class="ctl" onclick={() => (pushName = null)}>cancel</button>
+				{:else}
+					{#if pushed}<span class="text-[#99f6e4]">pushed “{pushed}” · open it in Cuts</span>{/if}
+					<button type="button" class="ctl push" onclick={() => (pushName = nextCutName(project.production))} disabled={!clips.length} title="Save this selection — order, takes, trims and ramps — as a new cut">push to cut</button>
+				{/if}
+			{/if}
 			<button type="button" class="ctl" onclick={togglePause}>{paused ? 'play' : 'pause'}</button>
 			<button type="button" class="ctl" onclick={close}>close</button>
 		</div>
@@ -283,4 +398,7 @@
 <style>
 	.ctl { border: 1px solid #233034; background: #0f1517; padding: 2px 8px; color: #9fc9cf; border-radius: 2px; }
 	.ctl:hover { border-color: #99f6e4; color: #e6fff8; }
+	.ctl:disabled { opacity: .45; }
+	.ctl.push { border-color: #2f6f6a; color: #99f6e4; }
+	.name { width: 160px; border: 1px solid #2f6f6a; background: #0b1113; padding: 2px 6px; color: #e6fff8; outline: none; border-radius: 2px; }
 </style>

@@ -33,6 +33,8 @@ import { applyBench } from '$lib/domain/bench';
 import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
+import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema } from '$lib/domain/schemas';
+import { applyPushCut, applyEditCut, applyRenameCut, keepStoredCuts } from '$lib/domain/cuts';
 
 type LedgerEventType = LedgerEvent['type'];
 
@@ -148,6 +150,12 @@ export class ProjectCommandGateway {
 				return this.setProjectModel(raw);
 			case 'lock_project_model':
 				return this.lockProjectModel(raw);
+			case 'push_cut':
+				return this.pushCut(raw);
+			case 'edit_cut':
+				return this.editCut(raw);
+			case 'rename_cut':
+				return this.renameCut(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -231,7 +239,8 @@ export class ProjectCommandGateway {
 			const project = await this.store.updateProject(
 				parsed.data.project_id,
 				parsed.data.expected_version,
-				(current) => ({ ...current, production: { ...parsed.data.production, updated_at: new Date().toISOString() } }),
+				// Cuts change only through cut commands: a whole-production save keeps the stored ones.
+				(current) => ({ ...current, production: { ...keepStoredCuts(parsed.data.production, current.production), updated_at: new Date().toISOString() } }),
 				'project.production_updated.v1'
 			);
 			return { ok: true, data: project };
@@ -688,6 +697,49 @@ export class ProjectCommandGateway {
 			const message = e instanceof Error ? e.message : 'model lock failed';
 			if (message.includes('is locked') || message.includes('override is')) return invalid(message);
 			return this.storeError(e);
+		}
+	}
+
+	// --- Cuts (V1S-121): push a selection into a named cut; edits change the cut only, never takes or beats.
+
+	async pushCut(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = pushCutCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { name, entries } = parsed.data;
+		return this.updateCuts(parsed.data, (production, now) => applyPushCut(production, { cut_id: uuid7ish(), name, entries }, uuid7ish, now), 'project.cut_pushed.v1');
+	}
+
+	async editCut(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = editCutCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { cut_id, entries } = parsed.data;
+		return this.updateCuts(parsed.data, (production, now) => applyEditCut(production, cut_id, entries, now), 'project.cut_edited.v1');
+	}
+
+	async renameCut(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = renameCutCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { cut_id, name } = parsed.data;
+		return this.updateCuts(parsed.data, (production, now) => applyRenameCut(production, cut_id, name, now), 'project.cut_renamed.v1');
+	}
+
+	/** A pure change to the project's cuts, refused as INVALID_COMMAND when it doesn't apply. */
+	private async updateCuts(
+		command: { project_id: string; expected_version: number },
+		apply: (production: Project['production'], now: string) => TakeResult,
+		eventType: Extract<LedgerEventType, `project.cut_${string}`>
+	): Promise<CommandOutcome<Project>> {
+		let refusal: string | null = null;
+		try {
+			const project = await this.store.updateProject(command.project_id, command.expected_version, (current) => {
+				const now = new Date().toISOString();
+				const result = apply(current.production, now);
+				if (!result.ok) { refusal = result.message; throw new Error(result.message); }
+				return { ...current, production: { ...result.production, updated_at: now } };
+			}, eventType);
+			return { ok: true, data: project };
+		} catch (e) {
+			return refusal ? invalid(refusal) : this.storeError(e);
 		}
 	}
 
