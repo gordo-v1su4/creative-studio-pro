@@ -27,6 +27,9 @@
 	import { mediaKind } from '$lib/domain/media';
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
+	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
+	import { CLOSING_MS, draftsClosingSoon, finalizingIds, timeLeft } from '$lib/domain/finalize';
+	import { clock } from '$lib/ui/clock.svelte';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
@@ -133,7 +136,9 @@
 					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched),
 					onHold: (options: { length_s: number; push_in: boolean; fade: boolean }) => card && makeHold(card.card_id, card.title, options),
 					onAnimate: () => card && (animateCardId = card.card_id),
-					animating: card ? pendingGenerations(project.production).some((generation) => generation.card_id === card.card_id) : false
+					animating: card ? pendingGenerations(project.production).some((generation) => generation.card_id === card.card_id && !generation.finalizes) : false,
+					onFinalize: (takeId: string) => card && (finalizing = { takeIds: [takeId], title: card.title }),
+					finalizing: [...finalizingIds(project.production)]
 				},
 				ariaLabel: card
 					? `Story card ${spineIndex < 0 ? 'off the spine' : spineIndex + 1}, ${card.title}${card.benched ? ', benched' : ''}`
@@ -267,6 +272,10 @@
 
 	// --- Animate: the panel for one beat, and polling while any generation is still running.
 	let animateCardId = $state<string | null>(null);
+	// Finalize: the takes in the open priced confirm, and the board banner of drafts closing within three days.
+	let finalizing = $state<{ takeIds: string[]; title: string } | null>(null);
+	let closingDrafts = $derived(activeProject ? draftsClosingSoon(activeProject.production, clock.now) : []);
+	let bannerHiddenFor = $state<string | null>(null);
 	let animatePolling = false;
 
 	$effect(() => {
@@ -283,6 +292,11 @@
 					adoptProject(withPendingPicks(result.data));
 					for (const generation of landed) {
 						const title = result.data.production.cards.find((card) => card.card_id === generation.card_id)?.title ?? 'a beat';
+						if (generation.finalizes) {
+							const take = result.data.production.assets.find((asset) => asset.asset_id === generation.finalizes);
+							notify(generation.status === 'completed' ? `${title} is finalized: ${take?.name ?? 'the take'} is now 1080p.` : `Finalize on ${title} ended: ${generation.status}${generation.error ? ` (${generation.error})` : ''}. The 480p draft is unchanged.`);
+							continue;
+						}
 						notify(generation.status === 'completed' ? `Animate finished on ${title}: it's the new pick.` : `Animate on ${title} ended: ${generation.status}${generation.error ? ` (${generation.error})` : ''}. Nothing was charged for it.`);
 					}
 				}
@@ -788,6 +802,20 @@
 						</div>
 					{/if}
 					{#if reviewSequence.playing && activeProject}<SequencePlayer project={activeProject} onUpdated={(project) => adoptProject(project, layout)} />{/if}
+					{#if closingDrafts.length && bannerHiddenFor !== activeProject.project_id}
+						<div class="absolute inset-x-0 top-0 z-[5] flex flex-wrap items-center gap-2 border-b border-[#6a5a26] bg-[#17140a]/95 px-3 py-1.5 font-mono text-[10px] text-[#f2c14e]" role="status" aria-label="Drafts closing soon">
+							<span class="font-bold uppercase">{closingDrafts.length} {closingDrafts.length === 1 ? 'draft closes' : 'drafts close'} within 3 days</span>
+							{#each closingDrafts.slice(0, 6) as entry (entry.take.asset_id)}
+								{@const beatTitle = activeProject.production.cards.find((card) => card.card_id === entry.take.card_id)?.title ?? entry.take.name}
+								<button type="button" class={['border px-1.5 py-0.5', entry.ms_left <= CLOSING_MS ? 'border-[#6b3a3a] text-[#ff7b7b]' : 'border-[#6a5a26]']} onclick={() => (finalizing = { takeIds: [entry.take.asset_id], title: beatTitle })} title={`Finalize ${entry.take.name} to 1080p`}>{beatTitle.split(' — ')[0]} · {timeLeft(entry.ms_left)}</button>
+							{/each}
+							{#if closingDrafts.length > 6}<span>+{closingDrafts.length - 6} more</span>{/if}
+							<span class="grow"></span>
+							<button type="button" class="bg-[#f2c14e] px-2 py-0.5 font-bold text-black" onclick={() => (finalizing = { takeIds: closingDrafts.map((entry) => entry.take.asset_id), title: `${closingDrafts.length} drafts closing soon` })}>Finalize all…</button>
+							<button type="button" class="px-1 text-[#8a7a46] hover:text-[#f2c14e]" onclick={() => (bannerHiddenFor = activeProject?.project_id ?? null)}>hide</button>
+						</div>
+					{/if}
+					{#if finalizing && activeProject}<FinalizePanel project={activeProject} takeIds={finalizing.takeIds} title={finalizing.title} onUpdated={(project) => adoptProject(project, layout)} onclose={() => (finalizing = null)} onsent={notify} />{/if}
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}

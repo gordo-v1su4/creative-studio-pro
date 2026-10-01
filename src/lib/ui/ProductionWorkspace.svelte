@@ -5,6 +5,9 @@
 	import { liveSpine } from '$lib/domain/spine';
 	import { cutLength, cutsOf } from '$lib/domain/cuts';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
+	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
+	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
+	import { clock } from '$lib/ui/clock.svelte';
 
 	export type ProductionTab = 'story' | 'beats' | 'cuts' | 'sound' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {
@@ -97,6 +100,16 @@
 	const cuts = $derived(cutsOf(project.production));
 	let openCutId = $state<string | null>(null);
 	let renaming = $state<{ cutId: string; name: string } | null>(null);
+	let finalizing = $state<{ takeIds: string[]; title: string } | null>(null);
+	let notice = $state<string | null>(null);
+
+	/** The cut's takes that are drafts still inside their finalize window (and not already finalizing). */
+	function cutDrafts(cut: (typeof cuts)[number]): string[] {
+		const sent = finalizingIds(project.production);
+		const takes = [...new Set(cut.entries.map((entry) => entry.asset_id))]
+			.flatMap((id) => project.production.assets.filter((asset) => asset.asset_id === id && !sent.has(id)));
+		return oneTakePerDraft(finalizable(takes, clock.now)).map((take) => take.asset_id);
+	}
 
 	async function rename() {
 		const target = renaming;
@@ -196,11 +209,16 @@
 							{/if}
 							<span class="grow"></span>
 							<span class="meta-label text-[#63838c]">{cut.entries.length} {cut.entries.length === 1 ? 'take' : 'takes'} · {cutLength(cut).toFixed(1)}s{cut.locked ? ' · locked' : ''}</span>
+							{#if cutDrafts(cut).length}
+								<button type="button" class="btn shrink-0 whitespace-nowrap" onclick={() => (finalizing = { takeIds: cutDrafts(cut), title: `${cut.name}: all picks` })} title="Re-render this cut's 480p drafts at 1080p from the same generations (you see the price first)">Finalize all picks ({cutDrafts(cut).length})…</button>
+							{/if}
 							<button type="button" class="btn btn-accent" onclick={() => (openCutId = cut.cut_id)}>Open</button>
 						</li>
 					{/each}
 				</ul>
 			{/if}
+			{#if notice}<p class="mb-4 border border-[#29434a] bg-[#0d1418] px-3 py-2 text-[12px] text-[#9fc9cf]" role="status">{notice}</p>{/if}
+			{#if finalizing}<FinalizePanel {project} takeIds={finalizing.takeIds} title={finalizing.title} {onUpdated} onclose={() => (finalizing = null)} onsent={(message) => (notice = message)} />{/if}
 			{#if openCutId}
 				{#key openCutId}
 					<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCutId }} onclose={() => (openCutId = null)} />

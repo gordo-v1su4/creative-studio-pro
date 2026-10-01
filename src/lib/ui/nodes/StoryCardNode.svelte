@@ -7,6 +7,8 @@
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import { isUnder2K } from '$lib/domain/media';
+	import { draftWindow, timeLeft } from '$lib/domain/finalize';
+	import { clock } from '$lib/ui/clock.svelte';
 
 	type CardFace = 'beat' | 'take';
 	type StoryCardNodeData = {
@@ -25,6 +27,10 @@
 		onAnimate?: () => void;
 		/** A generation from this beat is still running. */
 		animating?: boolean;
+		/** Finalize a draft take to 1080p (opens the priced confirm). */
+		onFinalize?: (takeId: string) => void;
+		/** Takes with a finalize sent and not yet landed. */
+		finalizing?: string[];
 	};
 
 	let { data, selected }: NodeProps = $props();
@@ -86,6 +92,10 @@
 	let holdPushIn = $state(true);
 	let holdFade = $state(false);
 	let canHold = $derived(!!shown && shown === pick && pick?.kind === 'image');
+
+	// Finalize: a draft take's 7-day window to re-render at 1080p; red for the last 48 h, gone once closed.
+	let shownFinalizing = $derived(!!shown && (story.finalizing ?? []).includes(shown.asset_id));
+	let shownWindow = $derived(shown && !shown.rejected && !shownFinalizing ? draftWindow(shown, clock.now) : { state: 'none' as const });
 
 	function openHold() {
 		holdLength = Math.min(30, Math.max(0.5, (card?.duration_ms ?? 3000) / 1000));
@@ -177,6 +187,11 @@
 							{/if}
 						</div>
 					{/key}
+					{#if shownFinalizing}
+						<span class="draft-badge" title="Finalizing to 1080p from the same render">1080p · finalizing…</span>
+					{:else if shownWindow.state === 'open' || shownWindow.state === 'closing'}
+						<span class={['draft-badge', shownWindow.state === 'closing' && 'closing']} title={`480p draft: finalizable to 1080p until ${new Date(shownWindow.closes_at).toLocaleString()}`}>1080p · {timeLeft(shownWindow.ms_left)}</span>
+					{/if}
 					{#if shown.rejected}<span class="rejected-mark">Rejected</span>{:else if isUnder2K(shown)}<span class="rejected-mark" title={`${shown.width}×${shown.height}: under 2K on the long edge`}>Under 2K</span>{/if}
 					{#if holdOpen && canHold}
 						<form class="hold-form nodrag" onsubmit={(event) => { event.preventDefault(); makeHold(); }} aria-label={`Make a Hold of ${card.title}`}>
@@ -211,6 +226,9 @@
 				<button type="button" class="take-btn" onclick={openHold} aria-label={`Make a Hold of ${card.title}'s still`} title="Make a video take from this still (local, no credits)">Hold</button>
 				<button type="button" class="take-btn" onclick={() => story.onAnimate?.()} aria-label={`Animate ${card.title}'s still`} title="Send this still to Seedance as the start frame (costs credits; you see the price first)">Animate</button>
 			{/if}
+			{#if (shownWindow.state === 'open' || shownWindow.state === 'closing') && shown}
+				<button type="button" class="take-btn" onclick={() => story.onFinalize?.(shown.asset_id)} aria-label={`Finalize this take of ${card.title} to 1080p`} title="Re-render this draft at 1080p from the same generation (costs credits; you see the price first)">Finalize</button>
+			{/if}
 			{#if rejectedCount > 0}
 				<button type="button" class="take-btn" class:active={showRejected} onclick={() => (showRejected = !showRejected)} aria-pressed={showRejected}>{rejectedCount} rejected</button>
 			{/if}
@@ -233,6 +251,8 @@
 	.hold-form { position: absolute; inset: auto 6px 6px 6px; display: grid; gap: 4px; border: 1px solid #31545a; background: #0b0f13f2; padding: 6px; color: #84cbd0; font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.hold-form label { display: flex; align-items: center; gap: 5px; }
 	.hold-form input[type='number'] { width: 52px; border: 1px solid #26383f; background: #0d1116; padding: 1px 4px; color: #bce6e8; font: inherit; }
+	.draft-badge { position: absolute; top: 6px; right: 6px; border: 1px solid #6a5a26; background: #17140a; padding: 1px 5px; color: #f2c14e; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.draft-badge.closing { border-color: #6b3a3a; background: #1a0f10; color: #ff7b7b; }
 	.dropping { outline: 1px dashed #55dfd5; outline-offset: 3px; }
 	.benched > :not(header) { opacity: .4; }
 	.benched header { opacity: .7; }

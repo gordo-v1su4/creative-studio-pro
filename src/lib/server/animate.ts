@@ -5,7 +5,7 @@ import type { ProjectStore } from '$lib/adapters/project-store';
 import { animateGate, pendingGenerations, seedanceRequest, type AnimateSettings, type SendMode } from '$lib/domain/animate';
 import { uuid7ish } from '$lib/domain/ids';
 import { pickFor, type Take } from '$lib/domain/takes';
-import { draftWindow, finalizeRequest } from '$lib/domain/finalize';
+import { draftWindow, finalizeRequest, finalizingIds } from '$lib/domain/finalize';
 import type { Project, StoryCard } from '$lib/domain/schemas';
 import { SEEDANCE_JOB_TYPE, type VideoGenerator } from './higgsfield';
 
@@ -192,11 +192,17 @@ export interface FinalizeQuote {
 export async function quoteFinalize(deps: AnimateDeps, project: Project, takeIds: string[], now = Date.now()): Promise<{ ok: true; quote: FinalizeQuote } | Failure> {
 	if (!deps.generator) return failure(503, 'NOT_CONFIGURED', 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)');
 	const items: FinalizeQuote['items'] = [];
+	const sent = finalizingIds(project.production);
+	const jobs = new Map<string, string>();
 	for (const takeId of [...new Set(takeIds)]) {
 		const take = project.production.assets.find((asset) => asset.asset_id === takeId);
 		if (!take) return failure(404, 'NOT_FOUND', `Take ${takeId} not found`);
 		const window = draftWindow(take, now);
 		if (window.state !== 'open' && window.state !== 'closing') return failure(400, 'INVALID_COMMAND', `${take.name} is not a draft that can still be finalized`);
+		if (sent.has(take.asset_id)) return failure(409, 'INVALID_COMMAND', `${take.name} is already being finalized`);
+		const twin = jobs.get(take.job_id!);
+		if (twin) return failure(400, 'INVALID_COMMAND', `${take.name} and ${twin} come from the same draft; finalize one of them`);
+		jobs.set(take.job_id!, take.name);
 		const request = finalizeRequest(take)!;
 		try {
 			const { credits } = await deps.generator.estimate(request);

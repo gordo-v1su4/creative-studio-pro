@@ -2,7 +2,7 @@
 
 ## Handoff message to the next thread
 
-**Where I left off:** Linear **V1S-124 — Finalize drafts to 1080p, with the 7-day reminder** (Urgent, GitHub #14), status In Progress. The backend is done and committed (`c101f80`, "V1S-124, part 1"): window state, linking takes to draft jobs, quote and send, and settling a finalize in place. All of it is tested against a fake generator. **Not started:** the route actions, linking the Blood Rush takes, and all of the UI (badge, banner, Finalize buttons). Steps are under "Still to do for V1S-124" below. After that, continue in Linear order: V1S-122, then 123, then 125 to 133.
+**Where I left off:** V1S-124 (Finalize) is done (GitHub #14 closed). Next is **V1S-122 — edit inside a cut**, then 123, then 125 to 133, in Linear order.
 
 **Browser testing is required, continuously, not only at the end.** Build each piece and check it in the browser preview (`.claude/launch.json` → "csp-dev", port 5174) as you go: open the board, click the real controls, read the page and console, take a screenshot as proof. Do this on a throwaway project created through the API, then delete it. The previous thread did this for every finished ticket:
 
@@ -16,16 +16,17 @@
 | 119 | Hold rendered and became the pick |
 | 120 | Animate panel, Agent draft, live lint, sending disabled with no CLI or key |
 | 121 | Push, Cuts tab, cut edits staying separate from takes |
+| 124 | Badges (yellow, red, finalizing…) on a throwaway project and on Blood Rush; Finalize on a take, banner Finalize all and hide, cut Finalize all picks — real quotes, sends blocked by the short balance |
 
-Most of that was scripted through the page (clicks, drops and drags dispatched in the browser, with project state read back), plus screenshots. Prefer real clicks where you can. V1S-124's UI has **not** been browser-tested yet: it doesn't exist.
+Most of that was scripted through the page (clicks, drops and drags dispatched in the browser, with project state read back), plus screenshots. Prefer real clicks where you can. V1S-124 was browser-tested with real clicks (no submits).
 
 Work goes straight to `main`. Tickets: Linear project "Narrate — review, cuts, sound & export" (V1S-113 → V1S-133), mirrored as GitHub #3 → #23; spec in `docs/planning/narrate-review-cuts-sound-spec.md` (#2). Do them in Linear order; close the GitHub issue (`Closes #N` in the commit) and mark Linear Done when finished.
 
 ## Done (on main)
 
-V1S-113 takes/pick/reject · 114 bench + bin · 115 rewire spine · 116 Narrate name + one nav bar · 117 Agent model providers · 118 drag and drop · 119 Hold · 120 Animate · 121 push to cut + Cuts tab.
+V1S-113 takes/pick/reject · 114 bench + bin · 115 rewire spine · 116 Narrate name + one nav bar · 117 Agent model providers · 118 drag and drop · 119 Hold · 120 Animate · 121 push to cut + Cuts tab · 124 Finalize to 1080p.
 
-## In progress: V1S-124 Finalize (Urgent; GitHub #14)
+## V1S-124 Finalize (done; GitHub #14)
 
 Generation runs through the **Higgsfield CLI** (`src/lib/server/higgsfield.ts`), not the public REST API: the CLI uses the operator's higgsfield.ai account (plan credits) and supports Seedance draft mode — `seedance_2_5` with `draft: true` (480p) and finalize via `--draft false --draft_job_id <id> --resolution 1080p` with the draft's own prompt/duration. Prices come from `generate cost` (free). On Windows the binary is `%APPDATA%/npm/node_modules/@higgsfield/cli/vendor/hf.exe`; the prompt is passed as a JSON file (`--prompt @file.json`).
 
@@ -35,11 +36,12 @@ Built and tested (backend):
 - `src/lib/server/animate.ts` — `quoteFinalize` and `sendFinalize` (re-quotes; blocks on a higher price or short balance before any submit). The existing Animate poller settles finalize jobs too.
 - `tests/integration/finalize.test.ts`.
 
-Still to do for V1S-124:
-1. Route actions on `src/routes/api/projects/[projectId]/animate/+server.ts` (or a sibling `finalize` route): `quote {take_ids}`, `send {take_ids, expected_version, confirmed_credits}`, `link {links}`.
-2. Link the Blood Rush takes: `data/projects/01a0f10b-cee6-7765-bdb9-d1de0d611a5d/files/trailer/higgsfield-drafts.json` holds 35 take↔draft-job matches (exact file-size match) with prompts and quotes — feed `links` to `link_draft_jobs`.
-3. UI: countdown badge on draft takes in `StoryCardNode.svelte` ("1080p · 5d left", yellow → red in the last 48 h, gone when closed); project banner on the board listing drafts closing within 3 days with Finalize; Finalize on a take and "Finalize all picks" on a cut (Cuts tab), each showing the quoted credits and needing an explicit confirm.
-4. Verify in the browser on a throwaway project with a fake/unchanged generator — **never submit a real job** unless the operator says so.
+Added in part 2:
+- `POST /api/projects/[id]/finalize` — `quote {take_ids}` (free price check), `send {take_ids, expected_version, confirmed_credits}`, `link {expected_version, links}`.
+- `FinalizePanel.svelte` — per-take and total credits, balance (red and blocked when short), "Finalize…" then an explicit "Finalize for N credits". Opened from a take's **Finalize** button on the board, the board **banner** (drafts closing within 3 days, soonest first; "Finalize all…"; hide per project) and **Finalize all picks (N)…** on a cut in the Cuts tab.
+- Card badge "1080p · 6d left" (yellow; red in the last 48 h; "finalizing…" while a finalize is in flight; gone when closed). Shared minute clock in `src/lib/ui/clock.svelte.ts`.
+- Guards: a take already finalizing can't be quoted again; two takes from the same draft job (TR-19 and V6-14 share one) can't be finalized together, and the banner/cut list each draft once.
+- **Blood Rush is linked:** 35 takes → 34 draft jobs (ledger v68 → v69, metadata only). Browser-checked on the real board: badges show, the V6-00 quote reads 240 credits against 24.01 left and sending is blocked.
 
 ## Operator decisions on record
 
@@ -47,7 +49,7 @@ Still to do for V1S-124:
 - Finalize price is 12 credits per second at 1080p (10 s → 120, 15 s → 180, 20 s → 240). All 34 linked drafts: 4,740 credits; just the current picks: 2,760. Windows close 2026-10-07 19:03 UTC (V6-00) and 2026-10-08 ~01:25–02:00 UTC (the rest).
 - Optional, not needed: swap the near-fall shot in the 20 s trailer for the better standalone redo (19-ledge-bullet-time). On the board V6-14 already picks the redo.
 
-## Next tickets after V1S-124
+## Next tickets
 
 V1S-122 edit inside a cut (swap take, drop entry, source info, running length) · 123 suggest trims (add single stray frames at cuts, see the #13 comment) · 125 lock a cut · 126 match to music · 127 Raycast bridge test (ready-for-human) · 128 sound stage · 129 effects pass · 130 export · 131 board groups (use splitter.serving.cloud) · 132 owner brief · 133 UI polish.
 

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
-import { draftWindow, draftsClosingSoon, timeLeft, FINALIZE_WINDOW_MS } from '../../src/lib/domain/finalize';
+import { draftWindow, draftsClosingSoon, finalizingIds, timeLeft, FINALIZE_WINDOW_MS } from '../../src/lib/domain/finalize';
 import { pollGenerations, quoteFinalize, sendFinalize, type AnimateDeps } from '../../src/lib/server/animate';
 import type { GenerationStatus, VideoGenerator } from '../../src/lib/server/higgsfield';
 import type { ProductionAsset, StoryCard } from '../../src/lib/domain/schemas';
@@ -67,6 +67,22 @@ async function setup(credits = 120, balance = 1000) {
 	return { deps, f, project: linked.data, projectId };
 }
 
+describe('two takes from one draft job', () => {
+	const take = (asset_id: string, job_id: string, ageH: number): ProductionAsset => ({
+		asset_id, card_id: asset_id, kind: 'video', name: `${asset_id}.mp4`, mime_type: 'video/mp4', url: `/x/${asset_id}.mp4`, created_at: made, job_id,
+		generation: { provider: 'higgsfield', model: 'seedance_2_5', resolution: '480p', prompt: 'p', duration_s: 10, draft: true, draft_created_at: new Date(t0 - ageH * H).toISOString() }
+	});
+	const production = { status: 'draft' as const, title: '', logline: '', premise: '', theme: '', cards: [], updated_at: null, assets: [take('ledge', 'j1', 130), take('redo', 'j1', 130), take('other', 'j2', 120)] };
+
+	test('the banner lists the shared draft once', () => {
+		expect(draftsClosingSoon(production, t0).map((d) => d.take.asset_id)).toEqual(['ledge', 'other']);
+	});
+	test('a pending finalize on one take covers its twin', () => {
+		const pending = { ...production, generations: [{ request_id: 'f', card_id: 'ledge', provider: 'higgsfield' as const, model: 'seedance_2_5', prompt: 'p', duration_s: 10, resolution: '1080p', estimate_credits: 120, draft: false, status: 'queued' as const, submitted_at: made, finalizes: 'ledge' }] };
+		expect(finalizingIds(pending)).toEqual(new Set(['ledge', 'redo']));
+	});
+});
+
 describe('finalize against a fake generator', () => {
 	test('linking stores the job id and draft creation time; the take now has an open window', async () => {
 		const { project } = await setup();
@@ -94,6 +110,25 @@ describe('finalize against a fake generator', () => {
 		const higher = await sendFinalize(pricier.deps, { project_id: pricier.projectId, expected_version: pricier.project.version, take_ids: ['v'], confirmed_credits: 240 });
 		if (!higher.ok) expect(higher.reasons?.join(' ')).toContain('above the 240');
 		expect([...poor.f.calls, ...pricier.f.calls].some((call) => call.startsWith('submit'))).toBeFalse();
+	});
+
+	test('a take already finalizing is not quoted again and leaves the banner', async () => {
+		const { deps, project, projectId } = await setup(240);
+		const sent = await sendFinalize(deps, { project_id: projectId, expected_version: project.version, take_ids: ['v'], confirmed_credits: 240 });
+		if (!sent.ok) throw new Error(sent.message);
+		expect(finalizingIds(sent.project.production)).toEqual(new Set(['v']));
+		expect(draftsClosingSoon(sent.project.production, Date.now() + 4 * 24 * H)).toEqual([]);
+		const again = await quoteFinalize(deps, sent.project, ['v']);
+		expect(again.ok).toBeFalse();
+		if (!again.ok) expect(again.message).toContain('already being finalized');
+	});
+
+	test('two takes of the same draft cannot be finalized together', async () => {
+		const { deps, project } = await setup(120);
+		const twin = { ...project.production.assets[0], asset_id: 'v2', name: 'twin.mp4' };
+		const quoted = await quoteFinalize(deps, { ...project, production: { ...project.production, assets: [...project.production.assets, twin] } }, ['v', 'v2']);
+		expect(quoted.ok).toBeFalse();
+		if (!quoted.ok) expect(quoted.message).toContain('same draft');
 	});
 
 	test('a finished finalize replaces the take\'s media; trims, ramp and pick stay', async () => {

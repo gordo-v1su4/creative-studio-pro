@@ -39,18 +39,38 @@ export function timeLeft(msLeft: number): string {
 	return `${Math.max(1, Math.floor(msLeft / 60_000))}m left`;
 }
 
+/**
+ * Takes whose draft is already being finalized (sent, not yet settled). Two
+ * takes can share one draft job (the same file on two beats), so a pending
+ * finalize covers every take of that job.
+ */
+export function finalizingIds(production: Pick<ProductionState, 'generations' | 'assets'>): Set<string> {
+	const pending = new Set((production.generations ?? []).flatMap((g) => g.finalizes && (g.status === 'queued' || g.status === 'in_progress') ? [g.finalizes] : []));
+	const jobs = new Set(production.assets.flatMap((take) => pending.has(take.asset_id) && take.job_id ? [take.job_id] : []));
+	return new Set(production.assets.flatMap((take) => pending.has(take.asset_id) || (take.job_id && jobs.has(take.job_id)) ? [take.asset_id] : []));
+}
+
+/** One take per draft job, first wins: finalizing the same draft twice would pay for the same render twice. */
+export function oneTakePerDraft<T extends Pick<ProductionAsset, 'job_id'>>(takes: T[]): T[] {
+	const seen = new Set<string>();
+	return takes.filter((take) => !take.job_id || (!seen.has(take.job_id) && seen.add(take.job_id)));
+}
+
 export interface ClosingDraft { take: ProductionAsset; closes_at: string; ms_left: number }
 
-/** Drafts whose window closes within three days, soonest first (for the project banner). */
+/** Drafts whose window closes within three days, soonest first (for the project banner); ones already finalizing are left out. */
 export function draftsClosingSoon(production: ProductionState, now: number, withinMs = BANNER_MS): ClosingDraft[] {
+	const sent = finalizingIds(production);
 	return production.assets
+		.filter((take) => !sent.has(take.asset_id) && !take.rejected)
 		.flatMap((take) => {
 			const window = draftWindow(take, now);
-			return (window.state === 'open' || window.state === 'closing') && window.ms_left <= withinMs && !take.rejected
+			return (window.state === 'open' || window.state === 'closing') && window.ms_left <= withinMs
 				? [{ take, closes_at: window.closes_at, ms_left: window.ms_left }]
 				: [];
 		})
-		.sort((a, b) => a.ms_left - b.ms_left);
+		.sort((a, b) => a.ms_left - b.ms_left)
+		.filter((entry, index, all) => !entry.take.job_id || all.findIndex((other) => other.take.job_id === entry.take.job_id) === index);
 }
 
 /** Every take that can still be finalized (open window), e.g. the picks in a cut. */
