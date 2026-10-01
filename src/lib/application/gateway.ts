@@ -20,7 +20,9 @@ import {
 	rejectTakeCommandSchema,
 	restoreTakeCommandSchema,
 	benchBeatCommandSchema,
-	rewireSpineCommandSchema
+	rewireSpineCommandSchema,
+	addTakeCommandSchema,
+	addBeatCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
 import { applyProjectModelChoice, applyProjectModelLock } from '$lib/domain/model-provider';
@@ -29,6 +31,7 @@ import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from '$lib/domain/takes';
 import { applyBench } from '$lib/domain/bench';
 import { applyRewire } from '$lib/domain/spine';
+import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 
 type LedgerEventType = LedgerEvent['type'];
@@ -137,6 +140,10 @@ export class ProjectCommandGateway {
 				return this.benchBeat(raw);
 			case 'rewire_spine':
 				return this.rewireSpine(raw);
+			case 'add_take':
+				return this.addTake(raw);
+			case 'add_beat':
+				return this.addBeat(raw);
 			case 'set_project_model':
 				return this.setProjectModel(raw);
 			case 'lock_project_model':
@@ -261,6 +268,19 @@ export class ProjectCommandGateway {
 			(production) => applyBench(production, parsed.data.card_id, bench),
 			bench ? 'project.beat_benched.v1' : 'project.beat_unbenched.v1'
 		);
+	}
+
+	async addTake(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = addTakeCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateBoard(parsed.data, (production) => applyAddTake(production, parsed.data.card_id, parsed.data.take), 'project.take_added.v1');
+	}
+
+	async addBeat(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = addBeatCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { card_id, title, take } = parsed.data;
+		return this.updateBoard(parsed.data, (production) => applyAddBeat(production, card_id, title, take), 'project.beat_added.v1');
 	}
 
 	async rewireSpine(raw: unknown): Promise<CommandOutcome<Project>> {

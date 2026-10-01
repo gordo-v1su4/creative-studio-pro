@@ -259,6 +259,10 @@ export const productionAssetSchema = z.object({
 	speed: z.array(z.object({ x: z.number().min(0).max(1), rate: z.number().min(1).max(4) })).max(64).optional(),
 	/** Rejected takes are kept but left out of cycling and selections. */
 	rejected: z.boolean().optional(),
+	/** Probed on intake (dropped files); stills under 2K on the long edge are flagged. */
+	width: z.number().int().positive().optional(),
+	height: z.number().int().positive().optional(),
+	duration_s: z.number().positive().optional(),
 	created_at: rfc3339Schema
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
@@ -449,6 +453,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.beat_benched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_unbenched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.spine_rewired.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_added.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.beat_added.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Agent model provider (V1S-117): override, first-run lock, explicit switch.
 	z.object({
 		type: z.literal('project.agent_model_set.v1'), event_id: idSchema,
@@ -590,6 +596,30 @@ export const benchBeatCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	card_id: idSchema
+});
+
+/** A take as it arrives on the board (a dropped file), before it belongs to a beat. */
+export const newTakeSchema = productionAssetSchema.omit({ card_id: true, rejected: true, in_s: true, out_s: true, speed: true }).extend({
+	kind: z.enum(['image', 'video'])
+});
+
+/** A dropped file on a beat: a new take that becomes the pick. */
+export const addTakeCommandSchema = z.object({
+	command: z.literal('add_take'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	card_id: idSchema,
+	take: newTakeSchema
+});
+
+/** A dropped file on empty canvas: a new benched beat, off the spine, holding that take. */
+export const addBeatCommandSchema = z.object({
+	command: z.literal('add_beat'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	card_id: idSchema,
+	title: nonBlank(200),
+	take: newTakeSchema
 });
 
 /** The board's full set of spine links after an unhook/rehook; the gateway derives and stores the new story order. */

@@ -6,6 +6,7 @@
 	import type { Take } from '$lib/domain/takes';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
+	import { isUnder2K } from '$lib/domain/media';
 
 	type CardFace = 'beat' | 'take';
 	type StoryCardNodeData = {
@@ -33,6 +34,8 @@
 	let rejectedCount = $derived(takes.filter((take) => take.rejected).length);
 	// Rejected takes stay hidden until revealed; a revealed one can be viewed and restored, never picked.
 	let showRejected = $state(false);
+	// A file is being dragged over this beat: dropping it adds a take (the board handles the drop).
+	let dropping = $state(false);
 	let viewingId = $state<string | null>(null);
 	let cycle = $derived(showRejected ? takes : takes.filter((take) => !take.rejected));
 	let shown = $derived(cycle.find((take) => take.asset_id === viewingId) ?? pick);
@@ -87,9 +90,13 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <article
 	onclick={select}
+	ondragenter={(event) => { if (card && event.dataTransfer?.types.includes('Files')) dropping = true; }}
+	ondragleave={(event) => { if (!(event.currentTarget as Element).contains(event.relatedTarget as Node)) dropping = false; }}
+	ondrop={() => (dropping = false)}
 	class={[
 		'story-node w-[240px] overflow-hidden border bg-[#10151b]',
 		benched && 'benched',
+		dropping && 'dropping',
 		inSequence ? 'border-[#f2c14e] shadow-[0_0_18px_rgba(242,193,78,.18)]' : selected ? 'border-[#55dfd5] shadow-[0_0_18px_rgba(85,223,213,.14)]' : 'border-[#26383f]'
 	]}
 	aria-label={card ? `Story card ${number ?? 'off the spine'}, ${card.title}` : `Story card ${story.order + 1}, awaiting draft`}
@@ -147,7 +154,7 @@
 							{/if}
 						</div>
 					{/key}
-					{#if shown.rejected}<span class="rejected-mark">Rejected</span>{/if}
+					{#if shown.rejected}<span class="rejected-mark">Rejected</span>{:else if isUnder2K(shown)}<span class="rejected-mark" title={`${shown.width}×${shown.height}: under 2K on the long edge`}>Under 2K</span>{/if}
 				{:else}
 					<div class="flex h-full flex-col justify-end bg-[#0a0d12] p-3">
 						<span class="font-mono text-[9px] text-[#6dbff3]">VIDEO PROMPT</span>
@@ -185,6 +192,7 @@
 	.take-btn { border: 0; background: transparent; padding: 2px 6px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
 	.take-btn:hover, .take-btn.active { background: #14232a; color: #84cbd0; }
 	.rejected-mark { position: absolute; top: 6px; left: 6px; border: 1px solid #6b3a3a; background: #1a0f10; padding: 1px 5px; color: #d98a8a; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.dropping { outline: 1px dashed #55dfd5; outline-offset: 3px; }
 	.benched > :not(header) { opacity: .4; }
 	.benched header { opacity: .7; }
 	.benched-mark { border: 1px solid #4a4f3a; padding: 0 4px; color: #c9c08a; font: 600 9px var(--font-mono); text-transform: uppercase; }

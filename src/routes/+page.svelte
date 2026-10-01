@@ -24,6 +24,7 @@
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { benchedBeats } from '$lib/domain/bench';
+	import { mediaKind } from '$lib/domain/media';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
@@ -233,25 +234,87 @@
 		return { ...project, production: { ...project.production, cards } };
 	}
 
-	function sendBoardCommand(body: Record<string, unknown>) {
-		for (const [cardId, pending] of pendingPicks) if (cardId !== body.card_id) flushPick(cardId, pending);
+	/** Run one board request against the latest version, after every earlier one; adopt what the server returns. */
+	function enqueueBoard(send: (project: Project) => Promise<Response>, adopted?: (body: Record<string, unknown>) => void) {
 		takeQueue = takeQueue.then(async () => {
 			const project = activeProject;
 			if (!project) return;
 			try {
-				const response = await fetch(`/api/projects/${project.project_id}/board`, {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ ...body, expected_version: project.version })
-				});
-				const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+				const result = (await (await send(project)).json()) as ({ ok: true; data: Project } | { ok: false; error: { message: string } }) & Record<string, unknown>;
 				if (!result.ok) throw new Error(result.error.message);
+				adopted?.(result);
 				if (activeProject?.project_id === project.project_id) adoptProject(withPendingPicks(result.data));
 			} catch (e) {
 				loadError = e instanceof Error ? e.message : 'Board update failed';
 				await openProject(project.project_id);
 			}
 		});
+	}
+
+	function sendBoardCommand(body: Record<string, unknown>) {
+		for (const [cardId, pending] of pendingPicks) if (cardId !== body.card_id) flushPick(cardId, pending);
+		enqueueBoard((project) => fetch(`/api/projects/${project.project_id}/board`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ ...body, expected_version: project.version })
+		}));
+	}
+
+	// --- Drag and drop: a file on a beat becomes its new take (and pick); on empty canvas, a new benched beat there.
+	let dropNotice = $state<string | null>(null);
+	let dropNoticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function notify(message: string) {
+		dropNotice = message;
+		if (dropNoticeTimer) clearTimeout(dropNoticeTimer);
+		dropNoticeTimer = setTimeout(() => (dropNotice = null), 9000);
+	}
+
+	function boardDragOver(event: DragEvent) {
+		if (!activeProject || !event.dataTransfer?.types.includes('Files')) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'copy';
+	}
+
+	function boardDrop(event: DragEvent) {
+		const files = [...(event.dataTransfer?.files ?? [])];
+		if (!activeProject || files.length === 0) return;
+		event.preventDefault();
+		for (const [cardId, pending] of pendingPicks) flushPick(cardId, pending);
+		const nodeId = (event.target as Element | null)?.closest('.svelte-flow__node')?.getAttribute('data-id');
+		const cardId = nodeId && activeProject.production.cards.some((card) => card.card_id === nodeId) ? nodeId : null;
+		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const at = { x: (event.clientX - box.left - viewport.x) / viewport.zoom, y: (event.clientY - box.top - viewport.y) / viewport.zoom };
+		const refused = files.filter((file) => !mediaKind(file.name)).map((file) => file.name);
+		const flagged: string[] = [];
+		const report = () => {
+			const lines = [
+				refused.length ? `Not an image or video, left out: ${refused.join(', ')}` : '',
+				flagged.length ? `Under 2K on the long edge, flagged: ${flagged.join(', ')}` : ''
+			].filter(Boolean);
+			if (lines.length) notify(lines.join(' · '));
+		};
+		files.filter((file) => mediaKind(file.name)).forEach((file, index) => {
+			const params = new URLSearchParams({ name: file.name });
+			if (cardId) params.set('card_id', cardId);
+			else { params.set('x', String(Math.round(at.x + index * 40))); params.set('y', String(Math.round(at.y + index * 40))); }
+			enqueueBoard(
+				(project) => {
+					params.set('expected_version', String(project.version));
+					return fetch(`/api/projects/${project.project_id}/media?${params}`, { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
+				},
+				(result) => {
+					const take = result.take as { under_2k?: boolean; name: string; width?: number; height?: number };
+					if (take.under_2k) flagged.push(`${take.name} (${take.width}×${take.height})`);
+					if (!cardId && layout) {
+						// The server placed the new beat at the drop point; mirror it so the board doesn't jump.
+						layout = { ...layout, nodes: [...layout.nodes, { node_id: String(result.beat_id), type: 'story_card', lane: 'storyboard', x: Number(params.get('x')), y: Number(params.get('y')), width: 320, height: 400 }] };
+					}
+					report();
+				}
+			);
+		});
+		if (refused.length && refused.length === files.length) report();
 	}
 
 	function flushPick(cardId: string, pending: { takeId: string; timer: ReturnType<typeof setTimeout> }) {
@@ -631,9 +694,16 @@
 					{loadError}
 				</div>
 			{/if}
+			{#if dropNotice}
+				<div class="absolute inset-x-0 top-0 z-10 flex items-center gap-2 border-b border-[color-mix(in_srgb,var(--color-gate-pending)_55%,var(--color-border-default))] bg-surface-raised-2 px-3 py-2 text-gate-pending" role="status">
+					<span class="grow">{dropNotice}</span>
+					<button type="button" class="font-mono text-[10px] uppercase text-text-dim hover:text-text-muted" onclick={() => (dropNotice = null)}>Dismiss</button>
+				</div>
+			{/if}
 
 			{#if activeProject && canvasOpen}
-				<div class="relative h-full">
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div class="relative h-full" ondragover={boardDragOver} ondrop={boardDrop}>
 					<SvelteFlow
 						bind:nodes
 						bind:edges
