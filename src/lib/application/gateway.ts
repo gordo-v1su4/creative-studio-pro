@@ -13,11 +13,15 @@ import {
 	saveProductionCommandSchema,
 	recordInterviewRoundCommandSchema,
 	saveBriefCommandSchema,
-	lockBriefCommandSchema
+	lockBriefCommandSchema,
+	setPickCommandSchema,
+	rejectTakeCommandSchema,
+	restoreTakeCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
 import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
+import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from '$lib/domain/takes';
 import type { Project, ProjectSummary, CanvasLayout, Voice } from '$lib/domain/schemas';
 
 /**
@@ -113,6 +117,12 @@ export class ProjectCommandGateway {
 				return this.reconcileCreativeRoom(raw);
 			case 'save_production':
 				return this.saveProduction(raw);
+			case 'set_pick':
+				return this.setPick(raw);
+			case 'reject_take':
+				return this.rejectTake(raw);
+			case 'restore_take':
+				return this.restoreTake(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -202,6 +212,43 @@ export class ProjectCommandGateway {
 			return { ok: true, data: project };
 		} catch (e) {
 			return this.storeError(e);
+		}
+	}
+
+	async setPick(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = setPickCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { card_id, take_id } = parsed.data;
+		return this.updateTakes(parsed.data, (production) => applySetPick(production, card_id, take_id), 'project.take_picked.v1');
+	}
+
+	async rejectTake(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = rejectTakeCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateTakes(parsed.data, (production) => applyRejectTake(production, parsed.data.take_id), 'project.take_rejected.v1');
+	}
+
+	async restoreTake(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = restoreTakeCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateTakes(parsed.data, (production) => applyRestoreTake(production, parsed.data.take_id), 'project.take_restored.v1');
+	}
+
+	private async updateTakes(
+		command: { project_id: string; expected_version: number },
+		apply: (production: Project['production']) => TakeResult,
+		eventType: 'project.take_picked.v1' | 'project.take_rejected.v1' | 'project.take_restored.v1'
+	): Promise<CommandOutcome<Project>> {
+		let refusal: string | null = null;
+		try {
+			const project = await this.store.updateProject(command.project_id, command.expected_version, (current) => {
+				const result = apply(current.production);
+				if (!result.ok) { refusal = result.message; throw new Error(result.message); }
+				return { ...current, production: { ...result.production, updated_at: new Date().toISOString() } };
+			}, eventType);
+			return { ok: true, data: project };
+		} catch (e) {
+			return refusal ? invalid(refusal) : this.storeError(e);
 		}
 	}
 

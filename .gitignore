@@ -29,3 +29,6 @@ data/projects/
 # Per-machine skill links created by `bun run skills:link` (postinstall).
 /.claude/skills/
 /.cursor/hooks/state/
+
+# Agent worktrees
+.claude/worktrees/

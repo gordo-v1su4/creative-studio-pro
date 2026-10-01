@@ -236,7 +236,9 @@ export const storyCardSchema = z.object({
 	duration_ms: z.number().int().positive().max(120_000),
 	image_prompt: nonBlank(5000),
 	video_prompt: nonBlank(5000),
-	status: z.enum(['draft', 'approved']).default('draft')
+	status: z.enum(['draft', 'approved']).default('draft'),
+	/** The take chosen to represent this beat. Absent = newest live video, else newest live image. */
+	pick_take_id: idSchema.optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;
 
@@ -252,6 +254,8 @@ export const productionAssetSchema = z.object({
 	out_s: z.number().positive().optional(),
 	/** Speed ramp over the kept span (x 0..1), speed-up only. Absent = 1x. */
 	speed: z.array(z.object({ x: z.number().min(0).max(1), rate: z.number().min(1).max(4) })).max(64).optional(),
+	/** Rejected takes are kept but left out of cycling and selections. */
+	rejected: z.boolean().optional(),
 	created_at: rfc3339Schema
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
@@ -429,7 +433,10 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 		project_id: idSchema,
 		timestamp: rfc3339Schema,
 		payload: projectSchema
-	})
+	}),
+	z.object({ type: z.literal('project.take_picked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_rejected.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_restored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
@@ -528,6 +535,29 @@ export const saveProductionCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	production: productionStateSchema
+});
+
+// Takes on beats: the pick and rejection are per-take commands, never a whole-production save.
+export const setPickCommandSchema = z.object({
+	command: z.literal('set_pick'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	card_id: idSchema,
+	take_id: idSchema
+});
+
+export const rejectTakeCommandSchema = z.object({
+	command: z.literal('reject_take'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	take_id: idSchema
+});
+
+export const restoreTakeCommandSchema = z.object({
+	command: z.literal('restore_take'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	take_id: idSchema
 });
 
 export type CreateProjectCommand = z.infer<typeof createProjectCommandSchema>;

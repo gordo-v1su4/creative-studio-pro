@@ -20,6 +20,7 @@
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName, isCurrentBriefLocked } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
+	import { pickFor, takesFor } from '$lib/domain/takes';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
 	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
@@ -104,13 +105,18 @@
 			: Array.from({ length: 6 }, (_, order) => ({ id: `story-placeholder-${order}`, card: null }));
 		const storyNodes: Node[] = cardRecords.map(({ id, card }, index) => {
 			const savedNode = saved?.nodes.find((n) => n.node_id === id);
-			const image = card ? project.production.assets.findLast((asset) => asset.card_id === card.card_id && asset.kind === 'image') : null;
-			const video = card ? project.production.assets.findLast((asset) => asset.card_id === card.card_id && asset.kind === 'video') : null;
+			const takes = card ? takesFor(project.production, card.card_id, true) : [];
+			const pick = card ? pickFor(project.production, card) : null;
 			return {
 				id,
 				type: 'story_card',
 				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 210 },
-				data: { card, order: index, imageUrl: image?.url ?? null, videoUrl: video?.url ?? null, videoAssetId: video?.asset_id ?? null, videoIn: video?.in_s ?? null, videoOut: video?.out_s ?? null, videoSpeed: video?.speed ?? null },
+				data: {
+					card, order: index, takes, pickId: pick?.asset_id ?? null,
+					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
+					onReject: (takeId: string) => sendTakeCommand({ command: 'reject_take', take_id: takeId }),
+					onRestore: (takeId: string) => sendTakeCommand({ command: 'restore_take', take_id: takeId })
+				},
 				ariaLabel: card ? `Story card ${index + 1}, ${card.title}` : `Story card ${index + 1}, awaiting draft`
 			};
 		});
@@ -148,6 +154,57 @@
 		nodes = projectToNodes(project, nextLayout);
 		edges = projectToEdges(project);
 		syncPolling(project);
+	}
+
+	// Take commands (set_pick / reject_take / restore_take) run one at a time, each
+	// against the latest version. Cycling shows the new pick at once and sends only
+	// where the operator stops (pendingPicks), so a burst of clicks is one command.
+	let takeQueue: Promise<void> = Promise.resolve();
+	const pendingPicks = new Map<string, { takeId: string; timer: ReturnType<typeof setTimeout> }>();
+
+	function withPendingPicks(project: Project): Project {
+		if (pendingPicks.size === 0) return project;
+		const cards = project.production.cards.map((card) => {
+			const pending = pendingPicks.get(card.card_id);
+			return pending ? { ...card, pick_take_id: pending.takeId } : card;
+		});
+		return { ...project, production: { ...project.production, cards } };
+	}
+
+	function sendTakeCommand(body: Record<string, unknown>) {
+		for (const [cardId, pending] of pendingPicks) if (cardId !== body.card_id) flushPick(cardId, pending);
+		takeQueue = takeQueue.then(async () => {
+			const project = activeProject;
+			if (!project) return;
+			try {
+				const response = await fetch(`/api/projects/${project.project_id}/takes`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ ...body, expected_version: project.version })
+				});
+				const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+				if (!result.ok) throw new Error(result.error.message);
+				if (activeProject?.project_id === project.project_id) adoptProject(withPendingPicks(result.data));
+			} catch (e) {
+				loadError = e instanceof Error ? e.message : 'Take update failed';
+				await openProject(project.project_id);
+			}
+		});
+	}
+
+	function flushPick(cardId: string, pending: { takeId: string; timer: ReturnType<typeof setTimeout> }) {
+		clearTimeout(pending.timer);
+		pendingPicks.delete(cardId);
+		sendTakeCommand({ command: 'set_pick', card_id: cardId, take_id: pending.takeId });
+	}
+
+	function pickTake(cardId: string, takeId: string) {
+		if (!activeProject) return;
+		const previous = pendingPicks.get(cardId);
+		if (previous) clearTimeout(previous.timer);
+		const pending = { takeId, timer: setTimeout(() => flushPick(cardId, pending), 300) };
+		pendingPicks.set(cardId, pending);
+		adoptProject(withPendingPicks(activeProject));
 	}
 
 	async function loadProjects() {

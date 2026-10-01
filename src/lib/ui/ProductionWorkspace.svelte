@@ -1,6 +1,7 @@
 <script lang="ts">
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
+	import { pickFor } from '$lib/domain/takes';
 
 	export type ProductionTab = 'story' | 'cards' | 'media' | 'preview' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {
@@ -55,18 +56,25 @@
 		draft.cards = draft.cards.map((card) => card.card_id === cardId ? { ...card, ...patch } : card);
 	}
 
+	// A new URL is a new take on the beat and becomes its pick; earlier takes are kept.
 	function addAsset(card: StoryCard, kind: ProductionAsset['kind'], url: string) {
 		const clean = url.trim();
-		if (!clean) return;
-		draft.assets = [...draft.assets.filter((asset) => !(asset.card_id === card.card_id && asset.kind === kind)), {
-			asset_id: crypto.randomUUID(), card_id: card.card_id, kind,
+		if (!clean || assetFor(card.card_id, kind)?.url === clean) return;
+		const assetId = crypto.randomUUID();
+		draft.assets = [...draft.assets, {
+			asset_id: assetId, card_id: card.card_id, kind,
 			name: `${card.title} ${kind}`, mime_type: kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : 'audio/*',
 			url: clean, created_at: new Date().toISOString()
 		}];
+		if (kind !== 'audio') updateCard(card.card_id, { pick_take_id: assetId });
 	}
 
+	/** The pick when it is of this kind, else the newest live take of the kind. */
 	function assetFor(cardId: string, kind: ProductionAsset['kind']) {
-		return draft.assets.findLast((asset) => asset.card_id === cardId && asset.kind === kind) ?? null;
+		const card = draft.cards.find((entry) => entry.card_id === cardId);
+		const pick = card ? pickFor(draft, card) : null;
+		if (pick?.kind === kind) return pick;
+		return draft.assets.findLast((asset) => asset.card_id === cardId && asset.kind === kind && !asset.rejected) ?? null;
 	}
 
 	function faceFor(cardId: string): CardFace {

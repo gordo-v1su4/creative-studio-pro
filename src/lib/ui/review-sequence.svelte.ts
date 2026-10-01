@@ -21,6 +21,16 @@ class ReviewSequence {
 		if (this.items.length === 0) this.playing = false;
 	}
 
+	/** Keep a selected beat on its current pick: swap the clip in place, or drop it when the pick has no video. */
+	sync(id: string, item: SequenceItem | null): void {
+		const index = this.items.findIndex((entry) => entry.id === id);
+		if (index < 0) return;
+		const current = this.items[index];
+		if (item && current.assetId === item.assetId && current.src === item.src) return;
+		this.items = item ? this.items.with(index, item) : this.items.filter((entry) => entry.id !== id);
+		if (this.items.length === 0) this.playing = false;
+	}
+
 	clear(): void {
 		this.items = [];
 		this.playing = false;
