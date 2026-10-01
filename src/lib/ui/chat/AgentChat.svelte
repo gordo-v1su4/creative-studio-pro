@@ -67,7 +67,7 @@
 	onDestroy(() => recognition?.abort());
 
 	async function callAgent(body: Record<string, unknown>): Promise<AgentData> {
-		if (!project) throw new Error('Open a project before starting the Stage Agent.');
+		if (!project) throw new Error('Open a project before starting the Agent.');
 		const response = await fetch(`/api/projects/${project.project_id}/agent`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -88,7 +88,7 @@
 			assistantMessage = data.message;
 			pendingQuestion = data.next_question;
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Stage Agent failed to start';
+			error = cause instanceof Error ? cause.message : 'The Agent failed to start';
 		} finally {
 			busy = false;
 		}
@@ -135,7 +135,7 @@
 			loadedVersion = data.project.version;
 			ui.adoptActiveProject(data.project);
 		} catch (cause) {
-			error = cause instanceof Error ? cause.message : 'Stage Agent answer failed';
+			error = cause instanceof Error ? cause.message : 'The Agent could not answer';
 		} finally {
 			busy = false;
 		}
@@ -184,7 +184,7 @@
 
 {#if open}
 	{#if !docked}
-		<button type="button" class="fixed inset-0 z-40 cursor-default bg-black/65 backdrop-blur-[3px]" transition:fade={{ duration: 140 }} onclick={() => (open = false)} aria-label="Close Stage Agent"></button>
+		<button type="button" class="fixed inset-0 z-40 cursor-default bg-black/65 backdrop-blur-[3px]" transition:fade={{ duration: 140 }} onclick={() => (open = false)} aria-label="Close the Agent"></button>
 	{/if}
 	<div
 		class={docked
@@ -193,24 +193,24 @@
 		transition:fly={{ x: docked ? 36 : 0, y: docked ? 0 : -12, duration: 220, easing: quintOut }}
 		role="dialog"
 		aria-modal={!docked}
-		aria-label="Stage Agent conversation"
+		aria-label="Agent conversation"
 	>
 		<header class="agent-header flex min-h-14 items-center gap-3 px-4 py-2.5">
 			<span class="agent-prompt text-[18px] font-bold" aria-hidden="true">&gt;</span>
 			<div class="min-w-0 grow">
 				<div class="flex items-center gap-3">
-					<div class="agent-wordmark"><span>NERATE</span><small>STORYHELPER™</small></div>
+					<div class="agent-wordmark"><span>THE AGENT</span><small>NARRATE</small></div>
 					<div class="slash-rule" aria-hidden="true"></div>
 				</div>
 				<div class="agent-path truncate">~\projects\{projectTitle || 'no-project'} · {project?.stage.id ?? '—'} · {modelLabel || 'model'}</div>
 			</div>
 			<button type="button" class="agent-key" onclick={() => (ui.chatMode = docked ? 'focus' : 'dock')} aria-label={docked ? 'Open Agent in focus mode' : 'Dock Agent on the right'}>{docked ? 'focus' : 'dock'}</button>
-			<button type="button" class="agent-key" onclick={() => (open = false)} aria-label="Close Stage Agent">esc</button>
+			<button type="button" class="agent-key" onclick={() => (open = false)} aria-label="Close the Agent">esc</button>
 		</header>
 
 		<div class="agent-transcript min-h-0 grow overflow-y-auto px-4 py-4" aria-live="polite">
 			{#if !project}
-				<div class="mx-auto mt-16 max-w-md text-center text-text-muted">Open a project to begin a Stage Agent conversation.</div>
+				<div class="mx-auto mt-16 max-w-md text-center text-text-muted">Open a project to talk with the Agent.</div>
 			{:else}
 				<div class="mx-auto grid max-w-2xl gap-3">
 					<ProjectModelPanel {project} bind:label={modelLabel} />
@@ -236,7 +236,7 @@
 										{/each}
 									</div>
 									{#if selectedChoice === 'E'}
-										<input class="other-field mt-2" bind:value={otherAnswer} placeholder="Tell NERATE what you want instead…" aria-label="Something else" />
+										<input class="other-field mt-2" bind:value={otherAnswer} placeholder="Tell the Agent what you want instead…" aria-label="Something else" />
 									{/if}
 								{/if}
 							{/if}

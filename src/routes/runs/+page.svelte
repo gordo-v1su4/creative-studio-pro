@@ -1,4 +1,4 @@
-<svelte:head><title>Runs — Creative Studio Pro</title></svelte:head>
+<svelte:head><title>Runs — Narrate</title></svelte:head>
 
 <div class="h-full overflow-y-auto p-6">
 	<div class="mx-auto max-w-[720px]">

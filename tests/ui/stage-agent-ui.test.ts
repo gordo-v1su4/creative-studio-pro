@@ -21,7 +21,7 @@ describe('Stage Agent Svelte surface contract', () => {
 
 	test('removes owner-editable confidence controls from the primary inspector', async () => {
 		const stagePanel = await readFile('src/lib/ui/StageGatePanel.svelte', 'utf8');
-		expect(stagePanel).toContain('Open Stage Agent');
+		expect(stagePanel).toContain('Open the Agent');
 		expect(stagePanel).not.toContain('overall-confidence');
 		expect(stagePanel).not.toContain('score-');
 	});

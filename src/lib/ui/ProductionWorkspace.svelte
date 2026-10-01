@@ -4,7 +4,7 @@
 	import { pickFor } from '$lib/domain/takes';
 	import { liveSpine } from '$lib/domain/spine';
 
-	export type ProductionTab = 'story' | 'cards' | 'media' | 'preview' | 'export';
+	export type ProductionTab = 'story' | 'beats' | 'cuts' | 'sound' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {
 		project: Project; onUpdated: (project: Project) => void; tab?: ProductionTab
 	} = $props();
@@ -41,7 +41,7 @@
 
 	async function generate() {
 		busy = true; error = null;
-		try { const next = await request({ mode: 'generate', expected_version: project.version }); if (next.production.cards.length) tab = 'cards'; }
+		try { const next = await request({ mode: 'generate', expected_version: project.version }); if (next.production.cards.length) tab = 'beats'; }
 		catch (cause) { error = cause instanceof Error ? cause.message : 'Story build failed'; }
 		finally { busy = false; }
 	}
@@ -55,19 +55,6 @@
 
 	function updateCard(cardId: string, patch: Partial<StoryCard>) {
 		draft.cards = draft.cards.map((card) => card.card_id === cardId ? { ...card, ...patch } : card);
-	}
-
-	// A new URL is a new take on the beat and becomes its pick; earlier takes are kept.
-	function addAsset(card: StoryCard, kind: ProductionAsset['kind'], url: string) {
-		const clean = url.trim();
-		if (!clean || assetFor(card.card_id, kind)?.url === clean) return;
-		const assetId = crypto.randomUUID();
-		draft.assets = [...draft.assets, {
-			asset_id: assetId, card_id: card.card_id, kind,
-			name: `${card.title} ${kind}`, mime_type: kind === 'image' ? 'image/*' : kind === 'video' ? 'video/*' : 'audio/*',
-			url: clean, created_at: new Date().toISOString()
-		}];
-		if (kind !== 'audio') updateCard(card.card_id, { pick_take_id: assetId });
 	}
 
 	/** The pick when it is of this kind, else the newest live take of the kind. */
@@ -107,7 +94,7 @@
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
 	<div class="sticky top-0 z-10 flex min-w-max items-center justify-end gap-3 border-b border-[#26333a] bg-[#10141a]/95 px-4 py-2 backdrop-blur">
-		<span class="meta-label text-[#63838c]">{draft.cards.length} cards · {(totalDuration / 1000).toFixed(0)}s</span>
+		<span class="meta-label text-[#63838c]">{draft.cards.length} beats · {(totalDuration / 1000).toFixed(0)}s</span>
 		<button type="button" class="btn btn-accent" onclick={() => void save()} disabled={saving || busy}>{saving ? 'Saving…' : 'Save workspace'}</button>
 	</div>
 
@@ -121,14 +108,14 @@
 					<h2 class="mt-2 text-xl font-semibold text-[#c7eef0]">{draft.title || project.title}</h2>
 					<p class="mt-2 max-w-3xl text-[13px] leading-6 text-[#80aeb9]">{draft.logline || 'Generate the first story draft from the seed, interview evidence, and selected creative voice.'}</p>
 				</div>
-				<button type="button" class="btn btn-accent" onclick={() => void generate()} disabled={busy}>{busy ? 'NERATE is building…' : draft.cards.length ? 'Rebuild story' : 'Build story draft'}</button>
+				<button type="button" class="btn btn-accent" onclick={() => void generate()} disabled={busy}>{busy ? 'The Agent is building…' : draft.cards.length ? 'Rebuild story' : 'Build story draft'}</button>
 			</div>
 			<div class="mt-5 grid gap-4 md:grid-cols-2">
 				<label class="workspace-field"><span>Premise</span><textarea bind:value={draft.premise} rows="9" placeholder="The complete dramatic premise…"></textarea></label>
 				<label class="workspace-field"><span>Theme / dramatic question</span><textarea bind:value={draft.theme} rows="9" placeholder="What the story is really testing…"></textarea></label>
 			</div>
 		</div>
-	{:else if tab === 'cards'}
+	{:else if tab === 'beats'}
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
 			{#each draft.cards as card (card.card_id)}
 				{@const image = assetFor(card.card_id, 'image')}
@@ -156,7 +143,6 @@
 					<div class="mt-3 flex items-center gap-2">
 						<button type="button" class="face-arrow" onclick={() => moveFace(card.card_id, -1)} aria-label={`Previous face for ${card.title}`}>←</button>
 						<button type="button" class="agent-mini" onclick={() => updateCard(card.card_id, { status: card.status === 'approved' ? 'draft' : 'approved' })}>{card.status}</button>
-						<button type="button" class="agent-mini" onclick={() => (tab = 'media')}>manage media</button>
 						<span class="grow"></span><span class="meta-label text-[#55747c]">{face}</span>
 						<button type="button" class="face-arrow" onclick={() => moveFace(card.card_id, 1)} aria-label={`Next face for ${card.title}`}>→</button>
 					</div>
@@ -164,27 +150,12 @@
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>
-	{:else if tab === 'media'}
-		<div class="grid gap-4 p-4 xl:grid-cols-2">
-			{#each draft.cards as card (card.card_id)}
-				{@const image = assetFor(card.card_id, 'image')}
-				{@const video = assetFor(card.card_id, 'video')}
-				<article class="media-card">
-					<div class="flex items-center gap-2"><span class="card-index">{String(card.order + 1).padStart(2, '0')}</span><strong>{card.title}</strong></div>
-					<div class="mt-3 grid grid-cols-2 gap-2">
-						<div class="media-slot">{#if image}<img src={image.url} alt={`${card.title} image result`} />{:else}<span>IMAGE RESULT</span>{/if}</div>
-						<div class="media-slot">{#if video}<!-- svelte-ignore a11y_media_has_caption --><video src={video.url} controls preload="metadata" aria-label={`${card.title} video result`}></video>{:else}<span>VIDEO RESULT</span>{/if}</div>
-					</div>
-					<details class="mt-3"><summary>Prompts</summary><div class="prompt-block"><b>IMAGE</b><p>{card.image_prompt}</p><b>VIDEO</b><p>{card.video_prompt}</p></div></details>
-					<div class="mt-3 grid gap-2 sm:grid-cols-2">
-						<label class="url-field">Image URL<input value={image?.url ?? ''} onchange={(event) => addAsset(card, 'image', event.currentTarget.value)} placeholder="Paste returned image URL" /></label>
-						<label class="url-field">Video URL<input value={video?.url ?? ''} onchange={(event) => addAsset(card, 'video', event.currentTarget.value)} placeholder="Paste returned video URL" /></label>
-					</div>
-				</article>
-			{/each}
-		</div>
-	{:else if tab === 'preview'}
+	{:else if tab === 'cuts'}
 		<div class="mx-auto max-w-5xl p-5">
+			<div class="mb-4 border-b border-[#223039] pb-4">
+				<div class="meta-label text-[#59d9cf]">CUTS</div>
+				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Shift-click beats on the board to preview a selection. Pushing a selection into a named cut lands next; until then, step through the spine below (benched and unhooked beats are skipped).</p>
+			</div>
 			<div class="preview-stage">
 				{#if draft.cards.length === 0}<span>No cards to preview.</span>{:else}
 					{@const leadVideo = previewCard ? assetFor(previewCard.card_id, 'video') : null}
@@ -194,6 +165,13 @@
 			</div>
 			<div class="mt-4 flex gap-2 overflow-x-auto pb-2">
 				{#each spine as card (card.card_id)}<button type="button" class="timeline-card" class:selected={previewCard?.card_id === card.card_id} onclick={() => (previewCardId = card.card_id)}><span>{String(card.order + 1).padStart(2, '0')}</span><b>{card.title}</b><small>{card.duration_ms / 1000}s</small></button>{/each}
+			</div>
+		</div>
+	{:else if tab === 'sound'}
+		<div class="mx-auto max-w-3xl p-6">
+			<div class="border border-dashed border-[#29434a] p-5">
+				<div class="meta-label text-[#59d9cf]">SOUND</div>
+				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Lock a cut to lay sound against it: take audio, an ambience bed, music and added effects, auto-mixed. Arrives after cuts.</p>
 			</div>
 		</div>
 	{:else}
@@ -210,9 +188,9 @@
 
 <style>
 	.workspace-field { display: grid; gap: 7px; color: #63d9d0; font: 600 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
-	.workspace-field textarea, .story-card input, .story-card textarea, .url-field input { width: 100%; border: 1px solid #26383f; background: #0d1116; color: #a8cbd2; padding: 10px; outline: none; font: 12px/1.6 var(--font-mono); }
-	.workspace-field textarea:focus, .story-card input:focus, .story-card textarea:focus, .url-field input:focus { border-color: #4ee8d2; }
-	.story-card, .media-card { border: 1px solid #26383f; background: #11161c; padding: 10px; box-shadow: inset 2px 0 #3b7f89; }
+	.workspace-field textarea, .story-card input, .story-card textarea { width: 100%; border: 1px solid #26383f; background: #0d1116; color: #a8cbd2; padding: 10px; outline: none; font: 12px/1.6 var(--font-mono); }
+	.workspace-field textarea:focus, .story-card input:focus, .story-card textarea:focus { border-color: #4ee8d2; }
+	.story-card { border: 1px solid #26383f; background: #11161c; padding: 10px; box-shadow: inset 2px 0 #3b7f89; }
 	.story-card input { border: 0; padding: 4px 6px; font-weight: 700; color: #bee7e9; }
 	.story-card textarea { margin-top: 10px; }
 	.card-face-nav { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 9px; padding: 3px; background: #0b0f13; }
@@ -232,13 +210,6 @@
 	.card-index { color: #4ee8d2; font: 700 10px var(--font-mono); }
 	.agent-mini { border: 1px solid #31565d; background: #101b20; color: #71c9cf; padding: 5px 8px; font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
-	.media-slot { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; overflow: hidden; border: 1px dashed #31565d; background: #090c10; color: #4d6c73; font: 600 9px var(--font-mono); letter-spacing: .08em; }
-	.media-slot img, .media-slot video { width: 100%; height: 100%; object-fit: contain; }
-	details summary { color: #65b7c0; cursor: pointer; font: 600 10px var(--font-mono); }
-	.prompt-block { margin-top: 8px; max-height: 180px; overflow: auto; border-left: 1px solid #31565d; padding-left: 10px; color: #718f98; font: 10px/1.55 var(--font-mono); }
-	.prompt-block b { color: #4ee8d2; }
-	.url-field { display: grid; gap: 5px; color: #62848c; font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.url-field input { padding: 7px; font-size: 10px; }
 	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }
 	.preview-stage div { max-width: 520px; padding: 30px; }
 	.preview-stage b { color: #bcebee; }

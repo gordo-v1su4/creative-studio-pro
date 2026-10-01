@@ -17,6 +17,7 @@
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
+	import CapabilityChip from '$lib/ui/CapabilityChip.svelte';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName, isCurrentBriefLocked } from '$lib/domain/gates';
@@ -62,10 +63,14 @@
 		activeProject?.voices.find((voice) => voice.voice_id === selectedNodeId) ?? null
 	);
 	let briefLocked = $derived(activeProject ? isCurrentBriefLocked(activeProject) : false);
+	// Tabs follow the flow: write the story, review on the board, work the beats, cut, sound, finish.
 	const workspaceTabs: Array<{ label: string; tab: 'canvas' | ProductionTab }> = [
-		{ label: 'Board', tab: 'canvas' }, { label: 'Story', tab: 'story' }, { label: 'Cards', tab: 'cards' },
-		{ label: 'Media', tab: 'media' }, { label: 'Preview', tab: 'preview' }, { label: 'Export', tab: 'export' }
+		{ label: 'Story', tab: 'story' }, { label: 'Board', tab: 'canvas' }, { label: 'Beats', tab: 'beats' },
+		{ label: 'Cuts', tab: 'cuts' }, { label: 'Sound', tab: 'sound' }, { label: 'Export', tab: 'export' }
 	];
+	// Tabs saved before the Narrate flow land on their nearest successor.
+	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', preview: 'cuts' };
+	const secondaryNav = [{ label: 'Library', href: '/library' }, { label: 'Runs', href: '/runs' }, { label: 'Settings', href: '/settings' }];
 
 	function openWorkspace(tab: 'canvas' | ProductionTab) {
 		canvasOpen = tab === 'canvas';
@@ -512,8 +517,9 @@
 
 	onMount(() => {
 		const savedWorkspace = localStorage.getItem('csp.workspace-tab');
-		if (savedWorkspace && ['canvas', 'story', 'cards', 'media', 'preview', 'export'].includes(savedWorkspace)) {
-			openWorkspace(savedWorkspace as 'canvas' | ProductionTab);
+		const restored = savedWorkspace && (legacyTabs[savedWorkspace] ?? workspaceTabs.find((item) => item.tab === savedWorkspace)?.tab);
+		if (restored) {
+			openWorkspace(restored);
 		}
 		ui.activeProjectUpdater = (project) => adoptProject(project, layout);
 		ui.pageActions = [
@@ -533,35 +539,43 @@
 	});
 </script>
 
-<svelte:head><title>Creative Studio Pro</title></svelte:head>
+<svelte:head><title>{activeProject ? `${activeProject.title} — Narrate` : 'Narrate'}</title></svelte:head>
 
-<div class="grid h-full min-w-0 overflow-x-hidden" style="grid-template-rows: 40px minmax(0,1fr) 42px">
-	<!-- Project toolbar (40px) -->
-	<div class="flex min-w-0 items-center gap-2 border-b border-border-subtle bg-surface-raised px-3">
-		<span class="meta-label hidden sm:inline">Project</span>
-		<b class="min-w-0 truncate">{activeProject?.title ?? 'No project open'}</b>
+<div class="grid h-full min-w-0 overflow-x-hidden" style="grid-template-rows: 48px minmax(0,1fr) 42px">
+	<!-- The one navigation bar: product, project, the flow's tabs, then app-level links (48px). -->
+	<div class="flex min-w-0 items-center gap-2 border-b border-border-default bg-surface-base px-3">
+		<span class="flex shrink-0 items-center gap-2" aria-label="Narrate">
+			<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
+			<span class="text-[13px] font-semibold tracking-[0.06em]">NARRATE</span>
+		</span>
+		<span class="h-4 w-px shrink-0 bg-border-default"></span>
+		<b class="min-w-0 max-w-[260px] truncate" title={activeProject?.title}>{activeProject?.title ?? 'No project open'}</b>
 		{#if activeProject}
-			<span class="meta-label text-text-dim">v{activeProject.version}</span>
+			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
 		{/if}
-		<div class="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto lg:flex">
+		<nav class="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto lg:flex" aria-label="Project">
 			{#each workspaceTabs as item (item.label)}
-				<button type="button" class={['px-2 py-1 font-mono text-[10px] uppercase tracking-[0.06em]', (item.tab === 'canvas' ? canvasOpen : !canvasOpen && productionTab === item.tab) ? 'bg-[color-mix(in_srgb,var(--color-voice-1)_12%,var(--color-surface-raised-2))] text-[color-mix(in_srgb,var(--color-voice-1)_75%,white)]' : 'text-text-dim hover:text-text-muted']} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
+				{@const active = item.tab === 'canvas' ? canvasOpen : !canvasOpen && productionTab === item.tab}
+				<button type="button" class={['px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.06em]', active ? 'bg-[color-mix(in_srgb,var(--color-voice-1)_12%,var(--color-surface-raised-2))] text-[color-mix(in_srgb,var(--color-voice-1)_75%,white)]' : 'text-text-dim hover:text-text-muted']} aria-current={active ? 'page' : undefined} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
 			{/each}
-		</div>
+		</nav>
 		<span class="grow"></span>
-		<button type="button" class="btn btn-charm" disabled={!activeProject || !briefLocked} title={briefLocked ? 'Open Stage Agent' : 'Save and lock the owner brief first'} onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+		<button type="button" class="btn btn-charm" disabled={!activeProject || !briefLocked} title={briefLocked ? 'Open the Agent' : 'Save and lock the owner brief first'} onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
 			<span class="charm-gradient-text font-bold">✦</span> Agent
 		</button>
 		<button type="button" class="btn btn-accent" onclick={() => void createProject()} disabled={creating}>
 			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
 			<span class="hidden sm:inline">{creating ? 'Creating…' : '+ New project'}</span>
 		</button>
-		<button type="button" class="btn hidden sm:flex" disabled title="Source video lane arrives in Phase 2">
-			+ Source
-		</button>
+		<nav class="hidden items-center xl:flex" aria-label="App">
+			{#each secondaryNav as item (item.href)}
+				<a href={item.href} class="px-2 py-1 text-[12px] text-text-dim hover:text-text-muted">{item.label}</a>
+			{/each}
+		</nav>
 		<button type="button" class="btn hidden font-mono text-[11px] sm:flex" onclick={() => (ui.paletteOpen = true)} title="Command palette">
 			⌘K
 		</button>
+		<CapabilityChip />
 		<button
 			type="button"
 			class="btn px-2 font-mono text-[11px]"
@@ -584,8 +598,8 @@
 				<div class="mt-3 grid gap-1.5">
 					<div class="layer-row"><span class="bg-voice-1"></span><b>Seed</b><small>1</small></div>
 					<div class="layer-row"><span class="bg-[#4ab8ff]"></span><b>Voices</b><small>{activeProject?.voices.length ?? 0}</small></div>
-					<div class="layer-row"><span class="bg-[#5cffbe]"></span><b>Story cards</b><small>{activeProject?.production.cards.length || 6}</small></div>
-					<div class="layer-row"><span class="bg-[#8174e8]"></span><b>Media</b><small>{activeProject?.production.assets.length ?? 0}</small></div>
+					<div class="layer-row"><span class="bg-[#5cffbe]"></span><b>Beats</b><small>{activeProject?.production.cards.length || 6}</small></div>
+					<div class="layer-row"><span class="bg-[#8174e8]"></span><b>Takes</b><small>{activeProject?.production.assets.length ?? 0}</small></div>
 				</div>
 				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Cycle a beat's takes; the one showing is its pick.</p>
 				{#if activeProject}

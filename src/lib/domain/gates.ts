@@ -48,7 +48,7 @@ export function legalActions(project: Project): string[] {
 		return ['Edit brief', 'Save brief version', 'Lock brief'];
 	}
 	if (project.stage.id === 'S1' && project.interview.status !== 'PASSED') {
-		return ['Open Stage Agent', 'Answer questions'];
+		return ['Open the Agent', 'Answer questions'];
 	}
 	switch (project.stage.state) {
 		case 'BLOCKED':

@@ -58,14 +58,14 @@ function completeState(project: Project): StageAgentHttpResult | null {
 		return { status: 200, body: { ok: true, data: { project, message: 'S1 is stalled after three low-confidence rounds. Review the recorded blockers before continuing.', next_question: null } } };
 	}
 	if (project.stage.id !== 'S0' && project.stage.id !== 'S1') {
-		return error(409, 'ILLEGAL_STAGE', `Stage Agent interviews are unavailable at ${project.stage.id}`, false, 'stage-agent');
+		return error(409, 'ILLEGAL_STAGE', `The Agent's interview is unavailable at ${project.stage.id}`, false, 'stage-agent');
 	}
 	return null;
 }
 
 export async function handleStageAgent(projectId: string, raw: unknown, dependencies: Dependencies): Promise<StageAgentHttpResult> {
 	const parsed = stageAgentRequestSchema.safeParse(raw);
-	if (!parsed.success) return error(400, 'INVALID_COMMAND', parsed.error.issues[0]?.message ?? 'Invalid Stage Agent request', false, 'stage-agent');
+	if (!parsed.success) return error(400, 'INVALID_COMMAND', parsed.error.issues[0]?.message ?? 'Invalid Agent request', false, 'stage-agent');
 
 	let project: Project | null;
 	try { project = await dependencies.store.readProject(projectId); }
@@ -75,7 +75,7 @@ export async function handleStageAgent(projectId: string, raw: unknown, dependen
 	const completed = completeState(project);
 	if (completed) return completed;
 	if (!isCurrentBriefLocked(project)) {
-		return error(409, 'BRIEF_NOT_LOCKED', 'Save and lock the current brief before starting the Stage Agent interview.', false, 'stage-agent');
+		return error(409, 'BRIEF_NOT_LOCKED', 'Save and lock the current brief before starting the Agent interview.', false, 'stage-agent');
 	}
 	let agent: StageAgent;
 	if (typeof dependencies.agent === 'function') {

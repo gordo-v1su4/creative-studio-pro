@@ -99,7 +99,7 @@
 			<span class="meta-label text-text-dim">{project.interview.status}</span>
 		</div>
 		<p class="mt-1.5 text-text-muted">The agent reads the locked brief, asks only unresolved owner questions, and calculates confidence.</p>
-		<button type="button" class="btn btn-accent mt-2.5 w-full justify-center" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = true; }}>Open Stage Agent</button>
+		<button type="button" class="btn btn-accent mt-2.5 w-full justify-center" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = true; }}>Open the Agent</button>
 		{#if project.interview.rounds.length}
 			<div class="mt-2 grid gap-1">
 				{#each [...project.interview.rounds].reverse() as round (round.round_id)}
