@@ -20,8 +20,8 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({
 		action: z.literal('send'), card_id: idSchema, expected_version: z.number().int().nonnegative(), settings: settingsSchema,
 		mode: z.discriminatedUnion('kind', [
-			z.object({ kind: z.literal('confirm'), confirmed_usd: z.number().nonnegative() }),
-			z.object({ kind: z.literal('yolo'), cap_usd: z.number().nonnegative(), session_id: z.string().min(1).max(100) })
+			z.object({ kind: z.literal('confirm'), confirmed_credits: z.number().nonnegative() }),
+			z.object({ kind: z.literal('yolo'), cap_credits: z.number().nonnegative(), session_id: z.string().min(1).max(100) })
 		])
 	}),
 	z.object({ action: z.literal('poll') })
@@ -90,9 +90,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			settings, draft_note: draftNote,
 			estimate: priced.ok ? priced.estimate : null, estimate_error: priced.ok ? null : priced.message,
 			configured: Boolean(deps.generator),
-			session_spent_usd: spentThisSession(body.session_id),
+			balance: deps.generator ? await deps.generator.balance() : null,
+			session_spent_credits: spentThisSession(body.session_id),
 			// Gate preview with the current price (confirm mode); the send re-runs the gate for real.
-			blocked: priced.ok ? animateGate({ prompt: settings.prompt, still: still.still, estimate_usd: priced.estimate.usd, mode: { kind: 'confirm', confirmed_usd: priced.estimate.usd } }) : []
+			blocked: priced.ok ? animateGate({ prompt: settings.prompt, still: still.still, estimate_credits: priced.estimate.credits, mode: { kind: 'confirm', confirmed_credits: priced.estimate.credits } }) : []
 		}
 	});
 };

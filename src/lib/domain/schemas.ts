@@ -265,7 +265,7 @@ export const productionAssetSchema = z.object({
 	duration_s: z.number().positive().optional(),
 	/** Generated takes: the provider's job id and what was asked for (Finalize and source info read these). */
 	job_id: z.string().min(1).max(200).optional(),
-	generation: z.object({ provider: z.string(), model: z.string(), resolution: z.string(), prompt: z.string().max(10_000) }).optional(),
+	generation: z.object({ provider: z.string(), model: z.string(), resolution: z.string(), prompt: z.string().max(10_000), duration_s: z.number().positive().optional(), draft: z.boolean().optional() }).optional(),
 	created_at: rfc3339Schema
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
@@ -305,7 +305,9 @@ export const generationSchema = z.object({
 	prompt: z.string().min(1).max(10_000),
 	duration_s: z.number().positive(),
 	resolution: z.string(),
-	estimate_usd: z.number().nonnegative(),
+	estimate_credits: z.number().nonnegative(),
+	/** A 480p draft, finalizable to 1080p from the same render for seven days. */
+	draft: z.boolean().default(false),
 	status: z.enum(['queued', 'in_progress', 'completed', 'failed', 'nsfw']),
 	submitted_at: rfc3339Schema,
 	settled_at: rfc3339Schema.optional(),

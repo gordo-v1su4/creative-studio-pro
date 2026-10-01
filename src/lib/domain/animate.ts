@@ -11,11 +11,23 @@ import type { TakeResult } from './takes';
  * session's credit cap.
  */
 
-export const SEEDANCE_I2V = 'bytedance/seedance-2.5/image-to-video';
 export const ANIMATE_RESOLUTIONS = ['480p', '720p', '1080p'] as const;
 export type AnimateResolution = (typeof ANIMATE_RESOLUTIONS)[number];
 export const ANIMATE_MIN_S = 4;
 export const ANIMATE_MAX_S = 30;
+
+export interface SeedanceRequest {
+	prompt: string;
+	duration: number;
+	resolution: '480p' | '720p' | '1080p';
+	generate_audio: boolean;
+	/** A local still for the start frame (the CLI uploads it). */
+	start_image?: string;
+	/** Render a finalizable 480p draft. */
+	draft?: boolean;
+	/** Finalize this completed draft at 1080p (same render). */
+	draft_job_id?: string;
+}
 
 export interface AnimateSettings {
 	prompt: string;
@@ -24,25 +36,30 @@ export interface AnimateSettings {
 	generate_audio: boolean;
 }
 
-/** The Seedance image-to-video body for these settings (and the still's public URL). */
-export function animateBody(settings: AnimateSettings, imageUrl: string): Record<string, unknown> {
+/**
+ * The Seedance request for these settings. 480p always goes out as a draft:
+ * same price, and it can later be finalized to 1080p from the same render
+ * for seven days (a plain 480p render could only be upscaled or redone).
+ */
+export function seedanceRequest(settings: AnimateSettings, startImage?: string): SeedanceRequest {
 	return {
-		image_url: imageUrl,
 		prompt: settings.prompt.trim(),
 		duration: Math.round(Math.min(ANIMATE_MAX_S, Math.max(ANIMATE_MIN_S, settings.duration_s))),
 		resolution: settings.resolution,
-		generate_audio: settings.generate_audio
+		generate_audio: settings.generate_audio,
+		draft: settings.resolution === '480p',
+		...(startImage ? { start_image: startImage } : {})
 	};
 }
 
 export type SendMode =
-	| { kind: 'confirm'; confirmed_usd: number }
-	| { kind: 'yolo'; cap_usd: number; spent_usd: number };
+	| { kind: 'confirm'; confirmed_credits: number }
+	| { kind: 'yolo'; cap_credits: number; spent_credits: number };
 
 export interface GateInput {
 	prompt: string;
 	still: Pick<ProductionAsset, 'kind' | 'width' | 'height'>;
-	estimate_usd: number;
+	estimate_credits: number;
 	mode: SendMode;
 }
 
@@ -57,12 +74,12 @@ export function animateGate(input: GateInput): string[] {
 	else if (!input.still.width || !input.still.height) reasons.push('The still\'s size is unknown; it must be checked against 2K first');
 	else if (isUnder2K(input.still)) reasons.push(`The still is ${input.still.width}×${input.still.height}, under ${MIN_LONG_EDGE} px on the long edge`);
 	if (input.mode.kind === 'confirm') {
-		// A small tolerance for rounding; a real price change needs a fresh confirm.
-		if (input.estimate_usd > input.mode.confirmed_usd + 0.005) reasons.push(`The price is now $${input.estimate_usd.toFixed(2)}, above the $${input.mode.confirmed_usd.toFixed(2)} you confirmed`);
+		// A real price change needs a fresh confirm.
+		if (input.estimate_credits > input.mode.confirmed_credits + 1e-6) reasons.push(`The price is now ${input.estimate_credits} credits, above the ${input.mode.confirmed_credits} you confirmed`);
 	} else {
-		if (!(input.mode.cap_usd > 0)) reasons.push('Set a session credit cap before using YOLO');
-		else if (input.mode.spent_usd + input.estimate_usd > input.mode.cap_usd + 1e-9) {
-			reasons.push(`YOLO cap reached: $${input.mode.spent_usd.toFixed(2)} spent + $${input.estimate_usd.toFixed(2)} would pass the $${input.mode.cap_usd.toFixed(2)} session cap`);
+		if (!(input.mode.cap_credits > 0)) reasons.push('Set a session credit cap before using YOLO');
+		else if (input.mode.spent_credits + input.estimate_credits > input.mode.cap_credits + 1e-6) {
+			reasons.push(`YOLO cap reached: ${input.mode.spent_credits} credits spent + ${input.estimate_credits} would pass the ${input.mode.cap_credits}-credit session cap`);
 		}
 	}
 	return reasons;

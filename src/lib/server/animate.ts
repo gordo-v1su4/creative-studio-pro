@@ -2,18 +2,20 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
-import { SEEDANCE_I2V, animateBody, animateGate, pendingGenerations, type AnimateSettings, type SendMode } from '$lib/domain/animate';
+import { animateGate, pendingGenerations, seedanceRequest, type AnimateSettings, type SendMode } from '$lib/domain/animate';
 import { uuid7ish } from '$lib/domain/ids';
 import { pickFor, type Take } from '$lib/domain/takes';
 import type { Project, StoryCard } from '$lib/domain/schemas';
-import type { Estimate, VideoGenerator } from './higgsfield';
+import { SEEDANCE_JOB_TYPE, type VideoGenerator } from './higgsfield';
+
+type Estimate = { credits: number };
 import { generateStructured, type AgentModelClient } from './model-provider';
 import { lintPrompt } from '$lib/domain/prompt-lint';
 import type { MediaProbe } from './media-probe';
 
 /**
  * Animate flow (V1S-120): prepare (Agent-drafted prompt, gate preview, price),
- * send (gate → upload still → submit → note the pending generation) and poll
+ * send (gate → submit with the still as start frame → note the pending generation) and poll
  * (settle finished generations: the video is copied into the project and
  * lands as a new take on the beat). Dependencies are injected so the whole
  * flow runs against a fake generator in tests.
@@ -50,13 +52,11 @@ function stillOf(deps: AnimateDeps, project: Project, cardId: string): { ok: tru
 	return { ok: true, card, still, path };
 }
 
-/** The price is a function of the body, not the image; a stand-in URL prices it without uploading anything. */
-const PRICE_PROBE_IMAGE = 'https://example.com/still.png';
-
 export async function estimateAnimate(deps: AnimateDeps, settings: AnimateSettings): Promise<{ ok: true; estimate: Estimate } | Failure> {
-	if (!deps.generator) return failure(503, 'NOT_CONFIGURED', 'Add a Higgsfield API key in Settings to price and send Animate');
+	if (!deps.generator) return failure(503, 'NOT_CONFIGURED', 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)');
 	try {
-		return { ok: true, estimate: await deps.generator.estimate(SEEDANCE_I2V, animateBody(settings, PRICE_PROBE_IMAGE)) };
+		// The price depends on length, resolution and audio, not the image, so nothing is uploaded to quote it.
+		return { ok: true, estimate: await deps.generator.estimate(seedanceRequest(settings)) };
 	} catch (cause) {
 		return failure(502, 'PROVIDER_ERROR', cause instanceof Error ? cause.message : 'Price check failed');
 	}
@@ -111,7 +111,7 @@ export interface SendInput {
 	expected_version: number;
 	card_id: string;
 	settings: AnimateSettings;
-	mode: { kind: 'confirm'; confirmed_usd: number } | { kind: 'yolo'; cap_usd: number; session_id: string };
+	mode: { kind: 'confirm'; confirmed_credits: number } | { kind: 'yolo'; cap_credits: number; session_id: string };
 }
 
 export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<{ ok: true; project: Project; estimate: Estimate } | Failure> {
@@ -124,24 +124,23 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 	if (!priced.ok) return priced;
 	const mode: SendMode = input.mode.kind === 'confirm'
 		? input.mode
-		: { kind: 'yolo', cap_usd: input.mode.cap_usd, spent_usd: spentThisSession(input.mode.session_id) };
-	const reasons = animateGate({ prompt: input.settings.prompt, still: found.still, estimate_usd: priced.estimate.usd, mode });
+		: { kind: 'yolo', cap_credits: input.mode.cap_credits, spent_credits: spentThisSession(input.mode.session_id) };
+	const reasons = animateGate({ prompt: input.settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode });
 	if (reasons.length) return failure(422, 'GATE_BLOCKED', 'Blocked before any spend', reasons);
 
 	// Gate passed: from here on money can move.
-	const generator = deps.generator!;
+	const request = seedanceRequest(input.settings, found.path);
 	let requestId: string;
 	try {
-		const imageUrl = await generator.upload(new Uint8Array(await readFile(found.path)), found.still.mime_type.includes('*') ? 'image/png' : found.still.mime_type);
-		({ request_id: requestId } = await generator.submit(SEEDANCE_I2V, animateBody(input.settings, imageUrl), uuid7ish()));
+		({ job_id: requestId } = await deps.generator!.submit(request));
 	} catch (cause) {
 		return failure(502, 'PROVIDER_ERROR', cause instanceof Error ? cause.message : 'Send failed');
 	}
-	if (input.mode.kind === 'yolo') sessionSpend.set(input.mode.session_id, spentThisSession(input.mode.session_id) + priced.estimate.usd);
+	if (input.mode.kind === 'yolo') sessionSpend.set(input.mode.session_id, spentThisSession(input.mode.session_id) + priced.estimate.credits);
 	const recorded = await deps.gateway.recordGeneration(input.project_id, project.version, {
-		request_id: requestId, card_id: input.card_id, provider: 'higgsfield', model: SEEDANCE_I2V,
-		prompt: input.settings.prompt.trim(), duration_s: Number(animateBody(input.settings, '').duration),
-		resolution: input.settings.resolution, estimate_usd: priced.estimate.usd, status: 'queued', submitted_at: new Date().toISOString()
+		request_id: requestId, card_id: input.card_id, provider: 'higgsfield', model: SEEDANCE_JOB_TYPE,
+		prompt: request.prompt, duration_s: request.duration, resolution: request.resolution, draft: Boolean(request.draft),
+		estimate_credits: priced.estimate.credits, status: 'queued', submitted_at: new Date().toISOString()
 	});
 	if (!recorded.ok) return failure(409, recorded.error.code, `Sent as ${requestId}, but noting it failed: ${recorded.error.message}`);
 	return { ok: true, project: recorded.data, estimate: priced.estimate };
@@ -168,10 +167,10 @@ export async function pollGenerations(deps: AnimateDeps, projectId: string): Pro
 			try { await writeFile(target, await deps.download(status.video_url)); }
 			catch { await rm(target, { force: true }); continue; }
 			take = {
-				asset_id: takeId, kind: 'video' as const, name: `Animate ${generation.resolution} · ${generation.duration_s}s`,
+				asset_id: takeId, kind: 'video' as const, name: `Animate ${generation.draft ? 'draft ' : ''}${generation.resolution} · ${generation.duration_s}s`,
 				mime_type: 'video/mp4', url: `/api/projects/${projectId}/files/board/${encodeURIComponent(fileName)}`,
 				...(await deps.probe(target)), job_id: generation.request_id,
-				generation: { provider: generation.provider, model: generation.model, resolution: generation.resolution, prompt: generation.prompt },
+				generation: { provider: generation.provider, model: generation.model, resolution: generation.resolution, prompt: generation.prompt, duration_s: generation.duration_s, draft: generation.draft },
 				created_at: new Date().toISOString()
 			};
 		}

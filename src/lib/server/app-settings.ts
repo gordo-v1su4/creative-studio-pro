@@ -16,8 +16,6 @@ export const appSettingsSchema = z.object({
 	schema_version: z.literal(1).default(1),
 	hyper: z.object({ api_key: key }).default({ api_key: null }),
 	custom: z.object({ base_url: z.string().trim().max(500).nullable().default(null), api_key: key }).default({ base_url: null, api_key: null }),
-	/** Video generation (Animate): Higgsfield API credentials as "KEY_ID:KEY_SECRET". */
-	higgsfield: z.object({ api_key: key }).default({ api_key: null }),
 	/** App-wide default Agent model; null = legacy KIMI_* env fallback. */
 	default_model: modelChoiceSchema.nullable().default(null),
 	/** Last pick-time test per provider|endpoint|model. */

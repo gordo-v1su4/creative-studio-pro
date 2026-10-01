@@ -17,7 +17,8 @@
 
 	type Prepared = {
 		title: string; still: { url: string; name: string; width: number | null; height: number | null };
-		draft_note: string | null; configured: boolean; estimate: { credits: number; usd: number } | null; estimate_error: string | null; session_spent_usd: number;
+		draft_note: string | null; configured: boolean; estimate: { credits: number } | null; estimate_error: string | null; session_spent_credits: number;
+		balance: { credits: number; plan: string | null } | null;
 	};
 
 	const read = (key: string) => { try { return sessionStorage.getItem(key); } catch { return null; } };
@@ -29,7 +30,7 @@
 	let duration = $state(5);
 	let resolution = $state<AnimateResolution>('480p');
 	let audio = $state(true);
-	let estimate = $state<{ credits: number; usd: number } | null>(null);
+	let estimate = $state<{ credits: number } | null>(null);
 	let pricing = $state(false);
 	let yolo = $state(read('csp.yolo') === '1');
 	let cap = $state(Number(read('csp.yolo-cap') ?? '0'));
@@ -68,7 +69,7 @@
 			pricing = true;
 			const result = await post({ action: 'estimate', settings });
 			pricing = false;
-			if (result.ok) estimate = result.data as { credits: number; usd: number };
+			if (result.ok) estimate = result.data as { credits: number };
 			else error = result.error.message;
 		}, 350);
 	});
@@ -82,12 +83,12 @@
 		const result = await post({
 			action: 'send', card_id: cardId, expected_version: project.version,
 			settings: { prompt, duration_s: duration, resolution, generate_audio: audio },
-			mode: yolo ? { kind: 'yolo', cap_usd: cap || 0, session_id: sessionId } : { kind: 'confirm', confirmed_usd: estimate.usd }
+			mode: yolo ? { kind: 'yolo', cap_credits: cap || 0, session_id: sessionId } : { kind: 'confirm', confirmed_credits: estimate.credits }
 		});
 		sending = false; confirming = false;
 		if (!result.ok) { error = result.error.message; reasons = result.error.reasons ?? []; return; }
 		onUpdated(result.data as Project);
-		onsent(`Sent ${prepared?.title ?? 'the beat'} to Seedance (${resolution}, ${duration}s, ~$${estimate.usd.toFixed(2)}). It lands as a new take when it finishes.`);
+		onsent(`Sent ${prepared?.title ?? 'the beat'} to Seedance (${resolution === '480p' ? '480p draft, finalizable to 1080p for 7 days' : resolution}, ${duration}s, ${estimate.credits} credits). It lands as a new take when it finishes.`);
 		onclose();
 	}
 </script>
@@ -120,25 +121,25 @@
 					{/if}
 					<div class="flex flex-wrap items-center gap-3">
 						<label class="field-inline">Length <input type="number" min={ANIMATE_MIN_S} max={ANIMATE_MAX_S} step="1" bind:value={duration} />s</label>
-						<label class="field-inline">Resolution <select bind:value={resolution}>{#each ANIMATE_RESOLUTIONS as option (option)}<option value={option}>{option}</option>{/each}</select></label>
+						<label class="field-inline">Resolution <select bind:value={resolution}>{#each ANIMATE_RESOLUTIONS as option (option)}<option value={option}>{option === '480p' ? '480p draft' : option}</option>{/each}</select></label>
 						<label class="field-inline"><input type="checkbox" bind:checked={audio} /> Generate audio</label>
 					</div>
 				</div>
 			</div>
 			<footer class="mt-4 flex flex-wrap items-center gap-3 border-t border-[#223039] pt-3">
 				{#if !prepared.configured}
-					<span class="text-gate-pending">Add a Higgsfield API key in <a href="/settings" class="underline">Settings</a> to price and send.</span>
+					<span class="text-gate-pending">The Higgsfield CLI isn't set up on this machine; see <a href="/settings" class="underline">Settings</a>.</span>
 				{:else}
-					<span class="font-mono text-[11px] text-[#bce6e8]">{pricing ? 'pricing…' : estimate ? `$${estimate.usd.toFixed(2)} · ${estimate.credits} credits` : 'no price'}</span>
+					<span class="font-mono text-[11px] text-[#bce6e8]">{pricing ? 'pricing…' : estimate ? `${estimate.credits} credits` : 'no price'}{#if prepared.balance} · <span class={estimate && estimate.credits > prepared.balance.credits ? 'text-gate-failed' : 'text-[#668d98]'}>{prepared.balance.credits} left</span>{/if}</span>
 					<label class="field-inline"><input type="checkbox" bind:checked={yolo} /> YOLO</label>
 					{#if yolo}
-						<label class="field-inline">Session cap $<input type="number" min="0" step="0.5" bind:value={cap} /></label>
-						<span class="font-mono text-[10px] text-[#668d98]">spent this session ${prepared.session_spent_usd.toFixed(2)}</span>
+						<label class="field-inline">Session cap <input type="number" min="0" step="5" bind:value={cap} /> credits</label>
+						<span class="font-mono text-[10px] text-[#668d98]">spent this session {prepared.session_spent_credits}</span>
 					{/if}
 				{/if}
 				<span class="grow"></span>
 				<button type="button" class="btn btn-accent" onclick={() => void send()} disabled={!prepared.configured || !estimate || pricing || sending || lintErrors.length > 0 || stillUnder2K || (yolo && !(cap > 0))}>
-					{sending ? 'Sending…' : confirming ? `Send for $${estimate?.usd.toFixed(2)}` : yolo ? 'Send (YOLO)' : 'Send…'}
+					{sending ? 'Sending…' : confirming ? `Send for ${estimate?.credits} credits` : yolo ? 'Send (YOLO)' : 'Send…'}
 				</button>
 			</footer>
 			{#if error}<p class="mt-2 text-gate-failed" role="alert">{error}</p>{/if}

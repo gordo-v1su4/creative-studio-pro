@@ -1,63 +1,124 @@
+import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { SeedanceRequest } from '$lib/domain/animate';
+
 /**
- * Video generator seam (Animate) and its Higgsfield API implementation.
- * https://docs.higgsfield.ai — async: submit to a model path, poll
- * /requests/{id}/status, download video.url. /estimate/<model> prices the
- * exact body first; /files/generate-upload-url takes local inputs, since
- * models only read public URLs. The API bills its own dollar balance,
- * separate from higgsfield.ai plan credits.
+ * Video generator seam (Animate, Finalize) and its Higgsfield implementation
+ * through the Higgsfield CLI, which runs on the operator's higgsfield.ai
+ * account: plan credits, and Seedance draft mode (`draft: true` renders a
+ * 480p draft that `draft_job_id` finalizes to 1080p from the same render
+ * within seven days). The public REST API bills a separate balance and has
+ * no draft mode, so it is not used.
  */
+
+export const SEEDANCE_JOB_TYPE = 'seedance_2_5';
 
 export type GenerationStatus = 'queued' | 'in_progress' | 'completed' | 'failed' | 'nsfw';
 
-export interface Estimate {
-	credits: number;
-	usd: number;
-}
 
 export interface VideoGenerator {
-	upload(bytes: Uint8Array, contentType: string): Promise<string>;
-	estimate(model: string, body: Record<string, unknown>): Promise<Estimate>;
-	submit(model: string, body: Record<string, unknown>, idempotencyKey: string): Promise<{ request_id: string }>;
-	status(requestId: string): Promise<{ status: GenerationStatus; video_url?: string; error?: string }>;
+	/** Plan credits this request would cost; nothing is created. */
+	estimate(request: SeedanceRequest): Promise<{ credits: number }>;
+	submit(request: SeedanceRequest): Promise<{ job_id: string }>;
+	status(jobId: string): Promise<{ status: GenerationStatus; video_url?: string; error?: string }>;
+	/** Credits left on the account, when known. */
+	balance(): Promise<{ credits: number; plan: string | null } | null>;
 }
 
 export class GeneratorError extends Error {}
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+export type CliRunner = (args: string[]) => Promise<unknown>;
 
-export function createHiggsfieldGenerator(credentials: string, options: { baseURL?: string; fetchImpl?: FetchLike } = {}): VideoGenerator {
-	const base = (options.baseURL ?? 'https://api.higgsfield.ai').replace(/\/$/, '');
-	const send = options.fetchImpl ?? fetch;
-	const auth = { authorization: `Key ${credentials}` };
+/** The CLI binary: HIGGSFIELD_CLI, else the npm package's bundled binary on Windows, else `higgsfield` on PATH. */
+export function higgsfieldCliPath(override?: string | null): string | null {
+	if (override?.trim()) return override.trim();
+	if (process.platform === 'win32' && process.env.APPDATA) {
+		const bundled = join(process.env.APPDATA, 'npm', 'node_modules', '@higgsfield', 'cli', 'vendor', 'hf.exe');
+		if (existsSync(bundled)) return bundled;
+	}
+	return process.platform === 'win32' ? null : 'higgsfield';
+}
 
-	async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-		const response = await send(`${base}${path}`, { ...init, headers: { ...auth, 'content-type': 'application/json', ...(init.headers ?? {}) } });
-		const text = await response.text();
-		if (!response.ok) throw new GeneratorError(`Higgsfield ${response.status}: ${text.slice(0, 300) || response.statusText}`);
-		return JSON.parse(text) as T;
+/** Run the CLI with --json; no shell, so arguments are never re-parsed. */
+export function cliRunner(bin: string, timeoutMs = 120_000): CliRunner {
+	return (args) => new Promise((resolve, reject) => {
+		execFile(bin, [...args, '--json', '--no-color'], { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+			if (error) return reject(new GeneratorError(`Higgsfield CLI: ${(stderr || stdout || error.message).trim().split('\n').slice(0, 3).join(' ')}`));
+			try { resolve(JSON.parse(stdout)); }
+			catch { reject(new GeneratorError(`Higgsfield CLI returned non-JSON: ${stdout.slice(0, 200)}`)); }
+		});
+	});
+}
+
+/** CLI flags for a Seedance request; the prompt goes in a JSON file because the CLI reads "@…" values as files. */
+export function seedanceArgs(request: SeedanceRequest, promptFile: string): string[] {
+	return [
+		SEEDANCE_JOB_TYPE,
+		'--prompt', `@${promptFile}`,
+		'--duration', String(request.duration),
+		'--resolution', request.resolution,
+		'--generate_audio', String(request.generate_audio),
+		// The CLI's validator needs draft spelled out when finalizing.
+		'--draft', String(Boolean(request.draft) && !request.draft_job_id),
+		...(request.draft_job_id ? ['--draft_job_id', request.draft_job_id] : []),
+		...(request.start_image ? ['--start-image', request.start_image] : [])
+	];
+}
+
+const STATUS: Record<string, GenerationStatus> = {
+	completed: 'completed', succeeded: 'completed', success: 'completed',
+	failed: 'failed', error: 'failed', canceled: 'failed', cancelled: 'failed',
+	nsfw: 'nsfw', queued: 'queued', pending: 'queued', waiting: 'queued'
+};
+
+/** The job id in whatever shape `generate create` printed (an object, a list, or {jobs:[…]}). */
+function jobIdOf(value: unknown): string | null {
+	const first = Array.isArray(value) ? value[0] : (value as { jobs?: unknown[] })?.jobs?.[0] ?? value;
+	const id = (first as { id?: unknown; job_id?: unknown })?.id ?? (first as { job_id?: unknown })?.job_id;
+	return typeof id === 'string' && id ? id : null;
+}
+
+export function createHiggsfieldCli(run: CliRunner): VideoGenerator {
+	async function withPrompt<T>(prompt: string, use: (file: string) => Promise<T>): Promise<T> {
+		const dir = await mkdtemp(join(tmpdir(), 'csp-hf-'));
+		const file = join(dir, 'prompt.json');
+		try {
+			await writeFile(file, JSON.stringify(prompt), 'utf8');
+			return await use(file);
+		} finally {
+			await rm(dir, { recursive: true, force: true });
+		}
 	}
 
 	return {
-		async upload(bytes, contentType) {
-			const slot = await call<{ upload_url: string; public_url: string; upload_headers?: Record<string, string> }>('/files/generate-upload-url', {
-				method: 'POST', body: JSON.stringify({ content_type: contentType })
-			});
-			// The presigned storage URL never gets the API credentials.
-			const put = await send(slot.upload_url, { method: 'PUT', headers: { 'content-type': contentType, ...(slot.upload_headers ?? {}) }, body: bytes as unknown as BodyInit });
-			if (!put.ok) throw new GeneratorError(`Higgsfield upload failed: ${put.status}`);
-			return slot.public_url;
+		async estimate(request) {
+			const result = (await withPrompt(request.prompt, (file) => run(['generate', 'cost', ...seedanceArgs(request, file)]))) as { credits?: unknown };
+			const credits = Number(result?.credits);
+			if (!Number.isFinite(credits)) throw new GeneratorError('Higgsfield CLI gave no credit estimate');
+			return { credits };
 		},
-		async estimate(model, body) {
-			const result = await call<{ credits: string | number; usd: string | number }>(`/estimate/${model}`, { method: 'POST', body: JSON.stringify(body) });
-			return { credits: Number(result.credits), usd: Number(result.usd) };
+		async submit(request) {
+			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...seedanceArgs(request, file)]));
+			const jobId = jobIdOf(result);
+			if (!jobId) throw new GeneratorError(`Higgsfield CLI created no job id: ${JSON.stringify(result).slice(0, 200)}`);
+			return { job_id: jobId };
 		},
-		async submit(model, body, idempotencyKey) {
-			const result = await call<{ request_id: string }>(`/${model}`, { method: 'POST', body: JSON.stringify(body), headers: { 'idempotency-key': idempotencyKey } });
-			return { request_id: result.request_id };
+		async status(jobId) {
+			const job = (await run(['generate', 'get', jobId])) as { status?: string; result_url?: string; error?: string };
+			const status = STATUS[String(job?.status ?? '').toLowerCase()] ?? 'in_progress';
+			return { status, video_url: job?.result_url ?? undefined, error: job?.error };
 		},
-		async status(requestId) {
-			const result = await call<{ status: GenerationStatus; video?: { url?: string }; error?: string; detail?: string }>(`/requests/${encodeURIComponent(requestId)}/status`, { method: 'GET' });
-			return { status: result.status, video_url: result.video?.url, error: result.error ?? result.detail };
+		async balance() {
+			try {
+				const account = (await run(['account', 'status'])) as { credits?: unknown; subscription_plan_type?: unknown };
+				const credits = Number(account?.credits);
+				return Number.isFinite(credits) ? { credits, plan: typeof account?.subscription_plan_type === 'string' ? account.subscription_plan_type : null } : null;
+			} catch {
+				return null;
+			}
 		}
 	};
 }

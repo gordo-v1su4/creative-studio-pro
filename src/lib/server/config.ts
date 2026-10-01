@@ -14,7 +14,7 @@ import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/mod
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
 import type { AnimateDeps } from '$lib/server/animate';
-import { createHiggsfieldGenerator } from '$lib/server/higgsfield';
+import { cliRunner, createHiggsfieldCli, higgsfieldCliPath, type VideoGenerator } from '$lib/server/higgsfield';
 import { probeMedia } from '$lib/server/media-probe';
 
 /**
@@ -110,14 +110,19 @@ export function getOperatorId(): string {
 	return env.CSP_OPERATOR_ID?.trim() || 'operator';
 }
 
-/** Animate's dependencies; the generator is null until a Higgsfield key is saved in Settings. */
+/** The Higgsfield CLI generator (operator's higgsfield.ai account), or null when the CLI isn't installed. */
+export function getVideoGenerator(): VideoGenerator | null {
+	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
+	return bin ? createHiggsfieldCli(cliRunner(bin)) : null;
+}
+
+/** Animate's dependencies. */
 export async function getAnimateDeps(): Promise<AnimateDeps> {
-	const key = (await getAppSettingsStore().read()).higgsfield.api_key;
 	return {
 		gateway: getGateway(),
 		store: getProjectStore(),
 		projectRoot: getProjectRoot(),
-		generator: key ? createHiggsfieldGenerator(key, { baseURL: env.HIGGSFIELD_API_BASE?.trim() || undefined }) : null,
+		generator: getVideoGenerator(),
 		probe: probeMedia,
 		download: async (url) => {
 			const response = await fetch(url);
