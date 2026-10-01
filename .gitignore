@@ -22,3 +22,10 @@ Thumbs.db
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 data/projects/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Per-machine skill links created by `bun run skills:link` (postinstall).
+/.claude/skills/
+/.cursor/hooks/state/

@@ -5,12 +5,12 @@ For any agent picking up this repo.
 ## Read first (in order)
 
 1. `README.md` — rules.
-2. `_bmad-output/planning-artifacts/prds/prd-creative-studio-pro-2026-08-22/prd.md`
+2. `docs/planning/prds/prd-creative-studio-pro-2026-08-22/prd.md`
    — canonical requirements; the donor map tells you exactly which existing
    repo owns which pattern.
-3. `_bmad-output/planning-artifacts/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
+3. `docs/planning/ux-designs/ux-creative-studio-pro-2026-08-22/DESIGN.md`
    and `EXPERIENCE.md` — canonical visual and behavioral UX contracts.
-4. `_bmad-output/planning-artifacts/architecture/architecture-creative-studio-pro-2026-08-22/ARCHITECTURE-SPINE.md`
+4. `docs/planning/architecture/architecture-creative-studio-pro-2026-08-22/ARCHITECTURE-SPINE.md`
    — canonical build invariants; every epic/story must cite governing ADs.
 5. `gordo-v1su4/super-seed2` — authoritative production methodology. Read its
    `AGENTS.md`, `pipeline/creative-stages.md`, and the active production-type
