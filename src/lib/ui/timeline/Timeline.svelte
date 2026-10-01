@@ -34,7 +34,8 @@
 		ontrim,
 		ontrimend,
 		onmove,
-		onspeed
+		onspeed,
+		marks = {}
 	}: {
 		clips: TimelineClip[];
 		index: number;
@@ -46,7 +47,15 @@
 		ontrimend: () => void;
 		onmove: (from: number, to: number) => void;
 		onspeed: (clip: number, points: SpeedPoint[]) => void;
+		/** Suggested trims per clip id: a new in- or out-point in take seconds, drawn with what it would cut. */
+		marks?: Record<string, Array<{ at: number; edge: 'in' | 'out' }>>;
 	} = $props();
+
+	/** Where a take time sits inside a clip's block, in pixels from its left edge (speed ramp included). */
+	function markX(clip: TimelineClip, at: number) {
+		const span = Math.max(1e-6, clip.out - clip.in);
+		return programElapsed(clip.speed, span, Math.min(1, Math.max(0, (at - clip.in) / span))) * scale;
+	}
 
 	const EDGE = 7;
 	let host = $state<HTMLDivElement>();
@@ -181,6 +190,12 @@
 						{#if !isFlat(clip.speed)}<span class="text-[#99f6e4]">⟿</span>{/if}
 						<span class="text-[#8fb3b8]">{lengths[i].toFixed(1)}s</span>
 					</div>
+					{#each marks[clip.id] ?? [] as mark, m (m)}
+						{@const x = markX(clip, mark.at)}
+						<!-- A suggested trim: the part it would cut is shaded, the new edge is a line. -->
+						<div class="mark-cut pointer-events-none absolute inset-y-0" style:left={`${mark.edge === 'in' ? 0 : x}px`} style:width={`${mark.edge === 'in' ? x : Math.max(0, w - x)}px`}></div>
+						<div class="mark-line pointer-events-none absolute inset-y-0 w-[2px]" style:left={`${x - 1}px`}></div>
+					{/each}
 					<div class="edge edge-in absolute inset-y-0 left-0 cursor-ew-resize" style:width={`${EDGE}px`}></div>
 					<div class="edge edge-out absolute inset-y-0 right-0 cursor-ew-resize" style:width={`${EDGE}px`}></div>
 				</div>
@@ -215,6 +230,8 @@
 	.ghost { background: repeating-linear-gradient(135deg, rgba(153, 246, 228, .07) 0 4px, transparent 4px 8px); border: 1px dashed rgba(153, 246, 228, .25); }
 	.block { background: #0f1517; cursor: grab; }
 	.block:active { cursor: grabbing; }
+	.mark-cut { background: repeating-linear-gradient(135deg, rgba(242, 193, 78, .28) 0 3px, rgba(242, 193, 78, .08) 3px 6px); }
+	.mark-line { background: #f2c14e; box-shadow: 0 0 6px rgba(242, 193, 78, .6); }
 	.edge::after { content: ''; position: absolute; top: 0; bottom: 0; width: 2px; background: #99f6e4; opacity: 0; transition: opacity 90ms ease; }
 	.edge-in::after { left: 0; }
 	.edge-out::after { right: 0; }

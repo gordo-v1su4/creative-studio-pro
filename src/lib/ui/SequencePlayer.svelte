@@ -15,6 +15,7 @@
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
+	import { acceptAll, type TrimSuggestion } from '$lib/domain/trim-suggest';
 
 	/**
 	 * Rough-cut review of a selection or a cut: each clip's kept span (in → out) plays
@@ -141,6 +142,7 @@
 
 	function trimEnd() {
 		scrubbing = false;
+		if (clips[index]) pruneSuggestions(clips[index].id);
 		playhead = clips[index].in;
 		syncAudio();
 		scheduleSave();
@@ -180,6 +182,9 @@
 			voice.preload = 'auto';
 			voices.set(clip.id, voice);
 			clips[i] = { ...clip, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.min(clip.in, out - MIN_SPAN) };
+			// Suggestions were for the old take.
+			const { [clip.id]: _stale, ...rest } = suggestions;
+			suggestions = rest;
 			if (i === index) startClip(i);
 			scheduleSave();
 		} catch (cause) {
@@ -196,6 +201,71 @@
 		const voice = voices.get(gone.id);
 		if (voice) { voice.pause(); voice.removeAttribute('src'); voice.load(); voices.delete(gone.id); }
 		startClip(Math.min(i, clips.length - 1));
+		scheduleSave();
+	}
+
+	// --- Suggest trims (V1S-123): marks the operator accepts or dismisses; nothing changes a trim until then.
+	let suggestions = $state<Record<string, TrimSuggestion[]>>({});
+	let suggesting = $state<'' | 'running' | 'done'>('');
+	let skipped = $state<string[]>([]);
+	const suggestionCount = $derived(Object.values(suggestions).reduce((sum, list) => sum + list.length, 0));
+	const marks = $derived(Object.fromEntries(Object.entries(suggestions).map(([id, list]) => [id, list.map((s) => ({ at: s.at_s, edge: s.edge }))])));
+	const kindLabel: Record<TrimSuggestion['kind'], string> = { freeze: 'freeze', stutter: 'stutter', bad_start: 'bad start', stray_frame: 'stray frame' };
+
+	async function suggestTrims() {
+		suggesting = 'running'; error = ''; skipped = [];
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/cuts/suggest`, {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ entries: clips.map((clip) => ({ entry_id: clip.id, asset_id: clip.assetId, in_s: clip.in, out_s: clip.out })) })
+			});
+			const result = (await response.json()) as { ok: true; data: Array<{ entry_id: string; suggestions?: TrimSuggestion[]; skipped?: string }> } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			suggestions = Object.fromEntries(result.data.filter((row) => row.suggestions?.length).map((row) => [row.entry_id, row.suggestions!]));
+			skipped = result.data.filter((row) => row.skipped).map((row) => `${clips.find((clip) => clip.id === row.entry_id)?.title ?? row.entry_id}: ${row.skipped}`);
+			suggesting = 'done';
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : 'Suggest trims failed';
+			suggesting = '';
+		}
+	}
+
+	/** Drop suggestions that no longer fall inside a clip's trim (after any edit to it). */
+	function pruneSuggestions(id: string) {
+		const clip = clips.find((entry) => entry.id === id);
+		const list = suggestions[id];
+		if (!list) return;
+		const kept = clip ? list.filter((s) => s.at_s > clip.in + 1e-6 && s.at_s < clip.out - 1e-6 && (s.edge === 'in' ? clip.out - s.at_s : s.at_s - clip.in) >= MIN_SPAN) : [];
+		const { [id]: _gone, ...rest } = suggestions;
+		suggestions = kept.length ? { ...rest, [id]: kept } : rest;
+	}
+
+	function dismissSuggestion(id: string, suggestion: TrimSuggestion) {
+		const list = (suggestions[id] ?? []).filter((s) => s !== suggestion);
+		const { [id]: _gone, ...rest } = suggestions;
+		suggestions = list.length ? { ...rest, [id]: list } : rest;
+	}
+
+	function acceptSuggestion(i: number, suggestion: TrimSuggestion) {
+		const clip = clips[i];
+		const next = acceptAll({ in_s: clip.in, out_s: clip.out }, [suggestion]);
+		clips[i] = { ...clip, in: next.in_s, out: next.out_s };
+		dismissSuggestion(clip.id, suggestion);
+		pruneSuggestions(clip.id);
+		if (i === index) startClip(i);
+		scheduleSave();
+	}
+
+	function acceptAllSuggestions() {
+		clips = clips.map((clip) => {
+			const list = suggestions[clip.id];
+			if (!list?.length) return clip;
+			const next = acceptAll({ in_s: clip.in, out_s: clip.out }, list);
+			return { ...clip, in: next.in_s, out: next.out_s };
+		});
+		suggestions = {};
+		suggesting = '';
+		startClip(index);
 		scheduleSave();
 	}
 
@@ -394,6 +464,16 @@
 			</span>
 			<span class="grow"></span>
 			{#if saveState}<span class="text-[#55747c]">{saveState === 'saving' ? 'saving…' : 'saved'}</span>{/if}
+			{#if source.kind === 'cut' && !readOnly}
+				{#if suggestionCount}
+					<span class="text-[#f2c14e]">{suggestionCount} suggested {suggestionCount === 1 ? 'trim' : 'trims'}</span>
+					<button type="button" class="ctl suggest" onclick={acceptAllSuggestions}>accept all</button>
+					<button type="button" class="ctl" onclick={() => { suggestions = {}; suggesting = ''; }}>dismiss all</button>
+				{:else if suggesting === 'done'}
+					<span class="text-[#55747c]">no trims to suggest</span>
+				{/if}
+				<button type="button" class="ctl suggest" onclick={() => void suggestTrims()} disabled={suggesting === 'running' || !clips.length} title="Look for frozen frames, stutter, bad starts and stray frames in each entry's kept span (measured, not guessed). Nothing changes until you accept.">{suggesting === 'running' ? 'analysing…' : 'suggest trims'}</button>
+			{/if}
 			{#if source.kind === 'selection'}
 				{#if pushName !== null}
 					<!-- svelte-ignore a11y_autofocus -->
@@ -425,7 +505,7 @@
 
 		<div class="mt-3 rounded-[3px] border border-[#1d2528] bg-[#0b0e10] p-2">
 			{#if clips.length}
-				<Timeline {clips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} />
+				<Timeline {clips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} />
 			{:else}
 				<div class="h-[170px]"></div>
 			{/if}
@@ -447,6 +527,19 @@
 					{#if swapping}<span class="text-[#55747c]">loading…</span>{/if}
 					<button type="button" class="ctl" onclick={() => dropEntry(index)} disabled={readOnly || clips.length < 2} title={clips.length < 2 ? 'A cut keeps at least one entry' : 'Remove this entry from the cut; the take stays on its beat'}>drop entry</button>
 				</div>
+				{#if suggestions[current.id]?.length}
+					<ul class="mt-1.5 grid gap-1" aria-label="Suggested trims for this entry">
+						{#each suggestions[current.id] as suggestion (suggestion.frames.join('-') + suggestion.edge)}
+							<li class="flex flex-wrap items-center gap-2 text-[#f2c14e]">
+								<span class="uppercase">{kindLabel[suggestion.kind]}</span>
+								<span class="text-[#c9b27a]">{suggestion.note}</span>
+								<span>→ {suggestion.edge} {suggestion.at_s.toFixed(3)}s</span>
+								<button type="button" class="ctl suggest" onclick={() => acceptSuggestion(index, suggestion)}>accept</button>
+								<button type="button" class="ctl" onclick={() => dismissSuggestion(current.id, suggestion)}>dismiss</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
 				<dl class="source mt-1.5">
 					<dt>take</dt><dd>{currentTake?.name ?? current.assetId}</dd>
 					<dt>full length</dt><dd>{current.duration.toFixed(2)}s · kept {current.in.toFixed(2)}–{current.out.toFixed(2)}{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
@@ -458,6 +551,7 @@
 
 		<p class="mt-2 font-mono text-[9px] text-[#4c5b5a]">space pause · ←/→ step one frame (shift: 10) · ↑/↓ previous/next clip · I / O set in / out at the playhead · drag a clip edge to trim · drag a clip to move it · click the ruler or a clip to jump · speed lane: click to add, drag, double-click to remove · esc close</p>
 		{#if error}<p class="mt-1 font-mono text-[10px] text-[#e88]">{error}</p>{/if}
+		{#if skipped.length}<p class="mt-1 font-mono text-[10px] text-[#c9b27a]">Not analysed: {skipped.join(' · ')}</p>{/if}
 	</div>
 </div>
 
@@ -465,6 +559,7 @@
 	.ctl { border: 1px solid #233034; background: #0f1517; padding: 2px 8px; color: #9fc9cf; border-radius: 2px; }
 	.ctl:hover { border-color: #99f6e4; color: #e6fff8; }
 	.ctl:disabled { opacity: .45; }
+	.ctl.suggest { border-color: #6a5a26; color: #f2c14e; }
 	.ctl.push { border-color: #2f6f6a; color: #99f6e4; }
 	.entry { border: 1px solid #1d2528; background: #0b0e10; padding: 6px 8px; border-radius: 3px; font: 10px var(--font-mono); color: #8fb3b8; }
 	.pick { max-width: 260px; border: 1px solid #233034; background: #0f1517; padding: 1px 4px; color: #e6fff8; border-radius: 2px; }
