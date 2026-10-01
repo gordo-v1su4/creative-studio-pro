@@ -7,6 +7,7 @@
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { getSpeechRecognitionConstructor, mergeTranscript } from './speech-recognition';
 	import type { SpeechRecognitionLike } from './speech-recognition';
+	import ProjectModelPanel from './ProjectModelPanel.svelte';
 
 	let { open = $bindable(false), projectTitle = '', project = null }: { open?: boolean; projectTitle?: string; project?: Project | null } = $props();
 	type TranscriptMessage = Pick<UIMessage, 'id' | 'role'> & { text: string };
@@ -22,6 +23,7 @@
 	let canDictate = $state(false);
 	let listening = $state(false);
 	let voiceStatus = $state('');
+	let modelLabel = $state('');
 	let selectedChoice = $state<string | null>(null);
 	let otherAnswer = $state('');
 	let choiceQuestion = $state('');
@@ -200,7 +202,7 @@
 					<div class="agent-wordmark"><span>NERATE</span><small>STORYHELPER™</small></div>
 					<div class="slash-rule" aria-hidden="true"></div>
 				</div>
-				<div class="agent-path truncate">~\projects\{projectTitle || 'no-project'} · {project?.stage.id ?? '—'} · kimi</div>
+				<div class="agent-path truncate">~\projects\{projectTitle || 'no-project'} · {project?.stage.id ?? '—'} · {modelLabel || 'model'}</div>
 			</div>
 			<button type="button" class="agent-key" onclick={() => (ui.chatMode = docked ? 'focus' : 'dock')} aria-label={docked ? 'Open Agent in focus mode' : 'Dock Agent on the right'}>{docked ? 'focus' : 'dock'}</button>
 			<button type="button" class="agent-key" onclick={() => (open = false)} aria-label="Close Stage Agent">esc</button>
@@ -211,6 +213,7 @@
 				<div class="mx-auto mt-16 max-w-md text-center text-text-muted">Open a project to begin a Stage Agent conversation.</div>
 			{:else}
 				<div class="mx-auto grid max-w-2xl gap-3">
+					<ProjectModelPanel {project} bind:label={modelLabel} />
 					{#if savedMessages.length === 0}
 						<div class="agent-section-label"><span>&gt;</span> S1 interview · no saved rounds yet</div>
 					{/if}

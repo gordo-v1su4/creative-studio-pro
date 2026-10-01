@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getGateway, getProjectStore, getStageAgent } from '$lib/server/config';
+import { getGateway, getOperatorId, getProjectStore, resolveStageAgent } from '$lib/server/config';
 import { handleStageAgent } from '$lib/server/stage-agent-handler';
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -10,7 +10,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const result = await handleStageAgent(params.projectId, body, {
 		store: getProjectStore(),
 		gateway: getGateway(),
-		agent: getStageAgent()
+		agent: resolveStageAgent,
+		operator: getOperatorId()
 	});
 	return json(result.body, { status: result.status });
 };

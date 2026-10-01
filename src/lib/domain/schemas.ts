@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { modelChoiceSchema, projectAgentModelSchema } from '$lib/domain/model-provider';
 
 /**
  * Domain boundary schemas. Every persisted record and API payload carries an
@@ -313,7 +314,9 @@ export const projectSchema = z.object({
 	voices: z.array(voiceSchema).default([]),
 	production: productionStateSchema.default({
 		status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null
-	})
+	}),
+	/** Agent model provider override + lock (V1S-117). Never holds keys. */
+	agent_model: projectAgentModelSchema.default({ override: null, locked_at: null, history: [] })
 });
 
 export const Project = {
@@ -445,7 +448,20 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.take_restored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_benched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_unbenched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
-	z.object({ type: z.literal('project.spine_rewired.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.spine_rewired.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// Agent model provider (V1S-117): override, first-run lock, explicit switch.
+	z.object({
+		type: z.literal('project.agent_model_set.v1'), event_id: idSchema,
+		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
+	}),
+	z.object({
+		type: z.literal('project.agent_model_locked.v1'), event_id: idSchema,
+		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
+	}),
+	z.object({
+		type: z.literal('project.agent_model_switched.v1'), event_id: idSchema,
+		project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema
+	})
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
@@ -596,6 +612,29 @@ export type ReshuffleRosterCommand = z.infer<typeof reshuffleRosterCommandSchema
 export type StartCreativeRoomCommand = z.infer<typeof startCreativeRoomCommandSchema>;
 export type ReconcileCreativeRoomCommand = z.infer<typeof reconcileCreativeRoomCommandSchema>;
 export type SaveProductionCommand = z.infer<typeof saveProductionCommandSchema>;
+
+// Agent model provider commands (V1S-117).
+export const setProjectModelCommandSchema = z.object({
+	command: z.literal('set_project_model'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	/** null = follow the app default (only before the project is locked). */
+	choice: modelChoiceSchema.nullable(),
+	operator: z.string().min(1),
+	reason: z.string().trim().max(1000).nullable().default(null),
+	confirm_switch: z.boolean().default(false)
+});
+
+export const lockProjectModelCommandSchema = z.object({
+	command: z.literal('lock_project_model'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	choice: modelChoiceSchema,
+	operator: z.string().min(1)
+});
+
+export type SetProjectModelCommand = z.infer<typeof setProjectModelCommandSchema>;
+export type LockProjectModelCommand = z.infer<typeof lockProjectModelCommandSchema>;
 
 // ---------------------------------------------------------------------------
 // Capability state (FR-032 / AR-06): real availability only, never fabricated.

@@ -2,11 +2,17 @@ import { env } from '$env/dynamic/private';
 import { ProjectStore } from '$lib/adapters/project-store';
 import type { ProjectStoreConfig } from '$lib/adapters/project-store';
 import { RaycastBridge } from '$lib/adapters/m3-bridge';
+import { checkRaycastBridgeConnected } from '$lib/adapters/capability';
 import { ProjectCommandGateway } from '$lib/application/gateway';
+import type { Project } from '$lib/domain/schemas';
 import { createStageAgent } from '$lib/server/stage-agent';
-import type { StageAgent } from '$lib/server/stage-agent';
+import type { StageAgentResolution } from '$lib/server/stage-agent-handler';
 import { createStoryBuilder } from '$lib/server/story-builder';
 import type { StoryBuilder } from '$lib/server/story-builder';
+import { AppSettingsStore, appSettingsPath } from '$lib/server/app-settings';
+import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/model-provider';
+import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
+import type { ModelSettingsDeps } from '$lib/server/model-settings';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -14,8 +20,7 @@ import type { StoryBuilder } from '$lib/server/story-builder';
  */
 
 let cachedStore: ProjectStore | null = null;
-let cachedStageAgent: StageAgent | null | undefined;
-let cachedStoryBuilder: StoryBuilder | null | undefined;
+let cachedSettings: AppSettingsStore | null = null;
 
 export function getProjectRoot(): string {
 	const root = env.CSP_PROJECT_ROOT;
@@ -46,26 +51,58 @@ export function getGateway(): ProjectCommandGateway {
 	return new ProjectCommandGateway(getProjectStore(), getRaycastBridge());
 }
 
-export function getStageAgent(): StageAgent | null {
-	if (cachedStageAgent !== undefined) return cachedStageAgent;
-	if (!env.KIMI_API_KEY) {
-		cachedStageAgent = null;
-		return cachedStageAgent;
-	}
-	cachedStageAgent = createStageAgent({
-		apiKey: env.KIMI_API_KEY,
-		baseURL: env.KIMI_API_BASE ?? 'https://api.kimi.com/coding/v1',
-		model: env.KIMI_MODEL ?? 'k3'
-	});
-	return cachedStageAgent;
+// --- Agent model provider (V1S-117) ---
+
+/** App settings live beside the project root, never inside a project. */
+export function getAppSettingsStore(): AppSettingsStore {
+	if (cachedSettings) return cachedSettings;
+	cachedSettings = new AppSettingsStore(appSettingsPath(getProjectRoot(), env.CSP_APP_SETTINGS_PATH));
+	return cachedSettings;
 }
 
-export function getStoryBuilder(): StoryBuilder | null {
-	if (cachedStoryBuilder !== undefined) return cachedStoryBuilder;
-	if (!env.KIMI_API_KEY) return (cachedStoryBuilder = null);
-	return (cachedStoryBuilder = createStoryBuilder({
-		apiKey: env.KIMI_API_KEY,
-		baseURL: env.KIMI_API_BASE?.trim() || 'https://api.kimi.com/coding/v1',
-		model: env.KIMI_MODEL?.trim() || 'k3'
-	}));
+/** Legacy KIMI_* stays the fallback default when no app default is picked. */
+export function getProviderEnvironment(): ProviderEnvironment {
+	return { KIMI_API_KEY: env.KIMI_API_KEY, KIMI_API_BASE: env.KIMI_API_BASE, KIMI_MODEL: env.KIMI_MODEL, HYPER_API_KEY: env.HYPER_API_KEY };
+}
+
+/** The Raycast bridge as a Model provider: offered only while its health check passes. */
+export function getRaycastBridgeAccess(): RaycastBridgeAccess | null {
+	const baseUrl = env.CSP_RAYCAST_BRIDGE_URL ?? env.CSP_M3_BRIDGE_URL;
+	const token = env.CSP_RAYCAST_BRIDGE_TOKEN ?? env.CSP_M3_BRIDGE_TOKEN;
+	if (!baseUrl || !token) return null;
+	return { baseUrl, token, isConnected: () => checkRaycastBridgeConnected(baseUrl) };
+}
+
+export function getModelSettingsDeps(): ModelSettingsDeps {
+	const bridge = getRaycastBridge();
+	return {
+		settings: getAppSettingsStore(),
+		env: getProviderEnvironment(),
+		raycast: getRaycastBridgeAccess(),
+		raycastCatalog: bridge ? async () => (await bridge.getModelCatalog()).models.map((model) => model.label) : undefined
+	};
+}
+
+export async function resolveProjectModel(project: Pick<Project, 'agent_model'> | null): Promise<ModelResolution> {
+	return resolveAgentModel(project, {
+		settings: await getAppSettingsStore().read(),
+		env: getProviderEnvironment(),
+		raycast: getRaycastBridgeAccess()
+	});
+}
+
+export async function resolveStageAgent(project: Project): Promise<StageAgentResolution> {
+	const resolved = await resolveProjectModel(project);
+	if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message };
+	return { ok: true, agent: createStageAgent({ client: createOpenAICompatibleClient(resolved.connection) }) };
+}
+
+export async function resolveStoryBuilder(project: Project): Promise<{ ok: true; builder: StoryBuilder } | { ok: false; code: string; message: string }> {
+	const resolved = await resolveProjectModel(project);
+	if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message };
+	return { ok: true, builder: createStoryBuilder(createOpenAICompatibleClient(resolved.connection)) };
+}
+
+export function getOperatorId(): string {
+	return env.CSP_OPERATOR_ID?.trim() || 'operator';
 }

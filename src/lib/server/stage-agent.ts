@@ -1,8 +1,12 @@
-import { generateText } from 'ai';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import { CONFIDENCE_DIMENSIONS } from '$lib/domain/schemas';
 import type { ConfidenceDimension, Project } from '$lib/domain/schemas';
+import { LEGACY_KIMI_BASE_URL, LEGACY_KIMI_MODEL } from '$lib/domain/model-provider';
+import type { ModelChoice } from '$lib/domain/model-provider';
+import { createOpenAICompatibleClient, extractJsonObject, generateStructured } from '$lib/server/model-provider';
+import type { AgentModelClient } from '$lib/server/model-provider';
+
+export { extractJsonObject };
 
 const nonBlank = (max: number) => z.string().min(1).max(max).refine((value) => value.trim().length > 0, 'Must not be blank');
 
@@ -34,14 +38,19 @@ export type StageAgentStart = z.infer<typeof stageAgentStartSchema>;
 export type StageAgentEvaluation = z.infer<typeof stageAgentEvaluationSchema>;
 
 export interface StageAgent {
-	readonly provider: 'kimi';
+	readonly provider: string;
 	readonly model: string;
+	/** The exact model that runs; locked into the project on first run. */
+	readonly choice?: ModelChoice;
 	start(project: Project): Promise<StageAgentStart>;
 	evaluate(project: Project, question: string, answer: string): Promise<StageAgentEvaluation>;
 }
 
 export interface StageAgentConfig {
-	apiKey: string;
+	/** Resolved Model provider client; preferred. */
+	client?: AgentModelClient;
+	/** Legacy KIMI_* shape, used only when no client is given. */
+	apiKey?: string;
 	baseURL?: string;
 	model?: string;
 }
@@ -83,14 +92,6 @@ export function buildStageAgentProjectEvidence(project: Project): string {
 	}, null, 2);
 }
 
-export function extractJsonObject(text: string): unknown {
-	const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-	const start = trimmed.indexOf('{');
-	const end = trimmed.lastIndexOf('}');
-	if (start < 0 || end < start) throw new Error('Kimi returned no JSON object');
-	return JSON.parse(trimmed.slice(start, end + 1));
-}
-
 export function fallbackQuestion(dimension: ConfidenceDimension, notes: string): string {
 	const prompts: Record<ConfidenceDimension, string> = {
 		goal_clarity: 'Which audience outcome should lead?\nA. (Recommended) A clear emotional turn they can repeat\nB. A memorable plot reveal\nC. A strong product or brand action\nD. A deliberately unresolved feeling\nE. Something else — tell me',
@@ -128,24 +129,17 @@ function structuredQuestion(project: Project, question: string): string {
 }
 
 export function createStageAgent(config: StageAgentConfig): StageAgent {
-	const baseURL = config.baseURL ?? 'https://api.kimi.com/coding/v1';
-	const modelId = config.model ?? 'k3';
-	const kimi = createOpenAICompatible({ name: 'kimi', apiKey: config.apiKey, baseURL });
-
-	async function request(prompt: string): Promise<string> {
-		const result = await generateText({
-			model: kimi(modelId),
-			system: SYSTEM,
-			prompt,
-			maxOutputTokens: 1800,
-			abortSignal: AbortSignal.timeout(60_000)
-		});
-		return result.text;
-	}
+	const baseURL = config.baseURL ?? LEGACY_KIMI_BASE_URL;
+	const client = config.client ?? createOpenAICompatibleClient({
+		choice: { provider: 'kimi', model: config.model ?? LEGACY_KIMI_MODEL, base_url: baseURL },
+		baseURL,
+		apiKey: config.apiKey ?? ''
+	});
 
 	return {
-		provider: 'kimi',
-		model: modelId,
+		provider: client.choice.provider,
+		model: client.choice.model,
+		choice: client.choice,
 		async start(project) {
 			const latest = project.interview.rounds.at(-1);
 			const dimension = latest?.lowest_dimension ?? 'story_beats';
@@ -157,8 +151,7 @@ export function createStageAgent(config: StageAgentConfig): StageAgent {
 			};
 		},
 		async evaluate(project, question, answer) {
-			const raw = await request(`Evaluate the owner's latest answer against all evidence. Return JSON with exactly: message, scores (all eight dimensions with dimension, integer score, and evidence/gap notes), overall, resolutions, and next_question (one unresolved owner decision or null only if the evidence truly supports passing).\n\nCURRENT QUESTION:\n${question}\n\nOWNER ANSWER:\n${answer}\n\nPROJECT EVIDENCE:\n${buildStageAgentProjectEvidence(project)}`);
-			const parsed = stageAgentEvaluationSchema.parse(extractJsonObject(raw));
+			const parsed = await generateStructured(client, { system: SYSTEM, maxOutputTokens: 1800, timeoutMs: 60_000, prompt: `Evaluate the owner's latest answer against all evidence. Return JSON with exactly: message, scores (all eight dimensions with dimension, integer score, and evidence/gap notes), overall, resolutions, and next_question (one unresolved owner decision or null only if the evidence truly supports passing).\n\nCURRENT QUESTION:\n${question}\n\nOWNER ANSWER:\n${answer}\n\nPROJECT EVIDENCE:\n${buildStageAgentProjectEvidence(project)}` }, (value) => stageAgentEvaluationSchema.parse(value));
 			return { ...parsed, next_question: parsed.next_question ? structuredQuestion(project, parsed.next_question) : null };
 		}
 	};
