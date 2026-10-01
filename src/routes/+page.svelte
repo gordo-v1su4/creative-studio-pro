@@ -25,6 +25,8 @@
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { benchedBeats } from '$lib/domain/bench';
 	import { mediaKind } from '$lib/domain/media';
+	import { pendingGenerations } from '$lib/domain/animate';
+	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
@@ -129,7 +131,9 @@
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
 					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
 					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched),
-					onHold: (options: { length_s: number; push_in: boolean; fade: boolean }) => card && makeHold(card.card_id, card.title, options)
+					onHold: (options: { length_s: number; push_in: boolean; fade: boolean }) => card && makeHold(card.card_id, card.title, options),
+					onAnimate: () => card && (animateCardId = card.card_id),
+					animating: card ? pendingGenerations(project.production).some((generation) => generation.card_id === card.card_id) : false
 				},
 				ariaLabel: card
 					? `Story card ${spineIndex < 0 ? 'off the spine' : spineIndex + 1}, ${card.title}${card.benched ? ', benched' : ''}`
@@ -260,6 +264,34 @@
 			body: JSON.stringify({ ...body, expected_version: project.version })
 		}));
 	}
+
+	// --- Animate: the panel for one beat, and polling while any generation is still running.
+	let animateCardId = $state<string | null>(null);
+	let animatePolling = false;
+
+	$effect(() => {
+		const project = activeProject;
+		if (!project || pendingGenerations(project.production).length === 0) return;
+		const timer = setInterval(async () => {
+			if (animatePolling || activeProject?.project_id !== project.project_id) return;
+			animatePolling = true;
+			try {
+				const response = await fetch(`/api/projects/${project.project_id}/animate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'poll' }) });
+				const result = (await response.json()) as { ok: true; data: Project } | { ok: false };
+				if (result.ok && activeProject && result.data.version !== activeProject.version) {
+					const landed = (result.data.production.generations ?? []).filter((generation) => generation.settled_at && !activeProject?.production.generations?.find((entry) => entry.request_id === generation.request_id)?.settled_at);
+					adoptProject(withPendingPicks(result.data));
+					for (const generation of landed) {
+						const title = result.data.production.cards.find((card) => card.card_id === generation.card_id)?.title ?? 'a beat';
+						notify(generation.status === 'completed' ? `Animate finished on ${title}: it's the new pick.` : `Animate on ${title} ended: ${generation.status}${generation.error ? ` (${generation.error})` : ''}. Nothing was charged for it.`);
+					}
+				}
+			} finally {
+				animatePolling = false;
+			}
+		}, 10_000);
+		return () => clearInterval(timer);
+	});
 
 	/** Render a Hold of the beat's still pick (local ffmpeg); it lands as the beat's new take. */
 	function makeHold(cardId: string, title: string, options: { length_s: number; push_in: boolean; fade: boolean }) {
@@ -756,6 +788,7 @@
 						</div>
 					{/if}
 					{#if reviewSequence.playing && activeProject}<SequencePlayer project={activeProject} onUpdated={(project) => adoptProject(project, layout)} />{/if}
+					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
 				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} bind:tab={productionTab} />

@@ -3,6 +3,7 @@
 	import { ui } from '$lib/ui/app-state.svelte';
 	import type { CapabilityState } from '$lib/domain/schemas';
 	import ModelProviderSettings from '$lib/ui/settings/ModelProviderSettings.svelte';
+	import GenerationSettings from '$lib/ui/settings/GenerationSettings.svelte';
 
 	const stateColor: Record<CapabilityState, string> = {
 		available: 'var(--color-gate-approved)',
@@ -70,6 +71,7 @@
 		</div>
 
 		<ModelProviderSettings />
+		<GenerationSettings />
 
 		<div class="meta-label mt-8">Endpoint configuration</div>
 		<p class="mt-1 text-text-muted">

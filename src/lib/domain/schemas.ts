@@ -263,6 +263,9 @@ export const productionAssetSchema = z.object({
 	width: z.number().int().positive().optional(),
 	height: z.number().int().positive().optional(),
 	duration_s: z.number().positive().optional(),
+	/** Generated takes: the provider's job id and what was asked for (Finalize and source info read these). */
+	job_id: z.string().min(1).max(200).optional(),
+	generation: z.object({ provider: z.string(), model: z.string(), resolution: z.string(), prompt: z.string().max(10_000) }).optional(),
 	created_at: rfc3339Schema
 });
 export type ProductionAsset = z.infer<typeof productionAssetSchema>;
@@ -293,6 +296,24 @@ export const cutSchema = z.object({
 });
 export type Cut = z.infer<typeof cutSchema>;
 
+/** A generation sent from a beat (Animate) until its result lands as a take. */
+export const generationSchema = z.object({
+	request_id: z.string().min(1).max(200),
+	card_id: idSchema,
+	provider: z.literal('higgsfield'),
+	model: z.string().min(1),
+	prompt: z.string().min(1).max(10_000),
+	duration_s: z.number().positive(),
+	resolution: z.string(),
+	estimate_usd: z.number().nonnegative(),
+	status: z.enum(['queued', 'in_progress', 'completed', 'failed', 'nsfw']),
+	submitted_at: rfc3339Schema,
+	settled_at: rfc3339Schema.optional(),
+	take_id: idSchema.optional(),
+	error: z.string().max(2000).optional()
+});
+export type Generation = z.infer<typeof generationSchema>;
+
 export const productionStateSchema = z.object({
 	status: z.enum(['empty', 'draft', 'approved']).default('empty'),
 	title: z.string().max(200).default(''),
@@ -305,6 +326,8 @@ export const productionStateSchema = z.object({
 	links: z.array(spineLinkSchema).max(400).optional(),
 	/** Cuts pushed from selections; changed only by cut commands, never by board edits. */
 	cuts: z.array(cutSchema).max(100).optional(),
+	/** Generations sent from beats; a completed one points at the take it became. */
+	generations: z.array(generationSchema).max(1000).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
 export type ProductionState = z.infer<typeof productionStateSchema>;
@@ -497,7 +520,10 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	// Cuts (V1S-121): push a selection, edit a cut's entries, rename it.
 	z.object({ type: z.literal('project.cut_pushed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_edited.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
-	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// Animate (V1S-120): a generation sent, then settled (its video lands as a take, or it failed).
+	z.object({ type: z.literal('project.generation_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.generation_settled.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;

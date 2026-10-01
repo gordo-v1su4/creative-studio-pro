@@ -214,13 +214,14 @@ export class ProjectStore {
 			version: current.version + 1,
 			updated_at: new Date().toISOString()
 		});
-		const event: LedgerEvent = {
+		// Every event type shares this shape; past 25 members TypeScript can't match a union-typed tag itself.
+		const event = {
 			type: eventType,
 			event_id: uuid7ish(),
 			project_id: projectId,
 			timestamp: next.updated_at,
 			payload: next
-		};
+		} as LedgerEvent;
 		await appendFile(join(this.projectDir(projectId), LEDGER), JSON.stringify(event) + '\n', 'utf8');
 		return next;
 		});

@@ -13,6 +13,9 @@ import { AppSettingsStore, appSettingsPath } from '$lib/server/app-settings';
 import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/model-provider';
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
+import type { AnimateDeps } from '$lib/server/animate';
+import { createHiggsfieldGenerator } from '$lib/server/higgsfield';
+import { probeMedia } from '$lib/server/media-probe';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -105,4 +108,21 @@ export async function resolveStoryBuilder(project: Project): Promise<{ ok: true;
 
 export function getOperatorId(): string {
 	return env.CSP_OPERATOR_ID?.trim() || 'operator';
+}
+
+/** Animate's dependencies; the generator is null until a Higgsfield key is saved in Settings. */
+export async function getAnimateDeps(): Promise<AnimateDeps> {
+	const key = (await getAppSettingsStore().read()).higgsfield.api_key;
+	return {
+		gateway: getGateway(),
+		store: getProjectStore(),
+		projectRoot: getProjectRoot(),
+		generator: key ? createHiggsfieldGenerator(key, { baseURL: env.HIGGSFIELD_API_BASE?.trim() || undefined }) : null,
+		probe: probeMedia,
+		download: async (url) => {
+			const response = await fetch(url);
+			if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+			return new Uint8Array(await response.arrayBuffer());
+		}
+	};
 }

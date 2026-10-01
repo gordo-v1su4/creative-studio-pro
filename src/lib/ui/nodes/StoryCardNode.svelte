@@ -22,6 +22,9 @@
 		onRestore?: (takeId: string) => void;
 		onBench?: (benched: boolean) => void;
 		onHold?: (options: { length_s: number; push_in: boolean; fade: boolean }) => void;
+		onAnimate?: () => void;
+		/** A generation from this beat is still running. */
+		animating?: boolean;
 	};
 
 	let { data, selected }: NodeProps = $props();
@@ -125,6 +128,7 @@
 		<span class={['font-mono text-[10px] font-bold', number ? 'text-[#55dfd5]' : 'text-[#55747c]']} title={number ? 'Place on the spine' : 'Off the spine: hook a connector in to give it a place'}>{number ? String(number).padStart(2, '0') : '--'}</span>
 		<strong class="min-w-0 grow truncate text-[11px] text-[#bce6e8]">{card?.title ?? `Story beat ${story.order + 1}`}</strong>
 		{#if benched}<span class="benched-mark">Benched</span>{/if}
+		{#if story.animating}<span class="benched-mark" title="A Seedance generation from this beat is running">Animating…</span>{/if}
 		<span class="font-mono text-[9px] uppercase text-[#55747c]">{card ? `${card.duration_ms / 1000}s` : 'placeholder'}</span>
 		{#if card}
 			<button
@@ -205,6 +209,7 @@
 			<span class="grow"></span>
 			{#if canHold}
 				<button type="button" class="take-btn" onclick={openHold} aria-label={`Make a Hold of ${card.title}'s still`} title="Make a video take from this still (local, no credits)">Hold</button>
+				<button type="button" class="take-btn" onclick={() => story.onAnimate?.()} aria-label={`Animate ${card.title}'s still`} title="Send this still to Seedance as the start frame (costs credits; you see the price first)">Animate</button>
 			{/if}
 			{#if rejectedCount > 0}
 				<button type="button" class="take-btn" class:active={showRejected} onclick={() => (showRejected = !showRejected)} aria-pressed={showRejected}>{rejectedCount} rejected</button>

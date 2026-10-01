@@ -32,6 +32,8 @@ import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from
 import { applyBench } from '$lib/domain/bench';
 import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
+import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
+import type { Generation, ProductionAsset } from '$lib/domain/schemas';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema } from '$lib/domain/schemas';
 import { applyPushCut, applyEditCut, applyRenameCut, keepStoredCuts } from '$lib/domain/cuts';
@@ -279,6 +281,25 @@ export class ProjectCommandGateway {
 		);
 	}
 
+	/** Animate (server-internal, after the send gate passed and the provider accepted): note the pending generation. */
+	async recordGeneration(projectId: string, expectedVersion: number, generation: Generation): Promise<CommandOutcome<Project>> {
+		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => applyRecordGeneration(production, generation), 'project.generation_sent.v1');
+	}
+
+	/** Animate: a generation's latest status; a completed one lands its video as a take. */
+	async settleGeneration(
+		projectId: string,
+		expectedVersion: number,
+		requestId: string,
+		outcome: { status: Generation['status']; take?: Omit<ProductionAsset, 'card_id'>; error?: string }
+	): Promise<CommandOutcome<Project>> {
+		return this.updateBoard(
+			{ project_id: projectId, expected_version: expectedVersion },
+			(production) => applySettleGeneration(production, requestId, outcome, new Date().toISOString()),
+			'project.generation_settled.v1'
+		);
+	}
+
 	async addTake(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = addTakeCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
@@ -302,7 +323,7 @@ export class ProjectCommandGateway {
 	private async updateBoard(
 		command: { project_id: string; expected_version: number },
 		apply: (production: Project['production']) => TakeResult,
-		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1'>
+		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}`>
 	): Promise<CommandOutcome<Project>> {
 		let refusal: string | null = null;
 		try {
