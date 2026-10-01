@@ -24,7 +24,7 @@ A shift-selection is previewed in the timeline player; **Push** snapshots it int
 
 The **Sound** stage builds four layers on a locked cut — take audio (crossfaded, cut-offs repaired), ambience bed, music, added effects — and auto-mixes them. Sped-up sections time-stretch take audio up to 1.5× and mute it above that.
 
-**Export** renders an MP4 and writes a DaVinci Resolve timeline with speed ramps baked into intermediate files. Draft takes can be **Finalized** to 1080p per take or per cut, with a yellow-then-red reminder while the seven-day window is open; nothing is ever deleted when it closes.
+**Export** renders an MP4 and writes a DaVinci Resolve timeline with speed ramps baked into intermediate files. Draft takes can be **Finalized** to 1080p per take or per cut. The seven-day window is shown prominently — a countdown badge on every draft take (red in the last 48 hours) and a project banner listing drafts about to close; nothing is ever deleted when it closes.
 
 The **Agent** (one name for the assistant) runs on the operator's chosen **Model provider**: Hyper (one key, live model list, vision-capable models only), a custom OpenAI-compatible endpoint, or the Raycast bridge when connected. Measurable work (detection, alignment, mixing, checks) is code, never the model.
 
@@ -105,7 +105,7 @@ The **Agent** (one name for the assistant) runs on the operator's chosen **Model
 ### Finalize and export
 59. As the operator, I want a Finalize action on a draft take showing its cost, so that I can get the 1080p version of that exact render.
 60. As the operator, I want "Finalize all picks in this cut" with the total cost, so that I can finish a cut in one go.
-61. As the operator, I want a yellow note on draft takes that turns red near the end of the seven-day window, so that the option doesn't pass unnoticed.
+61. As the operator, I want a prominent countdown on every draft take (yellow, red in the last 48 hours) and a project banner listing drafts about to close, so that the same-render 1080p option never passes unnoticed.
 62. As the operator, I want nothing deleted or blocked when the window closes, so that projects always remain workable.
 63. As the operator, I want finalized takes to keep the draft's trims and ramps, so that my edit survives the swap.
 64. As the operator, I want an MP4 render of a locked, mixed cut, so that I have a finished file.

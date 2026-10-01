@@ -262,7 +262,7 @@ export const productionStateSchema = z.object({
 	logline: z.string().max(2000).default(''),
 	premise: z.string().max(8000).default(''),
 	theme: z.string().max(2000).default(''),
-	cards: z.array(storyCardSchema).max(40).default([]),
+	cards: z.array(storyCardSchema).max(200).default([]),
 	assets: z.array(productionAssetSchema).max(500).default([]),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
