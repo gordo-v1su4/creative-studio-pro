@@ -40,11 +40,17 @@ After big code changes, refresh the graph with `graft build` (deterministic,
 no API key, $0).
 <!-- graft:end -->
 
+## Workflow
+
+Commit straight to `main` and push. No feature branches, no PRs, and no
+GitHub issue or Linear ticket is needed before starting work. The specs in
+`docs/` describe what to build; they are not a ticket queue to work through.
+
 ## Agent skills
 
 ### Issue tracker
 
-Issues and specs live in GitHub (`gordo-v1su4/creative-studio-pro`) via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Optional backlog only. Issues live in GitHub (`gordo-v1su4/creative-studio-pro`) via the `gh` CLI; create or close one only when the user asks. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

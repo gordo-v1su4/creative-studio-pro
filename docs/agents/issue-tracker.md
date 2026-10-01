@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
+Work goes straight to `main`: no feature branches or PRs, and no issue is needed before starting a task. Issues are an optional backlog. Touch them only when the user asks, or when a skill explicitly needs one. Use the `gh` CLI for all operations.
 
 ## Conventions
 
