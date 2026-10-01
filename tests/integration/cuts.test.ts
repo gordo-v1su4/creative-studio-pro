@@ -30,7 +30,7 @@ async function setup() {
 	const saved = await gateway.saveProduction({
 		command: 'save_production', project_id: created.data.project_id, expected_version: created.data.version,
 		production: { status: 'draft', title: 'Cuts', logline: '', premise: '', theme: '', cards: [beat('a', 0), beat('b', 1)],
-			assets: [take('a1', 'a', { in_s: 1, out_s: 4, speed: RAMP }), take('a2', 'a'), take('b1', 'b')], updated_at: null }
+			assets: [take('a1', 'a', { in_s: 1, out_s: 4, speed: RAMP }), take('a2', 'a'), take('a3', 'a', { rejected: true }), take('b1', 'b')], updated_at: null }
 	});
 	if (!saved.ok) throw new Error(saved.error.message);
 	return { root, store, gateway, project: saved.data };
@@ -105,6 +105,39 @@ describe('cuts', () => {
 		expect(reloaded.production.assets).toEqual(project.production.assets);
 		expect(reloaded.production.cards).toEqual(project.production.cards);
 		expect(edited.version).toBe(reloaded.version);
+	});
+
+	test("swapping an entry's take keeps its place, trim and ramp; only live takes of the same beat", async () => {
+		const { root, gateway, project } = await setup();
+		const pushed = await pushTrailer(gateway, project);
+		const [cut] = cutsOf(pushed.production);
+		const [b, a] = cut.entries;
+		const swapped = ok(await gateway.editCut({
+			command: 'edit_cut', project_id: project.project_id, expected_version: pushed.version, cut_id: cut.cut_id,
+			entries: [b, { ...a, asset_id: 'a2' }]
+		}));
+		const [after] = cutsOf(swapped.production);
+		expect(after.entries.map((e) => [e.entry_id, e.asset_id, e.in_s, e.out_s])).toEqual([[b.entry_id, 'b1', 0, 2], [a.entry_id, 'a2', 1, 4]]);
+		expect(after.entries[1].speed).toEqual(RAMP);
+		expect(await lastEvent(root, project.project_id)).toBe('project.cut_edited.v1');
+
+		const foreign = await gateway.editCut({ command: 'edit_cut', project_id: project.project_id, expected_version: swapped.version, cut_id: cut.cut_id, entries: [b, { ...a, asset_id: 'b1' }] });
+		expect(foreign.ok).toBeFalse();
+		const rejected = await gateway.editCut({ command: 'edit_cut', project_id: project.project_id, expected_version: swapped.version, cut_id: cut.cut_id, entries: [b, { ...a, asset_id: 'a3' }] });
+		expect(rejected.ok).toBeFalse();
+		if (!rejected.ok) expect(rejected.error.message).toContain('rejected');
+	});
+
+	test('dropping an entry removes only it; the last entry cannot be dropped', async () => {
+		const { gateway, project } = await setup();
+		const pushed = await pushTrailer(gateway, project);
+		const [cut] = cutsOf(pushed.production);
+		const [b, a] = cut.entries;
+		const dropped = ok(await gateway.editCut({ command: 'edit_cut', project_id: project.project_id, expected_version: pushed.version, cut_id: cut.cut_id, entries: [a] }));
+		expect(cutsOf(dropped.production)[0].entries.map((e) => e.entry_id)).toEqual([a.entry_id]);
+		expect(dropped.production.assets.map((t) => t.asset_id)).toContain(b.asset_id);
+		const empty = await gateway.editCut({ command: 'edit_cut', project_id: project.project_id, expected_version: dropped.version, cut_id: cut.cut_id, entries: [] });
+		expect(empty.ok).toBeFalse();
 	});
 
 	test('rename persists; refusals are INVALID_COMMAND and stale versions conflict', async () => {

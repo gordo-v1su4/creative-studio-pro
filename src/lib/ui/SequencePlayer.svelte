@@ -158,6 +158,47 @@
 		else reviewSequence.items = next.map((c) => reviewSequence.items.find((item) => item.id === c.id)).filter((item) => item !== undefined);
 	}
 
+	// --- Cut editing beyond trims (V1S-122): swap an entry's take, drop an entry, see where it came from.
+	let swapping = $state(false);
+	const assetOf = (id: string) => project.production.assets.find((entry) => entry.asset_id === id);
+	/** Live video takes of the selected entry's beat, the one in use first among equals by creation order. */
+	const takeChoices = $derived(current ? project.production.assets.filter((asset) => asset.card_id === current.cardId && asset.kind === 'video' && (!asset.rejected || asset.asset_id === current.assetId)) : []);
+	const currentTake = $derived(current ? assetOf(current.assetId) : undefined);
+	const currentCard = $derived(current ? project.production.cards.find((card) => card.card_id === current.cardId) : undefined);
+
+	/** Put another take of the same beat in this entry's place; its trim and ramp stay, clamped to the new take's length. */
+	async function swapTake(i: number, assetId: string) {
+		const clip = clips[i];
+		const asset = assetOf(assetId);
+		if (!clip || !asset || asset.asset_id === clip.assetId || swapping) return;
+		swapping = true; error = '';
+		try {
+			const bank = await loadBank(asset.url, MAX_HEIGHT);
+			const out = Math.min(clip.out, bank.duration);
+			voices.get(clip.id)?.pause();
+			const voice = new Audio(asset.url);
+			voice.preload = 'auto';
+			voices.set(clip.id, voice);
+			clips[i] = { ...clip, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.min(clip.in, out - MIN_SPAN) };
+			if (i === index) startClip(i);
+			scheduleSave();
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : 'That take failed to load';
+		} finally {
+			swapping = false;
+		}
+	}
+
+	/** Remove an entry from the cut (the take itself stays on its beat). A cut keeps at least one entry. */
+	function dropEntry(i: number) {
+		if (clips.length < 2) return;
+		const [gone] = clips.splice(i, 1);
+		const voice = voices.get(gone.id);
+		if (voice) { voice.pause(); voice.removeAttribute('src'); voice.load(); voices.delete(gone.id); }
+		startClip(Math.min(i, clips.length - 1));
+		scheduleSave();
+	}
+
 	function speed(i: number, points: SpeedPoint[]) {
 		clips[i] = { ...clips[i], speed: isFlat(points) ? undefined : normalizeSpeed(points) };
 		scheduleSave();
@@ -185,7 +226,7 @@
 	}
 
 	function key(event: KeyboardEvent) {
-		if (event.target instanceof HTMLInputElement) return;
+		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
 		if (event.key === 'Escape') close();
 		else if (event.key === ' ') { event.preventDefault(); togglePause(); }
 		else if (event.key === 'ArrowRight') { event.preventDefault(); step(event.shiftKey ? 10 : 1); }
@@ -347,7 +388,7 @@
 			{:else}
 				<span class="tracking-[.14em] text-[#99f6e4]">SEQUENCE</span>
 			{/if}
-			<span>{clips.length ? `${clips.length} clips · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
+			<span>{clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"} · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
 			<span class="text-[#4c5b5a]" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and beats are untouched' : 'Trims and ramps save to the takes'}>
 				{source.kind === 'cut' ? (readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
 			</span>
@@ -390,6 +431,31 @@
 			{/if}
 		</div>
 
+		{#if source.kind === 'cut' && current}
+			<!-- Editing an entry pauses playback, so the panel stays on the entry being edited. -->
+			<section class="entry mt-2" aria-label="Selected entry" onpointerdown={() => { if (!paused) togglePause(); }}>
+				<div class="flex flex-wrap items-center gap-2">
+					<span class="tracking-[.14em] text-[#99f6e4]">ENTRY {index + 1} / {clips.length}</span>
+					<b class="text-[#e6fff8]">{current.title}</b>
+					<span class="grow"></span>
+					<span title="The cut's running length, with every trim and ramp">cut length <b class="text-[#e6fff8]">{total.toFixed(2)}s</b></span>
+					<label class="flex items-center gap-1">take
+						<select class="pick" value={current.assetId} onchange={(event) => void swapTake(index, event.currentTarget.value)} disabled={readOnly || swapping || takeChoices.length < 2} aria-label="Take for this entry">
+							{#each takeChoices as take, i (take.asset_id)}<option value={take.asset_id}>{i + 1} · {take.name}{take.rejected ? ' (rejected)' : ''}</option>{/each}
+						</select>
+					</label>
+					{#if swapping}<span class="text-[#55747c]">loading…</span>{/if}
+					<button type="button" class="ctl" onclick={() => dropEntry(index)} disabled={readOnly || clips.length < 2} title={clips.length < 2 ? 'A cut keeps at least one entry' : 'Remove this entry from the cut; the take stays on its beat'}>drop entry</button>
+				</div>
+				<dl class="source mt-1.5">
+					<dt>take</dt><dd>{currentTake?.name ?? current.assetId}</dd>
+					<dt>full length</dt><dd>{current.duration.toFixed(2)}s · kept {current.in.toFixed(2)}–{current.out.toFixed(2)}{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
+					<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-[#4c5b5a]">no generation job on record</span>{/if}</dd>
+					<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-[#4c5b5a]">beat's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-[#4c5b5a]">none on record</span>{/if}</dd>
+				</dl>
+			</section>
+		{/if}
+
 		<p class="mt-2 font-mono text-[9px] text-[#4c5b5a]">space pause · ←/→ step one frame (shift: 10) · ↑/↓ previous/next clip · I / O set in / out at the playhead · drag a clip edge to trim · drag a clip to move it · click the ruler or a clip to jump · speed lane: click to add, drag, double-click to remove · esc close</p>
 		{#if error}<p class="mt-1 font-mono text-[10px] text-[#e88]">{error}</p>{/if}
 	</div>
@@ -400,5 +466,11 @@
 	.ctl:hover { border-color: #99f6e4; color: #e6fff8; }
 	.ctl:disabled { opacity: .45; }
 	.ctl.push { border-color: #2f6f6a; color: #99f6e4; }
+	.entry { border: 1px solid #1d2528; background: #0b0e10; padding: 6px 8px; border-radius: 3px; font: 10px var(--font-mono); color: #8fb3b8; }
+	.pick { max-width: 260px; border: 1px solid #233034; background: #0f1517; padding: 1px 4px; color: #e6fff8; border-radius: 2px; }
+	.source { display: grid; grid-template-columns: 84px 1fr; gap: 2px 8px; }
+	.source dt { color: #4c5b5a; text-transform: uppercase; }
+	.source dd { margin: 0; color: #9fc9cf; overflow-wrap: anywhere; }
+	.source .prompt { max-height: 3.6em; overflow-y: auto; }
 	.name { width: 160px; border: 1px solid #2f6f6a; background: #0b1113; padding: 2px 6px; color: #e6fff8; outline: none; border-radius: 2px; }
 </style>

@@ -43,6 +43,7 @@ function checkTake(production: ProductionState, entry: CutEntryInput): string | 
 	if (!production.cards.some((card) => card.card_id === entry.card_id)) return `Beat ${entry.card_id} not on this project`;
 	const take = production.assets.find((asset) => asset.asset_id === entry.asset_id);
 	if (!take || take.kind === 'audio' || take.card_id !== entry.card_id) return `Take ${entry.asset_id} is not a take of beat ${entry.card_id}`;
+	if (take.rejected) return `${take.name} is rejected; restore it on the board to use it`;
 	return null;
 }
 
