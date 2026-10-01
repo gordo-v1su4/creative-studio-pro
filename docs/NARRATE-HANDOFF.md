@@ -1,5 +1,24 @@
 # Narrate tickets — handoff (2026-10-01)
 
+## Handoff message to the next thread
+
+**Where I left off:** Linear **V1S-124 — Finalize drafts to 1080p, with the 7-day reminder** (Urgent, GitHub #14), status In Progress. The backend is done and committed (`c101f80`, "V1S-124, part 1"): window state, linking takes to draft jobs, quote and send, and settling a finalize in place. All of it is tested against a fake generator. **Not started:** the route actions, linking the Blood Rush takes, and all of the UI (badge, banner, Finalize buttons). Steps are under "Still to do for V1S-124" below. After that, continue in Linear order: V1S-122, then 123, then 125 to 133.
+
+**Browser testing is required, continuously, not only at the end.** Build each piece and check it in the browser preview (`.claude/launch.json` → "csp-dev", port 5174) as you go: open the board, click the real controls, read the page and console, take a screenshot as proof. Do this on a throwaway project created through the API, then delete it. The previous thread did this for every finished ticket:
+
+| Ticket | What was checked in the browser |
+|---|---|
+| 113 | Take cycling, picks saved across reload, reject, reveal, restore |
+| 114 | Bench, bin, Preview strip skipping the benched beat, refused shift-click |
+| 115 | Connect, rehook, unhook by dropping off and by Delete, loop refused |
+| 116 | One nav bar, tab order, page titles, Settings |
+| 118 | Drops on a beat and on empty canvas, refused types, 2K flag |
+| 119 | Hold rendered and became the pick |
+| 120 | Animate panel, Agent draft, live lint, sending disabled with no CLI or key |
+| 121 | Push, Cuts tab, cut edits staying separate from takes |
+
+Most of that was scripted through the page (clicks, drops and drags dispatched in the browser, with project state read back), plus screenshots. Prefer real clicks where you can. V1S-124's UI has **not** been browser-tested yet: it doesn't exist.
+
 Work goes straight to `main`. Tickets: Linear project "Narrate — review, cuts, sound & export" (V1S-113 → V1S-133), mirrored as GitHub #3 → #23; spec in `docs/planning/narrate-review-cuts-sound-spec.md` (#2). Do them in Linear order; close the GitHub issue (`Closes #N` in the commit) and mark Linear Done when finished.
 
 ## Done (on main)
