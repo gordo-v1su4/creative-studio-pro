@@ -135,7 +135,7 @@ describe('the Agent drafts the Animate prompt', () => {
 	test('a draft the linter rejects is re-asked once with the findings', async () => {
 		const prompts: string[] = [];
 		const answers = ['{"prompt":"Image_1 is Mara.\\nMara opens the door and she steps through."}', JSON.stringify({ prompt: GOOD })];
-		const client = { async generate({ prompt }: { prompt: string }) { prompts.push(prompt); return answers[prompts.length - 1]; } };
+		const client = { choice: { provider: 'hyper' as const, model: 'fake-vision', base_url: 'https://hyper.example/v1' }, async generate({ prompt }: { prompt: string }) { prompts.push(prompt); return answers[prompts.length - 1]; } };
 		const card: StoryCard = { card_id: 'a', order: 0, title: 'Door', beat: 'Mara opens the door', purpose: 'Arrival', duration_ms: 5000, image_prompt: 'door', video_prompt: 'door', status: 'draft' };
 		const draft = await draftAnimatePrompt(client, { card, still: new Uint8Array([1]), stillType: 'image/png', rules: 'No pronouns.' });
 		expect(draft).toBe(GOOD);
