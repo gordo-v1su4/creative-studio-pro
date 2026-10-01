@@ -238,7 +238,9 @@ export const storyCardSchema = z.object({
 	video_prompt: nonBlank(5000),
 	status: z.enum(['draft', 'approved']).default('draft'),
 	/** The take chosen to represent this beat. Absent = newest live video, else newest live image. */
-	pick_take_id: idSchema.optional()
+	pick_take_id: idSchema.optional(),
+	/** Benched beats keep their place on the spine but are skipped wherever it is played or assembled. */
+	benched: z.boolean().optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;
 
@@ -436,7 +438,9 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	}),
 	z.object({ type: z.literal('project.take_picked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_rejected.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
-	z.object({ type: z.literal('project.take_restored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.take_restored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.beat_benched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.beat_unbenched.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
@@ -558,6 +562,13 @@ export const restoreTakeCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	take_id: idSchema
+});
+
+export const benchBeatCommandSchema = z.object({
+	command: z.enum(['bench_beat', 'unbench_beat']),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	card_id: idSchema
 });
 
 export type CreateProjectCommand = z.infer<typeof createProjectCommandSchema>;

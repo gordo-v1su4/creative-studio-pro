@@ -21,6 +21,7 @@
 	import { stageName, isCurrentBriefLocked } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
+	import { benchedBeats } from '$lib/domain/bench';
 	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
 
 	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
@@ -114,10 +115,11 @@
 				data: {
 					card, order: index, takes, pickId: pick?.asset_id ?? null,
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
-					onReject: (takeId: string) => sendTakeCommand({ command: 'reject_take', take_id: takeId }),
-					onRestore: (takeId: string) => sendTakeCommand({ command: 'restore_take', take_id: takeId })
+					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
+					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
+					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched)
 				},
-				ariaLabel: card ? `Story card ${index + 1}, ${card.title}` : `Story card ${index + 1}, awaiting draft`
+				ariaLabel: card ? `Story card ${index + 1}, ${card.title}${card.benched ? ', benched' : ''}` : `Story card ${index + 1}, awaiting draft`
 			};
 		});
 		return [seedNode, ...voiceNodes, ...storyNodes];
@@ -171,13 +173,13 @@
 		return { ...project, production: { ...project.production, cards } };
 	}
 
-	function sendTakeCommand(body: Record<string, unknown>) {
+	function sendBoardCommand(body: Record<string, unknown>) {
 		for (const [cardId, pending] of pendingPicks) if (cardId !== body.card_id) flushPick(cardId, pending);
 		takeQueue = takeQueue.then(async () => {
 			const project = activeProject;
 			if (!project) return;
 			try {
-				const response = await fetch(`/api/projects/${project.project_id}/takes`, {
+				const response = await fetch(`/api/projects/${project.project_id}/board`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify({ ...body, expected_version: project.version })
@@ -186,7 +188,7 @@
 				if (!result.ok) throw new Error(result.error.message);
 				if (activeProject?.project_id === project.project_id) adoptProject(withPendingPicks(result.data));
 			} catch (e) {
-				loadError = e instanceof Error ? e.message : 'Take update failed';
+				loadError = e instanceof Error ? e.message : 'Board update failed';
 				await openProject(project.project_id);
 			}
 		});
@@ -195,7 +197,7 @@
 	function flushPick(cardId: string, pending: { takeId: string; timer: ReturnType<typeof setTimeout> }) {
 		clearTimeout(pending.timer);
 		pendingPicks.delete(cardId);
-		sendTakeCommand({ command: 'set_pick', card_id: cardId, take_id: pending.takeId });
+		sendBoardCommand({ command: 'set_pick', card_id: cardId, take_id: pending.takeId });
 	}
 
 	function pickTake(cardId: string, takeId: string) {
@@ -205,6 +207,10 @@
 		const pending = { takeId, timer: setTimeout(() => flushPick(cardId, pending), 300) };
 		pendingPicks.set(cardId, pending);
 		adoptProject(withPendingPicks(activeProject));
+	}
+
+	function benchBeat(cardId: string, benched: boolean) {
+		sendBoardCommand({ command: benched ? 'bench_beat' : 'unbench_beat', card_id: cardId });
 	}
 
 	async function loadProjects() {
@@ -526,7 +532,24 @@
 					<div class="layer-row"><span class="bg-[#5cffbe]"></span><b>Story cards</b><small>{activeProject?.production.cards.length || 6}</small></div>
 					<div class="layer-row"><span class="bg-[#8174e8]"></span><b>Media</b><small>{activeProject?.production.assets.length ?? 0}</small></div>
 				</div>
-				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Flip each card between text, image, and video.</p>
+				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Cycle a beat's takes; the one showing is its pick.</p>
+				{#if activeProject}
+					{@const bin = benchedBeats(activeProject.production)}
+					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
+					{#if bin.length === 0}
+						<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">Benched beats land here. They keep their place and are skipped when the story plays.</p>
+					{:else}
+						<ul class="mt-2 grid gap-1" aria-label="Benched beats">
+							{#each bin as card (card.card_id)}
+								<li class="bin-row">
+									<span class="font-mono text-[9px] text-text-dim">{String(card.order + 1).padStart(2, '0')}</span>
+									<b class="min-w-0 grow truncate" title={card.title}>{card.title}</b>
+									<button type="button" onclick={() => benchBeat(card.card_id, false)} aria-label={`Restore ${card.title} from the bin`}>Restore</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/if}
 			{/if}
 		</aside>
 
@@ -738,4 +761,8 @@
 	.layer-row > span { width: 6px; height: 6px; }
 	.layer-row b { font-size: 11px; font-weight: 500; }
 	.layer-row small { font: 9px var(--font-mono); color: #626b70; }
+	.bin-row { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: #151519; color: #8d9ca1; }
+	.bin-row b { font-size: 11px; font-weight: 500; }
+	.bin-row button { border: 0; background: transparent; padding: 2px 4px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.bin-row button:hover { background: #14232a; color: #84cbd0; }
 </style>

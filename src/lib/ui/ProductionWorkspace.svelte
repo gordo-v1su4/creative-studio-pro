@@ -2,6 +2,7 @@
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
+	import { liveSpine } from '$lib/domain/bench';
 
 	export type ProductionTab = 'story' | 'cards' | 'media' | 'preview' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {
@@ -99,7 +100,9 @@
 	}
 
 	const totalDuration = $derived(draft.cards.reduce((sum, card) => sum + card.duration_ms, 0));
-	let previewCard = $derived(draft.cards.find((card) => card.card_id === previewCardId) ?? draft.cards[0] ?? null);
+	// The preview plays the spine: story order, benched beats skipped.
+	let spine = $derived(liveSpine(draft));
+	let previewCard = $derived(spine.find((card) => card.card_id === previewCardId) ?? spine[0] ?? null);
 </script>
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
@@ -190,7 +193,7 @@
 				{/if}
 			</div>
 			<div class="mt-4 flex gap-2 overflow-x-auto pb-2">
-				{#each draft.cards as card (card.card_id)}<button type="button" class="timeline-card" class:selected={previewCard?.card_id === card.card_id} onclick={() => (previewCardId = card.card_id)}><span>{String(card.order + 1).padStart(2, '0')}</span><b>{card.title}</b><small>{card.duration_ms / 1000}s</small></button>{/each}
+				{#each spine as card (card.card_id)}<button type="button" class="timeline-card" class:selected={previewCard?.card_id === card.card_id} onclick={() => (previewCardId = card.card_id)}><span>{String(card.order + 1).padStart(2, '0')}</span><b>{card.title}</b><small>{card.duration_ms / 1000}s</small></button>{/each}
 			</div>
 		</div>
 	{:else}

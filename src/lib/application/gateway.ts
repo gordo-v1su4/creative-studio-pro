@@ -16,13 +16,17 @@ import {
 	lockBriefCommandSchema,
 	setPickCommandSchema,
 	rejectTakeCommandSchema,
-	restoreTakeCommandSchema
+	restoreTakeCommandSchema,
+	benchBeatCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
 import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from '$lib/domain/takes';
-import type { Project, ProjectSummary, CanvasLayout, Voice } from '$lib/domain/schemas';
+import { applyBench } from '$lib/domain/bench';
+import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
+
+type LedgerEventType = LedgerEvent['type'];
 
 /**
  * Application layer (AD-3): the only mutation entry point. Typed commands
@@ -123,6 +127,9 @@ export class ProjectCommandGateway {
 				return this.rejectTake(raw);
 			case 'restore_take':
 				return this.restoreTake(raw);
+			case 'bench_beat':
+			case 'unbench_beat':
+				return this.benchBeat(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -219,25 +226,37 @@ export class ProjectCommandGateway {
 		const parsed = setPickCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
 		const { card_id, take_id } = parsed.data;
-		return this.updateTakes(parsed.data, (production) => applySetPick(production, card_id, take_id), 'project.take_picked.v1');
+		return this.updateBoard(parsed.data, (production) => applySetPick(production, card_id, take_id), 'project.take_picked.v1');
 	}
 
 	async rejectTake(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = rejectTakeCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
-		return this.updateTakes(parsed.data, (production) => applyRejectTake(production, parsed.data.take_id), 'project.take_rejected.v1');
+		return this.updateBoard(parsed.data, (production) => applyRejectTake(production, parsed.data.take_id), 'project.take_rejected.v1');
 	}
 
 	async restoreTake(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = restoreTakeCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
-		return this.updateTakes(parsed.data, (production) => applyRestoreTake(production, parsed.data.take_id), 'project.take_restored.v1');
+		return this.updateBoard(parsed.data, (production) => applyRestoreTake(production, parsed.data.take_id), 'project.take_restored.v1');
 	}
 
-	private async updateTakes(
+	async benchBeat(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = benchBeatCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const bench = parsed.data.command === 'bench_beat';
+		return this.updateBoard(
+			parsed.data,
+			(production) => applyBench(production, parsed.data.card_id, bench),
+			bench ? 'project.beat_benched.v1' : 'project.beat_unbenched.v1'
+		);
+	}
+
+	/** Board edits to beats and takes: a pure production change, refused as INVALID_COMMAND when it doesn't apply. */
+	private async updateBoard(
 		command: { project_id: string; expected_version: number },
 		apply: (production: Project['production']) => TakeResult,
-		eventType: 'project.take_picked.v1' | 'project.take_rejected.v1' | 'project.take_restored.v1'
+		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}`>
 	): Promise<CommandOutcome<Project>> {
 		let refusal: string | null = null;
 		try {

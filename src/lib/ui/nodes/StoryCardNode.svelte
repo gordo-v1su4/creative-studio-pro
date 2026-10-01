@@ -17,11 +17,13 @@
 		onPick?: (takeId: string) => void;
 		onReject?: (takeId: string) => void;
 		onRestore?: (takeId: string) => void;
+		onBench?: (benched: boolean) => void;
 	};
 
 	let { data, selected }: NodeProps = $props();
 	let story = $derived(data as StoryCardNodeData);
 	let card = $derived(story.card);
+	let benched = $derived(card?.benched === true);
 	let takes = $derived(story.takes ?? []);
 	let pick = $derived(takes.find((take) => take.asset_id === story.pickId) ?? null);
 	let rejectedCount = $derived(takes.filter((take) => take.rejected).length);
@@ -36,10 +38,10 @@
 	const faces: CardFace[] = ['beat', 'take'];
 	let inSequence = $derived(card ? reviewSequence.position(card.card_id) : 0);
 
-	// What you see is what plays: a selected beat follows its pick.
+	// What you see is what plays: a selected beat follows its pick, and leaves the selection when benched.
 	$effect(() => {
 		const id = card?.card_id;
-		const item = card && pick?.kind === 'video' ? { id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id } : null;
+		const item = card && !benched && pick?.kind === 'video' ? { id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id } : null;
 		if (id) untrack(() => reviewSequence.sync(id, item));
 	});
 
@@ -69,7 +71,7 @@
 
 	// Shift-click adds the beat's pick to the review selection (click order = play order).
 	function select(event: MouseEvent) {
-		if (!event.shiftKey || !card || pick?.kind !== 'video') return;
+		if (!event.shiftKey || !card || benched || pick?.kind !== 'video') return;
 		event.stopPropagation();
 		reviewSequence.toggle({ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id });
 	}
@@ -83,6 +85,7 @@
 	onclick={select}
 	class={[
 		'story-node w-[240px] overflow-hidden border bg-[#10151b]',
+		benched && 'benched',
 		inSequence ? 'border-[#f2c14e] shadow-[0_0_18px_rgba(242,193,78,.18)]' : selected ? 'border-[#55dfd5] shadow-[0_0_18px_rgba(85,223,213,.14)]' : 'border-[#26383f]'
 	]}
 	aria-label={card ? `Story card ${story.order + 1}, ${card.title}` : `Story card ${story.order + 1}, awaiting draft`}
@@ -91,7 +94,18 @@
 		{#if inSequence}<span class="bg-[#f2c14e] px-1 font-mono text-[10px] font-bold text-black" title="Sequence position">{inSequence}</span>{/if}
 		<span class="font-mono text-[10px] font-bold text-[#55dfd5]">{String(story.order + 1).padStart(2, '0')}</span>
 		<strong class="min-w-0 grow truncate text-[11px] text-[#bce6e8]">{card?.title ?? `Story beat ${story.order + 1}`}</strong>
+		{#if benched}<span class="benched-mark">Benched</span>{/if}
 		<span class="font-mono text-[9px] uppercase text-[#55747c]">{card ? `${card.duration_ms / 1000}s` : 'placeholder'}</span>
+		{#if card}
+			<button
+				type="button"
+				class="nodrag take-btn"
+				onclick={(event) => { event.stopPropagation(); story.onBench?.(!benched); }}
+				aria-pressed={benched}
+				aria-label={benched ? `Unbench ${card.title}` : `Bench ${card.title}`}
+				title={benched ? 'Unbench: play this beat again' : 'Bench: keep it here but skip it'}
+			>{benched ? 'Unbench' : 'Bench'}</button>
+		{/if}
 	</header>
 
 	<nav class="nodrag grid grid-cols-2 bg-[#0b0f13] px-1 py-0.5" aria-label="Card face">
@@ -167,6 +181,9 @@
 	.take-btn { border: 0; background: transparent; padding: 2px 6px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
 	.take-btn:hover, .take-btn.active { background: #14232a; color: #84cbd0; }
 	.rejected-mark { position: absolute; top: 6px; left: 6px; border: 1px solid #6b3a3a; background: #1a0f10; padding: 1px 5px; color: #d98a8a; font: 600 9px var(--font-mono); text-transform: uppercase; }
+	.benched > :not(header) { opacity: .4; }
+	.benched header { opacity: .7; }
+	.benched-mark { border: 1px solid #4a4f3a; padding: 0 4px; color: #c9c08a; font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.card-face { animation: face-in 140ms ease-out; }
 	@keyframes face-in { from { opacity: .35; transform: translateX(4px); } }
 	@media (prefers-reduced-motion: reduce) { .card-face { animation: none; } }

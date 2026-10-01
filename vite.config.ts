@@ -13,5 +13,7 @@ export default defineConfig({
 			},
 			adapter: adapter()
 		})
-	]
+	],
+	// Agent worktrees and project data change underneath the dev server; never reload for them.
+	server: { watch: { ignored: ['**/.claude/worktrees/**', '**/data/projects/**'] } }
 });
