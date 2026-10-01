@@ -66,3 +66,25 @@ test('inline "Name from Image N" style declares its own references', () => {
 	expect(r.issues.filter((i) => i.severity === 'error')).toEqual([]);
 	expect(lintPrompt('1. Kai "Hoodie" Santana from Image 1 walks; he smiles.').issues.map((i) => i.rule)).toContain('pronoun');
 });
+
+test('operator-rejected beats: flicker, blood moon, pink signs, vial drinking, guide lines, Elias eye glow', () => {
+	const head = '@Image_1 = Kai "Hoodie" Santana\n@Image_2 = Elias Mercer\n';
+	const r = (body: string) => lintPrompt(head + body, 'seedance').issues.map((i) => i.rule);
+	for (const body of [
+		'The edit flickers to the beat. HARD CUT.',
+		'A blood moon rises. HARD CUT.',
+		'A pink glowing sign hums. HARD CUT.',
+		'Kai "Hoodie" Santana drinks the vial. HARD CUT.',
+		'Follow the red arc across the street. HARD CUT.',
+		'Elias Mercer turns, eyes glowing. HARD CUT.',
+	]) expect(r(body)).toContain('operator-rejected');
+	expect(r('Kai "Hoodie" Santana sprints and leaps. HARD CUT. Elias Mercer watches.')).toEqual([]);
+});
+
+test('declared names lose a trailing period', () => {
+	expect(lintPrompt('@Image_1 = Mara Voss.\nMara Voss runs. HARD CUT.', 'seedance').declarations[0].name).toBe('Mara Voss');
+});
+
+test('Seedance prompt with no cuts warns single-shot', () => {
+	expect(lintPrompt('@Image_1 = Mara Voss\nMara Voss runs.', 'seedance').issues.map((i) => i.rule)).toContain('single-shot');
+});

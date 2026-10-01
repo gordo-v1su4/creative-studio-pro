@@ -12,6 +12,8 @@
 	import SeedNode from '$lib/ui/nodes/SeedNode.svelte';
 	import VoiceNode from '$lib/ui/nodes/VoiceNode.svelte';
 	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
+	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
+	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
@@ -107,8 +109,8 @@
 			return {
 				id,
 				type: 'story_card',
-				position: { x: savedNode?.x ?? 760 + (index % 3) * 350, y: savedNode?.y ?? Math.floor(index / 3) * 310 },
-				data: { card, order: index, imageUrl: image?.url ?? null, videoUrl: video?.url ?? null },
+				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 210 },
+				data: { card, order: index, imageUrl: image?.url ?? null, videoUrl: video?.url ?? null, videoAssetId: video?.asset_id ?? null, videoIn: video?.in_s ?? null, videoOut: video?.out_s ?? null, videoSpeed: video?.speed ?? null },
 				ariaLabel: card ? `Story card ${index + 1}, ${card.title}` : `Story card ${index + 1}, awaiting draft`
 			};
 		});
@@ -482,7 +484,7 @@
 			{/if}
 
 			{#if activeProject && canvasOpen}
-				<div class="h-full">
+				<div class="relative h-full">
 					<SvelteFlow
 						bind:nodes
 						bind:edges
@@ -492,6 +494,7 @@
 						maxZoom={2}
 						fitView={false}
 						nodesConnectable={false}
+						selectionKey={null}
 						onnodeclick={({ node }) => (selectedNodeId = node.id)}
 						onnodedragstop={scheduleLayoutSave}
 						onmoveend={scheduleLayoutSave}
@@ -504,6 +507,15 @@
 						/>
 						<Controls showLock={false} position="bottom-left" />
 					</SvelteFlow>
+					{#if reviewSequence.items.length}
+						<div class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 border border-[#26383f] bg-[#0b0f13]/95 px-2 py-1.5 font-mono text-[10px] text-[#9fc9cf]">
+							<span class="text-[#55dfd5]">SEQUENCE</span>
+							{#each reviewSequence.items as item, i (item.id)}<span class="bg-[#14232a] px-1.5 py-0.5">{i + 1} · {item.title.split(' — ')[0]}</span>{/each}
+							<button type="button" class="bg-[#55dfd5] px-2 py-0.5 font-bold text-black" onclick={() => (reviewSequence.playing = true)}>▶ play</button>
+							<button type="button" class="bg-[#14232a] px-2 py-0.5" onclick={() => reviewSequence.clear()}>clear</button>
+						</div>
+					{/if}
+					{#if reviewSequence.playing && activeProject}<SequencePlayer project={activeProject} onUpdated={(project) => adoptProject(project, layout)} />{/if}
 				</div>
 			{:else if activeProject}
 				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} bind:tab={productionTab} />

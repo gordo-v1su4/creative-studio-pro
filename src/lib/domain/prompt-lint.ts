@@ -37,6 +37,15 @@ const LOOK_WORDS = /\b(blonde?|platinum|curls?|curly|bob|hoodie|jacket|blazer|ch
 // Operator bans: never in a prompt unless explicitly requested (a negative like "no fangs" still primes it).
 const BANNED = /\b(neon|fangs?|fanged|vampires?|vampiric|vamp(?:ed)?)\b/gi;
 const BLACK_AND_WHITE = /\bblack[- ]and[- ]white\b/gi;
+// Operator rejections from Blood Rush reviews: each one has wrecked a generation before.
+const REJECTED: Array<[RegExp, string]> = [
+	[/\b(flicker(?:s|ing)?|strobe?s?|strobing|drop(?:ped)? frames?)\b/gi, 'Never prompt flicker — describe the edit pace and the beats instead.'],
+	[/\bblood[- ]moon\b/gi, 'No blood moon.'],
+	[/\b(pink|light[- ]blue|baby[- ]blue)\b[^.\n]{0,40}\b(sign|glow|light|tube)s?\b/gi, 'No pink or light-blue glowing signs.'],
+	[/\b(drinks?|drinking|sips?|sipping|gulps?)\b[^.\n]{0,40}\bvial\b|\bvial\b[^.\n]{0,40}\b(drinks?|drinking)\b/gi, 'No vial drinking.'],
+	[/\b(red|glowing)\s+(arc|line|trajectory|guide)s?\b|\b(trajectory|guide|arc)\s+line\b/gi, 'Never describe a guide line — the model draws it on screen.'],
+	[/\bElias\b[^.\n]{0,80}\b(?:eyes?\b[^.\n]{0,20}\b(?:glow\w*|lit|shining)|(?:glow\w*|lit|shining)\b[^.\n]{0,20}\beyes?)\b|\b(?:glow\w*|lit|shining)\s+(?:blue\s+)?eyes?\b[^.\n]{0,60}\bElias\b/gi, 'Elias\'s eyes never glow.'],
+];
 const VAGUE = /\b(dark store|the dark)\b/gi;
 
 /** Flatten a JSON prompt into plain lines so escaped quotes don't hide names. */
@@ -65,7 +74,7 @@ export function extractDeclarations(text: string): { declarations: Declaration[]
 	const declarations: Declaration[] = [];
 	const spans: Array<[number, number]> = [];
 	const add = (image: number | null, name: string, start: number, end: number) => {
-		const clean = name.split(/\s+[—–-]\s+/)[0].trim();
+		const clean = name.split(/\s+[—–-]\s+/)[0].trim().replace(/\.$/, '');
 		if (clean && !declarations.some((d) => d.name === clean && d.image === image)) declarations.push({ image, name: clean });
 		spans.push([start, end]);
 	};
@@ -115,6 +124,11 @@ export function lintPrompt(raw: string, target: LintTarget = 'nano_banana'): Lin
 		for (const m of text.matchAll(/@Image\s+\d+/g)) push('seedance-underscore', 'error', m, 'Seedance: use @Image_1 (underscore), not "@Image 1".');
 	}
 	for (const m of text.matchAll(BANNED)) push('banned-word', 'error', m, 'Banned word.');
+	for (const [pattern, message] of REJECTED) for (const m of text.matchAll(pattern)) push('operator-rejected', 'error', m, message);
+	// Seedance: continuity comes from several hard cuts in one generation, never a lone shot.
+	if (target === 'seedance' && !/\bcut\b/i.test(text)) {
+		issues.push({ rule: 'single-shot', severity: 'warning', match: '(whole prompt)', index: 0, context: contextAt(text, 0, 0), message: 'Seedance: prompt multi-cut shots (hard cuts into the action) in one generation.' });
+	}
 	for (const m of text.matchAll(BLACK_AND_WHITE)) {
 		const before = text.slice(Math.max(0, (m.index ?? 0) - 12), m.index).toLowerCase();
 		if (!/\b(no|not|never|nothing)\b[^.]*$/.test(before)) push('black-and-white', 'error', m, 'Nothing is ever black and white.');
