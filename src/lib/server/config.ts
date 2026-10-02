@@ -14,7 +14,7 @@ import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/mod
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
 import type { AnimateDeps } from '$lib/server/animate';
-import { cliRunner, createHiggsfieldCli, higgsfieldCliPath, type VideoGenerator } from '$lib/server/higgsfield';
+import { cliRunner, createHiggsfieldCli, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator } from '$lib/server/higgsfield';
 import { probeMedia } from '$lib/server/media-probe';
 
 /**
@@ -114,6 +114,18 @@ export function getOperatorId(): string {
 export function getVideoGenerator(): VideoGenerator | null {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	return bin ? createHiggsfieldCli(cliRunner(bin)) : null;
+}
+
+/** Sound-effect generation through the same CLI (V1S-129), or null when the CLI isn't installed. */
+export function getSfxGenerator(): SoundEffectGenerator | null {
+	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
+	return bin ? createHiggsfieldSfx(cliRunner(bin)) : null;
+}
+
+/** The local sound-effects folder: Settings, else CSP_SFX_DIR, else none. */
+export async function getSfxFolder(): Promise<string | null> {
+	const settings = await getAppSettingsStore().read();
+	return settings.sfx_folder?.trim() || env.CSP_SFX_DIR?.trim() || null;
 }
 
 /** Animate's dependencies. */

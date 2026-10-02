@@ -125,7 +125,7 @@ export interface MixInput {
 	entries: MixEntry[];
 	music: { file: string } | null;
 	ambience: { file: string } | null;
-	effects: Array<{ file: string; at_s: number; gain_db: number }>;
+	effects: Array<{ file: string; at_s: number; from_s?: number; gain_db: number }>;
 	/** Auto gains (dB) per layer, added to the plan's own gains. */
 	auto: Record<Layer, number>;
 	plan: SoundPlan;
@@ -207,7 +207,7 @@ export function mixPlan(input: MixInput): { args: string[]; report: string[] } {
 	if (input.effects.length && !plan.layers.effects.mute) {
 		const placed = input.effects.map((effect, i) => {
 			const k = addInput(effect.file);
-			filters.push(`[${k}:a]asetpts=PTS-STARTPTS,${fmt},volume=${effect.gain_db.toFixed(1)}dB,adelay=delays=${Math.round(effect.at_s * 1000)}:all=1[fx${i}]`);
+			filters.push(`[${k}:a]${effect.from_s ? `atrim=start=${effect.from_s.toFixed(3)},` : ''}asetpts=PTS-STARTPTS,${fmt},volume=${effect.gain_db.toFixed(1)}dB,adelay=delays=${Math.round(effect.at_s * 1000)}:all=1[fx${i}]`);
 			return `[fx${i}]`;
 		});
 		filters.push(`${placed.join('')}amix=inputs=${placed.length}:normalize=0:duration=longest,volume=${layerGain('effects').toFixed(1)}dB[fx]`);

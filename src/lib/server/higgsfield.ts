@@ -81,18 +81,49 @@ function jobIdOf(value: unknown): string | null {
 	return typeof id === 'string' && id ? id : null;
 }
 
-export function createHiggsfieldCli(run: CliRunner): VideoGenerator {
-	async function withPrompt<T>(prompt: string, use: (file: string) => Promise<T>): Promise<T> {
-		const dir = await mkdtemp(join(tmpdir(), 'csp-hf-'));
-		const file = join(dir, 'prompt.json');
-		try {
-			await writeFile(file, JSON.stringify(prompt), 'utf8');
-			return await use(file);
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
+/** The prompt goes to the CLI as a JSON file (`--prompt @file.json`), so quotes and newlines survive. */
+async function withPrompt<T>(prompt: string, use: (file: string) => Promise<T>): Promise<T> {
+	const dir = await mkdtemp(join(tmpdir(), 'csp-hf-'));
+	const file = join(dir, 'prompt.json');
+	try {
+		await writeFile(file, JSON.stringify(prompt), 'utf8');
+		return await use(file);
+	} finally {
+		await rm(dir, { recursive: true, force: true });
 	}
+}
 
+/** Sound effects (V1S-129): Mirelo text-to-audio on the same account; priced per second. */
+export const SFX_JOB_TYPE = 'mirelo_text_to_audio';
+export interface SoundEffectGenerator {
+	estimate(request: { prompt: string; duration_s: number }): Promise<{ credits: number }>;
+	submit(request: { prompt: string; duration_s: number }): Promise<{ job_id: string }>;
+	status(jobId: string): Promise<{ status: GenerationStatus; url?: string; error?: string }>;
+}
+
+export function createHiggsfieldSfx(run: CliRunner): SoundEffectGenerator {
+	const args = (file: string, duration: number) => [SFX_JOB_TYPE, '--prompt', `@${file}`, '--duration', String(duration)];
+	return {
+		async estimate(request) {
+			const result = (await withPrompt(request.prompt, (file) => run(['generate', 'cost', ...args(file, request.duration_s)]))) as { credits?: unknown };
+			const credits = Number(result?.credits);
+			if (!Number.isFinite(credits)) throw new GeneratorError('Higgsfield CLI gave no credit estimate');
+			return { credits };
+		},
+		async submit(request) {
+			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...args(file, request.duration_s)]));
+			const jobId = jobIdOf(result);
+			if (!jobId) throw new GeneratorError(`Higgsfield CLI created no job id: ${JSON.stringify(result).slice(0, 200)}`);
+			return { job_id: jobId };
+		},
+		async status(jobId) {
+			const job = (await run(['generate', 'get', jobId])) as { status?: string; result_url?: string; error?: string };
+			return { status: STATUS[String(job?.status ?? '').toLowerCase()] ?? 'in_progress', url: job?.result_url ?? undefined, error: job?.error };
+		}
+	};
+}
+
+export function createHiggsfieldCli(run: CliRunner): VideoGenerator {
 	return {
 		async estimate(request) {
 			const result = (await withPrompt(request.prompt, (file) => run(['generate', 'cost', ...seedanceArgs(request, file)]))) as { credits?: unknown };

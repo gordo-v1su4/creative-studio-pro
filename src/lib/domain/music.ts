@@ -39,33 +39,56 @@ export function hasSignal(envelope: number[] | null | undefined): envelope is nu
 }
 
 /**
- * Tempo by autocorrelation of the onset envelope (70–180 BPM, mildly
- * preferring 90–140), then the beat phase that lands most onsets.
+ * Beats by dynamic-programming beat tracking (Ellis 2007): an overall tempo
+ * from the onset envelope's autocorrelation (weighted toward ~120 BPM, so
+ * double/half-time picks lose), then each beat placed on real onsets while
+ * keeping close to that spacing — so the grid follows a song that drifts or
+ * changes tempo. BPM is the mean spacing of the beats found.
  */
 export function beatGrid(onset: number[], hz = ENVELOPE_HZ): { bpm: number; beats: number[] } {
-	const mean = onset.reduce((s, v) => s + v, 0) / Math.max(1, onset.length);
-	const x = onset.map((v) => v - mean);
+	const n = onset.length;
+	if (n < hz * 2) return { bpm: 0, beats: [] };
+	const mean = onset.reduce((s, v) => s + v, 0) / n;
+	const sd = Math.sqrt(onset.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n) || 1;
+	const o = onset.map((v) => v / sd);
+	const x = o.map((v) => v - mean / sd);
+
+	// Overall period: autocorrelation × a log-normal tempo prior centred on 120 BPM.
 	let best = { lag: 0, score: -Infinity };
-	const minLag = Math.round((60 / 180) * hz);
-	const maxLag = Math.round((60 / 70) * hz);
-	for (let lag = minLag; lag <= maxLag; lag++) {
-		let s = 0;
-		for (let i = lag; i < x.length; i++) s += x[i] * x[i - lag];
+	for (let lag = Math.round((60 / 200) * hz); lag <= Math.round((60 / 60) * hz); lag++) {
+		let acf = 0;
+		for (let i = lag; i < n; i++) acf += x[i] * x[i - lag];
 		const bpm = (60 * hz) / lag;
-		const weight = bpm >= 90 && bpm <= 140 ? 1 : 0.85;
-		if (s * weight > best.score) best = { lag, score: s * weight };
+		const prior = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 120) / 0.9, 2));
+		if (acf * prior > best.score) best = { lag, score: acf * prior };
 	}
 	if (best.lag === 0 || best.score <= 0) return { bpm: 0, beats: [] };
-	const lag = best.lag;
-	let phase = 0, phaseScore = -Infinity;
-	for (let p = 0; p < lag; p++) {
-		let s = 0;
-		for (let i = p; i < onset.length; i += lag) s += onset[i];
-		if (s > phaseScore) { phaseScore = s; phase = p; }
+	const period = best.lag;
+
+	// Beat tracking: score(t) = onset(t) + best previous beat, penalised for straying from the period.
+	const tightness = 100;
+	const score = new Float64Array(n);
+	const back = new Int32Array(n).fill(-1);
+	for (let t = 0; t < n; t++) {
+		let bestPrev = 0, bestAt = -1;
+		for (let prev = t - Math.round(2 * period); prev <= t - Math.round(period / 2); prev++) {
+			if (prev < 0) continue;
+			const stray = Math.log((t - prev) / period);
+			const candidate = score[prev] - tightness * stray * stray;
+			if (bestAt < 0 || candidate > bestPrev) { bestPrev = candidate; bestAt = prev; }
+		}
+		score[t] = o[t] + (bestAt >= 0 ? Math.max(0, bestPrev) : 0);
+		back[t] = bestAt >= 0 && bestPrev > 0 ? bestAt : -1;
 	}
-	const beats: number[] = [];
-	for (let i = phase; i < onset.length; i += lag) beats.push(Math.round((i / hz) * 1000) / 1000);
-	return { bpm: Math.round(((60 * hz) / lag) * 10) / 10, beats };
+	// End on the best-scoring frame in the last period, then walk back.
+	let end = n - 1;
+	for (let t = Math.max(0, n - Math.round(period)); t < n; t++) if (score[t] > score[end]) end = t;
+	const frames: number[] = [];
+	for (let t = end; t >= 0; t = back[t]) { frames.push(t); if (back[t] < 0) break; }
+	frames.reverse();
+	const beats = frames.map((f) => Math.round((f / hz) * 1000) / 1000);
+	const bpm = beats.length > 1 ? 60 / ((beats.at(-1)! - beats[0]) / (beats.length - 1)) : (60 * hz) / period;
+	return { bpm: Math.round(bpm * 10) / 10, beats };
 }
 
 /** Pearson correlation of two equal-length windows; 0 when either is flat. */

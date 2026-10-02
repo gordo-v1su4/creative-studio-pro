@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, type AnimateResolution } from '$lib/domain/animate';
 	import { lintPrompt } from '$lib/domain/prompt-lint';
 	import { MIN_LONG_EDGE } from '$lib/domain/media';
@@ -122,7 +123,7 @@
 					<div class="flex flex-wrap items-center gap-3">
 						<label class="field-inline">Length <input type="number" min={ANIMATE_MIN_S} max={ANIMATE_MAX_S} step="1" bind:value={duration} />s</label>
 						<label class="field-inline">Resolution <select bind:value={resolution}>{#each ANIMATE_RESOLUTIONS as option (option)}<option value={option}>{option === '480p' ? '480p draft' : option}</option>{/each}</select></label>
-						<label class="field-inline"><input type="checkbox" bind:checked={audio} /> Generate audio</label>
+						<span class="field-inline"><Toggle label="Generate audio" bind:checked={audio} /> Generate audio</span>
 					</div>
 				</div>
 			</div>
@@ -131,7 +132,7 @@
 					<span class="text-gate-pending">The Higgsfield CLI isn't set up on this machine; see <a href="/settings" class="underline">Settings</a>.</span>
 				{:else}
 					<span class="font-mono text-[11px] text-[#bce6e8]">{pricing ? 'pricing…' : estimate ? `${estimate.credits} credits` : 'no price'}{#if prepared.balance} · <span class={estimate && estimate.credits > prepared.balance.credits ? 'text-gate-failed' : 'text-[#668d98]'}>{prepared.balance.credits} left</span>{/if}</span>
-					<label class="field-inline"><input type="checkbox" bind:checked={yolo} /> YOLO</label>
+					<span class="field-inline"><Toggle label="YOLO: skip the confirm, stop at the session cap" bind:checked={yolo} /> YOLO</span>
 					{#if yolo}
 						<label class="field-inline">Session cap <input type="number" min="0" step="5" bind:value={cap} /> credits</label>
 						<span class="font-mono text-[10px] text-[#668d98]">spent this session {prepared.session_spent_credits}</span>

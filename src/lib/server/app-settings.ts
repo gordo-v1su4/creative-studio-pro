@@ -19,7 +19,9 @@ export const appSettingsSchema = z.object({
 	/** App-wide default Agent model; null = legacy KIMI_* env fallback. */
 	default_model: modelChoiceSchema.nullable().default(null),
 	/** Last pick-time test per provider|endpoint|model. */
-	model_tests: z.record(z.string(), modelTestResultSchema).default({})
+	model_tests: z.record(z.string(), modelTestResultSchema).default({}),
+	/** The local sound-effects folder the Agent picks hits, whooshes and risers from (V1S-129). */
+	sfx_folder: z.string().trim().max(1000).nullable().default(null)
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 

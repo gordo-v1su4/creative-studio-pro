@@ -306,9 +306,13 @@ export const placedEffectSchema = z.object({
 	url: z.string().min(1).max(2000),
 	name: nonBlank(300),
 	at_s: z.number().nonnegative(),
+	/** Start this far into the file (a riser longer than the time before its cut still ends on the cut). */
+	from_s: z.number().nonnegative().optional(),
 	gain_db: z.number().min(-60).max(24),
 	/** Proposed by the Agent and not yet kept by the operator (V1S-129). */
-	suggested: z.boolean().optional()
+	suggested: z.boolean().optional(),
+	/** Why it's there (the Agent's reason, or "generated: <prompt>"). */
+	note: z.string().max(400).optional()
 });
 export type PlacedEffect = z.infer<typeof placedEffectSchema>;
 

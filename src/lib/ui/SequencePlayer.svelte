@@ -19,6 +19,7 @@
 	import { acceptAll, type TrimSuggestion } from '$lib/domain/trim-suggest';
 	import type { MatchedEntry } from '$lib/domain/music';
 	import { loadPeaks } from '$lib/media/waveform';
+	import Toggle from '$lib/ui/controls/Toggle.svelte';
 
 	/**
 	 * Rough-cut review of a selection or a cut: each clip's kept span (in → out) plays
@@ -598,10 +599,10 @@
 					<button type="button" class="ctl" onclick={undoMatch}>undo</button>
 				{:else if mixUrl}
 					<span class="text-[#f2c14e]" title="The built sound mix of this locked version plays in place of the takes' own audio">♪ sound mix v{shownVersion}</span>
-					<label class="flex items-center gap-1"><input type="checkbox" bind:checked={songOn} onchange={() => syncSong()} /> mix</label>
+					<Toggle label="Play the mix" on="mix" off="mix" bind:checked={songOn} onchange={() => syncSong()} />
 				{:else if cut.music}
 					<span class="max-w-[220px] truncate text-[#f2c14e]" title={`${cut.music.name} · ${cut.music.bpm} BPM · ${cut.music.duration_s.toFixed(1)}s, plays from the cut's start`}>♪ {cut.music.name} · {cut.music.bpm} BPM</span>
-					<label class="flex items-center gap-1"><input type="checkbox" bind:checked={songOn} onchange={() => syncSong()} /> song</label>
+					<Toggle label="Play the song" on="song" off="song" bind:checked={songOn} onchange={() => syncSong()} />
 					{#if !frozen && !readOnly}<button type="button" class="ctl suggest" onclick={() => void matchMusic()} disabled={matching || !clips.length} title="Slide each entry within its own footage to where its audio matches the song, keeping your order; entries that can't match confidently snap their cut to the nearest beat. You preview it before anything is saved.">{matching ? 'matching…' : 'match to music'}</button>{/if}
 					<button type="button" class="ctl" onclick={() => void removeSong()} title="Detach the song from this cut (the file stays in the project)">remove song</button>
 				{:else}

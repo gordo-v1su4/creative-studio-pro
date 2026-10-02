@@ -5,6 +5,7 @@
 	import type { StoryCard } from '$lib/domain/schemas';
 	import type { Take } from '$lib/domain/takes';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
+	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import { isUnder2K } from '$lib/domain/media';
 	import { draftWindow, timeLeft } from '$lib/domain/finalize';
@@ -196,8 +197,8 @@
 					{#if holdOpen && canHold}
 						<form class="hold-form nodrag" onsubmit={(event) => { event.preventDefault(); makeHold(); }} aria-label={`Make a Hold of ${card.title}`}>
 							<label>Length <input type="number" min="0.5" max="30" step="0.5" bind:value={holdLength} />s</label>
-							<label><input type="checkbox" bind:checked={holdPushIn} /> Push-in</label>
-							<label><input type="checkbox" bind:checked={holdFade} /> Fade</label>
+							<span class="flex items-center gap-[5px]"><Toggle label="Push-in" bind:checked={holdPushIn} /> Push-in</span>
+							<span class="flex items-center gap-[5px]"><Toggle label="Fade" bind:checked={holdFade} /> Fade</span>
 							<span class="flex gap-1">
 								<button type="submit" class="take-btn active">Make Hold</button>
 								<button type="button" class="take-btn" onclick={() => (holdOpen = false)}>Cancel</button>

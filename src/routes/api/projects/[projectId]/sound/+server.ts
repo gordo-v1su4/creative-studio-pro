@@ -10,7 +10,10 @@ import type { RequestHandler } from './$types';
 import { idSchema, soundPlanSchema } from '$lib/domain/schemas';
 import { uuid7ish } from '$lib/domain/ids';
 import { safeFileName } from '$lib/domain/media';
-import { getGateway, getProjectRoot, getProjectStore } from '$lib/server/config';
+import { getGateway, getProjectRoot, getProjectStore, getSfxFolder, getSfxGenerator, resolveProjectModel } from '$lib/server/config';
+import { createOpenAICompatibleClient } from '$lib/server/model-provider';
+import { projectRules } from '$lib/server/animate';
+import { generateEffect, proposeEffects, quoteEffect } from '$lib/server/effects';
 import { commandStatus } from '$lib/server/http';
 import { buildMix } from '$lib/server/sound';
 
@@ -19,7 +22,13 @@ const fail = (status: number, message: string) => json({ ok: false, error: { cod
 
 const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('save'), cut_id: idSchema, version: z.number().int().positive(), expected_version: z.number().int().nonnegative(), plan: soundPlanSchema }),
-	z.object({ action: z.literal('build'), cut_id: idSchema, version: z.number().int().positive() })
+	z.object({ action: z.literal('build'), cut_id: idSchema, version: z.number().int().positive() }),
+	z.object({ action: z.literal('propose'), cut_id: idSchema, version: z.number().int().positive() }),
+	z.object({ action: z.literal('quote_effect'), prompt: z.string().min(3).max(300), duration_s: z.number().min(0.5).max(5) }),
+	z.object({
+		action: z.literal('generate_effect'), cut_id: idSchema, version: z.number().int().positive(), prompt: z.string().min(3).max(300),
+		duration_s: z.number().min(0.5).max(5), at_s: z.number().nonnegative(), confirmed_credits: z.number().nonnegative()
+	})
 ]);
 
 /**
@@ -60,6 +69,23 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		const saved = await gateway.setSoundPlan({ command: 'set_sound_plan', project_id: projectId.data, expected_version: body.expected_version, cut_id: body.cut_id, version: body.version, plan: body.plan });
 		return saved.ok ? json(saved) : json(saved, { status: commandStatus(saved.error) });
 	}
-	const built = await buildMix({ gateway, store: getProjectStore(), projectRoot: getProjectRoot() }, projectId.data, body.cut_id, body.version);
+	const deps = { gateway, store: getProjectStore(), projectRoot: getProjectRoot() };
+	if (body.action === 'propose') {
+		const project = await deps.store.readProject(projectId.data);
+		if (!project) return fail(404, 'Project not found');
+		const resolved = await resolveProjectModel(project);
+		if (!resolved.ok) return fail(503, `No Agent model: ${resolved.message}`);
+		const proposed = await proposeEffects(deps, createOpenAICompatibleClient(resolved.connection), { projectId: projectId.data, cutId: body.cut_id, version: body.version, folder: await getSfxFolder(), rules: await projectRules(deps.projectRoot, projectId.data) });
+		return proposed.ok ? json({ ok: true, data: proposed.project, offers: proposed.offers, dropped: proposed.dropped, moments: proposed.moments }) : fail(proposed.status, proposed.message);
+	}
+	if (body.action === 'quote_effect') {
+		const quoted = await quoteEffect(getSfxGenerator(), body);
+		return quoted.ok ? json({ ok: true, data: { credits: quoted.credits } }) : fail(quoted.status, quoted.message);
+	}
+	if (body.action === 'generate_effect') {
+		const made = await generateEffect({ ...deps, generator: getSfxGenerator(), download: async (url) => { const r = await fetch(url); if (!r.ok) throw new Error(`Download failed: ${r.status}`); return new Uint8Array(await r.arrayBuffer()); } }, { projectId: projectId.data, cutId: body.cut_id, version: body.version, prompt: body.prompt, duration_s: body.duration_s, at_s: body.at_s, confirmed_credits: body.confirmed_credits });
+		return made.ok ? json({ ok: true, data: made.project }) : fail(made.status, made.message);
+	}
+	const built = await buildMix(deps, projectId.data, body.cut_id, body.version);
 	return built.ok ? json({ ok: true, data: built.project }) : fail(built.status, built.message);
 };

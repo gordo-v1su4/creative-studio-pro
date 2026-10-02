@@ -2,6 +2,8 @@
 	import type { Project, SoundPlan } from '$lib/domain/schemas';
 	import { cutLength, cutsOf } from '$lib/domain/cuts';
 	import { defaultSoundPlan, type Layer } from '$lib/domain/sound';
+	import Range from '$lib/ui/controls/Range.svelte';
+	import Toggle from '$lib/ui/controls/Toggle.svelte';
 
 	/**
 	 * Sound stage (V1S-128): lay sound against a locked cut version. Four
@@ -93,6 +95,53 @@
 		{ key: 'effects', label: 'Effects', note: 'hits, whooshes and risers placed at times in the cut' }
 	];
 	const mix = $derived(selected?.v.sound?.mix ?? null);
+
+	// --- Agent effects pass (V1S-129): suggestions to keep or remove, and generate offers that need a priced OK.
+	type Offer = { moment_s: number; prompt: string; duration_s: number; at_s: number; reason: string; credits?: number; confirming?: boolean; busy?: boolean };
+	let proposing = $state(false);
+	let offers = $state<Offer[]>([]);
+	let proposeNote = $state<string | null>(null);
+
+	async function propose() {
+		if (!selected) return;
+		proposing = true; error = null; proposeNote = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/sound`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'propose', cut_id: selected.cut.cut_id, version: selected.v.version }) });
+			const result = (await response.json()) as { ok: true; data: Project; offers: Offer[]; dropped: string[]; moments: number } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			onUpdated(result.data);
+			offers = result.offers;
+			const suggested = (cutsOf(result.data.production).find((c) => c.cut_id === selected.cut.cut_id)?.versions?.find((v) => v.version === selected.v.version)?.sound?.effects ?? []).filter((e) => e.suggested).length;
+			proposeNote = `${result.moments} moments looked at · ${suggested} suggested from the folder · ${result.offers.length} to generate${result.dropped.length ? ` · ${result.dropped.length} picks discarded (${result.dropped.join('; ')})` : ''}`;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'The effects pass failed'; }
+		finally { proposing = false; }
+	}
+
+	function keepEffect(id: string) {
+		plan.effects = plan.effects.map((e) => (e.effect_id === id ? { ...e, suggested: false } : e));
+		changed();
+	}
+
+	async function priceOffer(offer: Offer) {
+		offer.busy = true;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/sound`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'quote_effect', prompt: offer.prompt, duration_s: offer.duration_s }) });
+			const result = (await response.json()) as { ok: true; data: { credits: number } } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			offer.credits = result.data.credits;
+			offer.confirming = true;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Price check failed'; }
+		finally { offer.busy = false; }
+	}
+
+	async function generateOffer(offer: Offer) {
+		if (!selected || offer.credits === undefined) return;
+		offer.busy = true;
+		try {
+			await send({ action: 'generate_effect', cut_id: selected.cut.cut_id, version: selected.v.version, prompt: offer.prompt, duration_s: offer.duration_s, at_s: offer.at_s, confirmed_credits: offer.credits });
+			offers = offers.filter((o) => o !== offer);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Generating the effect failed'; offer.busy = false; }
+	}
 </script>
 
 <div class="mx-auto max-w-4xl p-5" aria-label="Sound stage">
@@ -113,38 +162,62 @@
 			<span class="meta-label text-[#55747c]">{saving ? 'saving…' : 'saved'}</span>
 		</div>
 
-		<ul class="grid gap-2" aria-label="Layers">
+		<ul class="grid border-t border-[#1a1f23]" aria-label="Layers">
 			{#each layers as layer (layer.key)}
 				<li class="layer">
 					<div class="flex items-center gap-3">
-						<b class="w-[92px]">{layer.label}</b>
-						<label class="field-inline"><input type="checkbox" checked={!plan.layers[layer.key].mute} onchange={(event) => { plan.layers[layer.key].mute = !event.currentTarget.checked; changed(); }} aria-label={`${layer.label} on`} /> on</label>
-						<input type="range" min="-24" max="12" step="0.5" bind:value={plan.layers[layer.key].gain_db} oninput={changed} aria-label={`${layer.label} gain`} class="grow" />
-						<span class="w-[64px] text-right font-mono text-[11px] text-[#bce6e8]">{plan.layers[layer.key].gain_db > 0 ? '+' : ''}{plan.layers[layer.key].gain_db} dB</span>
+						<span class="cap">{layer.label}</span>
+						<span class="note">{layer.note}</span>
+						<span class="grow"></span>
+						<Toggle label={`${layer.label} on`} checked={!plan.layers[layer.key].mute} onchange={(on) => { plan.layers[layer.key].mute = !on; changed(); }} />
+						<span class="readout">{plan.layers[layer.key].gain_db > 0 ? '+' : ''}{plan.layers[layer.key].gain_db.toFixed(1)} dB</span>
 					</div>
-					<p class="mt-1 text-[11px] text-[#668d98]">{layer.note}</p>
+					<div class="mt-1.5"><Range label={`${layer.label} gain`} min={-24} max={12} step={0.5} bind:value={plan.layers[layer.key].gain_db} oninput={changed} /></div>
 					{#if layer.key === 'ambience'}
 						<div class="mt-1 flex items-center gap-2 text-[11px]">
 							{#if plan.ambience}<span class="text-[#bce6e8]">{plan.ambience.name}</span><button type="button" class="ctl" onclick={() => { plan.ambience = undefined; changed(); }}>remove</button>{:else}<span class="text-[#55747c]">no bed</span>{/if}
 							<label class="ctl cursor-pointer">choose file<input type="file" accept="audio/*" class="hidden" onchange={(event) => { void setAmbience(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
 						</div>
 					{:else if layer.key === 'music'}
-						<p class="mt-1 text-[11px] {selected.cut.music ? 'text-[#f2c14e]' : 'text-[#55747c]'}">{selected.cut.music ? `♪ ${selected.cut.music.name} · ${selected.cut.music.bpm} BPM` : 'No song on this cut: attach one in the cut player.'}</p>
+						<p class="mt-1 text-[11px] {selected.cut.music ? 'text-[#d9c98a]' : 'text-[#5b6b70]'}">{selected.cut.music ? `♪ ${selected.cut.music.name} · ${selected.cut.music.bpm} BPM` : 'No song on this cut: attach one in the cut player.'}</p>
 					{:else if layer.key === 'effects'}
 						<ul class="mt-1 grid gap-1" aria-label="Placed effects">
 							{#each plan.effects as effect, i (effect.effect_id)}
-								<li class="flex items-center gap-2 text-[11px]">
+								<li class={['flex flex-wrap items-center gap-2 text-[11px]', effect.suggested && 'suggested']} title={effect.note ?? ''}>
+									{#if effect.suggested}<span class="badge">suggested</span>{/if}
 									<span class="w-[160px] truncate text-[#bce6e8]">{effect.name}</span>
 									<label class="field-inline">at <input type="number" min="0" step="0.05" bind:value={plan.effects[i].at_s} onchange={changed} class="num" />s</label>
 									<label class="field-inline">gain <input type="number" min="-24" max="12" step="0.5" bind:value={plan.effects[i].gain_db} onchange={changed} class="num" />dB</label>
+									{#if effect.suggested}<button type="button" class="ctl keep" onclick={() => keepEffect(effect.effect_id)}>keep</button>{/if}
 									<button type="button" class="ctl" onclick={() => { plan.effects = plan.effects.filter((e) => e.effect_id !== effect.effect_id); changed(); }}>remove</button>
+									{#if effect.note}<span class="w-full pl-1 text-[#668d98]">{effect.note}</span>{/if}
 								</li>
 							{/each}
 						</ul>
+						{#if offers.length}
+							<ul class="mt-2 grid gap-1 border-l border-[#2c5d5a] pl-2" aria-label="Effects to generate">
+								{#each offers as offer, o (o)}
+									<li class="flex flex-wrap items-center gap-2 text-[11px] text-[#9ee9df]">
+										<span>generate “{offer.prompt}” · {offer.duration_s}s at {offer.at_s}s</span>
+										<span class="text-[#6f7c84]">{offer.reason}</span>
+										{#if offer.confirming && offer.credits !== undefined}
+											<button type="button" class="ctl keep" onclick={() => void generateOffer(offer)} disabled={offer.busy}>{offer.busy ? 'generating…' : `Generate for ${offer.credits} credits`}</button>
+											<button type="button" class="ctl" onclick={() => (offer.confirming = false)}>cancel</button>
+										{:else}
+											<button type="button" class="ctl" onclick={() => void priceOffer(offer)} disabled={offer.busy}>{offer.busy ? 'pricing…' : 'Generate…'}</button>
+										{/if}
+										<button type="button" class="ctl" onclick={() => (offers = offers.filter((x) => x !== offer))}>skip</button>
+									</li>
+								{/each}
+							</ul>
+						{/if}
 						<div class="mt-1 flex items-center gap-2 text-[11px]">
+							<button type="button" class="ctl keep" onclick={() => void propose()} disabled={proposing} title="The Agent picks hits, whooshes and risers from your effects folder for the cuts and impacts in this version; each lands as a suggestion you keep or remove. Generating new ones always asks first with the price.">{proposing ? 'Agent is listening…' : 'Agent: suggest effects'}</button>
 							<label class="field-inline">add at <input type="number" min="0" step="0.05" bind:value={effectAt} class="num" />s</label>
 							<label class="ctl cursor-pointer">choose file<input type="file" accept="audio/*" class="hidden" onchange={(event) => { void addEffect(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
 						</div>
+						{#if proposeNote}<p class="mt-1 text-[11px] text-[#9fc9cf]">{proposeNote}</p>{/if}
+						{#if plan.effects.some((e) => e.suggested)}<p class="mt-1 text-[11px] text-[#6f7c84]">Suggested effects stay out of the mix until you keep them.</p>{/if}
 					{/if}
 				</li>
 			{/each}
@@ -176,9 +249,19 @@
 </div>
 
 <style>
-	.layer { border: 1px solid #26383f; background: #11161c; padding: 8px 10px; color: #bce6e8; font-size: 12px; }
-	.ctl { border: 1px solid #233034; background: #0f1517; padding: 1px 7px; color: #9fc9cf; }
-	.field-inline { display: flex; align-items: center; gap: 5px; color: #84cbd0; font: 600 10px var(--font-mono); text-transform: uppercase; }
-	.pick { border: 1px solid #26383f; background: #0a0d11; padding: 2px 4px; color: #bce6e8; font: 12px var(--font-mono); text-transform: none; }
-	.num { width: 64px; border: 1px solid #26383f; background: #0a0d11; padding: 1px 4px; color: #bce6e8; font: 11px var(--font-mono); }
+	/* Hardware panel look: dark plates, spaced capitals, boxed readouts, bordered keys. */
+	.layer { border-bottom: 1px solid #1a1f23; padding: 10px 2px 12px; color: #cfd8dc; font-size: 12px; }
+	.cap { color: #7b878f; font: 600 10px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; }
+	.note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #55626a; font-size: 11px; }
+	.readout { min-width: 58px; border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 0 6px; color: #b9cfd2; font: 11px/16px var(--font-mono); text-align: right; }
+	.ctl { border: 1px solid #262c31; border-radius: 2px; background: transparent; padding: 0 6px; color: #7b878f; font: 600 9px/16px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
+	.ctl:hover:not(:disabled) { border-color: #44505a; color: #c4d0d6; }
+	.ctl:disabled { opacity: 0.45; }
+	.field-inline { display: flex; align-items: center; gap: 6px; color: #6f7c84; font: 600 10px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
+	.pick { border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 1px 6px; color: #b9cfd2; font: 11px var(--font-mono); text-transform: none; }
+	.suggested { border-left: 2px solid #4ee8d2; padding-left: 6px; }
+	.badge { border: 1px solid #2c5d5a; border-radius: 2px; padding: 0 5px; color: #7de5dc; font: 600 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
+	.ctl.keep { border-color: rgba(78, 232, 210, 0.45); color: #7de5dc; }
+	.num { width: 56px; border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 0 5px; color: #b9cfd2; font: 11px/16px var(--font-mono); outline: none; }
+	.num:focus { border-color: #4ee8d2; }
 </style>

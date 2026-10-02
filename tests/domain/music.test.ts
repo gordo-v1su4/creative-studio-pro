@@ -75,6 +75,19 @@ describe('match to music', () => {
 });
 
 describe('beat grid and onsets', () => {
+	test('a fast tempo between whole-frame lags is found to a tenth of a BPM, and an excerpt agrees with the whole', () => {
+		const rate = 8000;
+		const click = (seconds: number, bpm: number, from = 0) => {
+			const samples = new Float32Array(rate * seconds);
+			for (let beat = from; beat < seconds; beat += 60 / bpm) for (let i = 0; i < 160; i++) { const at = Math.round(beat * rate) + i; if (at < samples.length) samples[at] = Math.sin(i) * 0.8; }
+			return samples;
+		};
+		const whole = beatGrid(onsetEnvelope(click(60, 157.5), rate));
+		const excerpt = beatGrid(onsetEnvelope(click(20, 157.5, 0.13), rate));
+		expect(Math.abs(whole.bpm - 157.5)).toBeLessThan(0.6);
+		expect(Math.abs(excerpt.bpm - 157.5)).toBeLessThan(0.6);
+	});
+
 	test('a click track at 120 BPM gives 120 BPM and beats on the clicks', () => {
 		const rate = 8000;
 		const samples = new Float32Array(rate * 10);

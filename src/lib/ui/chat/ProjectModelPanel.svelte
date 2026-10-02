@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import { PROVIDER_LABELS, describeModelChoice } from '$lib/domain/model-provider';
 	import type { ModelProviderKind, ModelTestResult, ProjectModelView, ProviderOption } from '$lib/domain/model-provider';
 	import type { Project } from '$lib/domain/schemas';
@@ -82,7 +83,7 @@
 			<ModelPicker {providers} bind:provider bind:model bind:test idPrefix="project-model" />
 			<textarea bind:value={reason} rows="2" placeholder={locked ? 'Reason for switching (required)' : 'Reason (optional)'} aria-label="Reason for the model change" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
 			{#if locked}
-				<label class="flex items-center gap-2"><input type="checkbox" bind:checked={confirmSwitch} /> I am switching this project's Agent model on purpose</label>
+				<span class="flex items-center gap-2"><Toggle label="I am switching this project's Agent model on purpose" on="yes" off="no" bind:checked={confirmSwitch} /> I am switching this project's Agent model on purpose</span>
 			{/if}
 			<input type="password" autocomplete="off" bind:value={token} placeholder="Operator credential (required)" aria-label="Operator credential" class="rounded-sm border border-border-default bg-surface-base p-2" />
 			<div class="flex flex-wrap gap-2">

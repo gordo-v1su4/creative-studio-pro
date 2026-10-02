@@ -70,12 +70,12 @@ export async function buildMix(
 	if (cut.music && !musicPcm) report.push('The song could not be read; music left out.');
 	const ambienceFile = plan.ambience ? local(plan.ambience.url) : null;
 	const ambiencePcm = ambienceFile ? await readPcm(ambienceFile).catch(() => null) : null;
-	const effects: Array<{ file: string; at_s: number; gain_db: number; length_s: number }> = [];
+	const effects: Array<{ file: string; at_s: number; from_s?: number; gain_db: number; length_s: number }> = [];
 	for (const effect of plan.effects.filter((e) => !e.suggested)) {
 		const file = local(effect.url);
 		const pcm = file ? await readPcm(file).catch(() => null) : null;
 		if (!file || !pcm) { report.push(`Effect ${effect.name} could not be read; left out.`); continue; }
-		effects.push({ file, at_s: effect.at_s, gain_db: autoGain(rmsDb(pcm, PCM_RATE), 'effects') + effect.gain_db, length_s: pcm.length / PCM_RATE });
+		effects.push({ file, at_s: effect.at_s, from_s: effect.from_s, gain_db: autoGain(rmsDb(pcm, PCM_RATE), 'effects') + effect.gain_db, length_s: pcm.length / PCM_RATE - (effect.from_s ?? 0) });
 	}
 
 	// Duck the music where the take audio is clearly louder than its own average (hits, lines) and under effects.
