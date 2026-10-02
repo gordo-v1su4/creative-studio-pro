@@ -135,8 +135,9 @@ export const briefVersionSchema = z.object({
 	tone_visual_rules: nonBlank(5000),
 	must_haves: z.array(nonBlank(1000)).min(1),
 	must_nots: z.array(nonBlank(1000)).min(1),
-	continuity_model: nonBlank(2000),
-	audio_approach: nonBlank(2000),
+	/** No longer asked for (V1S-132); kept readable on older versions. */
+	continuity_model: z.string().max(2000).optional(),
+	audio_approach: z.string().max(2000).optional(),
 	success_criteria: z.array(nonBlank(1000)).min(1),
 	content_hash: sha256Schema,
 	created_at: rfc3339Schema

@@ -110,7 +110,7 @@ function contextAt(text: string, index: number, length: number): string {
 	return `${from > 0 ? '…' : ''}${text.slice(from, to).replace(/\s+/g, ' ')}${to < text.length ? '…' : ''}`;
 }
 
-export function lintPrompt(raw: string, target: LintTarget = 'nano_banana'): LintResult {
+export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', projectBanned: string[] = []): LintResult {
 	const text = promptToText(raw);
 	const { declarations, spans } = extractDeclarations(text);
 	const issues: LintIssue[] = [];
@@ -124,6 +124,11 @@ export function lintPrompt(raw: string, target: LintTarget = 'nano_banana'): Lin
 		for (const m of text.matchAll(/@Image\s+\d+/g)) push('seedance-underscore', 'error', m, 'Seedance: use @Image_1 (underscore), not "@Image 1".');
 	}
 	for (const m of text.matchAll(BANNED)) push('banned-word', 'error', m, 'Banned word.');
+	// The project's own bans: words its brief's must-nots quote (rules file, V1S-132).
+	for (const term of projectBanned) {
+		const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		for (const m of text.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu'))) push('project-rule', 'error', m, `The project's rules ban "${term}".`);
+	}
 	for (const [pattern, message] of REJECTED) for (const m of text.matchAll(pattern)) push('operator-rejected', 'error', m, message);
 	// Seedance: continuity comes from several hard cuts in one generation, never a lone shot.
 	if (target === 'seedance' && !/\bcut\b/i.test(text)) {

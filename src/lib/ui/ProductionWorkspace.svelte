@@ -8,6 +8,8 @@
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
 	import SoundStage from '$lib/ui/SoundStage.svelte';
 	import ExportStage from '$lib/ui/ExportStage.svelte';
+	import BriefPanel from '$lib/ui/BriefPanel.svelte';
+	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 
@@ -158,6 +160,13 @@
 
 	{#if tab === 'story'}
 		<div class="mx-auto max-w-4xl p-5">
+			<div class="mb-6 border-b border-[#1a1f23] pb-6">
+				<BriefPanel {project} {onUpdated} />
+				<details class="mt-4">
+					<summary class="cursor-pointer font-mono text-[10px] uppercase tracking-[.14em] text-[#5b6b70]">Stage gate · {project.stage.id} (optional)</summary>
+					<div class="mt-2 max-w-md"><StageGatePanel {project} {onUpdated} showBrief={false} /></div>
+				</details>
+			</div>
 			<div class="flex items-start gap-4 border-b border-[#223039] pb-5">
 				<div class="grow">
 					<div class="meta-label text-[#59d9cf]">DRAFT STORY SPINE</div>

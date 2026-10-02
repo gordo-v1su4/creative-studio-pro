@@ -12,6 +12,7 @@ import { SEEDANCE_JOB_TYPE, type VideoGenerator } from './higgsfield';
 type Estimate = { credits: number };
 import { generateStructured, type AgentModelClient } from './model-provider';
 import { lintPrompt } from '$lib/domain/prompt-lint';
+import { bannedTerms } from '$lib/domain/brief-rules';
 import type { MediaProbe } from './media-probe';
 
 /**
@@ -94,7 +95,7 @@ export async function draftAnimatePrompt(
 	};
 	const images = [{ data: input.still, mediaType: input.stillType }];
 	const first = await generateStructured(client, { system, prompt: context, images, maxOutputTokens: 1200 }, parse);
-	const errors = lintPrompt(first, 'seedance').issues.filter((issue) => issue.severity === 'error');
+	const errors = lintPrompt(first, 'seedance', bannedTerms(input.rules)).issues.filter((issue) => issue.severity === 'error');
 	if (errors.length === 0) return first;
 	// One re-ask with the linter's findings; whatever comes back, the operator sees the lint before sending.
 	const fixes = errors.map((issue) => `- ${issue.message} (near: ${issue.context})`).join('\n');
@@ -126,7 +127,8 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 	const mode: SendMode = input.mode.kind === 'confirm'
 		? input.mode
 		: { kind: 'yolo', cap_credits: input.mode.cap_credits, spent_credits: spentThisSession(input.mode.session_id) };
-	const reasons = animateGate({ prompt: input.settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode });
+	const banned = bannedTerms(await projectRules(deps.projectRoot, input.project_id));
+	const reasons = animateGate({ prompt: input.settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode, banned });
 	if (reasons.length) return failure(422, 'GATE_BLOCKED', 'Blocked before any spend', reasons);
 
 	// Gate passed: from here on money can move.

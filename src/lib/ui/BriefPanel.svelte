@@ -1,90 +1,134 @@
 <script lang="ts">
 	import type { Project, BriefVersion } from '$lib/domain/schemas';
 	import { isCurrentBriefLocked } from '$lib/domain/gates';
+
+	/**
+	 * The owner brief (V1S-132), in the Story tab. "Draft brief" asks the Agent
+	 * to fill it from the seed, the story, the media and the rules file; the
+	 * operator edits and saves. Saving also writes tone and must-nots into the
+	 * project rules file the Agent and the prompt linter read. Locking it (the
+	 * old interview gate) is optional.
+	 */
 	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
 	let current = $derived(project.brief_state.versions.at(-1));
 	let locked = $derived(isCurrentBriefLocked(project));
-	let approval = $derived(current ? project.approval_history.findLast((item) => item.brief_id === current?.brief_id && item.brief_hash === current?.content_hash) : undefined);
-	let title = $state(''), slug = $state('');
-	let logline = $state(''), type = $state('');
-	let runtime = $state(''), aspect = $state('');
-	let platform = $state(''), tone = $state('');
-	let mustHaves = $state(''), mustNots = $state('');
-	let continuity = $state(''), audio = $state('');
-	let success = $state(''), token = $state('');
-	let busy = $state(false), error = $state<string | null>(null);
+	let title = $state(''), logline = $state('');
+	let type = $state(''), runtime = $state(''), aspect = $state(''), platform = $state('');
+	let tone = $state(''), mustHaves = $state(''), mustNots = $state(''), success = $state(''), token = $state('');
+	let busy = $state(false), drafting = $state(false), error = $state<string | null>(null), note = $state<string | null>(null);
 	const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
-	const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-	let complete = $derived([title, slug, logline, type, runtime, aspect, platform, tone, continuity, audio].every((value) => value.trim()) && lines(mustHaves).length > 0 && lines(mustNots).length > 0 && lines(success).length > 0);
-	let dirty = $derived(Boolean(current) && JSON.stringify({ title, slug, logline, type, runtime, aspect, platform, tone, mustHaves: lines(mustHaves), mustNots: lines(mustNots), continuity, audio, success: lines(success) }) !== JSON.stringify(current && { title: current.title, slug: current.slug, logline: current.logline, type: current.format.type, runtime: current.format.runtime, aspect: current.format.aspect, platform: current.format.platform, tone: current.tone_visual_rules, mustHaves: current.must_haves, mustNots: current.must_nots, continuity: current.continuity_model, audio: current.audio_approach, success: current.success_criteria }));
+	const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'brief';
+	let complete = $derived([title, logline, type, runtime, aspect, platform, tone].every((value) => value.trim()) && lines(mustHaves).length > 0 && lines(mustNots).length > 0 && lines(success).length > 0);
+	let fields = $derived({ title, logline, type, runtime, aspect, platform, tone, mustHaves: lines(mustHaves), mustNots: lines(mustNots), success: lines(success) });
+	let dirty = $derived(!current || JSON.stringify(fields) !== JSON.stringify({ title: current.title, logline: current.logline, type: current.format.type, runtime: current.format.runtime, aspect: current.format.aspect, platform: current.format.platform, tone: current.tone_visual_rules, mustHaves: current.must_haves, mustNots: current.must_nots, success: current.success_criteria }));
 
-	function initialize(brief: BriefVersion | undefined) {
-		title = brief?.title ?? project.title; slug = brief?.slug ?? slugify(project.title); logline = brief?.logline ?? project.production.logline;
-		type = brief?.format.type ?? ''; runtime = brief?.format.runtime ?? ''; aspect = brief?.format.aspect ?? '';
-		platform = brief?.format.platform ?? ''; tone = brief?.tone_visual_rules ?? '';
-		mustHaves = brief?.must_haves.join('\n') ?? ''; mustNots = brief?.must_nots.join('\n') ?? '';
-		continuity = brief?.continuity_model ?? ''; audio = brief?.audio_approach ?? '';
-		success = brief?.success_criteria.join('\n') ?? ''; token = ''; error = null;
+	function fill(brief: Pick<BriefVersion, 'title' | 'logline' | 'format' | 'tone_visual_rules' | 'must_haves' | 'must_nots' | 'success_criteria'> | undefined) {
+		title = brief?.title ?? project.title; logline = brief?.logline ?? project.production.logline;
+		type = brief?.format.type ?? ''; runtime = brief?.format.runtime ?? ''; aspect = brief?.format.aspect ?? ''; platform = brief?.format.platform ?? '';
+		tone = brief?.tone_visual_rules ?? '';
+		mustHaves = brief?.must_haves.join('\n') ?? ''; mustNots = brief?.must_nots.join('\n') ?? ''; success = brief?.success_criteria.join('\n') ?? '';
+		token = ''; error = null;
 	}
-	$effect(() => { project.project_id; project.brief_state.current_version; initialize(project.brief_state.versions.at(-1)); });
+	$effect(() => { project.project_id; project.brief_state.current_version; fill(project.brief_state.versions.at(-1)); });
+
+	async function draft() {
+		drafting = true; error = null; note = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/brief/draft`, { method: 'POST' });
+			const body = (await response.json()) as { ok: true; data: Parameters<typeof fill>[0] } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			fill(body.data);
+			note = 'The Agent drafted this brief. Read it, edit anything, then save.';
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Drafting failed'; }
+		finally { drafting = false; }
+	}
 
 	async function save() {
-		if (!complete || busy) return; busy = true; error = null;
+		if (!complete || busy) return; busy = true; error = null; note = null;
 		try {
-			const response = await fetch(`/api/projects/${project.project_id}/brief`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expected_version: project.version, brief: { title, slug, logline, format: { type, runtime, aspect, platform }, tone_visual_rules: tone, must_haves: lines(mustHaves), must_nots: lines(mustNots), continuity_model: continuity, audio_approach: audio, success_criteria: lines(success) } }) });
-			const body = await response.json() as { ok: true; data: Project } | { ok: false; error: { message: string } }; if (!body.ok) throw new Error(body.error.message); onUpdated(body.data);
+			const response = await fetch(`/api/projects/${project.project_id}/brief`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expected_version: project.version, brief: { title, slug: slugify(title), logline, format: { type, runtime, aspect, platform }, tone_visual_rules: tone, must_haves: lines(mustHaves), must_nots: lines(mustNots), success_criteria: lines(success) } }) });
+			const body = (await response.json()) as { ok: true; data: Project; rules_file?: string | null } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			onUpdated(body.data);
+			note = body.rules_file ? `Saved. Tone and must-nots are in ${body.rules_file.split(/[\\/]/).slice(-2).join('/')}, which the Agent and the prompt linter read.` : 'Saved.';
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Brief save failed'; } finally { busy = false; }
 	}
+
 	async function lockBrief(brief: BriefVersion) {
-		if (dirty) { error = 'Save or revert unsaved changes before locking.'; return; }
-		if (!token || busy) return; busy = true; error = null;
+		if (dirty || !token || busy) return; busy = true; error = null;
 		try {
 			const response = await fetch(`/api/projects/${project.project_id}/brief`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ expected_version: project.version, brief_version: brief.version, brief_hash: brief.content_hash }) });
-			const body = await response.json() as { ok: true; data: Project } | { ok: false; error: { message: string } }; if (!body.ok) throw new Error(body.error.message); token = ''; onUpdated(body.data);
+			const body = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			token = ''; onUpdated(body.data);
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Brief lock failed'; } finally { busy = false; }
 	}
 </script>
 
-<section class="mt-3" aria-labelledby="brief-heading">
-	<h3 id="brief-heading" class="meta-label">Owner brief {current ? `v${current.version}` : 'draft'}</h3>
+<section aria-labelledby="brief-heading">
+	<div class="flex flex-wrap items-center gap-3">
+		<h3 id="brief-heading" class="cap">Owner brief {current ? `v${current.version}` : ''}{locked ? ' · locked' : ''}</h3>
+		<span class="grow"></span>
+		{#if !locked}<button type="button" class="key accent" onclick={() => void draft()} disabled={drafting} title="The Agent drafts the brief from the seed, the story so far, the media and the rules file. Nothing is saved until you save.">{drafting ? 'Agent is drafting…' : 'Draft brief'}</button>{/if}
+	</div>
 	{#if locked && current}
-		<p class="mt-2 rounded-sm border border-gate-approved bg-[color-mix(in_srgb,var(--color-gate-approved)_6%,var(--color-surface-raised-2))] p-2 text-gate-approved" role="status">
-			{project.interview.status === 'PASSED' ? 'S2 PASSED' : 'LOCKED · interview source'} · {approval?.operator ?? 'operator'}
-		</p>
-		<details class="mt-2 rounded-sm border border-border-default bg-surface-raised-2 p-2">
-			<summary class="cursor-pointer text-text-muted">Read locked brief</summary>
-			<div class="mt-2 grid gap-1.5 text-text-muted">
-				<strong class="text-text-primary">{current.title}</strong>
-				<p>{current.logline}</p>
-				<p class="meta-label text-text-dim">{current.format.type} · {current.format.runtime} · {current.format.aspect} · {current.format.platform}</p>
-				<p>{current.tone_visual_rules}</p>
-				<p><span class="meta-label text-text-dim">Must have</span><br />{current.must_haves.join(' · ')}</p>
-				<p><span class="meta-label text-text-dim">Must not</span><br />{current.must_nots.join(' · ')}</p>
-				<p><span class="meta-label text-text-dim">Continuity</span><br />{current.continuity_model}</p>
-				<p><span class="meta-label text-text-dim">Audio</span><br />{current.audio_approach}</p>
-				<p><span class="meta-label text-text-dim">Success</span><br />{current.success_criteria.join(' · ')}</p>
-			</div>
-		</details>
-	{:else}
-		<div class="mt-2 grid gap-2">
-			<input aria-label="Brief title" placeholder="Title" bind:value={title} class="rounded-sm border border-border-default bg-surface-base p-2" />
-			<input aria-label="Brief slug" placeholder="Slug" bind:value={slug} class="rounded-sm border border-border-default bg-surface-base p-2" />
-			<textarea aria-label="Logline" placeholder="Logline" bind:value={logline} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
-			<div class="grid grid-cols-2 gap-2"><input aria-label="Format type" placeholder="Type" bind:value={type} class="rounded-sm border border-border-default bg-surface-base p-2" /><input aria-label="Runtime" placeholder="Runtime" bind:value={runtime} class="rounded-sm border border-border-default bg-surface-base p-2" /><input aria-label="Aspect" placeholder="Aspect" bind:value={aspect} class="rounded-sm border border-border-default bg-surface-base p-2" /><input aria-label="Platform" placeholder="Platform" bind:value={platform} class="rounded-sm border border-border-default bg-surface-base p-2" /></div>
-			<textarea aria-label="Tone and visual rules" placeholder="Tone & visual rules" bind:value={tone} rows="3" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
-			<textarea aria-label="Must haves" placeholder="Must-haves, one per line" bind:value={mustHaves} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
-			<textarea aria-label="Must nots" placeholder="Must-nots, one per line" bind:value={mustNots} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
-			<textarea aria-label="Continuity model" placeholder="Continuity model" bind:value={continuity} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
-			<textarea aria-label="Audio approach" placeholder="Audio approach" bind:value={audio} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
-			<textarea aria-label="Success criteria" placeholder="Success criteria, one per line" bind:value={success} rows="2" class="rounded-sm border border-border-default bg-surface-base p-2"></textarea>
+		<div class="mt-3 grid gap-1.5 text-[12px] text-[#9fb3b8]">
+			<b class="text-[#dce7ea]">{current.title}</b>
+			<p>{current.logline}</p>
+			<p class="cap">{current.format.type} · {current.format.runtime} · {current.format.aspect} · {current.format.platform}</p>
+			<p>{current.tone_visual_rules}</p>
+			<p><span class="cap">Must have</span> {current.must_haves.join(' · ')}</p>
+			<p><span class="cap">Must not</span> {current.must_nots.join(' · ')}</p>
+			<p><span class="cap">Success</span> {current.success_criteria.join(' · ')}</p>
 		</div>
-		<button type="button" class="btn btn-accent mt-2 w-full justify-center" disabled={!complete || busy} onclick={() => void save()}>{busy ? 'Saving…' : current ? 'Save changed brief as new version' : 'Save brief version'}</button>
+	{:else}
+		<div class="mt-3 grid gap-2">
+			<label class="field"><span class="cap">Title</span><input bind:value={title} aria-label="Brief title" /></label>
+			<label class="field"><span class="cap">Logline</span><textarea bind:value={logline} rows="2" aria-label="Logline"></textarea></label>
+			<div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+				<label class="field"><span class="cap">Type</span><input bind:value={type} aria-label="Format type" placeholder="trailer" /></label>
+				<label class="field"><span class="cap">Runtime</span><input bind:value={runtime} aria-label="Runtime" placeholder="30s" /></label>
+				<label class="field"><span class="cap">Aspect</span><input bind:value={aspect} aria-label="Aspect" placeholder="16:9" /></label>
+				<label class="field"><span class="cap">Platform</span><input bind:value={platform} aria-label="Platform" placeholder="web" /></label>
+			</div>
+			<label class="field"><span class="cap">Tone &amp; visual rules <small>→ rules file</small></span><textarea bind:value={tone} rows="3" aria-label="Tone and visual rules"></textarea></label>
+			<div class="grid gap-2 md:grid-cols-3">
+				<label class="field"><span class="cap">Must have</span><textarea bind:value={mustHaves} rows="4" aria-label="Must haves" placeholder="one per line"></textarea></label>
+				<label class="field"><span class="cap">Must not <small>→ rules file</small></span><textarea bind:value={mustNots} rows="4" aria-label="Must nots" placeholder={'one per line; "quote" a word to ban it'}></textarea></label>
+				<label class="field"><span class="cap">Success</span><textarea bind:value={success} rows="4" aria-label="Success criteria" placeholder="one per line"></textarea></label>
+			</div>
+		</div>
+		<div class="mt-3 flex flex-wrap items-center gap-3">
+			<span class="text-[11px] text-[#5b6b70]">{complete ? (dirty ? 'Unsaved changes' : 'Saved') : 'Fill every field, or let the Agent draft it'}</span>
+			<span class="grow"></span>
+			{#if current && dirty}<button type="button" class="key" onclick={() => fill(current)}>Revert</button>{/if}
+			<button type="button" class="key accent" disabled={!complete || busy || !dirty} onclick={() => void save()}>{busy ? 'Saving…' : current ? 'Save as new version' : 'Save brief'}</button>
+		</div>
 		{#if current}
-			{#if dirty}<p class="mt-2 text-gate-pending" role="status">Save or revert unsaved changes before locking.</p><button type="button" class="btn mt-1 w-full justify-center" onclick={() => initialize(current)}>Revert unsaved changes</button>{/if}
-			<label for="brief-token" class="meta-label mt-3 block">Operator credential</label><input id="brief-token" type="password" autocomplete="current-password" bind:value={token} class="mt-1 w-full rounded-sm border border-border-default bg-surface-base p-2" />
-			<button type="button" class="btn mt-2 w-full justify-center" disabled={!token || busy || dirty} onclick={() => void lockBrief(current)}>Lock current brief v{current.version}</button>
-			<p class="meta-label mt-1 break-all text-text-dim">{current.content_hash}</p>
+			<details class="mt-3">
+				<summary class="cap cursor-pointer">Lock this brief (optional)</summary>
+				<p class="mt-1 text-[11px] text-[#5b6b70]">Locking freezes the brief as the interview gate's source. It's optional: the board, cuts and sound work without it.</p>
+				<div class="mt-2 flex items-center gap-2">
+					<input class="token" type="password" autocomplete="current-password" bind:value={token} aria-label="Operator credential" placeholder="operator credential" />
+					<button type="button" class="key" disabled={!token || busy || dirty} onclick={() => void lockBrief(current)}>Lock v{current.version}</button>
+				</div>
+			</details>
 		{/if}
-		{#if error}<p class="mt-2 text-gate-failed" role="alert">{error}</p>{/if}
 	{/if}
+	{#if note}<p class="mt-2 text-[11px] text-[#7de5dc]" role="status">{note}</p>{/if}
+	{#if error}<p class="mt-2 text-gate-failed" role="alert">{error}</p>{/if}
 </section>
+
+<style>
+	.cap { color: #7b878f; font: 600 10px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
+	.cap small { color: #4e5b61; letter-spacing: 0.06em; text-transform: none; font-weight: 500; }
+	.field { display: grid; gap: 4px; }
+	.field input, .field textarea, .token { width: 100%; border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 5px 8px; color: #dce7ea; font: 12px/1.5 var(--font-sans); outline: none; resize: vertical; }
+	.field input:focus, .field textarea:focus, .token:focus { border-color: rgba(78, 232, 210, 0.5); }
+	.field textarea::placeholder, .field input::placeholder, .token::placeholder { color: #3f4a50; }
+	.token { width: 220px; font-family: var(--font-mono); }
+	.key { border: 1px solid #262c31; border-radius: 2px; background: transparent; padding: 0 9px; color: #8a969e; font: 600 9px/20px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
+	.key:hover:not(:disabled) { border-color: #44505a; color: #c4d0d6; }
+	.key.accent { border-color: rgba(78, 232, 210, 0.45); color: #7de5dc; }
+	.key:disabled { opacity: 0.4; }
+</style>

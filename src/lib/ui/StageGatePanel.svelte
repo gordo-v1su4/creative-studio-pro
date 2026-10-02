@@ -8,8 +8,9 @@
 
 	let {
 		project,
-		onUpdated
-	}: { project: Project; onUpdated: (project: Project) => void } = $props();
+		onUpdated,
+		showBrief = true
+	}: { project: Project; onUpdated: (project: Project) => void; showBrief?: boolean } = $props();
 
 	const stateColor: Record<Project['stage']['state'], string> = {
 		BLOCKED: 'var(--color-gate-pending)',
@@ -73,6 +74,7 @@
 </script>
 
 <div class="meta-label">Stage gate</div>
+<p class="mt-1 text-[11px] leading-4 text-text-dim">The interview gate is optional: the board, cuts, sound and export work without passing it.</p>
 
 <!-- S0–S10 rail -->
 <div class="mt-2 flex items-center gap-[3px]" role="img" aria-label="Stage {project.stage.id} of S10, {stageName(project.stage.id)}, {project.stage.state}">
@@ -90,7 +92,7 @@
 	{/each}
 </div>
 
-<BriefPanel {project} {onUpdated} />
+{#if showBrief}<BriefPanel {project} {onUpdated} />{/if}
 
 {#if briefLocked && project.interview.status !== 'PASSED'}
 	<section class="mt-3 rounded-sm border border-border-default bg-surface-raised-2 p-2.5" aria-labelledby="interview-heading">

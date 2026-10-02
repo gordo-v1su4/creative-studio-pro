@@ -62,13 +62,15 @@ export interface GateInput {
 	still: Pick<ProductionAsset, 'kind' | 'width' | 'height'>;
 	estimate_credits: number;
 	mode: SendMode;
+	/** Words the project's rules ban (brief must-nots). */
+	banned?: string[];
 }
 
 /** Reasons a send is blocked; empty means it may go. Nothing is spent until this is empty. */
 export function animateGate(input: GateInput): string[] {
 	const reasons: string[] = [];
 	if (!input.prompt.trim()) reasons.push('The prompt is empty');
-	for (const issue of lintPrompt(input.prompt, 'seedance').issues) {
+	for (const issue of lintPrompt(input.prompt, 'seedance', input.banned ?? []).issues) {
 		if (issue.severity === 'error') reasons.push(`Prompt rule ${issue.rule}: ${issue.message}`);
 	}
 	if (input.still.kind !== 'image') reasons.push('Animate starts from a still');

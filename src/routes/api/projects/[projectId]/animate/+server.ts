@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, animateGate } from '$lib/domain/animate';
 import { idSchema } from '$lib/domain/schemas';
+import { bannedTerms } from '$lib/domain/brief-rules';
 import { getAnimateDeps, resolveProjectModel } from '$lib/server/config';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { draftAnimatePrompt, estimateAnimate, pollGenerations, projectRules, readStill, sendAnimate, spentThisSession } from '$lib/server/animate';
@@ -66,6 +67,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!project) return fail(404, 'NOT_FOUND', 'Project not found');
 	const still = await readStill(deps, project, body.card_id);
 	if (!still.ok) return fail(still.status, still.code, still.message);
+	const rules = await projectRules(deps.projectRoot, projectId.data);
+	const banned = bannedTerms(rules);
 	const settings = { prompt: still.card.video_prompt, duration_s: Math.min(ANIMATE_MAX_S, Math.max(ANIMATE_MIN_S, Math.round(still.card.duration_ms / 1000))), resolution: '480p' as const, generate_audio: true };
 	let draftNote: string | null = null;
 	const resolved = await resolveProjectModel(project);
@@ -73,7 +76,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		try {
 			settings.prompt = await draftAnimatePrompt(createOpenAICompatibleClient(resolved.connection), {
 				card: still.card, still: still.bytes, stillType: still.still.mime_type.includes('*') ? 'image/png' : still.still.mime_type,
-				rules: await projectRules(deps.projectRoot, projectId.data)
+				rules
 			});
 		} catch (cause) {
 			draftNote = `The Agent couldn't draft a prompt (${cause instanceof Error ? cause.message : 'error'}); starting from the beat's video prompt.`;
@@ -93,7 +96,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			balance: deps.generator ? await deps.generator.balance() : null,
 			session_spent_credits: spentThisSession(body.session_id),
 			// Gate preview with the current price (confirm mode); the send re-runs the gate for real.
-			blocked: priced.ok ? animateGate({ prompt: settings.prompt, still: still.still, estimate_credits: priced.estimate.credits, mode: { kind: 'confirm', confirmed_credits: priced.estimate.credits } }) : []
+			banned,
+			blocked: priced.ok ? animateGate({ prompt: settings.prompt, still: still.still, estimate_credits: priced.estimate.credits, mode: { kind: 'confirm', confirmed_credits: priced.estimate.credits }, banned }) : []
 		}
 	});
 };

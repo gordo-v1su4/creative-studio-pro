@@ -18,7 +18,7 @@
 
 	type Prepared = {
 		title: string; still: { url: string; name: string; width: number | null; height: number | null };
-		draft_note: string | null; configured: boolean; estimate: { credits: number } | null; estimate_error: string | null; session_spent_credits: number;
+		draft_note: string | null; configured: boolean; banned?: string[]; estimate: { credits: number } | null; estimate_error: string | null; session_spent_credits: number;
 		balance: { credits: number; plan: string | null } | null;
 	};
 
@@ -40,7 +40,7 @@
 	let error = $state<string | null>(null);
 	let reasons = $state<string[]>([]);
 
-	let lint = $derived(lintPrompt(prompt, 'seedance').issues);
+	let lint = $derived(lintPrompt(prompt, 'seedance', prepared?.banned ?? []).issues);
 	let lintErrors = $derived(lint.filter((issue) => issue.severity === 'error'));
 	let stillUnder2K = $derived(!!prepared?.still.width && !!prepared?.still.height && Math.max(prepared.still.width, prepared.still.height) < MIN_LONG_EDGE);
 

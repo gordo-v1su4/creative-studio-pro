@@ -15,7 +15,6 @@
 	import SpineEdge from '$lib/ui/edges/SpineEdge.svelte';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
-	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
 	import CapabilityChip from '$lib/ui/CapabilityChip.svelte';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
@@ -50,7 +49,8 @@
 	let savingLayout = $state(false);
 	let loadError = $state<string | null>(null);
 	let creating = $state(false);
-	let inspectorOpen = $state(true);
+	// The board has no permanent right panel (V1S-132): the brief lives in Story; the inspector opens on demand.
+	let inspectorOpen = $state(false);
 	let canvasOpen = $state(true);
 	let productionTab = $state<ProductionTab>('story');
 
@@ -940,10 +940,6 @@
 		>
 			<div class="h-full w-[300px] overflow-y-auto p-3">
 				{#if activeProject}
-					<StageGatePanel project={activeProject} onUpdated={(p) => adoptProject(p, layout)} />
-
-					<div class="my-3 h-px bg-border-subtle"></div>
-
 					<div class="meta-label">Seed</div>
 					<label class="meta-label mt-2 block" for="seed-title">Title</label>
 					<input
