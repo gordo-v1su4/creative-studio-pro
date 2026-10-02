@@ -1,4 +1,4 @@
-import type { Cut, CutEntry, CutMusic, ProductionState } from './schemas';
+import type { Cut, CutEntry, CutMusic, ProductionState, SoundPlan } from './schemas';
 import type { TakeResult } from './takes';
 import { programElapsed } from '../media/speed-curve';
 
@@ -136,6 +136,16 @@ export function applySetCutMusic(production: ProductionState, cutId: string, mus
 	const { music: _old, ...rest } = cut;
 	const next: Cut = music ? { ...rest, music, updated_at: now } : { ...rest, updated_at: now };
 	return { ok: true, production: withCuts(production, cutsOf(production).map((entry) => (entry.cut_id === cutId ? next : entry))) };
+}
+
+/** Save the sound plan of a locked version (sound always belongs to an exact locked picture). */
+export function applySetSoundPlan(production: ProductionState, cutId: string, version: number, plan: SoundPlan, now: string): TakeResult {
+	const cut = cutsOf(production).find((entry) => entry.cut_id === cutId);
+	if (!cut) return { ok: false, message: `Cut ${cutId} not found` };
+	const locked = cut.versions?.find((v) => v.version === version);
+	if (!locked) return { ok: false, message: `${cut.name} v${version} is not a locked version; lock the cut to lay sound against it` };
+	const versions = cut.versions!.map((v) => (v.version === version ? { ...v, sound: plan } : v));
+	return { ok: true, production: withCuts(production, cutsOf(production).map((entry) => (entry.cut_id === cutId ? { ...cut, versions, updated_at: now } : entry))) };
 }
 
 export function applyRenameCut(production: ProductionState, cutId: string, name: string, now: string): TakeResult {

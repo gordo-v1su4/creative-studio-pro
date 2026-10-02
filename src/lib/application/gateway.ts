@@ -37,8 +37,8 @@ import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animat
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset } from '$lib/domain/schemas';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
-import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema } from '$lib/domain/schemas';
-import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, applySetCutMusic, keepStoredCuts } from '$lib/domain/cuts';
+import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setSoundPlanCommandSchema } from '$lib/domain/schemas';
+import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, applySetCutMusic, applySetSoundPlan, keepStoredCuts } from '$lib/domain/cuts';
 
 type LedgerEventType = LedgerEvent['type'];
 
@@ -165,6 +165,8 @@ export class ProjectCommandGateway {
 				return this.lockCut(raw);
 			case 'set_cut_music':
 				return this.setCutMusic(raw);
+			case 'set_sound_plan':
+				return this.setSoundPlan(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -786,6 +788,14 @@ export class ProjectCommandGateway {
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
 		const { cut_id, music } = parsed.data;
 		return this.updateCuts(parsed.data, (production, now) => applySetCutMusic(production, cut_id, music, now), 'project.cut_music_set.v1');
+	}
+
+	/** Save a locked version's sound plan (V1S-128). */
+	async setSoundPlan(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = setSoundPlanCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { cut_id, version, plan } = parsed.data;
+		return this.updateCuts(parsed.data, (production, now) => applySetSoundPlan(production, cut_id, version, plan, now), 'project.cut_sound_set.v1');
 	}
 
 	/** A pure change to the project's cuts, refused as INVALID_COMMAND when it doesn't apply. */

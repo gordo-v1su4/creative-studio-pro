@@ -294,11 +294,48 @@ export const cutEntrySchema = z.object({
 });
 export type CutEntry = z.infer<typeof cutEntrySchema>;
 
+const layerSettingsSchema = z.object({
+	/** Added on top of the automatic level, in dB. */
+	gain_db: z.number().min(-60).max(24),
+	mute: z.boolean()
+});
+
+/** A sound file placed on the added-effects layer at a time in the cut. */
+export const placedEffectSchema = z.object({
+	effect_id: idSchema,
+	url: z.string().min(1).max(2000),
+	name: nonBlank(300),
+	at_s: z.number().nonnegative(),
+	gain_db: z.number().min(-60).max(24),
+	/** Proposed by the Agent and not yet kept by the operator (V1S-129). */
+	suggested: z.boolean().optional()
+});
+export type PlacedEffect = z.infer<typeof placedEffectSchema>;
+
+/** The sound for one locked picture version: four layers, placed effects, and the auto-mix settings. */
+export const soundPlanSchema = z.object({
+	layers: z.object({ take: layerSettingsSchema, ambience: layerSettingsSchema, music: layerSettingsSchema, effects: layerSettingsSchema }),
+	/** The ambience bed: one file looped under the whole cut. */
+	ambience: z.object({ url: z.string().min(1).max(2000), name: nonBlank(300) }).optional(),
+	effects: z.array(placedEffectSchema).max(500),
+	/** Length of the crossfade at every cut, seconds. */
+	crossfade_s: z.number().min(0).max(1),
+	/** How far music drops under hits, dialogue and effects, dB (negative). */
+	duck_db: z.number().min(-40).max(0),
+	/** True-peak ceiling of the limiter, dBFS. */
+	limiter_db: z.number().min(-12).max(0),
+	/** The last built mix of this plan. */
+	mix: z.object({ url: z.string().min(1).max(2000), built_at: rfc3339Schema, report: z.array(z.string().max(500)).max(500) }).optional()
+});
+export type SoundPlan = z.infer<typeof soundPlanSchema>;
+
 /** A locked picture version of a cut, kept readable after the cut is unlocked into the next version. */
 export const cutVersionSchema = z.object({
 	version: z.number().int().positive(),
 	entries: z.array(cutEntrySchema).min(1).max(200),
-	locked_at: rfc3339Schema
+	locked_at: rfc3339Schema,
+	/** Sound belongs to an exact locked picture. */
+	sound: soundPlanSchema.optional()
 });
 export type CutVersion = z.infer<typeof cutVersionSchema>;
 
@@ -560,6 +597,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.cut_edited.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_music_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_sound_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_locked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_unlocked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Animate (V1S-120): a generation sent, then settled (its video lands as a take, or it failed).
@@ -823,6 +861,16 @@ export const setCutMusicCommandSchema = z.object({
 	expected_version: z.number().int().nonnegative(),
 	cut_id: idSchema,
 	music: cutMusicSchema.nullable()
+});
+
+/** Save the sound plan of a locked cut version. */
+export const setSoundPlanCommandSchema = z.object({
+	command: z.literal('set_sound_plan'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	cut_id: idSchema,
+	version: z.number().int().positive(),
+	plan: soundPlanSchema
 });
 
 export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;

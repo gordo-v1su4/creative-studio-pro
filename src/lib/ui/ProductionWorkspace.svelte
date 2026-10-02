@@ -6,6 +6,7 @@
 	import { cutLength, cutsOf } from '$lib/domain/cuts';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
+	import SoundStage from '$lib/ui/SoundStage.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 
@@ -99,7 +100,7 @@
 	// Cuts are stored state, read from the project (not the draft) and changed only by cut commands.
 	const cuts = $derived(cutsOf(project.production));
 	/** The cut open in the player, and which version (null = the current one). */
-	let openCut = $state<{ cutId: string; version: number | null } | null>(null);
+	let openCut = $state<{ cutId: string; version: number | null; mixUrl?: string } | null>(null);
 	let versionsOpen = $state<string | null>(null);
 	let locking = $state<string | null>(null);
 
@@ -274,12 +275,12 @@
 			</div>
 		</div>
 	{:else if tab === 'sound'}
-		<div class="mx-auto max-w-3xl p-6">
-			<div class="border border-dashed border-[#29434a] p-5">
-				<div class="meta-label text-[#59d9cf]">SOUND</div>
-				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Lock a cut to lay sound against it: take audio, an ambience bed, music and added effects, auto-mixed. Arrives after cuts.</p>
-			</div>
-		</div>
+		<SoundStage {project} {onUpdated} onplay={(cutId, version, mixUrl) => (openCut = { cutId, version, mixUrl })} />
+		{#if openCut}
+			{#key `${openCut.cutId}:${openCut.version}:${openCut.mixUrl ?? ''}`}
+				<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCut.cutId, version: openCut.version ?? undefined, mixUrl: openCut.mixUrl }} onclose={() => (openCut = null)} />
+			{/key}
+		{/if}
 	{:else}
 		<div class="mx-auto max-w-3xl p-6">
 			<div class="border border-[#29434a] bg-[#11171d] p-5">

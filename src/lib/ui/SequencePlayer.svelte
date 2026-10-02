@@ -4,7 +4,8 @@
 	 * saves trims and ramps onto the takes themselves, as their defaults, and can be pushed
 	 * into a new cut. A cut saves trims, ramps and order onto the cut only.
 	 */
-	export type PlayerSource = { kind: 'selection' } | { kind: 'cut'; cutId: string; version?: number };
+	/** mixUrl: play this version's built sound mix instead of the takes' own audio and the song. */
+	export type PlayerSource = { kind: 'selection' } | { kind: 'cut'; cutId: string; version?: number; mixUrl?: string };
 </script>
 
 <script lang="ts">
@@ -79,8 +80,9 @@
 	// --- The cut's song (V1S-126): plays from the cut's start, kept in step with the program time.
 	let song: HTMLAudioElement | null = null;
 	let songOn = $state(true);
+	const mixUrl = $derived(source.kind === 'cut' ? source.mixUrl : undefined);
 	$effect(() => {
-		const url = cut?.music?.url;
+		const url = mixUrl ?? cut?.music?.url;
 		if (!url) return;
 		const audio = new Audio(url);
 		audio.preload = 'auto';
@@ -108,7 +110,7 @@
 
 	function syncSong(play = !paused) {
 		if (!song) return;
-		if (!songOn || !clips.length || programTime >= (cut?.music?.duration_s ?? Infinity)) { song.pause(); return; }
+		if (!songOn || !clips.length || programTime >= (mixUrl ? Infinity : cut?.music?.duration_s ?? Infinity)) { song.pause(); return; }
 		if (Math.abs(song.currentTime - programTime) > 0.12) song.currentTime = programTime;
 		if (play) void song.play().catch(() => {});
 		else song.pause();
@@ -116,6 +118,8 @@
 
 	function syncAudio(play = !paused) {
 		syncSong(play);
+		// Playing the built mix: the takes' own sound is already in it.
+		if (mixUrl) { for (const voice of voices.values()) voice.pause(); return; }
 		const audio = current ? voices.get(current.id) : undefined;
 		for (const [id, other] of voices) if (id !== current?.id) other.pause();
 		if (!audio || !current) return;
@@ -592,6 +596,9 @@
 					<span class="text-[#f2c14e]" title="Previewing: nothing is saved until you keep it">matched: {matchCounts}</span>
 					<button type="button" class="ctl suggest" onclick={keepMatch}>keep</button>
 					<button type="button" class="ctl" onclick={undoMatch}>undo</button>
+				{:else if mixUrl}
+					<span class="text-[#f2c14e]" title="The built sound mix of this locked version plays in place of the takes' own audio">♪ sound mix v{shownVersion}</span>
+					<label class="flex items-center gap-1"><input type="checkbox" bind:checked={songOn} onchange={() => syncSong()} /> mix</label>
 				{:else if cut.music}
 					<span class="max-w-[220px] truncate text-[#f2c14e]" title={`${cut.music.name} · ${cut.music.bpm} BPM · ${cut.music.duration_s.toFixed(1)}s, plays from the cut's start`}>♪ {cut.music.name} · {cut.music.bpm} BPM</span>
 					<label class="flex items-center gap-1"><input type="checkbox" bind:checked={songOn} onchange={() => syncSong()} /> song</label>

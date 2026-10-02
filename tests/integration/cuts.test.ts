@@ -197,6 +197,23 @@ describe('cuts', () => {
 		expect(cutsOf(removed.production)[0].music).toBeUndefined();
 	});
 
+	test('a sound plan belongs to a locked version; an unlocked version has none to set', async () => {
+		const { gateway, project } = await setup();
+		const pushed = await pushTrailer(gateway, project);
+		const [cut] = cutsOf(pushed.production);
+		const ids = { project_id: project.project_id, cut_id: cut.cut_id };
+		const plan = { layers: { take: { gain_db: 0, mute: false }, ambience: { gain_db: -3, mute: false }, music: { gain_db: 0, mute: true }, effects: { gain_db: 0, mute: false } }, effects: [], crossfade_s: 0.04, duck_db: -9, limiter_db: -1 };
+		const early = await gateway.setSoundPlan({ command: 'set_sound_plan', ...ids, expected_version: pushed.version, version: 1, plan });
+		expect(early.ok).toBeFalse();
+		const locked = ok(await gateway.handle({ command: 'lock_cut', ...ids, expected_version: pushed.version }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		const saved = ok(await gateway.setSoundPlan({ command: 'set_sound_plan', ...ids, expected_version: locked.version, version: 1, plan }));
+		const unlocked = ok(await gateway.handle({ command: 'unlock_cut', ...ids, expected_version: saved.version }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		const [after] = cutsOf(unlocked.production);
+		expect(after.versions?.find((v) => v.version === 1)?.sound).toEqual(plan);
+		const v2 = await gateway.setSoundPlan({ command: 'set_sound_plan', ...ids, expected_version: unlocked.version, version: 2, plan });
+		expect(v2.ok).toBeFalse();
+	});
+
 	test('rename persists; refusals are INVALID_COMMAND and stale versions conflict', async () => {
 		const { root, gateway, project } = await setup();
 		const pushed = await pushTrailer(gateway, project);
