@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { getGateway } from '$lib/server/config';
 import { commandStatus } from '$lib/server/http';
 
-const BOARD_COMMANDS = new Set(['set_pick', 'reject_take', 'restore_take', 'bench_beat', 'unbench_beat', 'rewire_spine']);
+const BOARD_COMMANDS = new Set(['set_pick', 'reject_take', 'restore_take', 'bench_beat', 'unbench_beat', 'rewire_spine', 'create_group', 'rename_group', 'move_beats']);
 
 /** Thin same-origin command route (AD-1, AD-3): board edits to beats and their takes. */
 export const POST: RequestHandler = async ({ params, request }) => {

@@ -37,7 +37,8 @@ import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animat
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset } from '$lib/domain/schemas';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
-import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setSoundPlanCommandSchema } from '$lib/domain/schemas';
+import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
+import { applyCreateGroup, applyMoveBeats, applyRenameGroup, applySplitIntoShots, MAIN_GROUP } from '$lib/domain/groups';
 import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, applySetCutMusic, applySetSoundPlan, keepStoredCuts } from '$lib/domain/cuts';
 
 type LedgerEventType = LedgerEvent['type'];
@@ -163,6 +164,10 @@ export class ProjectCommandGateway {
 			case 'lock_cut':
 			case 'unlock_cut':
 				return this.lockCut(raw);
+			case 'create_group':
+			case 'rename_group':
+			case 'move_beats':
+				return this.changeGroups(raw);
 			case 'set_cut_music':
 				return this.setCutMusic(raw);
 			case 'set_sound_plan':
@@ -337,8 +342,28 @@ export class ProjectCommandGateway {
 	async addBeat(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = addBeatCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
-		const { card_id, title, take } = parsed.data;
-		return this.updateBoard(parsed.data, (production) => applyAddBeat(production, card_id, title, take), 'project.beat_added.v1');
+		const { card_id, title, take, group_id } = parsed.data;
+		return this.updateBoard(parsed.data, (production) => {
+			const added = applyAddBeat(production, card_id, title, take);
+			return added.ok && group_id && group_id !== MAIN_GROUP ? applyMoveBeats(added.production, [card_id], group_id) : added;
+		}, 'project.beat_added.v1');
+	}
+
+	/** Board groups (V1S-131): create, rename, move beats between them. */
+	async changeGroups(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = groupCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const command = parsed.data;
+		return this.updateBoard(command, (production) => {
+			if (command.command === 'create_group') return applyCreateGroup(production, command, new Date().toISOString());
+			if (command.command === 'rename_group') return applyRenameGroup(production, command.group_id, command.name);
+			return applyMoveBeats(production, command.card_ids, command.group_id);
+		}, 'project.group_changed.v1');
+	}
+
+	/** A take split into shots (server-internal, after the splitter returned and the clips were saved). */
+	async splitIntoShots(projectId: string, expectedVersion: number, input: Parameters<typeof applySplitIntoShots>[1]): Promise<CommandOutcome<Project>> {
+		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => applySplitIntoShots(production, input, new Date().toISOString()), 'project.take_split.v1');
 	}
 
 	async rewireSpine(raw: unknown): Promise<CommandOutcome<Project>> {
@@ -351,7 +376,7 @@ export class ProjectCommandGateway {
 	private async updateBoard(
 		command: { project_id: string; expected_version: number },
 		apply: (production: Project['production']) => TakeResult,
-		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}` | 'project.finalize_sent.v1'>
+		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}` | 'project.finalize_sent.v1' | 'project.group_changed.v1'>
 	): Promise<CommandOutcome<Project>> {
 		let refusal: string | null = null;
 		try {

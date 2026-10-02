@@ -28,6 +28,7 @@
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
+	import { groupOf, groupsOf, MAIN_GROUP } from '$lib/domain/groups';
 	import { CLOSING_MS, draftsClosingSoon, finalizingIds, timeLeft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
@@ -116,7 +117,7 @@
 			};
 		});
 		const cardRecords = project.production.cards.length > 0
-			? project.production.cards.map((card) => ({ id: card.card_id, card }))
+			? project.production.cards.filter((card) => groupOf(card) === activeGroup).map((card) => ({ id: card.card_id, card }))
 			: Array.from({ length: 6 }, (_, order) => ({ id: `story-placeholder-${order}`, card: null }));
 		const chain = spineOf(project.production).chain.map((card) => card.card_id);
 		const storyNodes: Node[] = cardRecords.map(({ id, card }, index) => {
@@ -127,7 +128,7 @@
 			return {
 				id,
 				type: 'story_card',
-				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 210 },
+				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 300 },
 				data: {
 					card, order: index, spineIndex: spineIndex < 0 ? null : spineIndex, takes, pickId: pick?.asset_id ?? null,
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
@@ -136,6 +137,8 @@
 					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched),
 					onHold: (options: { length_s: number; push_in: boolean; fade: boolean }) => card && makeHold(card.card_id, card.title, options),
 					onAnimate: () => card && (animateCardId = card.card_id),
+					onSplit: (takeId: string) => card && void splitTake(takeId),
+					splitting: splittingTake,
 					animating: card ? pendingGenerations(project.production).some((generation) => generation.card_id === card.card_id && !generation.finalizes) : false,
 					onFinalize: (takeId: string) => card && (finalizing = { takeIds: [takeId], title: card.title }),
 					finalizing: [...finalizingIds(project.production)]
@@ -225,7 +228,8 @@
 		ui.activeProject = project;
 		layout = nextLayout;
 		nodes = projectToNodes(project, nextLayout);
-		edges = projectToEdges(project);
+		const shown = new Set(nodes.map((node) => node.id));
+		edges = projectToEdges(project).filter((edge) => shown.has(edge.source) && shown.has(edge.target));
 		syncPolling(project);
 	}
 
@@ -272,6 +276,71 @@
 
 	// --- Animate: the panel for one beat, and polling while any generation is still running.
 	let animateCardId = $state<string | null>(null);
+
+	// --- Board groups (V1S-131): which set of beats the board shows (remembered per project).
+	let activeGroup = $state<string>(MAIN_GROUP);
+	let newGroupName = $state<string | null>(null);
+	let groupInput = $state<HTMLInputElement>();
+	// Focus the name box as soon as it opens, so typing goes straight in.
+	$effect(() => { if (newGroupName !== null) groupInput?.focus(); });
+	let splittingTake = $state<string | null>(null);
+	const groupKey = (projectId: string) => `csp.board-group.${projectId}`;
+	let groupLoadedFor = '';
+	$effect(() => {
+		const project = activeProject;
+		if (!project || groupLoadedFor === project.project_id) return;
+		groupLoadedFor = project.project_id;
+		let saved: string | null = null;
+		try { saved = localStorage.getItem(groupKey(project.project_id)); } catch { /* private mode */ }
+		const known = groupsOf(project.production).some((g) => g.group_id === saved);
+		if (known && saved !== activeGroup) { activeGroup = saved!; adoptProject(project); }
+	});
+
+	function showGroup(groupId: string) {
+		activeGroup = groupId;
+		try { if (activeProject) localStorage.setItem(groupKey(activeProject.project_id), groupId); } catch { /* private mode */ }
+		selectedNodeId = null;
+		if (activeProject) adoptProject(activeProject);
+	}
+
+	function createGroup() {
+		const name = newGroupName?.trim();
+		if (!name) return;
+		const groupId = crypto.randomUUID();
+		newGroupName = null;
+		sendBoardCommand({ command: 'create_group', group_id: groupId, name });
+	}
+
+	function moveSelectedTo(groupId: string) {
+		if (!selectedNodeId || !isBeat(selectedNodeId)) return;
+		const title = activeProject?.production.cards.find((card) => card.card_id === selectedNodeId)?.title;
+		sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: [selectedNodeId] });
+		notify(`Moved ${title ?? 'the beat'} to ${activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId)?.name : 'that group'}.`);
+		selectedNodeId = null;
+	}
+
+	/** Split a video take into shots through the splitter: a new group of shot beats, then show it. */
+	async function splitTake(takeId: string) {
+		const project = activeProject;
+		if (!project || splittingTake) return;
+		splittingTake = takeId;
+		adoptProject(project);
+		const take = project.production.assets.find((asset) => asset.asset_id === takeId);
+		notify(`Splitting ${take?.name ?? 'the take'} into shots (scene detection)…`);
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/split`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ take_id: takeId }) });
+			const result = (await response.json()) as { ok: true; data: Project; group_id: string; shots: number } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			adoptProject(result.data);
+			showGroup(result.group_id);
+			notify(`Split into ${result.shots} shots: a new group, one beat per shot. A better take of a shot is just another take on its beat.`);
+		} catch (cause) {
+			notify(`Split failed: ${cause instanceof Error ? cause.message : 'error'}`);
+		} finally {
+			splittingTake = null;
+			if (activeProject) adoptProject(activeProject);
+		}
+	}
 	// Finalize: the takes in the open priced confirm, and the board banner of drafts closing within three days.
 	let finalizing = $state<{ takeIds: string[]; title: string } | null>(null);
 	let closingDrafts = $derived(activeProject ? draftsClosingSoon(activeProject.production, clock.now) : []);
@@ -358,7 +427,7 @@
 		files.filter((file) => mediaKind(file.name)).forEach((file, index) => {
 			const params = new URLSearchParams({ name: file.name });
 			if (cardId) params.set('card_id', cardId);
-			else { params.set('x', String(Math.round(at.x + index * 40))); params.set('y', String(Math.round(at.y + index * 40))); }
+			else { params.set('x', String(Math.round(at.x + index * 40))); params.set('y', String(Math.round(at.y + index * 40))); params.set('group_id', activeGroup); }
 			enqueueBoard(
 				(project) => {
 					params.set('expected_version', String(project.version));
@@ -727,6 +796,26 @@
 				</div>
 				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Cycle a beat's takes; the one showing is its pick.</p>
 				{#if activeProject}
+					{@const groups = groupsOf(activeProject.production)}
+					{@const selectedBeat = selectedNodeId && isBeat(selectedNodeId) ? activeProject.production.cards.find((card) => card.card_id === selectedNodeId) : null}
+					<div class="meta-label mt-5 flex items-center">Groups<span class="grow"></span><button type="button" class="group-add" onclick={() => (newGroupName = '')} aria-label="New group">+ new</button></div>
+					<ul class="mt-2 grid gap-px" aria-label="Board groups">
+						{#each groups as group (group.group_id)}
+							<li class={['group-row', group.group_id === activeGroup && 'active']}>
+								<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} aria-pressed={group.group_id === activeGroup}>
+									<b class="min-w-0 grow truncate" title={group.name}>{group.name}</b>
+									<small>{group.count}</small>
+								</button>
+								{#if selectedBeat && groupOf(selectedBeat) !== group.group_id}
+									<button type="button" class="group-move" onclick={() => moveSelectedTo(group.group_id)} title={`Move ${selectedBeat.title} here`} aria-label={`Move ${selectedBeat.title} to ${group.name}`}>→</button>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+					{#if newGroupName !== null}
+						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder="Group name" aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
+					{/if}
+					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{selectedBeat ? `Click → on a group to move ${selectedBeat.title} there.` : 'Pick a group to show its beats. Select a beat to move it.'}</p>
 					{@const bin = benchedBeats(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
 					{#if bin.length === 0}
@@ -982,6 +1071,18 @@
 	.layer-row > span { width: 6px; height: 6px; }
 	.layer-row b { font-size: 11px; font-weight: 500; }
 	.layer-row small { font: 9px var(--font-mono); color: #626b70; }
+	.group-row { display: flex; align-items: stretch; color: #8d9ca1; }
+	.group-row.active { background: linear-gradient(90deg, rgba(78, 232, 210, 0.1), rgba(74, 184, 255, 0.04)); color: #c9f3ee; box-shadow: inset 2px 0 0 #4ee8d2; }
+	.group-pick { display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px; border: 0; background: transparent; padding: 5px 7px; color: inherit; text-align: left; }
+	.group-pick:hover { background: #151a1d; }
+	.group-pick b { font-size: 11px; font-weight: 500; }
+	.group-pick small { color: #5b6b70; font: 10px var(--font-mono); }
+	.group-move { border: 0; background: transparent; padding: 0 7px; color: #4ee8d2; font: 600 11px var(--font-mono); }
+	.group-move:hover { background: #14232a; }
+	.group-add { border: 0; background: transparent; padding: 0 2px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; }
+	.group-add:hover { color: #84cbd0; }
+	.group-name { margin-top: 4px; width: 100%; border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 3px 6px; color: #cfe9ea; font: 11px var(--font-sans); outline: none; }
+	.group-name:focus { border-color: rgba(78, 232, 210, 0.5); }
 	.bin-row { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: #151519; color: #8d9ca1; }
 	.bin-row b { font-size: 11px; font-weight: 500; }
 	.bin-row button { border: 0; background: transparent; padding: 2px 4px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; }

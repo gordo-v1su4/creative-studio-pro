@@ -241,7 +241,9 @@ export const storyCardSchema = z.object({
 	/** The take chosen to represent this beat. Absent = newest live video, else newest live image. */
 	pick_take_id: idSchema.optional(),
 	/** Benched beats keep their place on the spine but are skipped wherever it is played or assembled. */
-	benched: z.boolean().optional()
+	benched: z.boolean().optional(),
+	/** The board group the beat belongs to (V1S-131); absent = Main. */
+	group_id: idSchema.optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;
 
@@ -263,6 +265,8 @@ export const productionAssetSchema = z.object({
 	width: z.number().int().positive().optional(),
 	height: z.number().int().positive().optional(),
 	duration_s: z.number().positive().optional(),
+	/** A slice of another take (split into shots): which take, and where in it — so a finalized source can be re-split at the same points. */
+	source_take: z.object({ asset_id: idSchema, in_s: z.number().nonnegative(), out_s: z.number().positive() }).optional(),
 	/** Generated takes: the provider's job id and what was asked for (Finalize and source info read these). */
 	job_id: z.string().min(1).max(200).optional(),
 	generation: z.object({
@@ -416,6 +420,8 @@ export const productionStateSchema = z.object({
 	cuts: z.array(cutSchema).max(100).optional(),
 	/** Generations sent from beats; a completed one points at the take it became. */
 	generations: z.array(generationSchema).max(1000).optional(),
+	/** Board groups (V1S-131) besides Main, in creation order. */
+	groups: z.array(z.object({ group_id: idSchema, name: nonBlank(120), created_at: rfc3339Schema })).max(100).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
 export type ProductionState = z.infer<typeof productionStateSchema>;
@@ -611,6 +617,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_music_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_sound_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.group_changed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_split.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_locked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_unlocked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Animate (V1S-120): a generation sent, then settled (its video lands as a take, or it failed).
@@ -769,7 +777,9 @@ export const addBeatCommandSchema = z.object({
 	expected_version: z.number().int().nonnegative(),
 	card_id: idSchema,
 	title: nonBlank(200),
-	take: newTakeSchema
+	take: newTakeSchema,
+	/** The group the board is showing; the new beat joins it. */
+	group_id: idSchema.optional()
 });
 
 /** Link existing takes to the Seedance draft jobs they came from (found by matching files), so they can be finalized. */
@@ -885,6 +895,13 @@ export const setSoundPlanCommandSchema = z.object({
 	version: z.number().int().positive(),
 	plan: soundPlanSchema
 });
+
+/** Board groups (V1S-131). */
+export const groupCommandSchema = z.discriminatedUnion('command', [
+	z.object({ command: z.literal('create_group'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, name: nonBlank(120) }),
+	z.object({ command: z.literal('rename_group'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, name: nonBlank(120) }),
+	z.object({ command: z.literal('move_beats'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, card_ids: z.array(idSchema).min(1).max(200) })
+]);
 
 export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;
 export type EditCutCommand = z.infer<typeof editCutCommandSchema>;

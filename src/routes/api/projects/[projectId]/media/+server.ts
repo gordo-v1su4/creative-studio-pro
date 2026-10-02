@@ -32,6 +32,8 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 	if (!Number.isInteger(expectedVersion) || expectedVersion < 0) return fail(400, 'INVALID_COMMAND', 'expected_version is required');
 	const cardId = url.searchParams.get('card_id');
 	if (cardId !== null && !idSchema.safeParse(cardId).success) return fail(400, 'INVALID_COMMAND', 'Invalid card_id');
+	const groupId = url.searchParams.get('group_id');
+	if (groupId !== null && !idSchema.safeParse(groupId).success) return fail(400, 'INVALID_COMMAND', 'Invalid group_id');
 	if (!request.body) return fail(400, 'INVALID_COMMAND', 'Empty upload');
 
 	const takeId = uuid7ish();
@@ -59,7 +61,7 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		? await getGateway().addTake({ command: 'add_take', project_id: projectId.data, expected_version: expectedVersion, card_id: cardId, take })
 		: await getGateway().addBeat({
 				command: 'add_beat', project_id: projectId.data, expected_version: expectedVersion, card_id: newBeatId,
-				title: name.replace(/\.[^.]+$/, '').slice(0, 200) || 'Dropped file', take
+				title: name.replace(/\.[^.]+$/, '').slice(0, 200) || 'Dropped file', take, ...(groupId ? { group_id: groupId } : {})
 			});
 	if (!outcome.ok) {
 		await rm(target, { force: true });

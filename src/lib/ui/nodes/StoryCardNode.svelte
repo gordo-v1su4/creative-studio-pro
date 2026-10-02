@@ -32,6 +32,10 @@
 		onFinalize?: (takeId: string) => void;
 		/** Takes with a finalize sent and not yet landed. */
 		finalizing?: string[];
+		/** Split a video take into a group of shot beats (scene detection). */
+		onSplit?: (takeId: string) => void;
+		/** The take being split right now, if any. */
+		splitting?: string | null;
 	};
 
 	let { data, selected }: NodeProps = $props();
@@ -93,6 +97,8 @@
 	let holdPushIn = $state(true);
 	let holdFade = $state(false);
 	let canHold = $derived(!!shown && shown === pick && pick?.kind === 'image');
+	/** "Shots" arms on the first click and splits on the second. */
+	let armedSplit = $state<string | null>(null);
 
 	// Finalize: a draft take's 7-day window to re-render at 1080p; red for the last 48 h, gone once closed.
 	let shownFinalizing = $derived(!!shown && (story.finalizing ?? []).includes(shown.asset_id));
@@ -229,6 +235,18 @@
 			{/if}
 			{#if (shownWindow.state === 'open' || shownWindow.state === 'closing') && shown}
 				<button type="button" class="take-btn" onclick={() => story.onFinalize?.(shown.asset_id)} aria-label={`Finalize this take of ${card.title} to 1080p`} title="Re-render this draft at 1080p from the same generation (costs credits; you see the price first)">Finalize</button>
+			{/if}
+			{#if shown && shown.kind === 'video' && !shown.rejected && !shown.source_take && story.onSplit}
+				<!-- Two steps: a stray click only arms it. -->
+				<button
+					type="button"
+					class={['take-btn', armedSplit === shown.asset_id && 'active']}
+					onclick={(event) => { event.stopPropagation(); if (armedSplit === shown.asset_id) { armedSplit = null; story.onSplit?.(shown.asset_id); } else armedSplit = shown.asset_id; }}
+					onblur={() => (armedSplit = null)}
+					disabled={!!story.splitting}
+					aria-label={armedSplit === shown.asset_id ? `Confirm: split this take of ${card.title} into shots` : `Split this take of ${card.title} into shots`}
+					title="Split this take into shots by scene detection: a new group, one beat per shot"
+				>{story.splitting === shown.asset_id ? 'Splitting…' : armedSplit === shown.asset_id ? 'Split?' : 'Shots'}</button>
 			{/if}
 			{#if rejectedCount > 0}
 				<button type="button" class="take-btn" class:active={showRejected} onclick={() => (showRejected = !showRejected)} aria-pressed={showRejected}>{rejectedCount} rejected</button>
