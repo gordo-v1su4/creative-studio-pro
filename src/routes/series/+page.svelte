@@ -66,7 +66,7 @@
 				<ol class="steps">
 					<li>Open <a href="https://developers.notion.com" target="_blank" rel="noreferrer">developers.notion.com</a> → <b>Developer portal</b> → <b>Build</b> → <b>Internal connections</b> → <b>Create a new connection</b>, named <b>Creative Studio Pro</b>.</li>
 					<li><b>Configuration</b>: leave only <b>Read content</b> on, and copy the installation access token.</li>
-					<li><b>Content access</b> → <b>Edit access</b> → select only the series root page (e.g. <i>Bloodrush Series Shot List</i>). Nothing else is shared.</li>
+					<li><b>Content access</b> → <b>Edit access</b> → select only the top-level <i>Creative Studio Pro</i> page. Each show is a child page under it (duplicate its <i>Series Template</i> for a new one). Nothing else is shared.</li>
 					<li>Add <code>NOTION_TOKEN=…</code> to <code>.env.local</code> and restart the app. The token stays on this machine.</li>
 				</ol>
 			</section>

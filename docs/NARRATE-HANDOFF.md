@@ -2,7 +2,7 @@
 
 ## Handoff message to the next thread
 
-**Where I left off (2026-10-02, context full):** building **Series from Notion**: a series is a Notion root (Story page plus Episodes → Scenes → Shots databases), and each episode imports as its own project. Built and tested (229 tests pass), and the live connect works; nothing has been imported yet. **Next, in order:** (1) in Notion, make an isolated area (below); (2) re-point the connection to it; (3) import EP01 from the copy and browser-test it; (4) the Episode outline in the Story tab; (5) "Fit to 10 / 15 min" (the Agent writes shots to the target length, through the lint loop). The app is named **Creative Studio Pro** again (top bar, page titles, Agent prompts); Narrate is only the review/cuts/sound workflow name. Dev server: `csp-dev-5175`.
+**Where I left off (2026-10-02):** **Series from Notion**: a series is a Notion root (Story page plus Episodes → Scenes → Shots databases), and each episode imports as its own project. Done: the isolated Notion area (Creative Studio Pro → Blood Rush (example) + Series Template), the connection re-pointed to it, EP01 imported from the copy and browser-tested, and the Episode outline in the Story tab. **Next:** "Fit to 10 / 15 min" (the Agent writes shots to the target length, through the lint loop). The app is named **Creative Studio Pro** again (top bar, page titles, Agent prompts); Narrate is only the review/cuts/sound workflow name. Dev server: `csp-dev-5175`.
 
 **Browser testing is required, continuously, not only at the end.** Build each piece and check it in the browser preview (`.claude/launch.json` → "csp-dev", port 5174) as you go: open the board, click the real controls, read the page and console, take a screenshot as proof. Do this on a throwaway project created through the API, then delete it. The previous thread did this for every finished ticket:
 
@@ -74,19 +74,20 @@ Two different Higgsfield services:
 - Routes: `GET/POST /api/series` (connect by root link) and `POST /api/series/[id]` (refresh / runtime / import). The `/series` page: setup steps, connect, template chips, read the story, episode length 10/15/30, episode list with Import / Open. Opening `/?project=<id>&tab=story` opens a project.
 - The secondary-page header (`+layout.svelte`) says Creative Studio Pro and has Series in its nav.
 
-**Notion connection (done in the browser with the operator):** internal connection **Creative Studio Pro**. It has **read content only and no user info**, and its content access is **only "Bloodrush Series Shot List"** (root id `3d88a006765081d3aa63cb0f9c1a4ca0`). `NOTION_TOKEN` is in `.env.local` (`.env.example` has the name only). ⚠ The token showed up in plain text in a page read during setup; **the operator was asked to regenerate it** (Configuration → refresh icon) and update `.env.local`. Confirm this was done.
+**Notion connection:** internal connection **Creative Studio Pro**, **read content only, no user info**. Since 2026-10-02 its content access is **only the top-level "Creative Studio Pro" page** (`3ed8a006765081eb96e0c80ac057a25c`); the original "Bloodrush Series Shot List" (`3d88a006…`) is no longer shared and stays untouched. `NOTION_TOKEN` is in `.env.local` (`.env.example` has the name only). The operator regenerated the token after the earlier leak (confirmed 2026-10-02).
+
+**Notion layout (isolated, done 2026-10-02 via the Notion MCP):**
+- **Creative Studio Pro** (top-level, private) → **Blood Rush (example)** (`3ed8a0067650817ab728f9337e5529b3`): a duplicate of the Bloodrush page. Its Episodes / Scenes / Shots are new data sources (`7068a006…`, `a618a006…`, `38b8a006…`), with 13 episodes, 20 scenes and 104 shots. Checked by SQL: no scene or shot links outside the copy. The app's connection points here; `data/series/3d88….json` (the old record) was removed.
+- → **Series Template** (`3ed8a006765081589044c002125e1883`): a "Season 1 Story" page with section headings (Logline, World, Characters, Rules, Truth, Ladder, Episodes, Open forks), and empty Episodes / Scenes / Shots with the template properties, two-way relations (Episode↔Scenes, Scene↔Shots, Episode↔Shots) and count/duration rollups. Character options are empty. Duplicate it for a new show.
+- **EP01 imported from the copy** and browser-checked: project `01a0fda5-804d-7e09-b4fd-85855dda8011`, 14 groups in act order, 67 beats, 363 s; each beat's `source` ids are the copy's pages. Keep this project: it is the test bed for the outline and Fit.
 
 **Live connect result:** all template checks pass; the story page is "Blood Rush — Season 1 Story (v2 · Rush draft)" (14k characters). 13 episodes: EP00 Teaser Sizzle (6 scenes, 37 shots), **EP01 The Late Shift (14 scenes P01–P14, 67 shots, every shot has a Seedance 2.5 prompt, about 6 minutes of shots; its timecodes plan for 25 min)**, EP02–EP12 outline only (no scenes).
 
-**Next step agreed with the operator (not started):** make the Notion side isolated:
-1. A new top-level page **"Creative Studio Pro"**, the only page the connection may see.
-2. Under it, **"Blood Rush (example)"**: a copy of the Bloodrush series (story, Episodes / Scenes / Shots with rows). Check that the copy's relations point inside the copy, not at the originals.
-3. Under it, **"Series Template"**: the same structure, empty (the story page with section headings, three databases with the template properties and two-way relations).
-4. Re-point the connection's content access to "Creative Studio Pro" only (removing the original Bloodrush page). That is a settings change: ask the operator first.
+**Isolating the Notion side: done** (see "Notion layout" above). The app's connection stays read-only; creating and copying goes through the Notion MCP, acting as the operator.
 
-Use the Notion MCP (as the operator) to create and copy; the app's connection stays read-only. The original Bloodrush pages stay untouched. Then import EP01 from the copy and browser-test it.
+**Episode outline (done 2026-10-02):** `domain/episode-outline.ts` (`episodeOutline(series, cards, minutes)`: acts in order; each scene's share of the target from its Notion timecode, falling back to shot length and then an equal share; rounding drift goes to the longest scene so the acts add up exactly; shot time read from the live board with benched beats left out; characters from the scene plus its shots) and `ui/EpisodeOutline.svelte`, at the top of the Story tab whenever `project.series` is set. The 10 / 15 / 30 keys write the series' `runtime_min`, the same setting as on the Series page. Browser-checked on EP01: 6:03 of shots against 10:00 and 15:00, scene expand, length kept across reload, no overflow at 375 px.
 
-**Then:** the Episode outline in the Story tab (act timeline sized to the episode length, scene list with time budget, shots and characters); "Fit to length" (the Agent expands EP01 from about 6 min to 10/15 min and writes EP02+ scenes and shots from the season story, every prompt through `lintAndFix`); write-back to Notion only on an explicit button (needs a separate connection with insert/update rights).
+**Then:** "Fit to length" (the Agent expands EP01 from about 6 min to 10/15 min and writes EP02+ scenes and shots from the season story, every prompt through `lintAndFix`); write-back to Notion only on an explicit button (needs a separate connection with insert/update rights).
 
 **Episode-length maths shown to the operator:** 10 min ≈ 120 shots; 15 min ≈ 180. Drafts: CLI about 3 credits/s (1,800 / 2,700); API Seedance 2.0 about $0.135/s; 2.5 about $0.21/s.
 
