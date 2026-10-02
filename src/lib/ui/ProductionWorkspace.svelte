@@ -98,7 +98,25 @@
 
 	// Cuts are stored state, read from the project (not the draft) and changed only by cut commands.
 	const cuts = $derived(cutsOf(project.production));
-	let openCutId = $state<string | null>(null);
+	/** The cut open in the player, and which version (null = the current one). */
+	let openCut = $state<{ cutId: string; version: number | null } | null>(null);
+	let versionsOpen = $state<string | null>(null);
+	let locking = $state<string | null>(null);
+
+	/** Lock freezes the current version's picture; unlock opens the next version from it. */
+	async function setLocked(cutId: string, lock: boolean) {
+		locking = cutId; error = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/cuts`, {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ command: lock ? 'lock_cut' : 'unlock_cut', expected_version: project.version, cut_id: cutId })
+			});
+			const result = await response.json() as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			onUpdated(result.data);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Lock failed'; }
+		finally { locking = null; }
+	}
 	let renaming = $state<{ cutId: string; name: string } | null>(null);
 	let finalizing = $state<{ takeIds: string[]; title: string } | null>(null);
 	let notice = $state<string | null>(null);
@@ -208,20 +226,39 @@
 								<button type="button" class="agent-mini" onclick={() => (renaming = { cutId: cut.cut_id, name: cut.name })}>rename</button>
 							{/if}
 							<span class="grow"></span>
-							<span class="meta-label text-[#63838c]">{cut.entries.length} {cut.entries.length === 1 ? 'take' : 'takes'} · {cutLength(cut).toFixed(1)}s{cut.locked ? ' · locked' : ''}</span>
+							<span class="meta-label text-[#63838c]">{cut.entries.length} {cut.entries.length === 1 ? 'take' : 'takes'} · {cutLength(cut).toFixed(1)}s</span>
 							{#if cutDrafts(cut).length}
 								<button type="button" class="btn shrink-0 whitespace-nowrap" onclick={() => (finalizing = { takeIds: cutDrafts(cut), title: `${cut.name}: all picks` })} title="Re-render this cut's 480p drafts at 1080p from the same generations (you see the price first)">Finalize all picks ({cutDrafts(cut).length})…</button>
 							{/if}
-							<button type="button" class="btn btn-accent" onclick={() => (openCutId = cut.cut_id)}>Open</button>
+							<span class={['version-tag', cut.locked && 'locked']} title={cut.locked ? `Picture locked ${new Date(cut.locked_at ?? cut.updated_at).toLocaleString()}` : 'The version being edited'}>v{cut.version}{cut.locked ? ' · locked' : ''}</span>
+							{#if (cut.versions ?? []).some((v) => v.version !== cut.version)}
+								<button type="button" class="agent-mini" onclick={() => (versionsOpen = versionsOpen === cut.cut_id ? null : cut.cut_id)} aria-expanded={versionsOpen === cut.cut_id}>versions</button>
+							{/if}
+							<button type="button" class="btn" onclick={() => void setLocked(cut.cut_id, !cut.locked)} disabled={locking === cut.cut_id} title={cut.locked ? `Unlock: start v${cut.version + 1} as a copy of v${cut.version}; v${cut.version} stays as it is` : `Lock v${cut.version}: freeze its picture (no trims, ramps, reorders, swaps or drops) so sound can be laid against it`}>{cut.locked ? `Unlock to v${cut.version + 1}` : 'Lock'}</button>
+							<button type="button" class="btn btn-accent" onclick={() => (openCut = { cutId: cut.cut_id, version: null })}>Open</button>
 						</li>
 					{/each}
 				</ul>
 			{/if}
 			{#if notice}<p class="mb-4 border border-[#29434a] bg-[#0d1418] px-3 py-2 text-[12px] text-[#9fc9cf]" role="status">{notice}</p>{/if}
 			{#if finalizing}<FinalizePanel {project} takeIds={finalizing.takeIds} title={finalizing.title} {onUpdated} onclose={() => (finalizing = null)} onsent={(message) => (notice = message)} />{/if}
-			{#if openCutId}
-				{#key openCutId}
-					<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCutId }} onclose={() => (openCutId = null)} />
+			{#if versionsOpen}
+				{@const vcut = cuts.find((c) => c.cut_id === versionsOpen)}
+				{#if vcut}
+					<ul class="mb-6 -mt-4 grid gap-1 border-l border-[#29434a] pl-3" aria-label={`Versions of ${vcut.name}`}>
+						{#each [...(vcut.versions ?? [])].reverse().filter((v) => v.version !== vcut.version) as v (v.version)}
+							<li class="flex items-center gap-2 text-[12px] text-[#9fc9cf]">
+								<span class="version-tag locked">v{v.version} · locked</span>
+								<span class="text-[#668d98]">{new Date(v.locked_at).toLocaleString()} · {v.entries.length} {v.entries.length === 1 ? 'take' : 'takes'} · {cutLength(v).toFixed(1)}s</span>
+								<button type="button" class="agent-mini" onclick={() => (openCut = { cutId: vcut.cut_id, version: v.version })}>open (read-only)</button>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{/if}
+			{#if openCut}
+				{#key `${openCut.cutId}:${openCut.version}`}
+					<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCut.cutId, version: openCut.version ?? undefined }} onclose={() => (openCut = null)} />
 				{/key}
 			{/if}
 			<div class="meta-label mb-2 text-[#59d9cf]">SPINE</div>
@@ -292,4 +329,6 @@
 	.timeline-card b { overflow: hidden; color: #9ec9cf; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 	@keyframes card-face-in { from { opacity: .35; transform: translateX(4px); } }
 	@media (prefers-reduced-motion: reduce) { .card-face-panel { animation: none; } }
+	.version-tag { border: 1px solid #29434a; padding: 0 5px; color: #84cbd0; font: 600 10px var(--font-mono); text-transform: uppercase; white-space: nowrap; }
+	.version-tag.locked { border-color: #6a5a26; color: #f2c14e; }
 </style>

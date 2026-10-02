@@ -37,8 +37,8 @@ import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animat
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset } from '$lib/domain/schemas';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
-import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema } from '$lib/domain/schemas';
-import { applyPushCut, applyEditCut, applyRenameCut, keepStoredCuts } from '$lib/domain/cuts';
+import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema } from '$lib/domain/schemas';
+import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, keepStoredCuts } from '$lib/domain/cuts';
 
 type LedgerEventType = LedgerEvent['type'];
 
@@ -160,6 +160,9 @@ export class ProjectCommandGateway {
 				return this.editCut(raw);
 			case 'rename_cut':
 				return this.renameCut(raw);
+			case 'lock_cut':
+			case 'unlock_cut':
+				return this.lockCut(raw);
 			default:
 				return invalid(`Unknown command: ${String(command)}`);
 		}
@@ -763,6 +766,16 @@ export class ProjectCommandGateway {
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
 		const { cut_id, name } = parsed.data;
 		return this.updateCuts(parsed.data, (production, now) => applyRenameCut(production, cut_id, name, now), 'project.cut_renamed.v1');
+	}
+
+	/** Lock freezes a cut's current version; unlock opens the next version (V1S-125). */
+	async lockCut(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = lockCutCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		const { cut_id, command } = parsed.data;
+		return command === 'lock_cut'
+			? this.updateCuts(parsed.data, (production, now) => applyLockCut(production, cut_id, now), 'project.cut_locked.v1')
+			: this.updateCuts(parsed.data, (production, now) => applyUnlockCut(production, cut_id, now), 'project.cut_unlocked.v1');
 	}
 
 	/** A pure change to the project's cuts, refused as INVALID_COMMAND when it doesn't apply. */

@@ -7,7 +7,7 @@
 	 * to add a point, drag to shape, double-click (or Delete) to remove. Rates snap to
 	 * quarter steps; hold Alt for free values. Speed-up only: 1× to 4×.
 	 */
-	let { points, phase = null, onchange }: { points: SpeedPoint[] | undefined; phase?: number | null; onchange: (points: SpeedPoint[]) => void } = $props();
+	let { points, phase = null, onchange, locked = false }: { points: SpeedPoint[] | undefined; phase?: number | null; onchange: (points: SpeedPoint[]) => void; locked?: boolean } = $props();
 
 	const H = 72;
 	const TOP = 8;
@@ -34,7 +34,7 @@
 	}
 
 	function down(event: PointerEvent, index?: number) {
-		if (event.button !== 0) return;
+		if (event.button !== 0 || locked) return;
 		event.preventDefault();
 		event.stopPropagation();
 		try { (event.currentTarget as Element).setPointerCapture(event.pointerId); } catch { /* window listeners still track it */ }
@@ -45,11 +45,13 @@
 		const added = position(event);
 		const next = normalizeSpeed([...curve, added]);
 		edit(next);
-		drag = selected = next.findIndex((p) => Math.abs(p.x - added.x) < 1e-6);
+		const at = next.findIndex((p) => Math.abs(p.x - added.x) < 1e-6);
+		drag = selected = at < 0 ? null : at;
 	}
 
 	function move(event: PointerEvent) {
-		if (drag === null) return;
+		// The parent may refuse an edit (a locked cut), so the dragged point may not exist.
+		if (drag === null || !curve[drag]) { drag = null; return; }
 		const p = position(event);
 		const last = curve.length - 1;
 		// Endpoints stay on the span edges; inner points can't cross their neighbours.
@@ -58,7 +60,7 @@
 	}
 
 	function remove(index: number) {
-		if (index === 0 || index === curve.length - 1) return;
+		if (locked || index === 0 || index === curve.length - 1) return;
 		edit(curve.filter((_, i) => i !== index));
 		selected = null;
 	}
@@ -82,7 +84,7 @@
 	bind:this={svg}
 	viewBox={`0 0 ${W} ${H}`}
 	preserveAspectRatio="none"
-	class="block h-[72px] w-full cursor-crosshair touch-none"
+	class={['block h-[72px] w-full touch-none', locked ? 'cursor-default opacity-60' : 'cursor-crosshair']}
 	role="group"
 	aria-label="Speed ramp: click to add a point, drag to shape, double-click to remove"
 	tabindex="-1"

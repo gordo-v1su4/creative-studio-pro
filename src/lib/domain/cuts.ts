@@ -103,6 +103,32 @@ export function applyEditCut(production: ProductionState, cutId: string, entries
 	return { ok: true, production: withCuts(production, cutsOf(production).map((entry) => (entry.cut_id === cutId ? edited : entry))) };
 }
 
+/** Lock: the picture of the current version is frozen and recorded, readable from then on. */
+export function applyLockCut(production: ProductionState, cutId: string, now: string): TakeResult {
+	const cut = cutsOf(production).find((entry) => entry.cut_id === cutId);
+	if (!cut) return { ok: false, message: `Cut ${cutId} not found` };
+	if (cut.locked) return { ok: false, message: `${cut.name} v${cut.version} is already locked` };
+	const versions = [...(cut.versions ?? []).filter((v) => v.version !== cut.version), { version: cut.version, entries: cut.entries.map(copyEntry), locked_at: now }];
+	const locked: Cut = { ...cut, locked: true, locked_at: now, versions, updated_at: now };
+	return { ok: true, production: withCuts(production, cutsOf(production).map((entry) => (entry.cut_id === cutId ? locked : entry))) };
+}
+
+/** Unlock: the next version starts as a copy of the locked one; the locked version stays as it was. */
+export function applyUnlockCut(production: ProductionState, cutId: string, now: string): TakeResult {
+	const cut = cutsOf(production).find((entry) => entry.cut_id === cutId);
+	if (!cut) return { ok: false, message: `Cut ${cutId} not found` };
+	if (!cut.locked) return { ok: false, message: `${cut.name} is not locked` };
+	const { locked_at: _was, ...rest } = cut;
+	const next: Cut = { ...rest, locked: false, version: cut.version + 1, entries: cut.entries.map(copyEntry), updated_at: now };
+	return { ok: true, production: withCuts(production, cutsOf(production).map((entry) => (entry.cut_id === cutId ? next : entry))) };
+}
+
+/** A version's entries: a recorded locked version, or the cut's current picture. */
+export function cutVersionEntries(cut: Cut, version: number): CutEntry[] | null {
+	if (version === cut.version) return cut.entries;
+	return cut.versions?.find((v) => v.version === version)?.entries ?? null;
+}
+
 export function applyRenameCut(production: ProductionState, cutId: string, name: string, now: string): TakeResult {
 	const cut = cutsOf(production).find((entry) => entry.cut_id === cutId);
 	if (!cut) return { ok: false, message: `Cut ${cutId} not found` };

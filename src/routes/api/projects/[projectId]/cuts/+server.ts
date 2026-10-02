@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { getGateway } from '$lib/server/config';
 import { commandStatus } from '$lib/server/http';
 
-const CUT_COMMANDS = new Set(['push_cut', 'edit_cut', 'rename_cut']);
+const CUT_COMMANDS = new Set(['push_cut', 'edit_cut', 'rename_cut', 'lock_cut', 'unlock_cut']);
 
 /** Thin same-origin command route (AD-1, AD-3): pushing a selection into a cut, and edits to a cut. */
 export const POST: RequestHandler = async ({ params, request }) => {

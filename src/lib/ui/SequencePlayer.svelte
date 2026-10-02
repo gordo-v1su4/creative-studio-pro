@@ -4,13 +4,13 @@
 	 * saves trims and ramps onto the takes themselves, as their defaults, and can be pushed
 	 * into a new cut. A cut saves trims, ramps and order onto the cut only.
 	 */
-	export type PlayerSource = { kind: 'selection' } | { kind: 'cut'; cutId: string };
+	export type PlayerSource = { kind: 'selection' } | { kind: 'cut'; cutId: string; version?: number };
 </script>
 
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
-	import { cutsOf, nextCutName } from '$lib/domain/cuts';
+	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
 	import { attachCanvas, loadBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
@@ -53,6 +53,9 @@
 	let readOnly = $state(false);
 
 	const cut = $derived(source.kind === 'cut' ? cutsOf(project.production).find((entry) => entry.cut_id === source.cutId) : undefined);
+	/** Which version is shown: the asked-for one, else the cut's current. A locked or earlier version is read-only. */
+	const shownVersion = $derived(source.kind === 'cut' ? source.version ?? cut?.version ?? 1 : 0);
+	const frozen = $derived(source.kind === 'cut' && !!cut && (cut.locked || shownVersion !== cut.version));
 
 	let draw: ((view: GPUTextureView) => void) | null = null;
 	let frame = 0;
@@ -128,6 +131,7 @@
 	}
 
 	function trim(i: number, edge: 'in' | 'out', seconds: number) {
+		if (frozen) return;
 		const clip = clips[i];
 		const value = edge === 'in'
 			? Math.min(Math.max(0, seconds), clip.out - MIN_SPAN)
@@ -141,6 +145,7 @@
 	}
 
 	function trimEnd() {
+		if (frozen) return;
 		scrubbing = false;
 		if (clips[index]) pruneSuggestions(clips[index].id);
 		playhead = clips[index].in;
@@ -149,6 +154,7 @@
 	}
 
 	function move(from: number, to: number) {
+		if (frozen) return;
 		const next = [...clips];
 		const [clip] = next.splice(from, 1);
 		next.splice(to, 0, clip);
@@ -270,6 +276,7 @@
 	}
 
 	function speed(i: number, points: SpeedPoint[]) {
+		if (frozen) return;
 		clips[i] = { ...clips[i], speed: isFlat(points) ? undefined : normalizeSpeed(points) };
 		scheduleSave();
 	}
@@ -396,14 +403,17 @@
 			});
 		}
 		if (!cut) throw new Error('Cut not found');
-		const found = cut.entries.flatMap((entry) => {
+		const entries = cutVersionEntries(cut, shownVersion);
+		if (!entries) throw new Error(`Version ${shownVersion} of this cut is not recorded`);
+		if (frozen) readOnly = true;
+		const found = entries.flatMap((entry) => {
 			const asset = assetOf(entry.asset_id);
 			const title = project.production.cards.find((card) => card.card_id === entry.card_id)?.title ?? entry.card_id;
 			return asset ? [{ id: entry.entry_id, cardId: entry.card_id, assetId: entry.asset_id, title, src: asset.url, in: entry.in_s, out: entry.out_s, speed: entry.speed }] : [];
 		});
-		if (found.length < cut.entries.length) {
+		if (found.length < entries.length) {
 			readOnly = true;
-			error = `${cut.entries.length - found.length} of this cut's takes are missing; playing the rest, edits are not saved`;
+			error = `${entries.length - found.length} of this cut's takes are missing; playing the rest, edits are not saved`;
 		}
 		return found;
 	}
@@ -455,12 +465,13 @@
 			{#if source.kind === 'cut'}
 				<span class="tracking-[.14em] text-[#99f6e4]">CUT</span>
 				<span class="text-[#e6fff8]">{cut?.name ?? ''}</span>
+				<span class={frozen ? 'text-[#f2c14e]' : 'text-[#8fb3b8]'}>v{shownVersion}{frozen ? ' · locked' : ''}</span>
 			{:else}
 				<span class="tracking-[.14em] text-[#99f6e4]">SEQUENCE</span>
 			{/if}
 			<span>{clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"} · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
 			<span class="text-[#4c5b5a]" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and beats are untouched' : 'Trims and ramps save to the takes'}>
-				{source.kind === 'cut' ? (readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
+				{source.kind === 'cut' ? (frozen ? 'picture locked · read-only' : readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
 			</span>
 			<span class="grow"></span>
 			{#if saveState}<span class="text-[#55747c]">{saveState === 'saving' ? 'saving…' : 'saved'}</span>{/if}
@@ -505,7 +516,7 @@
 
 		<div class="mt-3 rounded-[3px] border border-[#1d2528] bg-[#0b0e10] p-2">
 			{#if clips.length}
-				<Timeline {clips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} />
+				<Timeline {clips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} />
 			{:else}
 				<div class="h-[170px]"></div>
 			{/if}

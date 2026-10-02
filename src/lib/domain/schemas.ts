@@ -294,12 +294,24 @@ export const cutEntrySchema = z.object({
 });
 export type CutEntry = z.infer<typeof cutEntrySchema>;
 
+/** A locked picture version of a cut, kept readable after the cut is unlocked into the next version. */
+export const cutVersionSchema = z.object({
+	version: z.number().int().positive(),
+	entries: z.array(cutEntrySchema).min(1).max(200),
+	locked_at: rfc3339Schema
+});
+export type CutVersion = z.infer<typeof cutVersionSchema>;
+
 export const cutSchema = z.object({
 	cut_id: idSchema,
 	name: nonBlank(120),
+	/** The picture version being worked on (or locked); unlocking moves to the next. */
 	version: z.number().int().positive(),
-	/** Locked cuts can no longer be trimmed, ramped or reordered (locking lands with V1S-125). */
+	/** Locked cuts can no longer be trimmed, ramped, reordered, swapped or dropped. */
 	locked: z.boolean(),
+	locked_at: rfc3339Schema.optional(),
+	/** Every version ever locked, oldest first, including the current one while it is locked. */
+	versions: z.array(cutVersionSchema).max(500).optional(),
 	entries: z.array(cutEntrySchema).min(1).max(200),
 	created_at: rfc3339Schema,
 	updated_at: rfc3339Schema
@@ -535,6 +547,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.cut_pushed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_edited.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_locked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_unlocked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Animate (V1S-120): a generation sent, then settled (its video lands as a take, or it failed).
 	z.object({ type: z.literal('project.generation_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.generation_settled.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
@@ -779,6 +793,14 @@ export const renameCutCommandSchema = z.object({
 	expected_version: z.number().int().nonnegative(),
 	cut_id: idSchema,
 	name: nonBlank(120)
+});
+
+/** Lock freezes the cut's picture as its current version; unlock opens the next version from it. */
+export const lockCutCommandSchema = z.object({
+	command: z.enum(['lock_cut', 'unlock_cut']),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	cut_id: idSchema
 });
 
 export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;

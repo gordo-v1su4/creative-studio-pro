@@ -35,7 +35,8 @@
 		ontrimend,
 		onmove,
 		onspeed,
-		marks = {}
+		marks = {},
+		locked = false
 	}: {
 		clips: TimelineClip[];
 		index: number;
@@ -49,6 +50,8 @@
 		onspeed: (clip: number, points: SpeedPoint[]) => void;
 		/** Suggested trims per clip id: a new in- or out-point in take seconds, drawn with what it would cut. */
 		marks?: Record<string, Array<{ at: number; edge: 'in' | 'out' }>>;
+		/** A locked cut: click to seek and look at ramps, but nothing can be trimmed, moved or ramped. */
+		locked?: boolean;
 	} = $props();
 
 	/** Where a take time sits inside a clip's block, in pixels from its left edge (speed ramp included). */
@@ -109,6 +112,7 @@
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const offset = event.clientX - rect.left;
 		focusId = clips[clip].id;
+		if (locked) { gesture = { kind: 'seek' }; onseek(programAt(event.clientX)); return; }
 		if (offset < EDGE || rect.right - event.clientX < EDGE) {
 			const edge = offset < EDGE ? 'in' : 'out';
 			gesture = { kind: 'trim', clip, edge, startX: event.clientX, start: clips[clip][edge], scale, starts: [...liveStarts] };
@@ -218,7 +222,7 @@
 			<span class="absolute left-0 top-1 font-mono text-[8px] tracking-[.12em] text-[#49645f]">SPEED · {focus + 1}</span>
 			<div class="absolute top-1" style:left={`${starts[focus] * scale}px`} style:width={`${Math.max(60, lengths[focus] * scale - 2)}px`}>
 				{#key clips[focus].id}
-					<SpeedLane points={clips[focus].speed} phase={focus === index ? Math.min(1, Math.max(0, phase)) : null} onchange={(points) => onspeed(focus, points)} />
+					<SpeedLane points={clips[focus].speed} phase={focus === index ? Math.min(1, Math.max(0, phase)) : null} onchange={(points) => onspeed(focus, points)} {locked} />
 				{/key}
 			</div>
 		</div>

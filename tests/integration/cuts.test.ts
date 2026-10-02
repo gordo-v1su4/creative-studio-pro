@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
-import { cutsOf } from '../../src/lib/domain/cuts';
+import { cutsOf, cutVersionEntries } from '../../src/lib/domain/cuts';
 import type { Project, ProductionAsset, StoryCard } from '../../src/lib/domain/schemas';
 
 const roots: string[] = [];
@@ -138,6 +138,48 @@ describe('cuts', () => {
 		expect(dropped.production.assets.map((t) => t.asset_id)).toContain(b.asset_id);
 		const empty = await gateway.editCut({ command: 'edit_cut', project_id: project.project_id, expected_version: dropped.version, cut_id: cut.cut_id, entries: [] });
 		expect(empty.ok).toBeFalse();
+	});
+
+	test('lock freezes the picture; edits are refused; unlock opens the next version and the locked one stays readable', async () => {
+		const { root, gateway, project } = await setup();
+		const pushed = await pushTrailer(gateway, project);
+		const [cut] = cutsOf(pushed.production);
+		const [b, a] = cut.entries;
+		const lock = { project_id: project.project_id, cut_id: cut.cut_id };
+
+		const locked = ok(await gateway.handle({ command: 'lock_cut', ...lock, expected_version: pushed.version }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		const [l] = cutsOf(locked.production);
+		expect(l).toMatchObject({ version: 1, locked: true });
+		expect(l.versions?.map((v) => v.version)).toEqual([1]);
+		expect(await lastEvent(root, project.project_id)).toBe('project.cut_locked.v1');
+
+		for (const entries of [[a, b], [b], [b, { ...a, asset_id: 'a2' }], [{ ...b, out_s: 1 }, a]]) {
+			const refused = await gateway.editCut({ command: 'edit_cut', ...lock, expected_version: locked.version, entries });
+			expect(refused.ok).toBeFalse();
+			if (!refused.ok) expect(refused.error.message).toContain('locked');
+		}
+		const again = await gateway.handle({ command: 'lock_cut', ...lock, expected_version: locked.version });
+		expect(again.ok).toBeFalse();
+		const renamed = ok(await gateway.renameCut({ command: 'rename_cut', ...lock, expected_version: locked.version, name: 'Trailer final' }));
+
+		const unlocked = ok(await gateway.handle({ command: 'unlock_cut', ...lock, expected_version: renamed.version }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		const [u] = cutsOf(unlocked.production);
+		expect(u).toMatchObject({ version: 2, locked: false });
+		expect(u.locked_at).toBeUndefined();
+		expect(u.entries).toEqual(l.entries);
+		expect(await lastEvent(root, project.project_id)).toBe('project.cut_unlocked.v1');
+
+		const edited = ok(await gateway.editCut({ command: 'edit_cut', ...lock, expected_version: unlocked.version, entries: [a] }));
+		const reloaded = (await new ProjectStore({ root }).readProject(project.project_id))!;
+		const [after] = cutsOf(reloaded.production);
+		expect(after.entries.map((e) => e.entry_id)).toEqual([a.entry_id]);
+		expect(cutVersionEntries(after, 1)?.map((e) => [e.asset_id, e.in_s, e.out_s])).toEqual([['b1', 0, 2], ['a1', 1, 4]]);
+		expect(cutVersionEntries(after, 2)?.map((e) => e.entry_id)).toEqual([a.entry_id]);
+		expect(cutVersionEntries(after, 3)).toBeNull();
+		expect(edited.version).toBe(reloaded.version);
+
+		const notLocked = await gateway.handle({ command: 'unlock_cut', ...lock, expected_version: edited.version });
+		expect(notLocked.ok).toBeFalse();
 	});
 
 	test('rename persists; refusals are INVALID_COMMAND and stale versions conflict', async () => {
