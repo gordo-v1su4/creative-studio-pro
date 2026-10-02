@@ -2,7 +2,7 @@
 
 ## Handoff message to the next thread
 
-**Where I left off:** every Narrate ticket that an agent can finish is done (V1S-113 → V1S-133, last one V1S-133 UI polish). The only one left is **V1S-127** (Raycast bridge end-to-end), ready-for-human: it needs the operator at the machine. Dev server: if port 5174 is taken by another app, use launch entry `csp-dev-5175`. UI rule from the operator: never browser-default controls. Use the shared controls in `src/lib/ui/controls/`: `Range` (slider), `Toggle` (on/off), `Pick` (dropdown) and `AudioPlayer`. Colours come from the `--color-nr-*` tokens in `src/routes/layout.css` (one palette: teal → blue → violet on zinc greys; yellow `nr-mark` only for titles and marks). The operator parked 1080p finalizing: keep working on the 480p drafts (finalize costs a full 1080p render on Higgsfield, 12 credits/s; see Operator decisions).
+**Where I left off (2026-10-02, context full):** building **Series from Notion**: a series is a Notion root (Story page plus Episodes → Scenes → Shots databases), and each episode imports as its own project. Built and tested (229 tests pass), and the live connect works; nothing has been imported yet. **Next, in order:** (1) in Notion, make an isolated area (below); (2) re-point the connection to it; (3) import EP01 from the copy and browser-test it; (4) the Episode outline in the Story tab; (5) "Fit to 10 / 15 min" (the Agent writes shots to the target length, through the lint loop). The app is named **Creative Studio Pro** again (top bar, page titles, Agent prompts); Narrate is only the review/cuts/sound workflow name. Dev server: `csp-dev-5175`.
 
 **Browser testing is required, continuously, not only at the end.** Build each piece and check it in the browser preview (`.claude/launch.json` → "csp-dev", port 5174) as you go: open the board, click the real controls, read the page and console, take a screenshot as proof. Do this on a throwaway project created through the API, then delete it. The previous thread did this for every finished ticket:
 
@@ -61,6 +61,34 @@ Two different Higgsfield services:
 - Models: `bytedance/seedance-2.5/text-to-video` (4–30 s, 480p/720p, about $0.2056/s at 480p) and `bytedance/seedance-2.0/text-to-video` (4–15 s, 480p–4K, token-metered at about $0.014 per 1,000 video tokens; 4 s at 480p ≈ $0.54).
 - Verified 2026-10-02: one Seedance 2.5 run, 480p, 4 s, no audio (≈ $0.82), request `f90e4d1b-3548-4103-8b52-2293585d07ea` completed with a video URL. Seedance 2.0 is priced but not run (its endpoint has the same shape).
 - Not wired into the app yet.
+
+## Series from Notion (in progress, 2026-10-02)
+
+**The operator's goal:** a web series (Blood Rush, 12 episodes), test episodes at **10 or 15 minutes** (30 later), Notion as the source of truth. The Notion side must be **isolated and reusable as a template** for future shows.
+
+**Built (committed):**
+- `domain/notion-series.ts`: the template (`SERIES_TEMPLATE`: Episodes / Scenes / Shots with required properties), `checkDatabase`, readers (`toEpisode` / `toScene` / `toShot`), `layoutEpisode` (act order Teaser → Act 1… → Tag, read from scene timecodes), `actBudget(layout, minutes)`, and `episodeToBoard` (one group per scene named "Act 1 · P02 — Morning Quad", one beat per shot with prompts, duration and `source` details: dialogue, audio, refs, lens, camera, characters).
+- `server/notion.ts`: the official `@notionhq/client` v5 (data sources) behind a `NotionApi` seam. `readSeries` walks **only the root page** (plus one level of child pages, e.g. "Databases (raw)"), finds the databases by data-source title and the story page by `/story/`, and reads the story text.
+- `server/series.ts`: `SeriesStore` (in `data/series/<root>.json`, git-ignored), `connectSeries`, `importEpisode` (new project plus gateway `importEpisode`, which refuses a board that already has beats).
+- Schemas: card `source`, cards max 400, `project.series` (episode and scene outline), event `project.episode_imported.v1`.
+- Routes: `GET/POST /api/series` (connect by root link) and `POST /api/series/[id]` (refresh / runtime / import). The `/series` page: setup steps, connect, template chips, read the story, episode length 10/15/30, episode list with Import / Open. Opening `/?project=<id>&tab=story` opens a project.
+- The secondary-page header (`+layout.svelte`) says Creative Studio Pro and has Series in its nav.
+
+**Notion connection (done in the browser with the operator):** internal connection **Creative Studio Pro**. It has **read content only and no user info**, and its content access is **only "Bloodrush Series Shot List"** (root id `3d88a006765081d3aa63cb0f9c1a4ca0`). `NOTION_TOKEN` is in `.env.local` (`.env.example` has the name only). ⚠ The token showed up in plain text in a page read during setup; **the operator was asked to regenerate it** (Configuration → refresh icon) and update `.env.local`. Confirm this was done.
+
+**Live connect result:** all template checks pass; the story page is "Blood Rush — Season 1 Story (v2 · Rush draft)" (14k characters). 13 episodes: EP00 Teaser Sizzle (6 scenes, 37 shots), **EP01 The Late Shift (14 scenes P01–P14, 67 shots, every shot has a Seedance 2.5 prompt, about 6 minutes of shots; its timecodes plan for 25 min)**, EP02–EP12 outline only (no scenes).
+
+**Next step agreed with the operator (not started):** make the Notion side isolated:
+1. A new top-level page **"Creative Studio Pro"**, the only page the connection may see.
+2. Under it, **"Blood Rush (example)"**: a copy of the Bloodrush series (story, Episodes / Scenes / Shots with rows). Check that the copy's relations point inside the copy, not at the originals.
+3. Under it, **"Series Template"**: the same structure, empty (the story page with section headings, three databases with the template properties and two-way relations).
+4. Re-point the connection's content access to "Creative Studio Pro" only (removing the original Bloodrush page). That is a settings change: ask the operator first.
+
+Use the Notion MCP (as the operator) to create and copy; the app's connection stays read-only. The original Bloodrush pages stay untouched. Then import EP01 from the copy and browser-test it.
+
+**Then:** the Episode outline in the Story tab (act timeline sized to the episode length, scene list with time budget, shots and characters); "Fit to length" (the Agent expands EP01 from about 6 min to 10/15 min and writes EP02+ scenes and shots from the season story, every prompt through `lintAndFix`); write-back to Notion only on an explicit button (needs a separate connection with insert/update rights).
+
+**Episode-length maths shown to the operator:** 10 min ≈ 120 shots; 15 min ≈ 180. Drafts: CLI about 3 credits/s (1,800 / 2,700); API Seedance 2.0 about $0.135/s; 2.5 about $0.21/s.
 
 ## Done (on main)
 

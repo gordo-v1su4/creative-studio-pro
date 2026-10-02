@@ -244,7 +244,14 @@ export const storyCardSchema = z.object({
 	/** Benched beats keep their place on the spine but are skipped wherever it is played or assembled. */
 	benched: z.boolean().optional(),
 	/** The board group the beat belongs to (V1S-131); absent = Main. */
-	group_id: idSchema.optional()
+	group_id: idSchema.optional(),
+	/** Imported from a Notion series: the shot it came from and the details the card has no field for. */
+	source: z.object({
+		notion_page_id: z.string().min(1).max(64), scene_page_id: z.string().min(1).max(64),
+		dialogue: z.string().max(4000).optional(), audio: z.string().max(4000).optional(), refs: z.string().max(4000).optional(),
+		shot_size: z.string().max(100).optional(), lens: z.string().max(100).optional(), camera: z.string().max(100).optional(), angle: z.string().max(100).optional(),
+		characters: z.array(z.string().max(100)).max(40).optional()
+	}).optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;
 
@@ -413,7 +420,7 @@ export const productionStateSchema = z.object({
 	logline: z.string().max(2000).default(''),
 	premise: z.string().max(8000).default(''),
 	theme: z.string().max(2000).default(''),
-	cards: z.array(storyCardSchema).max(200).default([]),
+	cards: z.array(storyCardSchema).max(400).default([]),
 	assets: z.array(productionAssetSchema).max(500).default([]),
 	/** Spine links on the board (from 'seed' or a beat, to a beat). Absent = seed then beats in card order. */
 	links: z.array(spineLinkSchema).max(400).optional(),
@@ -520,6 +527,22 @@ export const projectSchema = z.object({
 	creative_room: creativeRoomRunSchema.nullable().default(null),
 	voices: z.array(voiceSchema).default([]),
 	trailer_house: trailerHouseSchema.nullable().default(null),
+	/** An episode imported from a Notion series: which one, and its scene outline (one board group per scene). */
+	series: z.object({
+		series_id: z.string().min(1).max(64),
+		episode_page_id: z.string().min(1).max(64),
+		episode_number: z.number(),
+		episode_title: z.string().max(300),
+		summary: z.string().max(8000),
+		twist: z.string().max(4000),
+		cliffhanger: z.string().max(4000),
+		imported_at: rfc3339Schema,
+		scenes: z.array(z.object({
+			page_id: z.string().max(64), number: z.number(), title: z.string().max(300), act: z.string().max(40), summary: z.string().max(8000),
+			story_beats: z.string().max(8000), timecode: z.string().max(200), location: z.string().max(400), characters: z.array(z.string().max(100)).max(40),
+			group_id: idSchema, seconds: z.number().nonnegative(), shot_count: z.number().int().nonnegative()
+		})).max(100)
+	}).nullable().default(null),
 	production: productionStateSchema.default({
 		status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null
 	}),
@@ -687,6 +710,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.generation_settled.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_drafts_linked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.finalize_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// A Notion series episode imported onto the board.
+	z.object({ type: z.literal('project.episode_imported.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
 	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);

@@ -35,7 +35,7 @@ import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
-import type { Generation, ProductionAsset, TrailerHouse } from '$lib/domain/schemas';
+import type { Generation, ProductionAsset, StoryCard, TrailerHouse } from '$lib/domain/schemas';
 import { trailerHouseSchema } from '$lib/domain/schemas';
 import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
@@ -352,6 +352,28 @@ export class ProjectCommandGateway {
 	}
 
 	/** Board groups (V1S-131): create, rename, move beats between them. */
+	/**
+	 * Import a Notion series episode onto a project's board: one group per scene, one beat per shot. Only an
+	 * empty board takes an import (it never merges into or replaces work already on the board).
+	 */
+	async importEpisode(projectId: string, expectedVersion: number, input: { series: NonNullable<Project['series']>; groups: Array<{ group_id: string; name: string; created_at: string }>; cards: StoryCard[]; title: string; logline: string }): Promise<CommandOutcome<Project>> {
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				if (current.production.cards.length > 0) throw new Error('This project already has beats on its board; import into a new project');
+				return {
+					...current,
+					series: input.series,
+					production: { ...current.production, status: 'draft', title: input.title, logline: input.logline, cards: input.cards, groups: input.groups, updated_at: input.series.imported_at }
+				};
+			}, 'project.episode_imported.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Import failed';
+			if (message.includes('already has beats')) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
 	/** Trailer House: save the seeds, a round of loglines, the pick or its blueprint (the Agent call happens in the route). */
 	async setTrailerHouse(projectId: string, expectedVersion: number, next: TrailerHouse): Promise<CommandOutcome<Project>> {
 		const parsed = trailerHouseSchema.safeParse(next);

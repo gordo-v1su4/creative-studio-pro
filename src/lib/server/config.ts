@@ -10,6 +10,7 @@ import type { StageAgentResolution } from '$lib/server/stage-agent-handler';
 import { createStoryBuilder } from '$lib/server/story-builder';
 import type { StoryBuilder } from '$lib/server/story-builder';
 import { AppSettingsStore, appSettingsPath } from '$lib/server/app-settings';
+import { SeriesStore } from '$lib/server/series';
 import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/model-provider';
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
@@ -129,6 +130,15 @@ export async function getSfxFolder(): Promise<string | null> {
 }
 
 /** Animate's dependencies. */
+/** The Notion integration token (server-side only; the integration sees only the series root shared with it). */
+export function getNotionToken(): string | null {
+	return env.NOTION_TOKEN?.trim() || null;
+}
+
+export function getSeriesStore(): SeriesStore {
+	return SeriesStore.beside(getProjectRoot());
+}
+
 export async function getAnimateDeps(): Promise<AnimateDeps> {
 	return {
 		gateway: getGateway(),

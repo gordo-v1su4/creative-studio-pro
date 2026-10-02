@@ -86,6 +86,7 @@
 	// Tabs saved before the Narrate flow land on their nearest successor.
 	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', preview: 'cuts' };
 	const secondaryNav = [
+		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
 		{ label: 'Library', href: '/library', hint: 'Every project, its files and media' },
 		{ label: 'Runs', href: '/runs', hint: 'Agent and generation runs, with their cost and results' },
 		{ label: 'Settings', href: '/settings', hint: 'App settings: the Agent\'s model, video generation (Higgsfield), the sound-effects folder' }
@@ -827,7 +828,12 @@
 			{ id: 'toggle-inspector', label: 'toggle inspector', hint: 'panel', run: () => (inspectorOpen = !inspectorOpen) }
 		];
 		void loadProjects().then(() => {
-			if (projects.length > 0) void openProject(projects[0].project_id);
+			// ?project=<id> opens that project (the Series page links imported episodes this way); else the newest.
+			const params = new URLSearchParams(location.search);
+			const wanted = params.get('project');
+			const tab = workspaceTabs.find((item) => item.tab === params.get('tab'))?.tab;
+			if (tab) openWorkspace(tab);
+			if (projects.length > 0) void openProject(wanted && projects.some((p) => p.project_id === wanted) ? wanted : projects[0].project_id);
 		});
 		return () => {
 			if (layoutSaveTimer) clearTimeout(layoutSaveTimer);

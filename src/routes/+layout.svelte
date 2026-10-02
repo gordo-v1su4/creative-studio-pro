@@ -14,6 +14,7 @@
 
 	const navItems = [
 		{ label: 'Project', href: '/' },
+		{ label: 'Series', href: '/series' },
 		{ label: 'Library', href: '/library' },
 		{ label: 'Runs', href: '/runs' },
 		{ label: 'Settings', href: '/settings' }
@@ -53,7 +54,7 @@
 		<header class="flex h-12 shrink-0 items-center border-b border-border-default bg-surface-base px-4">
 			<a href="/" class="flex items-center gap-2.5">
 				<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
-				<span class="text-[13px] font-semibold tracking-[0.06em]">NARRATE</span>
+				<span class="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#b8c4c8]">Creative Studio Pro</span>
 			</a>
 			<nav class="ml-6 hidden items-center gap-1 md:flex" aria-label="Primary">
 				{#each navItems as item (item.href)}

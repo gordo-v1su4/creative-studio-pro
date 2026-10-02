@@ -144,6 +144,7 @@ export class ProjectStore {
 			creative_room: null,
 			voices: [],
 			trailer_house: null,
+			series: null,
 			production: { status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null },
 			agent_model: { override: null, locked_at: null, history: [] },
 			seed: {
