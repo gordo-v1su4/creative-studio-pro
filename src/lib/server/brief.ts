@@ -45,7 +45,7 @@ const text = (value: unknown, field: string): string => {
 /** The Agent drafts the owner brief from the seed, the story so far, the media and the rules file. Nothing is saved. */
 export async function draftBrief(client: AgentModelClient, project: Project, rules: string | null): Promise<DraftedBrief> {
 	const system = [
-		'You are the Agent in Narrate. Draft the owner brief for this project: what it is, how it should look and feel, and what it must and must not do.',
+		'You are the Agent in Creative Studio Pro. Draft the owner brief for this project: what it is, how it should look and feel, and what it must and must not do.',
 		'Base it on the seed, the story so far, the media already on the board and the project rules file. Follow the rules file; never contradict a must-not in it.',
 		'Keep it short and concrete. In must_nots, quote any single banned word or phrase in double quotes (e.g. Never write "lens flare") so the prompt linter can enforce it.',
 		'Return JSON only: {"title": string, "logline": string, "format": {"type": string, "runtime": string, "aspect": string, "platform": string}, "tone_visual_rules": string, "must_haves": string[], "must_nots": string[], "success_criteria": string[]}.'

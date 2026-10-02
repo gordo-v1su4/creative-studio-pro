@@ -79,7 +79,7 @@ export async function draftAnimatePrompt(
 	input: { card: StoryCard; still: Uint8Array; stillType: string; rules: string | null }
 ): Promise<string> {
 	const system = [
-		'You are the Agent in Narrate. Write one Seedance 2.5 image-to-video prompt that animates the attached still as the start frame of this story beat.',
+		'You are the Agent in Creative Studio Pro. Write one Seedance 2.5 image-to-video prompt that animates the attached still as the start frame of this story beat.',
 		'Prompt conventions (a linter enforces them before anything is sent):',
 		'- Start with a short declaration line, e.g. "Image_1 is Mara." Declare a name only (one or two words, a person or a named place), never a pose or description; put the action in the shots. Cite it as @Image_1.',
 		'- Never use pronouns (he, she, her, him, they, it…); repeat the declared name every time.',

@@ -78,7 +78,7 @@ export function buildFcpxml(input: { title: string; clips: TimelineClip[]; audio
 		lines.push(`\t\t<asset id="a${i + 1}" name="${escapeXml(track.name)}" start="0s" duration="${t(track.frames)}" hasAudio="1" audioSources="1" audioChannels="2" audioRate="48000">`);
 		lines.push(`\t\t\t<media-rep kind="original-media" src="${escapeXml(fileUrl(track.file))}"/>`, '\t\t</asset>');
 	});
-	lines.push('\t</resources>', '\t<library>', '\t\t<event name="Narrate export">', `\t\t\t<project name="${escapeXml(input.title)}">`);
+	lines.push('\t</resources>', '\t<library>', '\t\t<event name="Creative Studio Pro export">', `\t\t\t<project name="${escapeXml(input.title)}">`);
 	lines.push(`\t\t\t\t<sequence format="r0" duration="${t(total)}" tcStart="0s" tcFormat="NDF" audioLayout="stereo" audioRate="48k">`, '\t\t\t\t\t<spine>');
 	let offset = 0;
 	input.clips.forEach((clip, i) => {

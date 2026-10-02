@@ -1,4 +1,4 @@
-<svelte:head><title>Library — Narrate</title></svelte:head>
+<svelte:head><title>Library — Creative Studio Pro</title></svelte:head>
 
 <div class="h-full overflow-y-auto p-6">
 	<div class="mx-auto max-w-[720px]">

@@ -839,14 +839,14 @@
 	});
 </script>
 
-<svelte:head><title>{activeProject ? `${activeProject.title} — Narrate` : 'Narrate'}</title></svelte:head>
+<svelte:head><title>{activeProject ? `${activeProject.title} — Creative Studio Pro` : 'Creative Studio Pro'}</title></svelte:head>
 
 <div class="grid h-full min-w-0 overflow-x-hidden" style="grid-template-rows: 48px minmax(0,1fr) 42px">
 	<!-- The one navigation bar: product, project, the flow's tabs, then app-level links (48px). -->
 	<div class="flex min-w-0 items-center gap-2 border-b border-border-default bg-surface-base px-3">
-		<span class="flex shrink-0 items-center gap-2" aria-label="Narrate">
+		<span class="flex shrink-0 items-center gap-2" aria-label="Creative Studio Pro">
 			<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
-			<span class="brand">Narrate</span>
+			<span class="brand">Creative Studio Pro</span>
 		</span>
 		<span class="h-4 w-px shrink-0 bg-border-default"></span>
 		<b class="project-name min-w-0 max-w-[260px] truncate" title={activeProject?.title}>{activeProject?.title ?? 'No project open'}</b>

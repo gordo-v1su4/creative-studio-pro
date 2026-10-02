@@ -102,7 +102,7 @@ export async function proposeEffects(deps: Deps, client: AgentModelClient, input
 	const offered = shortlist(index);
 
 	const system = [
-		'You are the Agent in Narrate, doing the effects pass on a locked trailer cut.',
+		'You are the Agent in Creative Studio Pro, doing the effects pass on a locked trailer cut.',
 		'Pick added sound effects for the moments listed (cuts between shots, and impacts heard in the take audio). Not every moment needs one: hit the big moments, keep the rest clean.',
 		'Use files from the effects list by their exact id: risers lead into a cut (they are placed to end on it), whooshes carry a cut, hits land on impacts and hard cuts.',
 		'When nothing in the list fits a moment that really needs a sound, you may ask to generate one: give a short sound description in "generate" and a duration in seconds (0.5–5). The operator approves and pays for each before it is made, so use this sparingly.',
