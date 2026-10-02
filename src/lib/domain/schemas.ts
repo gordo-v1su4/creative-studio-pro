@@ -442,6 +442,37 @@ export const creativeRoomRunSchema = z.object({
 
 export type CreativeRoomRun = z.infer<typeof creativeRoomRunSchema>;
 
+/**
+ * Trailer House (the start of a project): the operator's seeds, each round of
+ * three loglines the Agent pitched, the one picked, and the blueprint it grew
+ * into (title, logline, hook, time-coded Seedance prompt).
+ */
+const trailerHouseTextSchema = z.object({ text: nonBlank(20_000), model: z.string().max(200), created_at: rfc3339Schema });
+export const trailerHouseSchema = z.object({
+	target: z.object({ model: z.enum(['seedance-2.0', 'seedance-2.5']), seconds: z.number().int().min(4).max(30), aspect: z.string().min(1).max(20) }),
+	seeds: z.string().max(5000),
+	/** Optional: the operator's own main character, used in every phase when given. */
+	character: z.string().max(3000).default(''),
+	/** Optional reference image of the main character (at least 2K on the long edge), shown to the Agent in every step. */
+	character_image: z.object({ file: nonBlank(300), name: nonBlank(300), url: nonBlank(2000), mime_type: nonBlank(100), width: z.number().int().positive(), height: z.number().int().positive() }).nullable().default(null),
+	rounds: z.array(z.object({
+		seeds: z.string().max(5000),
+		pitches: z.array(z.object({ logline: nonBlank(2000), description: nonBlank(4000) })).length(3),
+		model: z.string().max(200),
+		created_at: rfc3339Schema
+	})),
+	picked: z.object({ round: z.number().int().nonnegative(), index: z.number().int().min(0).max(2) }).nullable(),
+	blueprint: z.object({
+		title: nonBlank(300), logline: nonBlank(2000), hook: nonBlank(6000), seedance_prompt: nonBlank(12_000),
+		raw: z.string().max(30_000), model: z.string().max(200), created_at: rfc3339Schema
+	}).nullable(),
+	/** After the teaser, if the operator continues: main character and relationships, then a plot outline. */
+	characters: trailerHouseTextSchema.nullable().default(null),
+	outline: trailerHouseTextSchema.nullable().default(null),
+	updated_at: rfc3339Schema
+});
+export type TrailerHouse = z.infer<typeof trailerHouseSchema>;
+
 export const projectSchema = z.object({
 	schema_version: z.literal(1),
 	project_id: idSchema,
@@ -460,6 +491,7 @@ export const projectSchema = z.object({
 	catalog_snapshot: catalogSnapshotSchema.nullable().default(null),
 	creative_room: creativeRoomRunSchema.nullable().default(null),
 	voices: z.array(voiceSchema).default([]),
+	trailer_house: trailerHouseSchema.nullable().default(null),
 	production: productionStateSchema.default({
 		status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null
 	}),
@@ -626,7 +658,9 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.generation_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.generation_settled.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_drafts_linked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
-	z.object({ type: z.literal('project.finalize_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.finalize_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// Trailer House: seeds, logline rounds, the pick and its blueprint.
+	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;

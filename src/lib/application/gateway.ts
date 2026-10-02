@@ -35,7 +35,9 @@ import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
-import type { Generation, ProductionAsset } from '$lib/domain/schemas';
+import type { Generation, ProductionAsset, TrailerHouse } from '$lib/domain/schemas';
+import { trailerHouseSchema } from '$lib/domain/schemas';
+import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
 import { applyCreateGroup, applyMoveBeats, applyRenameGroup, applySplitIntoShots, MAIN_GROUP } from '$lib/domain/groups';
@@ -350,6 +352,18 @@ export class ProjectCommandGateway {
 	}
 
 	/** Board groups (V1S-131): create, rename, move beats between them. */
+	/** Trailer House: save the seeds, a round of loglines, the pick or its blueprint (the Agent call happens in the route). */
+	async setTrailerHouse(projectId: string, expectedVersion: number, next: TrailerHouse): Promise<CommandOutcome<Project>> {
+		const parsed = trailerHouseSchema.safeParse(next);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Invalid Trailer House state');
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => applyTrailerHouse(current, parsed.data, uuid7ish(), sha256), 'project.trailer_house_set.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			return this.storeError(e);
+		}
+	}
+
 	async changeGroups(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = groupCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');

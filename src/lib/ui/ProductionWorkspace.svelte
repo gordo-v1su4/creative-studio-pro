@@ -9,6 +9,7 @@
 	import SoundStage from '$lib/ui/SoundStage.svelte';
 	import ExportStage from '$lib/ui/ExportStage.svelte';
 	import BriefPanel from '$lib/ui/BriefPanel.svelte';
+	import TrailerHousePanel from '$lib/ui/TrailerHousePanel.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
@@ -160,14 +161,17 @@
 
 	{#if tab === 'story'}
 		<div class="mx-auto max-w-4xl p-5">
-			<div class="mb-6 border-b border-[#1a1f23] pb-6">
+			<div class="mb-12">
+				<TrailerHousePanel {project} {onUpdated} onBuildStory={() => void generate()} building={busy} />
+			</div>
+			<div class="mb-12">
 				<BriefPanel {project} {onUpdated} />
 				<details class="mt-4">
 					<summary class="cursor-pointer font-mono text-[10px] uppercase tracking-[.14em] text-[#5b6b70]">Stage gate · {project.stage.id} (optional)</summary>
 					<div class="mt-2 max-w-md"><StageGatePanel {project} {onUpdated} showBrief={false} /></div>
 				</details>
 			</div>
-			<div class="flex items-start gap-4 border-b border-[#223039] pb-5">
+			<div class="flex items-start gap-4">
 				<div class="grow">
 					<div class="meta-label text-[#59d9cf]">DRAFT STORY SPINE</div>
 					<h2 class="mt-2 text-xl font-semibold text-[#c7eef0]">{draft.title || project.title}</h2>

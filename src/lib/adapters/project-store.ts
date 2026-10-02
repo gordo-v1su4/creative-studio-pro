@@ -143,6 +143,7 @@ export class ProjectStore {
 			catalog_snapshot: null,
 			creative_room: null,
 			voices: [],
+			trailer_house: null,
 			production: { status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null },
 			agent_model: { override: null, locked_at: null, history: [] },
 			seed: {

@@ -27,11 +27,29 @@
 | 132 | Story tab: Draft brief (Kimi drafted every field from the seed, incl. a quoted ban), added a must-not, Save → files/PROMPT-RULES.md written with the managed section; bans enforced by the linter. Right panel starts closed; stage gate is a collapsed, optional section. (Pane was hidden, so clicks ran inside the page.) |
 | 133 | Throwaway project with copies of 4 real Blood Rush drafts: top bar (softer brand, grey project name, spaced tabs, slim keys, Agent tooltip), left panel collapse/expand handle, posters fade in, hover chips (Muted/Sound key, time readout), sequence bar → Play, transport keys (pause, next clip, frame steps → clip 2/3, frame 3/361), push to cut, take Pick by keyboard (↓ Enter swapped and saved), lock, Sound tab Pick, Build mix, AudioPlayer play/seek to 30 s/pause, Export Pick closes on an outside click; no horizontal overflow at 375 px (page and player) |
 | board | Throwaway with 4 real drafts: shift-drag box over a row → selection bar; New group… → typed name → beats moved; double-click rename; box the other row → Play in order (left card first); rail → moves one beat; select a connector → × Unhook removed the link (saved); card footer reads TK 2/2 on one line |
+| TH | Trailer House on a throwaway with real Kimi: seeds typed → 3 pitches → a teaser (12 s, Seedance 2.5) → characters; Kai's 2K sheet attached through the panel (an 800×600 test image refused), three more with the image; a 2.5 teaser came back in the four-section format with `@Image_1` and a speaker-block line |
 | 124 | Badges (yellow, red, finalizing…) on a throwaway project and on Blood Rush; Finalize on a take, banner Finalize all and hide, cut Finalize all picks — real quotes, sends blocked by the short balance |
 
 Most of that was scripted through the page (clicks, drops and drags dispatched in the browser, with project state read back), plus screenshots. Prefer real clicks where you can. V1S-124 was browser-tested with real clicks (no submits).
 
 Work goes straight to `main`. Tickets: Linear project "Narrate — review, cuts, sound & export" (V1S-113 → V1S-133), mirrored as GitHub #3 → #23; spec in `docs/planning/narrate-review-cuts-sound-spec.md` (#2). Do them in Linear order; close the GitHub issue (`Closes #N` in the commit) and mark Linear Done when finished.
+
+## Trailer House: the start of a project (Kimi, 2026-10-02)
+
+The Story tab opens with **Trailer House**, the operator's flow for a new idea:
+
+1. **Seeds**: a few words or images. Optional: a main character, in text and/or a reference image (at least 2K on the long edge; smaller is refused; the Agent sees it in every step and never re-describes the look).
+2. **Three pitches** from the Agent, each a one-sentence logline plus a short description. Pick one, or **Three more**: the Agent is told what it already offered for the same seeds.
+3. **The teaser**, right away: TITLE, LOGLINE, HOOK and a Seedance prompt, so the operator can render it and judge the idea.
+4. **Keep going**: main character and relationships, then a plot outline, then **Full story arc** (Build story, which now reads the teaser, characters and outline).
+
+- **Master prompt:** `prompts/trailer-house.md`, edited like a doc. It is the operator's Raycast "Trailer House" instructions, rewritten for Kimi. Raycast is on hold; the Raycast bridge is not configured (URL and token are blank in `.env.local`, and the bridge isn't running). V1S-117's "Raycast as an Agent model" can't work as built, because the bridge has no chat endpoint.
+- **Seedance formats are skills:** `.agents/skills/seedance-2-5-higgsfield` and `seedance-2-0-higgsfield`, both current as of 2026-10-02. Each has a `SKILL.md` and a `format.md`; the app puts the chosen model's `format.md` into the master prompt, so the skill is the single source.
+  - 2.5 uses an opening line plus REFERENCE AND CONTINUITY / STORY AND TONE / `[00:00–00:05] — SECTION` timeline / VISUALS AND SOUND. Dialogue is a speaker block in the section where it is spoken; sounds sit at their moment. The canonical example is the operator's own THE DELIVERY MAN prompt (`example-the-delivery-man.md`).
+  - 2.0 is plain prose: `Total: Ns / N shots / aspect`, then `Shot 1:` … and an `SFX:` line.
+- **Lint gate:** every teaser goes through the Seedance linter (banned words plus the project's rules file, and `@Image_1` syntax) and gets one rewrite if it fails. The retry never names the banned word back.
+- **Code:** `domain/trailer-house.ts` (targets 2.0: 4–15 s, 2.5: 4–30 s; parsers), `server/trailer-house.ts` (Kimi calls), route `/trailer-house` (pitch / develop / continue / clear) and `/trailer-house/character-image`, and `TrailerHousePanel.svelte`. State lives in `project.trailer_house`, and the teaser becomes the lead voice.
+- **Browser-tested with real Kimi** on a throwaway project: pitches, three more with Kai's 2K sheet attached, a 2.5 teaser in the new format, characters, an under-2K image refused.
 
 ## Done (on main)
 
