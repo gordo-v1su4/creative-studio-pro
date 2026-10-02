@@ -378,7 +378,7 @@
 	.cap small { color: var(--color-nr-faint); letter-spacing: 0.06em; text-transform: none; font-weight: 500; }
 	.step { display: block; }
 	.num { display: inline-block; width: 15px; height: 15px; margin-right: 7px; border: 1px solid var(--color-nr-line); border-radius: 50%; color: var(--color-nr-dim); font: 600 8px/13px var(--font-mono); letter-spacing: 0; text-align: center; vertical-align: 1px; }
-	.field { display: grid; gap: 4px; }
+	.field { display: grid; gap: 4px; align-content: start; }
 	.field textarea, .num-in { width: 100%; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 5px 8px; color: var(--color-nr-ink); font: 12px/1.5 var(--font-sans); outline: none; resize: vertical; }
 	.field textarea:focus, .num-in:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
 	.field textarea::placeholder { color: var(--color-nr-faint); }

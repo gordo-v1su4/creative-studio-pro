@@ -122,7 +122,8 @@
 <style>
 	.cap { color: #7b878f; font: 600 10px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
 	.cap small { color: #4e5b61; letter-spacing: 0.06em; text-transform: none; font-weight: 500; }
-	.field { display: grid; gap: 4px; }
+	/* Top-aligned, so fields side by side line up and never stretch apart. */
+	.field { display: grid; gap: 4px; align-content: start; }
 	.field input, .field textarea, .token { width: 100%; border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 5px 8px; color: #dce7ea; font: 12px/1.5 var(--font-sans); outline: none; resize: vertical; }
 	.field input:focus, .field textarea:focus, .token:focus { border-color: rgba(78, 232, 210, 0.5); }
 	.field textarea::placeholder, .field input::placeholder, .token::placeholder { color: #3f4a50; }
