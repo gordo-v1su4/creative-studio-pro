@@ -5,7 +5,7 @@ import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
 import { cutLength, cutsOf } from '$lib/domain/cuts';
-import { autoGain, defaultSoundPlan, duckRegions, layLevels, mixPlan, rmsDb, type MixEntry } from '$lib/domain/sound';
+import { autoGain, defaultSoundPlan, duckRegions, layLevels, mixPlan, rmsDb, type MixEntry, type MixInput } from '$lib/domain/sound';
 import { programElapsed } from '$lib/media/speed-curve';
 import { PCM_RATE, readPcm } from '$lib/server/audio-envelope';
 import { probeMedia } from '$lib/server/media-probe';
@@ -23,6 +23,39 @@ export async function buildMix(
 	deps: { gateway: ProjectCommandGateway; store: ProjectStore; projectRoot: string },
 	projectId: string, cutId: string, version: number
 ): Promise<{ ok: true; project: Project } | Failure> {
+	const prepared = await prepareMix(deps, projectId, cutId, version);
+	if (!prepared.ok) return prepared;
+	const { project, plan, files, prefix, mix, report } = prepared;
+	const folder = join(files, 'sound');
+	await mkdir(folder, { recursive: true });
+	const name = `${cutId.slice(-8)}-v${version}-mix.m4a`;
+	const { args, report: planReport } = mixPlan({ ...mix, output: join(folder, name) });
+	try {
+		await runFfmpeg(args);
+	} catch (cause) {
+		return failure(500, `The mix render failed: ${cause instanceof Error ? cause.message : 'ffmpeg error'}`);
+	}
+	const saved = await deps.gateway.setSoundPlan({
+		command: 'set_sound_plan', project_id: projectId, expected_version: project.version, cut_id: cutId, version,
+		plan: { ...plan, mix: { url: `${prefix}sound/${encodeURIComponent(name)}`, built_at: new Date().toISOString(), report: [...report, ...planReport] } }
+	});
+	return saved.ok ? { ok: true, project: saved.data } : failure(409, saved.error.message);
+}
+
+/** ffmpeg with a render plan's arguments; rejects with its last lines of error output. */
+export function runFfmpeg(args: string[], timeoutMs = 300_000): Promise<void> {
+	return new Promise<void>((done, fail) => execFile('ffmpeg', args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, _out, stderr) => (error ? fail(new Error((stderr || error.message).trim().split('\n').slice(-3).join(' '))) : done())));
+}
+
+/**
+ * Everything a mix render needs for a locked version, measured from the
+ * audio: placed take segments, levels, duck regions, the other layers.
+ * Shared by the mix and the export (stems).
+ */
+export async function prepareMix(
+	deps: { store: ProjectStore; projectRoot: string },
+	projectId: string, cutId: string, version: number
+) {
 	const project = await deps.store.readProject(projectId);
 	if (!project) return failure(404, 'Project not found');
 	const cut = cutsOf(project.production).find((entry) => entry.cut_id === cutId);
@@ -89,23 +122,10 @@ export async function buildMix(
 	};
 	report.push(`Auto levels: take ${auto.take >= 0 ? '+' : ''}${auto.take} dB, music ${auto.music >= 0 ? '+' : ''}${auto.music} dB, ambience ${auto.ambience >= 0 ? '+' : ''}${auto.ambience} dB.`);
 
-	const folder = join(files, 'sound');
-	await mkdir(folder, { recursive: true });
-	const name = `${cutId.slice(-8)}-v${version}-mix.m4a`;
-	const { args, report: planReport } = mixPlan({
-		length_s: length, output: join(folder, name), entries, auto, plan, duck,
+	const mix: Omit<MixInput, 'output'> = {
+		length_s: length, entries, auto, plan, duck, effects,
 		music: musicPcm && musicFile ? { file: musicFile } : null,
-		ambience: ambiencePcm && ambienceFile ? { file: ambienceFile } : null,
-		effects
-	});
-	try {
-		await new Promise<void>((done, fail) => execFile('ffmpeg', args, { timeout: 300_000, maxBuffer: 8 * 1024 * 1024, windowsHide: true }, (error, _out, stderr) => (error ? fail(new Error((stderr || error.message).trim().split('\n').slice(-3).join(' '))) : done())));
-	} catch (cause) {
-		return failure(500, `The mix render failed: ${cause instanceof Error ? cause.message : 'ffmpeg error'}`);
-	}
-	const saved = await deps.gateway.setSoundPlan({
-		command: 'set_sound_plan', project_id: projectId, expected_version: project.version, cut_id: cutId, version,
-		plan: { ...plan, mix: { url: `${prefix}sound/${encodeURIComponent(name)}`, built_at: new Date().toISOString(), report: [...report, ...planReport] } }
-	});
-	return saved.ok ? { ok: true, project: saved.data } : failure(409, saved.error.message);
+		ambience: ambiencePcm && ambienceFile ? { file: ambienceFile } : null
+	};
+	return { ok: true as const, project, cut, locked, plan, files, prefix, local, length, mix, report };
 }

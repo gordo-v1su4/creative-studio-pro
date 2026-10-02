@@ -329,7 +329,16 @@ export const soundPlanSchema = z.object({
 	/** True-peak ceiling of the limiter, dBFS. */
 	limiter_db: z.number().min(-12).max(0),
 	/** The last built mix of this plan. */
-	mix: z.object({ url: z.string().min(1).max(2000), built_at: rfc3339Schema, report: z.array(z.string().max(500)).max(500) }).optional()
+	mix: z.object({ url: z.string().min(1).max(2000), built_at: rfc3339Schema, report: z.array(z.string().max(500)).max(500) }).optional(),
+	/** The last export (V1S-130): the MP4, the Resolve timeline, the stems, and what was still draft. */
+	export: z.object({
+		built_at: rfc3339Schema,
+		folder: z.string().max(2000),
+		mp4: z.string().max(2000),
+		fcpxml: z.string().max(2000),
+		files: z.array(z.object({ name: z.string().max(300), url: z.string().max(2000) })).max(400),
+		drafts: z.array(z.object({ title: z.string().max(300), name: z.string().max(300), why: z.string().max(300) })).max(400)
+	}).optional()
 });
 export type SoundPlan = z.infer<typeof soundPlanSchema>;
 

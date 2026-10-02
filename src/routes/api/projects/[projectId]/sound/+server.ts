@@ -16,6 +16,7 @@ import { projectRules } from '$lib/server/animate';
 import { generateEffect, proposeEffects, quoteEffect } from '$lib/server/effects';
 import { commandStatus } from '$lib/server/http';
 import { buildMix } from '$lib/server/sound';
+import { exportCut } from '$lib/server/export';
 
 const AUDIO = /\.(mp3|wav|m4a|aac|flac|ogg|opus|aif|aiff)$/i;
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'sound' } }, { status });
@@ -24,6 +25,7 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('save'), cut_id: idSchema, version: z.number().int().positive(), expected_version: z.number().int().nonnegative(), plan: soundPlanSchema }),
 	z.object({ action: z.literal('build'), cut_id: idSchema, version: z.number().int().positive() }),
 	z.object({ action: z.literal('propose'), cut_id: idSchema, version: z.number().int().positive() }),
+	z.object({ action: z.literal('export'), cut_id: idSchema, version: z.number().int().positive() }),
 	z.object({ action: z.literal('quote_effect'), prompt: z.string().min(3).max(300), duration_s: z.number().min(0.5).max(5) }),
 	z.object({
 		action: z.literal('generate_effect'), cut_id: idSchema, version: z.number().int().positive(), prompt: z.string().min(3).max(300),
@@ -77,6 +79,10 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		if (!resolved.ok) return fail(503, `No Agent model: ${resolved.message}`);
 		const proposed = await proposeEffects(deps, createOpenAICompatibleClient(resolved.connection), { projectId: projectId.data, cutId: body.cut_id, version: body.version, folder: await getSfxFolder(), rules: await projectRules(deps.projectRoot, projectId.data) });
 		return proposed.ok ? json({ ok: true, data: proposed.project, offers: proposed.offers, dropped: proposed.dropped, moments: proposed.moments }) : fail(proposed.status, proposed.message);
+	}
+	if (body.action === 'export') {
+		const exported = await exportCut(deps, projectId.data, body.cut_id, body.version);
+		return exported.ok ? json({ ok: true, data: exported.project, folder: exported.folder }) : fail(exported.status, exported.message);
 	}
 	if (body.action === 'quote_effect') {
 		const quoted = await quoteEffect(getSfxGenerator(), body);

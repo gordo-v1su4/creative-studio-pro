@@ -7,6 +7,7 @@
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
 	import SoundStage from '$lib/ui/SoundStage.svelte';
+	import ExportStage from '$lib/ui/ExportStage.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 
@@ -283,6 +284,7 @@
 		{/if}
 	{:else}
 		<div class="mx-auto max-w-3xl p-6">
+			<ExportStage {project} {onUpdated} />
 			<div class="border border-[#29434a] bg-[#11171d] p-5">
 				<div class="meta-label text-[#59d9cf]">PORTABLE PROJECT PACKAGE</div>
 				<h2 class="mt-2 text-lg text-[#c7eef0]">Production manifest v1</h2>
