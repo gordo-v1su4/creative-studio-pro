@@ -31,6 +31,7 @@ async function askTwice<T>(client: AgentModelClient, system: string, prompt: str
 type Source = Pick<Project, 'seed'>;
 /** The main character's reference image, when the operator attached one. */
 export type CharacterImage = ModelImage & { name: string };
+export const imagesFor = (image: CharacterImage | null | undefined): ModelImage[] | undefined => (image ? [{ data: image.data, mediaType: image.mediaType }] : undefined);
 interface Ground { seeds: string; character: string; image?: CharacterImage | null }
 const imagesOf = (ground: Ground): ModelImage[] | undefined => (ground.image ? [{ data: ground.image.data, mediaType: ground.image.mediaType }] : undefined);
 
@@ -57,27 +58,70 @@ export async function pitchThree(client: AgentModelClient, project: Source, inpu
 	return { pitches: value, raw };
 }
 
-/** Phase two: the picked pitch as a teaser right away (title, logline, hook, Seedance prompt). */
-export async function teaserFor(client: AgentModelClient, project: Source, input: Ground & { target: TeaserTarget; offered: Pitch[]; pick: Pitch; banned?: string[] }, path?: string): Promise<{ blueprint: TeaserBlueprint; raw: string }> {
-	const prompt = `${groundBlock(project, input)}\n\nYOU PITCHED:\n${input.offered.map((pitch, i) => `${i + 1}. ${pitchText(pitch)}`).join('\n')}\n\nTHE OPERATOR PICKS THIS ONE:\n${pitchText(input.pick)}\n\nPHASE TWO: write its teaser now, the four headers exactly.`;
-	const { value, raw } = await askTwice(client, await masterPrompt(input.target, path), prompt, (text) => {
+/** Phase two: the picked pitch as a teaser right away (title, logline, hook, Seedance prompt), before linting. */
+export async function teaserFor(client: AgentModelClient, project: Source, input: Ground & { target: TeaserTarget; offered: Pitch[]; pick: Pitch }, path?: string): Promise<{ blueprint: TeaserBlueprint; raw: string; system: string; context: string }> {
+	const context = `${groundBlock(project, input)}\n\nYOU PITCHED:\n${input.offered.map((pitch, i) => `${i + 1}. ${pitchText(pitch)}`).join('\n')}\n\nTHE OPERATOR PICKS THIS ONE:\n${pitchText(input.pick)}`;
+	const system = await masterPrompt(input.target, path);
+	const { value, raw } = await askTwice(client, system, `${context}\n\nPHASE TWO: write its teaser now, the four headers exactly.`, (text) => {
 		const parsed = parseBlueprint(text);
-		if (!parsed.ok) return parsed;
-		const broken = teaserLintIssue(parsed.blueprint.seedance_prompt, input.banned ?? []);
-		return broken ? { ok: false, issue: broken } : { ok: true, value: parsed.blueprint };
+		return parsed.ok ? { ok: true, value: parsed.blueprint } : parsed;
 	}, 4000, imagesOf(input));
-	return { blueprint: value, raw };
+	return { blueprint: value, raw, system, context };
+}
+
+/** One lint finding on the Seedance prompt, with where it is (for highlighting in the app). */
+export interface TeaserIssue { rule: string; severity: 'error' | 'warning'; index: number; length: number; match: string; message: string }
+export interface LintRound { round: number; prompt: string; issues: TeaserIssue[] }
+
+const HIDDEN = new Set(['banned-word', 'project-rule']);
+/** Black out every banned word (any case) so the Agent never reads one, even inside its own draft. */
+function redactAll(text: string, words: string[]): string {
+	let out = text;
+	for (const word of [...new Set(words.map((w) => w.toLowerCase()))].filter(Boolean)) out = out.replace(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '▇▇▇');
+	return out;
+}
+
+/** Every finding of the operator's Seedance linter on this prompt (banned words included, with the project's own bans). */
+export function lintTeaser(prompt: string, banned: string[]): TeaserIssue[] {
+	return lintPrompt(prompt, 'seedance', banned).issues.map((issue) => ({
+		rule: issue.rule, severity: issue.severity as TeaserIssue['severity'], index: issue.index,
+		length: issue.match === '(whole prompt)' ? 0 : issue.match.length, match: issue.match, message: issue.message
+	}));
+}
+
+/** The findings as the Agent sees them. Banned words are blacked out everywhere (naming one primes it). */
+function issuesForAgent(prompt: string, issues: TeaserIssue[], hidden: string[]): string {
+	return issues.map((issue) => {
+		const near = redactAll(prompt.slice(Math.max(0, issue.index - 40), issue.index + issue.length + 40).replace(/\s+/g, ' '), hidden);
+		if (HIDDEN.has(issue.rule)) return `- [${issue.rule}] a word the operator bans in prompts (blacked out as ▇▇▇), near "${near}": replace it, describing that thing by its color and source.`;
+		return `- [${issue.rule}] "${issue.match}" near "${near}": ${issue.message}`;
+	}).join('\n');
+}
+
+/** The prompt text out of a fix answer: drop a repeated header and any fences. */
+function promptOnly(answer: string): string {
+	return answer.replace(/^```\w*\n?|```\s*$/g, '').replace(/^\s*(?:\*\*)?SEEDANCE PROMPT\s*:?(?:\*\*)?\s*/i, '').trim();
 }
 
 /**
- * The teaser's Seedance prompt must pass the operator's Seedance linter on banned words and the
- * reference syntax. The message never repeats a banned word back to the Agent (naming it primes it).
+ * The operator's Seedance linter runs on the teaser's prompt; the Agent fixes every finding and it is linted
+ * again, up to `maxRounds` fixes. Each round is reported (draft first) so the app can show the highlights live.
  */
-export function teaserLintIssue(prompt: string, banned: string[]): string | null {
-	const issues = lintPrompt(prompt, 'seedance', banned).issues;
-	if (issues.some((issue) => issue.rule === 'banned-word' || issue.rule === 'project-rule')) return 'the SEEDANCE PROMPT uses a word the operator bans in prompts; describe that light or thing by its color and source instead, and rewrite only what is needed';
-	if (issues.some((issue) => issue.rule === 'seedance-underscore')) return 'write references as @Image_1 with an underscore, never "@Image 1"';
-	return null;
+export async function lintAndFix(client: AgentModelClient, input: { system: string; context: string; prompt: string; banned: string[]; images?: ModelImage[] }, onRound: (round: LintRound) => void | Promise<void> = () => {}, maxRounds = 3): Promise<{ prompt: string; rounds: LintRound[] }> {
+	let prompt = input.prompt;
+	const rounds: LintRound[] = [];
+	for (let round = 0; ; round++) {
+		const issues = lintTeaser(prompt, input.banned);
+		const current = { round, prompt, issues };
+		rounds.push(current);
+		await onRound(current);
+		if (issues.length === 0 || round >= maxRounds) return { prompt, rounds };
+		const hidden = issues.filter((issue) => HIDDEN.has(issue.rule)).map((issue) => issue.match);
+		const ask = `${redactAll(input.context, hidden)}\n\nYOUR SEEDANCE PROMPT:\n${redactAll(prompt, hidden)}\n\nTHE OPERATOR'S PROMPT LINTER FOUND THESE PROBLEMS:\n${issuesForAgent(prompt, issues, hidden)}\n\nRewrite the SEEDANCE PROMPT so every problem is fixed: declare every character and place, then use only the exact declared names. Keep everything else as it is. Return only the corrected SEEDANCE PROMPT text, with no header before it and nothing after it.`;
+		const answer = promptOnly(await client.generate({ system: input.system, prompt: ask, images: input.images, maxOutputTokens: 4000, timeoutMs: 120_000 }));
+		if (!answer) return { prompt, rounds };
+		prompt = answer;
+	}
 }
 
 export type ContinueStep = 'characters' | 'outline';

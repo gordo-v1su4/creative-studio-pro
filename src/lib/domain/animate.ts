@@ -28,6 +28,12 @@ export interface SeedanceRequest {
 	draft?: boolean;
 	/** Finalize this completed draft at 1080p (same render). */
 	draft_job_id?: string;
+	/** Which Seedance: 2.5 (default) or 2.0. */
+	job_type?: 'seedance_2_5' | 'seedance_2_0';
+	/** Output aspect ratio; absent = the model's default (or the start image's). */
+	aspect_ratio?: string;
+	/** Local reference images (the CLI uploads them), e.g. a character sheet. */
+	image_references?: string[];
 }
 
 export interface AnimateSettings {

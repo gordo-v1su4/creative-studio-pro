@@ -447,6 +447,27 @@ export type CreativeRoomRun = z.infer<typeof creativeRoomRunSchema>;
  * three loglines the Agent pitched, the one picked, and the blueprint it grew
  * into (title, logline, hook, time-coded Seedance prompt).
  */
+/** A teaser render sent to Seedance from Trailer House; the finished clip comes back into the project files. */
+export const teaserRenderSchema = z.object({
+	request_id: z.string().min(1).max(200),
+	job_type: z.enum(['seedance_2_5', 'seedance_2_0']),
+	prompt: z.string().min(1).max(20_000),
+	duration_s: z.number().int().positive(),
+	resolution: z.enum(['480p', '720p', '1080p']),
+	aspect: z.string().min(1).max(20),
+	/** A Seedance 2.5 480p draft, finalizable to 1080p from the same render for seven days. */
+	draft: z.boolean(),
+	estimate_credits: z.number().nonnegative(),
+	status: z.enum(['queued', 'in_progress', 'completed', 'failed', 'nsfw']),
+	submitted_at: rfc3339Schema,
+	settled_at: rfc3339Schema.optional(),
+	error: z.string().max(2000).optional(),
+	video: z.object({ file: nonBlank(300), url: nonBlank(2000), width: z.number().int().positive().optional(), height: z.number().int().positive().optional(), duration_s: z.number().positive().optional() }).optional(),
+	/** The beat it was added to on the board, once added. */
+	card_id: idSchema.optional()
+});
+export type TeaserRender = z.infer<typeof teaserRenderSchema>;
+
 const trailerHouseTextSchema = z.object({ text: nonBlank(20_000), model: z.string().max(200), created_at: rfc3339Schema });
 export const trailerHouseSchema = z.object({
 	target: z.object({ model: z.enum(['seedance-2.0', 'seedance-2.5']), seconds: z.number().int().min(4).max(30), aspect: z.string().min(1).max(20) }),
@@ -464,11 +485,18 @@ export const trailerHouseSchema = z.object({
 	picked: z.object({ round: z.number().int().nonnegative(), index: z.number().int().min(0).max(2) }).nullable(),
 	blueprint: z.object({
 		title: nonBlank(300), logline: nonBlank(2000), hook: nonBlank(6000), seedance_prompt: nonBlank(12_000),
-		raw: z.string().max(30_000), model: z.string().max(200), created_at: rfc3339Schema
+		raw: z.string().max(30_000), model: z.string().max(200), created_at: rfc3339Schema,
+		/** The prompt linter's pass over the Seedance prompt: rounds the Agent fixed, and anything left. */
+		lint: z.object({
+			rounds: z.number().int().nonnegative(),
+			fixed: z.number().int().nonnegative(),
+			remaining: z.array(z.object({ rule: z.string().max(60), severity: z.enum(['error', 'warning']), match: z.string().max(400), message: z.string().max(400) }))
+		}).optional()
 	}).nullable(),
 	/** After the teaser, if the operator continues: main character and relationships, then a plot outline. */
 	characters: trailerHouseTextSchema.nullable().default(null),
 	outline: trailerHouseTextSchema.nullable().default(null),
+	renders: z.array(teaserRenderSchema).default([]),
 	updated_at: rfc3339Schema
 });
 export type TrailerHouse = z.infer<typeof trailerHouseSchema>;

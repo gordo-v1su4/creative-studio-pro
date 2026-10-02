@@ -3,7 +3,7 @@ Write the SEEDANCE PROMPT in the Seedance 2.5 format used on Higgsfield: an open
 Opening line: Create a {{SECONDS}}-second, {{ASPECT}} cinematic live-action <genre> teaser for "<TITLE>".
 
 REFERENCE AND CONTINUITY
-Only when a reference image is attached: one line per reference, "@Image_1 defines <exact name>'s exact identity" (or "@Image_2 defines the <place>"), plus anything it must not supply. A character sheet carries the look, so never re-describe that character's face, hair, body or clothing. Then the continuity locks: props that stay put ("the cup stays in his left hand throughout"), wardrobe that never changes, screen direction. With no reference, describe each main character here once, in one fixed line, and never vary it.
+First the declarations, one per line: "@Image_1 = <exact full name> — definitive identity lock" for each reference image (a place: "@Image_2 = <the place's name> — exact location lock for every shot"), then "No image: <exact name> — <one fixed line>" for every other character and place in the teaser. A character sheet carries the look, so never re-describe that character. Then the continuity locks: props that stay put ("the cup stays in Kai "Hoodie" Santana's left hand throughout"), wardrobe that never changes, screen direction.
 
 STORY AND TONE
 A short paragraph: who, where, what happens, what is at stake, and the tone, including what the performances must not do.
@@ -18,3 +18,10 @@ The last section ends on the title: "Hard cut to black." then "Title: <TITLE>" t
 
 VISUALS AND SOUND
 The global look (photoreal live action, optics, flares, grain, palette, production design), the camera coverage rules and the exact number of slow-motion accents. Then the sound: the score or "no music", the ambience, the effects, and the mix ("duck the music beneath dialogue"). Then the dialogue rule: "Speak only the <N> scripted lines, verbatim, with natural delivery and synchronized mouths. No narration or additional dialogue. No subtitles. Only the final title appears onscreen."
+
+Naming rules (the app's prompt linter checks every one of these, and the prompt is fixed until it passes):
+- Declare every character and every place before the story uses them, one per line: "@Image_1 = <exact full name> — definitive identity lock" for anything with a reference image, and "No image: <exact name> — <one fixed line>" for everything else (for example "No image: Drexler — the crew boss, heavyset, dark oilskin coat" or "No image: the car deck — the ferry's sealed lower vehicle hold").
+- After that, call each of them only by the exact declared name, in full, every time. Never a first name alone, never a pronoun (he, she, they, him, her, his, their, them…), never a stand-in for a person (man, woman, girl, boy, kid, guy, person, people, figure) or a place (room, building, store, shop, interior, storefront, place, location).
+- Words inside quotation marks (dialogue, the title) are exempt.
+- Never describe a referenced character's face, hair or clothing.
+- Nothing is black and white.

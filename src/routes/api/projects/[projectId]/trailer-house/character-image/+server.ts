@@ -19,7 +19,7 @@ const folder = (projectId: string) => join(getProjectRoot(), projectId, 'files',
 
 /** A Trailer House state to edit, starting a fresh one when the project has none yet. */
 const houseOf = (project: Project): TrailerHouse => project.trailer_house ?? {
-	target: { ...DEFAULT_TARGET }, seeds: '', character: '', character_image: null, rounds: [], picked: null, blueprint: null, characters: null, outline: null, updated_at: new Date().toISOString()
+	target: { ...DEFAULT_TARGET }, seeds: '', character: '', character_image: null, rounds: [], picked: null, blueprint: null, characters: null, outline: null, renders: [], updated_at: new Date().toISOString()
 };
 
 async function load(params: { projectId: string }, url: URL): Promise<Response | { project: Project; expected: number }> {

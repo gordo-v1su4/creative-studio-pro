@@ -165,9 +165,18 @@ describe('Higgsfield CLI client', () => {
 		expect(await hf.status('job-9')).toMatchObject({ status: 'completed', video_url: 'https://cdn.example/v.mp4' });
 		expect(await hf.balance()).toEqual({ credits: 24.01, plan: 'creator' });
 		expect(runs[1].slice(0, 2)).toEqual(['generate', 'create']);
-		expect(runs[1].slice(2)).toEqual(['seedance_2_5', '--prompt', expect.stringMatching(/^@.+prompt\.json$/), '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--start-image', 'C:\\p\\still.png']);
+		expect(runs[1].slice(2)).toEqual(['seedance_2_5', '--prompt', expect.stringMatching(/^@.+prompt\.json$/), '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--mode', 'omni_reference', '--start-image', 'C:\\p\\still.png']);
 		expect(runs[2]).toEqual(['generate', 'get', 'job-9']);
 		expect(await Bun.file(promptFile).exists()).toBeFalse();
+	});
+
+	test('Seedance 2.5 with a start image or references goes as omni_reference; 2.0 has no draft flags', () => {
+		expect(seedanceArgs({ prompt: 'p', duration: 5, resolution: '480p', generate_audio: true, draft: true, start_image: 's.png' }, 'f.json'))
+			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--mode', 'omni_reference', '--start-image', 's.png']);
+		expect(seedanceArgs({ prompt: 'p', duration: 12, resolution: '480p', generate_audio: true, draft: true, aspect_ratio: '16:9', image_references: ['kai.png'] }, 'f.json'))
+			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '12', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--mode', 'omni_reference', '--aspect_ratio', '16:9', '--image-references', 'kai.png']);
+		expect(seedanceArgs({ prompt: 'p', duration: 12, resolution: '720p', generate_audio: true, job_type: 'seedance_2_0', aspect_ratio: '9:16', draft: true }, 'f.json'))
+			.toEqual(['seedance_2_0', '--prompt', '@f.json', '--duration', '12', '--resolution', '720p', '--generate_audio', 'true', '--aspect_ratio', '9:16']);
 	});
 
 	test('finalizing a draft spells out draft false and passes the draft job id', () => {

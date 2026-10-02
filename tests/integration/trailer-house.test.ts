@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
-import { continueWith, offeredFor, pitchThree, teaserFor, teaserLintIssue } from '../../src/lib/server/trailer-house';
+import { continueWith, lintAndFix, lintTeaser, offeredFor, pitchThree, teaserFor } from '../../src/lib/server/trailer-house';
+import { addTeaserToBoard, pollTeasers, quoteTeaser, sendTeaser, teaserRequest } from '../../src/lib/server/teaser-render';
+import type { AnimateDeps } from '../../src/lib/server/animate';
+import type { GenerationStatus, VideoGenerator } from '../../src/lib/server/higgsfield';
 import { TRAILER_HOUSE_AGENT } from '../../src/lib/domain/trailer-house';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import type { TrailerHouse } from '../../src/lib/domain/schemas';
@@ -41,7 +44,7 @@ describe('Trailer House: seeds → loglines → three more → develop', () => {
 		expect(agent.asked[0].prompt).toContain('flood, insulin');
 		expect(agent.asked[1].prompt).toContain('BROKE THE FORMAT');
 		const now = new Date().toISOString();
-		let house: TrailerHouse = { target, seeds, character: '', character_image: null, rounds: [{ seeds, pitches: first.pitches, model: 'kimi · k3', created_at: now }], picked: null, blueprint: null, characters: null, outline: null, updated_at: now };
+		let house: TrailerHouse = { target, seeds, character: '', character_image: null, renders: [], rounds: [{ seeds, pitches: first.pitches, model: 'kimi · k3', created_at: now }], picked: null, blueprint: null, characters: null, outline: null, updated_at: now };
 		let saved = await gateway.setTrailerHouse(project.project_id, project.version, house);
 		if (!saved.ok) throw new Error(saved.error.message);
 		project = saved.data;
@@ -87,12 +90,81 @@ describe('Trailer House: seeds → loglines → three more → develop', () => {
 		expect(cleared.data.voices.some((v) => v.raycast_agent === TRAILER_HOUSE_AGENT)).toBeFalse();
 	});
 
-	test('the teaser must pass the Seedance linter; the retry message never names the banned word', () => {
-		const banned = teaserLintIssue('Shot 1: Mara bares her fangs in the rain.', []);
-		expect(banned).toContain('bans');
-		expect(banned).not.toContain('fangs');
-		expect(teaserLintIssue('@Image 1 defines Mara.', [])).toContain('@Image_1');
-		expect(teaserLintIssue('@Image_1 defines Mara Voss exact identity. Mara Voss runs.', [])).toBeNull();
-		expect(teaserLintIssue('A glitter storm.', ['glitter'])).toContain('bans');
+	test('the Agent fixes every lint finding in rounds; a banned word is never named back to it', async () => {
+		const draft = '@Image_1 = Kai "Hoodie" Santana — definitive identity lock\nKai runs to the building; he bares his fangs. Hard cut.';
+		const clean = '@Image_1 = Kai "Hoodie" Santana — definitive identity lock\nNo image: the Lumen tower — a glass office tower\nKai "Hoodie" Santana runs to the Lumen tower. Hard cut.';
+		expect(lintTeaser(draft, []).map((issue) => issue.rule)).toEqual(expect.arrayContaining(['partial-name', 'place-alias', 'pronoun', 'banned-word']));
+		const agent = scripted([`SEEDANCE PROMPT:\n${clean}`]);
+		const rounds: { round: number; issues: number }[] = [];
+		const fixed = await lintAndFix(agent.client, { system: 'sys', context: 'ctx', prompt: draft, banned: [] }, (round) => { rounds.push({ round: round.round, issues: round.issues.length }); });
+		expect(fixed.prompt).toBe(clean);
+		expect(rounds.map((r) => r.round)).toEqual([0, 1]);
+		expect(rounds[0].issues).toBeGreaterThan(3);
+		expect(rounds[1].issues).toBe(0);
+		// The fix request lists every finding, with the banned word redacted.
+		expect(agent.asked[0].prompt).toContain('[pronoun]');
+		expect(agent.asked[0].prompt).toContain('[partial-name]');
+		expect(agent.asked[0].prompt).toContain('a word the operator bans');
+		expect(agent.asked[0].prompt).not.toContain('fangs');
+		// It stops after the round limit even if the Agent never fixes it.
+		const stubborn = scripted([draft, draft, draft, draft]);
+		const stuck = await lintAndFix(stubborn.client, { system: 's', context: 'c', prompt: draft, banned: [] }, () => {}, 2);
+		expect(stuck.rounds).toHaveLength(3);
+		expect(stubborn.asked).toHaveLength(2);
+	});
+
+	test('a teaser renders on Seedance for the confirmed price, comes back, and goes on the board', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-tr-')); roots.push(root);
+		const store = new ProjectStore({ root });
+		const gateway = new ProjectCommandGateway(store);
+		const created = await gateway.createProject({ command: 'create_project', title: 'Render test', brief: '', creative_focus: 'full room', created_by: 'gordo' });
+		if (!created.ok) throw new Error(created.error.message);
+		const now = new Date().toISOString();
+		const prompt = 'Create a 12-second, 16:9 teaser.\n@Image_1 = Kai "Hoodie" Santana — definitive identity lock\nKai "Hoodie" Santana runs. Hard cut. Title: X.';
+		const house: TrailerHouse = { target: { model: 'seedance-2.5', seconds: 12, aspect: '16:9' }, seeds: 's', character: '', character_image: null, rounds: [], picked: null, blueprint: { title: 'X', logline: 'L', hook: 'H', seedance_prompt: prompt, raw: prompt, model: 'k3', created_at: now }, characters: null, outline: null, renders: [], updated_at: now };
+		const saved = await gateway.setTrailerHouse(created.data.project_id, created.data.version, house);
+		if (!saved.ok) throw new Error(saved.error.message);
+
+		const calls: string[] = [];
+		let status: GenerationStatus = 'queued';
+		const generator: VideoGenerator = {
+			async estimate(request) { calls.push(`estimate ${request.job_type} ${request.resolution} draft=${request.draft} ${request.aspect_ratio}`); return { credits: 36 }; },
+			async submit() { calls.push('submit'); return { job_id: 'job-1' }; },
+			async status() { return status === 'completed' ? { status, video_url: 'https://x/v.mp4' } : { status }; },
+			async balance() { return { credits: 100, plan: null }; }
+		};
+		const deps: AnimateDeps = { gateway, store, projectRoot: root, generator, probe: async () => ({ width: 854, height: 480, duration_s: 12 }), download: async () => new Uint8Array([1, 2, 3]) };
+		const settings = { resolution: '480p' as const, generate_audio: true };
+
+		expect(teaserRequest(saved.data.trailer_house!, settings, '/k.png')).toMatchObject({ job_type: 'seedance_2_5', draft: true, aspect_ratio: '16:9', image_references: ['/k.png'], duration: 12 });
+		const quote = await quoteTeaser(deps, saved.data, settings);
+		expect(quote).toMatchObject({ ok: true, credits: 36, balance: 100, draft: true });
+		// A different confirmed price is refused before anything is sent.
+		const wrong = await sendTeaser(deps, { project_id: saved.data.project_id, expected_version: saved.data.version, settings, confirmed_credits: 10 });
+		expect(wrong.ok).toBeFalse();
+		expect(calls).not.toContain('submit');
+		const sent = await sendTeaser(deps, { project_id: saved.data.project_id, expected_version: saved.data.version, settings, confirmed_credits: 36 });
+		if (!sent.ok) throw new Error(sent.message);
+		expect(sent.project.trailer_house?.renders[0]).toMatchObject({ request_id: 'job-1', status: 'queued', draft: true, estimate_credits: 36 });
+
+		status = 'completed';
+		const polled = await pollTeasers(deps, saved.data.project_id);
+		if (!polled.ok) throw new Error(polled.message);
+		const render = polled.project.trailer_house!.renders[0];
+		expect(render.status).toBe('completed');
+		expect(render.video?.url).toContain('/files/trailer-house/teaser-job-1');
+
+		const boarded = await addTeaserToBoard(deps, { project_id: saved.data.project_id, expected_version: polled.project.version, request_id: 'job-1' });
+		if (!boarded.ok) throw new Error(boarded.message);
+		const card = boarded.project.production.cards.find((c) => c.title === 'Teaser · X');
+		expect(card?.group_id).toBeDefined();
+		const take = boarded.project.production.assets.find((asset) => asset.card_id === card?.card_id);
+		expect(take).toMatchObject({ job_id: 'job-1', kind: 'video' });
+		expect(boarded.project.trailer_house!.renders[0].card_id).toBe(card!.card_id);
+
+		// A prompt with lint errors can't be priced or sent.
+		const dirty = await gateway.setTrailerHouse(saved.data.project_id, boarded.project.version, { ...boarded.project.trailer_house!, blueprint: { ...house.blueprint!, seedance_prompt: 'He runs into the building.' } });
+		if (!dirty.ok) throw new Error(dirty.error.message);
+		expect((await quoteTeaser(deps, dirty.data, settings)).ok).toBeFalse();
 	});
 });
