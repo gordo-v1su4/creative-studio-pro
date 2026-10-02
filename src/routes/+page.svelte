@@ -356,6 +356,10 @@
 	let dragStart = new Map<string, { x: number; y: number }>();
 	let dropGroup = $state<string | null>(null);
 	let draggingBeats = $state(false);
+	// The board pans on its own when a dragged card nears its edge; heading left into the panel
+	// (to drop on a group) it would keep scrolling, so auto-pan pauses there.
+	let autoPanDrag = $state(true);
+	let dragViewport: typeof viewport | null = null;
 	function groupUnder(event: MouseEvent | TouchEvent): string | null {
 		const point = 'changedTouches' in event ? (event.changedTouches[0] ?? event.touches[0]) : event;
 		if (!point) return null;
@@ -366,14 +370,23 @@
 	function onNodeDragStart({ nodes: dragged }: { nodes: Node[] }) {
 		dragStart = new Map(dragged.map((node) => [node.id, { ...node.position }]));
 		draggingBeats = dragged.some((node) => isBeat(node.id));
+		dragViewport = { ...viewport };
 	}
 	function onNodeDrag({ event }: { event: MouseEvent | TouchEvent }) {
-		if (draggingBeats) dropGroup = groupUnder(event);
+		if (!draggingBeats) return;
+		dropGroup = groupUnder(event);
+		const point = 'changedTouches' in event ? (event.changedTouches[0] ?? event.touches[0]) : event;
+		const board = (event.target as Element | null)?.closest?.('.svelte-flow') ?? document.querySelector('.svelte-flow');
+		const left = board?.getBoundingClientRect().left ?? 0;
+		autoPanDrag = !(point && canvasOpen && !railCollapsed && point.clientX < left + 48);
 	}
 	function onNodeDragStop({ nodes: dragged, event }: { nodes: Node[]; event: MouseEvent | TouchEvent }) {
 		const target = draggingBeats ? groupUnder(event) : null;
 		dropGroup = null;
 		draggingBeats = false;
+		autoPanDrag = true;
+		if (target && dragViewport) viewport = dragViewport;
+		dragViewport = null;
 		const beats = dragged.filter((node) => isBeat(node.id)).map((node) => node.id);
 		if (target && beats.length) {
 			nodes = nodes.map((node) => { const from = dragStart.get(node.id); return from ? { ...node, position: from } : node; });
@@ -976,6 +989,7 @@
 						onbeforedelete={beforeBoardDelete}
 						selectionKey="Shift"
 						onnodeclick={({ node }) => (selectedNodeId = node.id)}
+						autoPanOnNodeDrag={autoPanDrag}
 						onnodedragstart={onNodeDragStart}
 						onnodedrag={onNodeDrag}
 						onnodedragstop={onNodeDragStop}
