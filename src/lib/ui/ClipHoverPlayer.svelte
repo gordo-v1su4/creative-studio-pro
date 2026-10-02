@@ -24,6 +24,8 @@
 	let hovering = $state(false);
 	let sound = $state(false);
 	let message = $state('');
+	// The canvas fades in once something (poster or frame) has been drawn on it.
+	let shown = $state(false);
 	// The trimmed span the reviewer kept; hover plays and loops only this part.
 	const spanIn = $derived(Math.max(0, inS ?? 0));
 	const spanOut = $derived(Math.min(duration || Infinity, outS ?? Infinity));
@@ -37,11 +39,11 @@
 
 	function showPlayhead() {
 		const resident = bank?.frameAt(playhead);
-		if (draw && resident) draw(resident.view);
+		if (draw && resident) { draw(resident.view); shown = true; }
 	}
 
 	function showPoster() {
-		if (draw && poster) draw(poster.view);
+		if (draw && poster) { draw(poster.view); shown = true; }
 	}
 
 	function tick(now: number) {
@@ -162,21 +164,46 @@
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video {src} controls preload="metadata" class="h-full w-full object-contain" title={message}></video>
 	{:else}
-		<canvas bind:this={canvas} class="block h-full w-full"></canvas>
+		<canvas bind:this={canvas} class={['clip-canvas block h-full w-full', shown && 'shown']}></canvas>
+		{#if !shown && phase !== 'error'}<span class="clip-wait" aria-hidden="true"></span>{/if}
 		<audio bind:this={audio} {src} preload="none" loop></audio>
-		<div class="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-white/10">
+		<div class="clip-line">
 			{#if phase === 'loading'}
-				<div class="h-full bg-[#55dfd5]/70" style:width={`${progress * 100}%`}></div>
+				<div class="clip-fill loading" style:width={`${Math.max(4, progress * 100)}%`}></div>
 			{:else if hovering && duration}
-				<div class="h-full bg-[#55dfd5]" style:width={`${(playhead / duration) * 100}%`}></div>
-				{#if inS != null || outS != null}<div class="absolute inset-y-0 border-x border-[#f2c14e]" style:left={`${(spanIn / duration) * 100}%`} style:width={`${((Math.min(spanOut, duration) - spanIn) / duration) * 100}%`}></div>{/if}
+				{#if inS != null || outS != null}<div class="clip-span" style:left={`${(spanIn / duration) * 100}%`} style:width={`${((Math.min(spanOut, duration) - spanIn) / duration) * 100}%`}></div>{/if}
+				<div class="clip-fill" style:width={`${(playhead / duration) * 100}%`}></div>
 			{/if}
 		</div>
 		{#if hovering && duration}
-			<span class="pointer-events-none absolute right-1 top-1 bg-black/60 px-1 font-mono text-[9px] text-[#bce6e8]">{sound ? '🔊 ' : ''}{playhead.toFixed(1)}s / {duration.toFixed(1)}s</span>
+			<span class="clip-chip time">{playhead.toFixed(1)}<i>/</i>{duration.toFixed(1)}s</span>
+			<span class={['clip-chip sound', sound && 'on']} title={sound ? 'Sound on: click to mute' : 'Click for sound'}><b aria-hidden="true"></b>{sound ? 'Sound' : 'Muted'}</span>
 		{/if}
 		{#if phase === 'error'}
-			<span class="absolute inset-x-0 bottom-1 px-2 text-center font-mono text-[9px] text-[#e88]">{message}</span>
+			<span class="absolute inset-x-0 bottom-1 px-2 text-center font-mono text-[9px] text-nr-danger-text">{message}</span>
 		{/if}
 	{/if}
 </div>
+
+<style>
+	.clip-canvas { opacity: 0; transition: opacity 220ms ease; }
+	.clip-canvas.shown { opacity: 1; }
+	.clip-wait { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--color-nr-accent) 6%, transparent) 50%, transparent 70%) 0 0 / 220% 100%; animation: clip-sweep 1.4s ease-in-out infinite; pointer-events: none; }
+	.clip-line { position: absolute; inset: auto 0 0 0; height: 2px; background: rgb(255 255 255 / 0.07); pointer-events: none; }
+	.clip-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, color-mix(in srgb, var(--color-nr-accent) 15%, transparent), var(--color-nr-accent)); }
+	.clip-fill.loading { animation: clip-pulse 1.1s ease-in-out infinite; transition: width 160ms linear; }
+	.clip-span { position: absolute; inset: -1px auto -1px auto; border-inline: 1px solid var(--color-nr-mark); }
+	.clip-chip { position: absolute; top: 5px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid rgb(255 255 255 / 0.08); border-radius: 2px; background: rgb(5 7 10 / 0.72); padding: 1px 5px; color: var(--color-nr-text); font: 500 9px/14px var(--font-mono); letter-spacing: 0.04em; pointer-events: none; }
+	.clip-chip.time { right: 5px; }
+	.clip-chip.time i { margin: 0 2px; color: var(--color-nr-faint); font-style: normal; }
+	.clip-chip.sound { left: 5px; color: var(--color-nr-dim); font-family: var(--font-sans); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; }
+	.clip-chip.sound b { width: 5px; height: 5px; border-radius: 999px; background: var(--color-nr-faint); }
+	.clip-chip.sound.on { color: var(--color-nr-accent); }
+	.clip-chip.sound.on b { background: var(--color-nr-accent); box-shadow: 0 0 6px var(--color-nr-accent); }
+	@keyframes clip-sweep { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+	@keyframes clip-pulse { 50% { opacity: 0.45; } }
+	@media (prefers-reduced-motion: reduce) {
+		.clip-canvas, .clip-fill.loading { transition: none; }
+		.clip-wait, .clip-fill.loading { animation: none; }
+	}
+</style>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
+	import Pick from '$lib/ui/controls/Pick.svelte';
 	import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, type AnimateResolution } from '$lib/domain/animate';
 	import { lintPrompt } from '$lib/domain/prompt-lint';
 	import { MIN_LONG_EDGE } from '$lib/domain/media';
@@ -122,7 +123,7 @@
 					{/if}
 					<div class="flex flex-wrap items-center gap-3">
 						<label class="field-inline">Length <input type="number" min={ANIMATE_MIN_S} max={ANIMATE_MAX_S} step="1" bind:value={duration} />s</label>
-						<label class="field-inline">Resolution <select bind:value={resolution}>{#each ANIMATE_RESOLUTIONS as option (option)}<option value={option}>{option === '480p' ? '480p draft' : option}</option>{/each}</select></label>
+						<span class="field-inline">Resolution <Pick label="Resolution" bind:value={resolution} options={ANIMATE_RESOLUTIONS.map((option) => ({ value: option, label: option === '480p' ? '480p draft' : option }))} /></span>
 						<span class="field-inline"><Toggle label="Generate audio" bind:checked={audio} /> Generate audio</span>
 					</div>
 				</div>
@@ -156,5 +157,5 @@
 	.field textarea { width: 100%; border: 1px solid #26383f; background: #0a0d11; padding: 8px; color: #bce6e8; font: 12px/1.55 var(--font-mono); text-transform: none; outline: none; }
 	.field textarea:focus { border-color: #4ee8d2; }
 	.field-inline { display: flex; align-items: center; gap: 5px; color: #84cbd0; font: 600 10px var(--font-mono); text-transform: uppercase; }
-	.field-inline input[type='number'], .field-inline select { width: 64px; border: 1px solid #26383f; background: #0a0d11; padding: 2px 4px; color: #bce6e8; font: inherit; }
+	.field-inline input[type='number'] { width: 64px; border: 1px solid #26383f; background: #0a0d11; padding: 2px 4px; color: #bce6e8; font: inherit; }
 </style>

@@ -20,6 +20,7 @@
 	import type { MatchedEntry } from '$lib/domain/music';
 	import { loadPeaks } from '$lib/media/waveform';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
+	import Pick from '$lib/ui/controls/Pick.svelte';
 
 	/**
 	 * Rough-cut review of a selection or a cut: each clip's kept span (in → out) plays
@@ -419,8 +420,10 @@
 		}
 	}
 
+	const keyHints: [string, string][] = [['Space', 'play / pause'], ['← →', 'step a frame · shift 10'], ['↑ ↓', 'previous / next clip'], ['I  O', 'in / out at the playhead'], ['Esc', 'close']];
+
 	function key(event: KeyboardEvent) {
-		if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
+		if (event.defaultPrevented || event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
 		if (event.key === 'Escape') close();
 		else if (event.key === ' ') { event.preventDefault(); togglePause(); }
 		else if (event.key === 'ArrowRight') { event.preventDefault(); step(event.shiftKey ? 10 : 1); }
@@ -576,32 +579,32 @@
 
 <svelte:window onkeydown={key} />
 
-<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-[#050607]/95 px-6 py-4" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
+<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-nr-deep/95 px-6 py-4" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
 	<div class="w-full max-w-[1180px]">
-		<div class="mb-2 flex items-center gap-3 font-mono text-[10px] text-[#8fb3b8]">
+		<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[10px] text-nr-muted">
 			{#if source.kind === 'cut'}
-				<span class="tracking-[.14em] text-[#99f6e4]">CUT</span>
-				<span class="text-[#e6fff8]">{cut?.name ?? ''}</span>
-				<span class={frozen ? 'text-[#f2c14e]' : 'text-[#8fb3b8]'}>v{shownVersion}{frozen ? ' · locked' : ''}</span>
+				<span class="tracking-[.14em] text-nr-accent">CUT</span>
+				<span class="text-nr-ink">{cut?.name ?? ''}</span>
+				<span class={frozen ? 'text-nr-mark' : 'text-nr-muted'}>v{shownVersion}{frozen ? ' · locked' : ''}</span>
 			{:else}
-				<span class="tracking-[.14em] text-[#99f6e4]">SEQUENCE</span>
+				<span class="tracking-[.14em] text-nr-accent">SEQUENCE</span>
 			{/if}
 			<span>{clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"} · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
-			<span class="text-[#4c5b5a]" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and beats are untouched' : 'Trims and ramps save to the takes'}>
+			<span class="text-nr-faint" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and beats are untouched' : 'Trims and ramps save to the takes'}>
 				{source.kind === 'cut' ? (frozen ? 'picture locked · read-only' : readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
 			</span>
 			<span class="grow"></span>
-			{#if saveState}<span class="text-[#55747c]">{saveState === 'saving' ? 'saving…' : 'saved'}</span>{/if}
+			{#if saveState}<span class="text-nr-dim">{saveState === 'saving' ? 'saving…' : 'saved'}</span>{/if}
 			{#if source.kind === 'cut' && cut}
 				{#if matchPreview}
-					<span class="text-[#f2c14e]" title="Previewing: nothing is saved until you keep it">matched: {matchCounts}</span>
+					<span class="text-nr-mark" title="Previewing: nothing is saved until you keep it">matched: {matchCounts}</span>
 					<button type="button" class="ctl suggest" onclick={keepMatch}>keep</button>
 					<button type="button" class="ctl" onclick={undoMatch}>undo</button>
 				{:else if mixUrl}
-					<span class="text-[#f2c14e]" title="The built sound mix of this locked version plays in place of the takes' own audio">♪ sound mix v{shownVersion}</span>
+					<span class="text-nr-mark" title="The built sound mix of this locked version plays in place of the takes' own audio">♪ sound mix v{shownVersion}</span>
 					<Toggle label="Play the mix" on="mix" off="mix" bind:checked={songOn} onchange={() => syncSong()} />
 				{:else if cut.music}
-					<span class="max-w-[220px] truncate text-[#f2c14e]" title={`${cut.music.name} · ${cut.music.bpm} BPM · ${cut.music.duration_s.toFixed(1)}s, plays from the cut's start`}>♪ {cut.music.name} · {cut.music.bpm} BPM</span>
+					<span class="max-w-[220px] truncate text-nr-mark" title={`${cut.music.name} · ${cut.music.bpm} BPM · ${cut.music.duration_s.toFixed(1)}s, plays from the cut's start`}>♪ {cut.music.name} · {cut.music.bpm} BPM</span>
 					<Toggle label="Play the song" on="song" off="song" bind:checked={songOn} onchange={() => syncSong()} />
 					{#if !frozen && !readOnly}<button type="button" class="ctl suggest" onclick={() => void matchMusic()} disabled={matching || !clips.length} title="Slide each entry within its own footage to where its audio matches the song, keeping your order; entries that can't match confidently snap their cut to the nearest beat. You preview it before anything is saved.">{matching ? 'matching…' : 'match to music'}</button>{/if}
 					<button type="button" class="ctl" onclick={() => void removeSong()} title="Detach the song from this cut (the file stays in the project)">remove song</button>
@@ -611,11 +614,11 @@
 			{/if}
 			{#if source.kind === 'cut' && !readOnly && !matchPreview}
 				{#if suggestionCount}
-					<span class="text-[#f2c14e]">{suggestionCount} suggested {suggestionCount === 1 ? 'trim' : 'trims'}</span>
+					<span class="text-nr-mark">{suggestionCount} suggested {suggestionCount === 1 ? 'trim' : 'trims'}</span>
 					<button type="button" class="ctl suggest" onclick={acceptAllSuggestions}>accept all</button>
 					<button type="button" class="ctl" onclick={() => { suggestions = {}; suggesting = ''; }}>dismiss all</button>
 				{:else if suggesting === 'done'}
-					<span class="text-[#55747c]">no trims to suggest</span>
+					<span class="text-nr-dim">no trims to suggest</span>
 				{/if}
 				<button type="button" class="ctl suggest" onclick={() => void suggestTrims()} disabled={suggesting === 'running' || !clips.length} title="Look for frozen frames, stutter, bad starts and stray frames in each entry's kept span (measured, not guessed). Nothing changes until you accept.">{suggesting === 'running' ? 'analysing…' : 'suggest trims'}</button>
 			{/if}
@@ -626,29 +629,32 @@
 					<button type="button" class="ctl push" onclick={() => void push()} disabled={pushing || !pushName.trim() || !clips.length}>{pushing ? 'pushing…' : 'push'}</button>
 					<button type="button" class="ctl" onclick={() => (pushName = null)}>cancel</button>
 				{:else}
-					{#if pushed}<span class="text-[#99f6e4]">pushed “{pushed}” · open it in Cuts</span>{/if}
+					{#if pushed}<span class="text-nr-accent">pushed “{pushed}” · open it in Cuts</span>{/if}
 					<button type="button" class="ctl push" onclick={() => (pushName = nextCutName(project.production))} disabled={!clips.length} title="Save this selection — order, takes, trims and ramps — as a new cut">push to cut</button>
 				{/if}
 			{/if}
-			<button type="button" class="ctl" onclick={togglePause}>{paused ? 'play' : 'pause'}</button>
-			<button type="button" class="ctl" onclick={close}>close</button>
+			<button type="button" class="ctl" onclick={close} title="Close (Esc)">close</button>
 		</div>
 
 		<!-- The picture gives way to the timeline on short windows: height is capped, width follows 16:9. -->
 		<canvas bind:this={canvas} class="mx-auto block aspect-video max-w-full rounded-[3px] bg-black" style:height="min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - 330px))" onclick={togglePause}></canvas>
 
-		<div class="mt-2 flex items-center gap-3 font-mono text-[10px] text-[#8fb3b8]">
-			<span class="text-[#e6fff8]">{programTime.toFixed(2)}s</span>
-			{#if current}<span class="text-[#99f6e4]" title="Frame within this clip (source frames)">frame {frameNumber + 1} / {frameTotal}</span>{/if}
-			<span class="text-[#4c5b5a]">/ {total.toFixed(2)}s</span>
+		<div class="transport mt-2" role="group" aria-label="Transport">
+			<button type="button" class="tkey" onclick={() => startClip(index - 1)} disabled={clips.length < 2} aria-label="Previous clip" title="Previous clip (↑)"><span class="ico skip back" aria-hidden="true"></span></button>
+			<button type="button" class="tkey" onclick={() => step(-1)} disabled={!current} aria-label="Back one frame" title="Back one frame (←)"><span class="ico step back" aria-hidden="true"></span></button>
+			<button type="button" class={['tkey play', !paused && 'on']} onclick={togglePause} disabled={!clips.length} aria-label={paused ? 'Play' : 'Pause'} title="Play / pause (Space)">{#if paused}<span class="ico tri" aria-hidden="true"></span>{:else}<span class="ico bars" aria-hidden="true"></span>{/if}</button>
+			<button type="button" class="tkey" onclick={() => step(1)} disabled={!current} aria-label="Forward one frame" title="Forward one frame (→)"><span class="ico step" aria-hidden="true"></span></button>
+			<button type="button" class="tkey" onclick={() => startClip(index + 1)} disabled={clips.length < 2} aria-label="Next clip" title="Next clip (↓)"><span class="ico skip" aria-hidden="true"></span></button>
+			<span class="readout first" title="Program time / cut length"><b>{programTime.toFixed(2)}</b><i>/</i>{total.toFixed(2)}s</span>
 			{#if current}
-				<span class="text-[#4c5b5a]">·</span>
-				<span>{index + 1} · {current.title}</span>
-				<span class="text-[#4c5b5a]">in {current.in.toFixed(2)} · out {current.out.toFixed(2)}{rate > 1.001 ? ` · ${rate.toFixed(2)}×` : ''}</span>
+				<span class="pair"><span class="cap">clip</span><span class="readout"><b>{index + 1}</b><i>/</i>{clips.length}</span></span>
+				<span class="pair" title="Frame within this clip (source frames)"><span class="cap">frame</span><span class="readout"><b>{frameNumber + 1}</b><i>/</i>{frameTotal}</span></span>
+				<span class="ml-2 min-w-0 truncate text-nr-ink">{current.title}</span>
+				<span class="shrink-0 text-nr-faint">in {current.in.toFixed(2)} · out {current.out.toFixed(2)}{rate > 1.001 ? ` · ${rate.toFixed(2)}×` : ''}</span>
 			{/if}
 		</div>
 
-		<div class="mt-3 rounded-[3px] border border-[#1d2528] bg-[#0b0e10] p-2">
+		<div class="mt-3 rounded-[3px] border border-nr-line-soft bg-nr-deep p-2">
 			{#if clips.length}
 				<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} beats={cut?.music?.beats ?? []} song={cut?.music ? songPeaks : null} />
 			{:else}
@@ -660,28 +666,26 @@
 			<!-- Editing an entry pauses playback, so the panel stays on the entry being edited. -->
 			<section class="entry mt-2" aria-label="Selected entry" onpointerdown={() => { if (!paused) togglePause(); }}>
 				<div class="flex flex-wrap items-center gap-2">
-					<span class="tracking-[.14em] text-[#99f6e4]">ENTRY {index + 1} / {clips.length}</span>
-					<b class="text-[#e6fff8]">{current.title}</b>
+					<span class="tracking-[.14em] text-nr-accent">ENTRY {index + 1} / {clips.length}</span>
+					<b class="text-nr-ink">{current.title}</b>
 					<span class="grow"></span>
-					<span title="The cut's running length, with every trim and ramp">cut length <b class="text-[#e6fff8]">{total.toFixed(2)}s</b></span>
-					<label class="flex items-center gap-1">take
-						<select class="pick" value={current.assetId} onchange={(event) => void swapTake(index, event.currentTarget.value)} disabled={readOnly || swapping || takeChoices.length < 2} aria-label="Take for this entry">
-							{#each takeChoices as take, i (take.asset_id)}<option value={take.asset_id}>{i + 1} · {take.name}{take.rejected ? ' (rejected)' : ''}</option>{/each}
-						</select>
-					</label>
-					{#if swapping}<span class="text-[#55747c]">loading…</span>{/if}
+					<span title="The cut's running length, with every trim and ramp">cut length <b class="text-nr-ink">{total.toFixed(2)}s</b></span>
+					<span class="flex items-center gap-1.5">take
+						<Pick label="Take for this entry" value={current.assetId} options={takeChoices.map((take, i) => ({ value: take.asset_id, label: `${i + 1} · ${take.name}`, hint: take.rejected ? 'rejected' : undefined }))} onchange={(assetId) => void swapTake(index, assetId)} disabled={readOnly || swapping || takeChoices.length < 2} />
+					</span>
+					{#if swapping}<span class="text-nr-dim">loading…</span>{/if}
 					<button type="button" class="ctl" onclick={() => dropEntry(index)} disabled={readOnly || clips.length < 2} title={clips.length < 2 ? 'A cut keeps at least one entry' : 'Remove this entry from the cut; the take stays on its beat'}>drop entry</button>
 				</div>
 				{#if matchReport[current.id]}
 					{@const r = matchReport[current.id]}
-					<p class="mt-1.5 text-[#f2c14e]"><span class="uppercase">{r.mode}</span> <span class="text-[#c9b27a]">{r.note}</span></p>
+					<p class="mt-1.5 text-nr-mark"><span class="uppercase">{r.mode}</span> <span class="text-nr-mark-dim">{r.note}</span></p>
 				{/if}
 				{#if suggestions[current.id]?.length}
 					<ul class="mt-1.5 grid gap-1" aria-label="Suggested trims for this entry">
 						{#each suggestions[current.id] as suggestion (suggestion.frames.join('-') + suggestion.edge)}
-							<li class="flex flex-wrap items-center gap-2 text-[#f2c14e]">
+							<li class="flex flex-wrap items-center gap-2 text-nr-mark">
 								<span class="uppercase">{kindLabel[suggestion.kind]}</span>
-								<span class="text-[#c9b27a]">{suggestion.note}</span>
+								<span class="text-nr-mark-dim">{suggestion.note}</span>
 								<span>→ {suggestion.edge} {suggestion.at_s.toFixed(3)}s</span>
 								<button type="button" class="ctl suggest" onclick={() => acceptSuggestion(index, suggestion)}>accept</button>
 								<button type="button" class="ctl" onclick={() => dismissSuggestion(current.id, suggestion)}>dismiss</button>
@@ -692,29 +696,53 @@
 				<dl class="source mt-1.5">
 					<dt>take</dt><dd>{currentTake?.name ?? current.assetId}</dd>
 					<dt>full length</dt><dd>{current.duration.toFixed(2)}s · kept {current.in.toFixed(2)}–{current.out.toFixed(2)}{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
-					<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-[#4c5b5a]">no generation job on record</span>{/if}</dd>
-					<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-[#4c5b5a]">beat's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-[#4c5b5a]">none on record</span>{/if}</dd>
+					<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-nr-faint">no generation job on record</span>{/if}</dd>
+					<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-nr-faint">beat's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-nr-faint">none on record</span>{/if}</dd>
 				</dl>
 			</section>
 		{/if}
 
-		<p class="mt-2 font-mono text-[9px] text-[#4c5b5a]">space pause · ←/→ step one frame (shift: 10) · ↑/↓ previous/next clip · I / O set in / out at the playhead · drag a clip edge to trim · drag a clip to move it · click the ruler or a clip to jump · speed lane: click to add, drag, double-click to remove · esc close</p>
-		{#if error}<p class="mt-1 font-mono text-[10px] text-[#e88]">{error}</p>{/if}
-		{#if skipped.length}<p class="mt-1 font-mono text-[10px] text-[#c9b27a]">Not analysed: {skipped.join(' · ')}</p>{/if}
+		<div class="hints mt-2" aria-label="Keys">
+			{#each keyHints as [keys, what] (keys)}<span><kbd>{keys}</kbd>{what}</span>{/each}
+			<span class="mouse">drag a clip edge to trim · drag a clip to move it · speed lane: click to add, double-click to remove</span>
+		</div>
+		{#if error}<p class="mt-1 font-mono text-[10px] text-nr-danger-text">{error}</p>{/if}
+		{#if skipped.length}<p class="mt-1 font-mono text-[10px] text-nr-mark-dim">Not analysed: {skipped.join(' · ')}</p>{/if}
 	</div>
 </div>
 
 <style>
-	.ctl { border: 1px solid #233034; background: #0f1517; padding: 2px 8px; color: #9fc9cf; border-radius: 2px; }
-	.ctl:hover { border-color: #99f6e4; color: #e6fff8; }
+	.ctl { border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 8px; color: var(--color-nr-muted); font: 600 9px/20px var(--font-sans); letter-spacing: .12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
+	.ctl:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
 	.ctl:disabled { opacity: .45; }
-	.ctl.suggest { border-color: #6a5a26; color: #f2c14e; }
-	.ctl.push { border-color: #2f6f6a; color: #99f6e4; }
-	.entry { border: 1px solid #1d2528; background: #0b0e10; padding: 6px 8px; border-radius: 3px; font: 10px var(--font-mono); color: #8fb3b8; }
-	.pick { max-width: 260px; border: 1px solid #233034; background: #0f1517; padding: 1px 4px; color: #e6fff8; border-radius: 2px; }
+	.transport { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; font: 10px var(--font-mono); color: var(--color-nr-muted); }
+	.tkey { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 26px; height: 22px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; color: var(--color-nr-muted); transition: border-color 140ms ease, color 140ms ease; }
+	.tkey:hover:not(:disabled), .tkey.on { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-accent); }
+	.tkey:disabled { opacity: .35; }
+	.tkey.play { width: 34px; margin-inline: 2px; }
+	.readout { flex: none; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 5px; color: var(--color-nr-muted); line-height: 18px; }
+	.readout b { color: var(--color-nr-ink); font-weight: 500; }
+	.readout i { margin: 0 3px; color: var(--color-nr-faint); font-style: normal; }
+	.readout.first { margin-left: 8px; }
+	.pair { display: inline-flex; flex: none; align-items: center; gap: 6px; margin-left: 6px; }
+	.transport .cap { flex: none; color: var(--color-nr-faint); font: 600 9px var(--font-sans); letter-spacing: .14em; text-transform: uppercase; }
+	.ico { display: block; }
+	.ico.tri { width: 0; height: 0; margin-left: 2px; border-block: 5px solid transparent; border-left: 8px solid currentColor; }
+	.ico.bars { width: 8px; height: 10px; border-inline: 3px solid currentColor; }
+	.ico.step { width: 0; height: 0; border-block: 4px solid transparent; border-left: 6px solid currentColor; }
+	.ico.step.back { border-left: 0; border-right: 6px solid currentColor; }
+	.ico.skip { width: 0; height: 0; border-block: 4px solid transparent; border-left: 6px solid currentColor; box-shadow: 2px 0 0 0 currentColor; }
+	.ico.skip.back { transform: scaleX(-1); }
+	.hints { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; color: var(--color-nr-faint); font: 10px var(--font-sans); }
+	.hints span { display: inline-flex; align-items: center; gap: 6px; }
+	.hints kbd { border: 1px solid var(--color-nr-line); border-bottom-width: 2px; border-radius: 2px; padding: 0 4px; color: var(--color-nr-muted); font: 500 9px/14px var(--font-mono); white-space: pre; }
+	.hints .mouse { opacity: .8; }
+	.ctl.suggest { border-color: var(--color-nr-mark-line); color: var(--color-nr-mark); }
+	.ctl.push { border-color: var(--color-nr-accent-deep); color: var(--color-nr-accent); }
+	.entry { border: 1px solid var(--color-nr-line-soft); background: var(--color-nr-deep); padding: 6px 8px; border-radius: 3px; font: 10px var(--font-mono); color: var(--color-nr-muted); }
 	.source { display: grid; grid-template-columns: 84px 1fr; gap: 2px 8px; }
-	.source dt { color: #4c5b5a; text-transform: uppercase; }
-	.source dd { margin: 0; color: #9fc9cf; overflow-wrap: anywhere; }
+	.source dt { color: var(--color-nr-faint); text-transform: uppercase; }
+	.source dd { margin: 0; color: var(--color-nr-muted); overflow-wrap: anywhere; }
 	.source .prompt { max-height: 3.6em; overflow-y: auto; }
-	.name { width: 160px; border: 1px solid #2f6f6a; background: #0b1113; padding: 2px 6px; color: #e6fff8; outline: none; border-radius: 2px; }
+	.name { width: 160px; border: 1px solid var(--color-nr-accent-deep); background: var(--color-nr-surface); padding: 2px 6px; color: var(--color-nr-ink); outline: none; border-radius: 2px; }
 </style>

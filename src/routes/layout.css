@@ -43,6 +43,29 @@
 	--color-voice-8: #d4d4d8;
 
 	/* Charm / Bubble Tea palette: pastel-neon TUI accents for agent surfaces. */
+	/* Narrate board tokens (V1S-133): every board, card, timeline and player colour. */
+	--color-nr-ink: #e6fff8;
+	--color-nr-text: #bce6e8;
+	--color-nr-muted: #8fb3b8;
+	--color-nr-dim: #55747c;
+	--color-nr-faint: #4c5b5a;
+	--color-nr-accent: #99f6e4;
+	--color-nr-accent-deep: #2f6f6a;
+	--color-nr-blue: #6dbff3;
+	--color-nr-line: #26383f;
+	--color-nr-line-soft: #1d2528;
+	--color-nr-raised: #14232a;
+	--color-nr-surface: #0f1517;
+	--color-nr-card: #10151b;
+	--color-nr-deep: #0b0e10;
+	--color-nr-mark: #f2c14e;
+	--color-nr-mark-dim: #c9b27a;
+	--color-nr-mark-line: #6a5a26;
+	--color-nr-mark-bg: #17140a;
+	--color-nr-danger: #ff7b7b;
+	--color-nr-danger-text: #d98a8a;
+	--color-nr-danger-line: #6b3a3a;
+	--color-nr-danger-bg: #1a0f10;
 	--color-charm-purple: #8174e8;
 	--color-charm-mint: #5cffbe;
 	--color-charm-blue: #4ab8ff;

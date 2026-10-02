@@ -19,7 +19,7 @@
 	import CapabilityChip from '$lib/ui/CapabilityChip.svelte';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
-	import { stageName, isCurrentBriefLocked } from '$lib/domain/gates';
+	import { stageName } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { benchedBeats } from '$lib/domain/bench';
@@ -51,6 +51,13 @@
 	let creating = $state(false);
 	// The board has no permanent right panel (V1S-132): the brief lives in Story; the inspector opens on demand.
 	let inspectorOpen = $state(false);
+	// The left panel collapses inward to a slim tab on the edge (remembered).
+	let railCollapsed = $state(false);
+	$effect(() => { try { railCollapsed = localStorage.getItem('csp.rail-collapsed') === '1'; } catch { /* private mode */ } });
+	function setRailCollapsed(collapsed: boolean) {
+		railCollapsed = collapsed;
+		try { localStorage.setItem('csp.rail-collapsed', collapsed ? '1' : '0'); } catch { /* private mode */ }
+	}
 	let canvasOpen = $state(true);
 	let productionTab = $state<ProductionTab>('story');
 
@@ -69,7 +76,6 @@
 	let selectedVoice = $derived(
 		activeProject?.voices.find((voice) => voice.voice_id === selectedNodeId) ?? null
 	);
-	let briefLocked = $derived(activeProject ? isCurrentBriefLocked(activeProject) : false);
 	// Tabs follow the flow: write the story, review on the board, work the beats, cut, sound, finish.
 	const workspaceTabs: Array<{ label: string; tab: 'canvas' | ProductionTab }> = [
 		{ label: 'Story', tab: 'story' }, { label: 'Board', tab: 'canvas' }, { label: 'Beats', tab: 'beats' },
@@ -77,7 +83,11 @@
 	];
 	// Tabs saved before the Narrate flow land on their nearest successor.
 	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', preview: 'cuts' };
-	const secondaryNav = [{ label: 'Library', href: '/library' }, { label: 'Runs', href: '/runs' }, { label: 'Settings', href: '/settings' }];
+	const secondaryNav = [
+		{ label: 'Library', href: '/library', hint: 'Every project, its files and media' },
+		{ label: 'Runs', href: '/runs', hint: 'Agent and generation runs, with their cost and results' },
+		{ label: 'Settings', href: '/settings', hint: 'App settings: the Agent\'s model, video generation (Higgsfield), the sound-effects folder' }
+	];
 
 	function openWorkspace(tab: 'canvas' | ProductionTab) {
 		canvasOpen = tab === 'canvas';
@@ -739,41 +749,39 @@
 	<div class="flex min-w-0 items-center gap-2 border-b border-border-default bg-surface-base px-3">
 		<span class="flex shrink-0 items-center gap-2" aria-label="Narrate">
 			<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
-			<span class="text-[13px] font-semibold tracking-[0.06em]">NARRATE</span>
+			<span class="brand">Narrate</span>
 		</span>
 		<span class="h-4 w-px shrink-0 bg-border-default"></span>
-		<b class="min-w-0 max-w-[260px] truncate" title={activeProject?.title}>{activeProject?.title ?? 'No project open'}</b>
+		<b class="project-name min-w-0 max-w-[260px] truncate" title={activeProject?.title}>{activeProject?.title ?? 'No project open'}</b>
 		{#if activeProject}
 			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
 		{/if}
 		<nav class="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto lg:flex" aria-label="Project">
 			{#each workspaceTabs as item (item.label)}
 				{@const active = item.tab === 'canvas' ? canvasOpen : !canvasOpen && productionTab === item.tab}
-				<button type="button" class={['px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.06em]', active ? 'bg-[color-mix(in_srgb,var(--color-voice-1)_12%,var(--color-surface-raised-2))] text-[color-mix(in_srgb,var(--color-voice-1)_75%,white)]' : 'text-text-dim hover:text-text-muted']} aria-current={active ? 'page' : undefined} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
+				<button type="button" class={['flow-tab', active && 'active']} aria-current={active ? 'page' : undefined} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
 			{/each}
 		</nav>
 		<span class="grow"></span>
-		<button type="button" class="btn btn-charm" disabled={!activeProject || !briefLocked} title={briefLocked ? 'Open the Agent' : 'Save and lock the owner brief first'} onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
-			<span class="charm-gradient-text font-bold">✦</span> Agent
+		<button type="button" class="bar-key agent" disabled={!activeProject} title="The Agent: your assistant for this project. It drafts the brief, beats and prompts, suggests effects, and makes judgment calls inside your rules. Measurable work (lint, trims, levels) is done in code, not by the Agent." onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+			<span class="charm-gradient-text">✦</span> Agent
 		</button>
-		<button type="button" class="btn btn-accent" onclick={() => void createProject()} disabled={creating}>
+		<button type="button" class="bar-key" onclick={() => void createProject()} disabled={creating} title="Start a new project from a rough idea">
 			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
 			<span class="hidden sm:inline">{creating ? 'Creating…' : '+ New project'}</span>
 		</button>
-		<nav class="hidden items-center xl:flex" aria-label="App">
+		<nav class="hidden items-center gap-0.5 xl:flex" aria-label="App">
 			{#each secondaryNav as item (item.href)}
-				<a href={item.href} class="px-2 py-1 text-[12px] text-text-dim hover:text-text-muted">{item.label}</a>
+				<a href={item.href} class="flow-tab" title={item.hint}>{item.label}</a>
 			{/each}
 		</nav>
-		<button type="button" class="btn hidden font-mono text-[11px] sm:flex" onclick={() => (ui.paletteOpen = true)} title="Command palette">
-			⌘K
-		</button>
+		<button type="button" class="bar-key hidden sm:flex" onclick={() => (ui.paletteOpen = true)} title="Command palette: jump to any action by typing">⌘K</button>
 		<CapabilityChip />
 		<button
 			type="button"
-			class="btn px-2 font-mono text-[11px]"
+			class="bar-key"
 			onclick={() => (inspectorOpen = !inspectorOpen)}
-			title={inspectorOpen ? 'Collapse inspector' : 'Expand inspector'}
+			title={inspectorOpen ? 'Hide the seed and voice details' : 'Show the seed and voice details'}
 			aria-pressed={inspectorOpen}
 		>
 			{inspectorOpen ? '▸' : '◂'}
@@ -782,11 +790,12 @@
 
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
-		class="work-area grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
-		style={`--inspector-width: ${inspectorOpen ? '300px' : '0px'}; --rail-width: ${canvasOpen ? '190px' : '0px'}`}
+		class="work-area relative grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
+		style={`--inspector-width: ${inspectorOpen ? '300px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? '184px' : '0px'}`}
 	>
-		<aside class={['hidden overflow-hidden bg-surface-raised md:block', canvasOpen ? 'border-r border-border-default p-3' : 'p-0']} aria-label="Canvas layers" aria-hidden={!canvasOpen}>
-			{#if canvasOpen}
+		<aside class={['rail hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
+			{#if canvasOpen && !railCollapsed}
+			<div class="min-h-0 grow overflow-y-auto p-3">
 				<div class="meta-label">Canvas layers</div>
 				<div class="mt-3 grid gap-1.5">
 					<div class="layer-row"><span class="bg-voice-1"></span><b>Seed</b><small>1</small></div>
@@ -832,8 +841,16 @@
 						</ul>
 					{/if}
 				{/if}
+			</div>
+			<button type="button" class="rail-collapse" onclick={() => setRailCollapsed(true)} title="Collapse the panel">‹ Collapse</button>
 			{/if}
 		</aside>
+		{#if canvasOpen && railCollapsed}
+			<button type="button" class="rail-handle" onclick={() => setRailCollapsed(false)} aria-label="Expand the layers panel" title="Layers, groups and bin">
+				<span class="rail-handle-mark" aria-hidden="true"></span>
+				<span class="rail-handle-label">Layers</span>
+			</button>
+		{/if}
 
 		<main class="relative min-w-0">
 			{#if loadError}
@@ -883,11 +900,11 @@
 						<Controls showLock={false} position="bottom-left" />
 					</SvelteFlow>
 					{#if reviewSequence.items.length}
-						<div class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 border border-[#26383f] bg-[#0b0f13]/95 px-2 py-1.5 font-mono text-[10px] text-[#9fc9cf]">
-							<span class="text-[#55dfd5]">SEQUENCE</span>
-							{#each reviewSequence.items as item, i (item.id)}<span class="bg-[#14232a] px-1.5 py-0.5">{i + 1} · {item.title.split(' — ')[0]}</span>{/each}
-							<button type="button" class="bg-[#55dfd5] px-2 py-0.5 font-bold text-black" onclick={() => (reviewSequence.playing = true)}>▶ play</button>
-							<button type="button" class="bg-[#14232a] px-2 py-0.5" onclick={() => reviewSequence.clear()}>clear</button>
+						<div class="seq-bar" role="group" aria-label="Selected sequence">
+							<span class="seq-cap">Sequence</span>
+							{#each reviewSequence.items as item, i (item.id)}<span class="seq-item"><b>{i + 1}</b>{item.title.split(' — ')[0]}</span>{/each}
+							<button type="button" class="bar-key agent" onclick={() => (reviewSequence.playing = true)} title="Play the selected beats in order">▶ Play</button>
+							<button type="button" class="bar-key" onclick={() => reviewSequence.clear()}>Clear</button>
 						</div>
 					{/if}
 					{#if reviewSequence.playing && activeProject}<SequencePlayer project={activeProject} onUpdated={(project) => adoptProject(project, layout)} />{/if}
@@ -1067,6 +1084,27 @@
 	.layer-row > span { width: 6px; height: 6px; }
 	.layer-row b { font-size: 11px; font-weight: 500; }
 	.layer-row small { font: 9px var(--font-mono); color: #626b70; }
+	.brand { color: #b8c4c8; font: 600 12px var(--font-sans); letter-spacing: 0.22em; text-transform: uppercase; }
+	.project-name { color: #8f9ca1; font-size: 12px; font-weight: 500; }
+	.flow-tab { padding: 3px 9px; border-radius: 2px; color: #66737a; font: 600 10px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; transition: color 140ms ease, background 140ms ease; }
+	.flow-tab:hover { color: #a9b6bd; }
+	.flow-tab.active { color: #9eeee3; background: rgba(78, 232, 210, 0.07); box-shadow: inset 0 -1px 0 rgba(78, 232, 210, 0.6); }
+	.bar-key { display: inline-flex; align-items: center; gap: 6px; height: 26px; border: 1px solid #262c31; border-radius: 2px; background: transparent; padding: 0 10px; color: #8a969e; font: 600 10px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
+	.bar-key:hover:not(:disabled) { border-color: #44505a; color: #c4d0d6; }
+	.bar-key:disabled { opacity: 0.4; }
+	.bar-key.agent { border-color: rgba(78, 232, 210, 0.4); color: #9eeee3; }
+	.seq-bar { position: absolute; bottom: 12px; left: 50%; z-index: 10; display: flex; max-width: calc(100% - 120px); align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid var(--color-nr-line); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+	.seq-bar .bar-key { height: 22px; padding: 0 8px; font-size: 9px; }
+	.seq-cap { margin-right: 4px; color: var(--color-nr-accent); font: 600 9px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
+	.seq-item { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 6px; color: var(--color-nr-muted); font: 10px/20px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
+	.seq-item b { color: var(--color-nr-accent); font-weight: 500; }
+	.rail { overflow: hidden; }
+	.rail-collapse { margin: 0 8px 8px; border: 0; border-top: 1px solid #1d2226; background: transparent; padding: 8px 4px 2px; color: #55626a; font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-align: left; text-transform: uppercase; }
+	.rail-collapse:hover { color: #9eeee3; }
+	.rail-handle { position: absolute; left: 0; bottom: 64px; z-index: 40; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; width: 26px; padding: 9px 4px 8px; border: 1px solid #22282d; border-left: 0; border-radius: 0 3px 3px 0; background: rgba(17, 17, 19, 0.92); color: #7b878f; }
+	.rail-handle:hover, .rail-handle:focus-visible { color: #dce7ea; outline: none; }
+	.rail-handle-mark { width: 3px; height: 24px; border-radius: 999px; background: #4ee8d2; box-shadow: 0 0 10px rgba(78, 232, 210, 0.55); }
+	.rail-handle-label { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
 	.group-row { display: flex; align-items: stretch; color: #8d9ca1; }
 	.group-row.active { background: linear-gradient(90deg, rgba(78, 232, 210, 0.1), rgba(74, 184, 255, 0.04)); color: #c9f3ee; box-shadow: inset 2px 0 0 #4ee8d2; }
 	.group-pick { display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px; border: 0; background: transparent; padding: 5px 7px; color: inherit; text-align: left; }

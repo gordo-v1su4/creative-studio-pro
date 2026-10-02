@@ -4,6 +4,8 @@
 	import { defaultSoundPlan, type Layer } from '$lib/domain/sound';
 	import Range from '$lib/ui/controls/Range.svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
+	import Pick from '$lib/ui/controls/Pick.svelte';
+	import AudioPlayer from '$lib/ui/controls/AudioPlayer.svelte';
 
 	/**
 	 * Sound stage (V1S-128): lay sound against a locked cut version. Four
@@ -153,11 +155,9 @@
 		<p class="border border-dashed border-[#29434a] p-4 text-[12px] text-[#668d98]">No locked cuts yet. Lock a cut in the Cuts tab to lay sound against it.</p>
 	{:else}
 		<div class="mb-4 flex flex-wrap items-center gap-2">
-			<label class="field-inline">Cut
-				<select class="pick" value={selected.key} onchange={(event) => (selectedKey = event.currentTarget.value)} aria-label="Locked cut version">
-					{#each locked as entry (entry.key)}<option value={entry.key}>{entry.cut.name} v{entry.v.version} · {cutLength(entry.v).toFixed(1)}s</option>{/each}
-				</select>
-			</label>
+			<span class="field-inline">Cut
+				<Pick label="Locked cut version" value={selected.key} options={locked.map((entry) => ({ value: entry.key, label: `${entry.cut.name} v${entry.v.version}`, hint: `${cutLength(entry.v).toFixed(1)}s` }))} onchange={(key) => (selectedKey = key)} />
+			</span>
 			<span class="grow"></span>
 			<span class="meta-label text-[#55747c]">{saving ? 'saving…' : 'saved'}</span>
 		</div>
@@ -240,8 +240,7 @@
 					<span class="grow"></span>
 					<button type="button" class="btn" onclick={() => onplay(selected.cut.cut_id, selected.v.version, `${mix.url}?t=${encodeURIComponent(mix.built_at)}`)}>Play with picture</button>
 				</div>
-				<!-- svelte-ignore a11y_media_has_caption -->
-				<audio class="mt-2 w-full" controls src={`${mix.url}?t=${encodeURIComponent(mix.built_at)}`}></audio>
+				<div class="mt-2"><AudioPlayer label="the mix" src={`${mix.url}?t=${encodeURIComponent(mix.built_at)}`} /></div>
 				{#if mix.report.length}<ul class="mt-2 grid gap-0.5 text-[11px] text-[#9fc9cf]">{#each mix.report as line, i (i)}<li>· {line}</li>{/each}</ul>{/if}
 			</section>
 		{/if}
@@ -258,7 +257,6 @@
 	.ctl:hover:not(:disabled) { border-color: #44505a; color: #c4d0d6; }
 	.ctl:disabled { opacity: 0.45; }
 	.field-inline { display: flex; align-items: center; gap: 6px; color: #6f7c84; font: 600 10px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
-	.pick { border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 1px 6px; color: #b9cfd2; font: 11px var(--font-mono); text-transform: none; }
 	.suggested { border-left: 2px solid #4ee8d2; padding-left: 6px; }
 	.badge { border: 1px solid #2c5d5a; border-radius: 2px; padding: 0 5px; color: #7de5dc; font: 600 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
 	.ctl.keep { border-color: rgba(78, 232, 210, 0.45); color: #7de5dc; }

@@ -2,6 +2,7 @@
 	import type { Project } from '$lib/domain/schemas';
 	import { cutLength, cutsOf } from '$lib/domain/cuts';
 	import { draftTakes } from '$lib/domain/export';
+	import Pick from '$lib/ui/controls/Pick.svelte';
 
 	/**
 	 * Export (V1S-130): a locked, mixed cut version renders to an MP4 and a
@@ -44,9 +45,7 @@
 	{:else}
 		<div class="mt-3 flex flex-wrap items-center gap-3 border-y border-[#1a1f23] py-3">
 			<span class="cap">Cut</span>
-			<select class="pick" value={selected.key} onchange={(event) => (selectedKey = event.currentTarget.value)} aria-label="Locked cut version">
-				{#each versions as entry (entry.key)}<option value={entry.key}>{entry.cut.name} v{entry.v.version} · {cutLength(entry.v).toFixed(1)}s{entry.v.sound?.mix ? '' : ' · no mix'}</option>{/each}
-			</select>
+			<Pick label="Locked cut version" value={selected.key} options={versions.map((entry) => ({ value: entry.key, label: `${entry.cut.name} v${entry.v.version}`, hint: `${cutLength(entry.v).toFixed(1)}s${entry.v.sound?.mix ? '' : ' · no mix'}` }))} onchange={(key) => (selectedKey = key)} />
 			<span class="grow"></span>
 			{#if !mixed}<span class="text-[11px] text-[#5b6b70]">build its mix in Sound first</span>{/if}
 			<button type="button" class="key" onclick={() => void exportNow()} disabled={!mixed || exporting}>{exporting ? 'Rendering…' : done ? 'Export again' : 'Export MP4 + Resolve timeline'}</button>
@@ -76,7 +75,6 @@
 
 <style>
 	.cap { color: #7b878f; font: 600 10px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
-	.pick { border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 1px 6px; color: #b9cfd2; font: 11px var(--font-mono); }
 	.key { border: 1px solid #262c31; border-radius: 2px; padding: 0 8px; color: #8a969e; font: 600 9px/18px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
 	.key:hover:not(:disabled) { border-color: rgba(78, 232, 210, 0.45); color: #7de5dc; }
 	.key:disabled { opacity: 0.4; }

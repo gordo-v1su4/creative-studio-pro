@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ModelProviderKind, ModelTestResult, ProviderModel, ProviderOption } from '$lib/domain/model-provider';
 	import { loadVisionModels, testModel } from '$lib/ui/model-provider-client';
+	import Pick from '$lib/ui/controls/Pick.svelte';
 
 	/** Provider + vision-only model picker; picking a model runs the quick model test. */
 	let {
@@ -62,24 +63,14 @@
 
 <div class="grid gap-2">
 	<div class="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-2 max-sm:grid-cols-1">
-		<label class="grid gap-1">
+		<div class="grid gap-1">
 			<span class="meta-label">Provider</span>
-			<select id="{idPrefix}-provider" bind:value={provider} onchange={onProviderChange} class="rounded-sm border border-border-default bg-surface-base p-2">
-				<option value="" disabled>Pick a provider</option>
-				{#each providers as option (option.id)}
-					<option value={option.id} disabled={!option.configured}>{option.label}{option.configured ? '' : ' (not set up)'}</option>
-				{/each}
-			</select>
-		</label>
-		<label class="grid gap-1">
+			<Pick wide label="Provider" placeholder="Pick a provider" bind:value={provider} options={providers.map((option) => ({ value: option.id, label: option.label, hint: option.configured ? undefined : 'not set up', disabled: !option.configured }))} onchange={onProviderChange} />
+		</div>
+		<div class="grid gap-1">
 			<span class="meta-label">Model · vision-capable only</span>
-			<select id="{idPrefix}-model" bind:value={model} onchange={onModelChange} disabled={!provider || loading || models.length === 0} class="rounded-sm border border-border-default bg-surface-base p-2">
-				<option value="" disabled>{loading ? 'Loading live model list…' : models.length ? 'Pick a model' : 'No vision models listed'}</option>
-				{#each models as option (option.id)}
-					<option value={option.id}>{option.label}{option.vision_source === 'allowlist' ? ' · known vision' : ''}</option>
-				{/each}
-			</select>
-		</label>
+			<Pick wide label="Model" placeholder={loading ? 'Loading live model list…' : models.length ? 'Pick a model' : 'No vision models listed'} bind:value={model} disabled={!provider || loading || models.length === 0} options={models.map((option) => ({ value: option.id, label: option.label, hint: option.vision_source === 'allowlist' ? 'known vision' : undefined }))} onchange={onModelChange} />
+		</div>
 	</div>
 	{#if provider && provider !== 'hyper' && !loading && (models.length === 0 || provider === 'custom')}
 		<!-- Endpoints without a usable /models list: type the id; the image test proves vision. -->
