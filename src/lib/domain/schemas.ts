@@ -302,6 +302,16 @@ export const cutVersionSchema = z.object({
 });
 export type CutVersion = z.infer<typeof cutVersionSchema>;
 
+/** A song attached to a cut: it plays from the cut's start, with its beat grid computed on attach. */
+export const cutMusicSchema = z.object({
+	url: z.string().min(1).max(2000),
+	name: nonBlank(300),
+	duration_s: z.number().positive(),
+	bpm: z.number().nonnegative(),
+	beats: z.array(z.number().nonnegative()).max(20_000)
+});
+export type CutMusic = z.infer<typeof cutMusicSchema>;
+
 export const cutSchema = z.object({
 	cut_id: idSchema,
 	name: nonBlank(120),
@@ -312,6 +322,8 @@ export const cutSchema = z.object({
 	locked_at: rfc3339Schema.optional(),
 	/** Every version ever locked, oldest first, including the current one while it is locked. */
 	versions: z.array(cutVersionSchema).max(500).optional(),
+	/** The song the cut is matched and mixed to (not part of the picture, so it can change on a locked cut). */
+	music: cutMusicSchema.optional(),
 	entries: z.array(cutEntrySchema).min(1).max(200),
 	created_at: rfc3339Schema,
 	updated_at: rfc3339Schema
@@ -547,6 +559,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.cut_pushed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_edited.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_music_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_locked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_unlocked.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Animate (V1S-120): a generation sent, then settled (its video lands as a take, or it failed).
@@ -801,6 +814,15 @@ export const lockCutCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	cut_id: idSchema
+});
+
+/** Attach a song to a cut (or remove it with null). */
+export const setCutMusicCommandSchema = z.object({
+	command: z.literal('set_cut_music'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	cut_id: idSchema,
+	music: cutMusicSchema.nullable()
 });
 
 export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;

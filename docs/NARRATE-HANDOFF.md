@@ -2,7 +2,7 @@
 
 ## Handoff message to the next thread
 
-**Where I left off:** V1S-124 (Finalize), V1S-122 (edit inside a cut) V1S-123 (suggest trims) and V1S-125 (lock a cut) are done. Next is **V1S-126 — match to music**, then 127 to 133, in Linear order. The operator parked 1080p finalizing: keep working on the 480p drafts (finalize costs a full 1080p render on Higgsfield, 12 credits/s; see Operator decisions).
+**Where I left off:** V1S-124 (Finalize), V1S-122 (edit inside a cut) V1S-123 (suggest trims) V1S-125 (lock a cut) and V1S-126 (match to music) are done. Next is **V1S-128 — sound stage** (127 is ready-for-human: the Raycast bridge test), then 129 to 133, in Linear order. The operator parked 1080p finalizing: keep working on the 480p drafts (finalize costs a full 1080p render on Higgsfield, 12 credits/s; see Operator decisions).
 
 **Browser testing is required, continuously, not only at the end.** Build each piece and check it in the browser preview (`.claude/launch.json` → "csp-dev", port 5174) as you go: open the board, click the real controls, read the page and console, take a screenshot as proof. Do this on a throwaway project created through the API, then delete it. The previous thread did this for every finished ticket:
 
@@ -19,6 +19,7 @@
 | 122 | Swap a cut entry's take from the picker (trim kept, saved), drop entries down to one (then disabled), source info and live cut length — throwaway project |
 | 123 | Suggest trims on copies of real Blood Rush clips: marks on the timeline, dismiss one, accept one, accept all — each saved to the cut |
 | 125 | Lock, read-only player (drags on clip edges and the speed lane do nothing, no console errors), unlock to v2, edit v2, open locked v1 read-only from versions |
+| 126 | Real Blood Rush material (copies): freshman-year song attached through the page's file input (162 BPM grid), song + clip waveform lanes, Match: v10's out-of-sync piece slid −4 s onto the song, v8 raw (Seedance audio, r 0.27) beat-snapped; undo restored, keep saved |
 | 124 | Badges (yellow, red, finalizing…) on a throwaway project and on Blood Rush; Finalize on a take, banner Finalize all and hide, cut Finalize all picks — real quotes, sends blocked by the short balance |
 
 Most of that was scripted through the page (clicks, drops and drags dispatched in the browser, with project state read back), plus screenshots. Prefer real clicks where you can. V1S-124 was browser-tested with real clicks (no submits).
@@ -27,7 +28,7 @@ Work goes straight to `main`. Tickets: Linear project "Narrate — review, cuts,
 
 ## Done (on main)
 
-V1S-113 takes/pick/reject · 114 bench + bin · 115 rewire spine · 116 Narrate name + one nav bar · 117 Agent model providers · 118 drag and drop · 119 Hold · 120 Animate · 121 push to cut + Cuts tab · 124 Finalize to 1080p · 122 edit inside a cut (swap take, drop entry, source info, running length) · 125 lock a cut (versions kept; sound work should reference `{cut_id, version}` of a locked version) · 123 suggest trims (frame-difference detector; on real Blood Rush takes it flags only TR-05 stutter and TR-20's end freeze; the reported stray frame at the V6-12/13 join did not reproduce in the files on the board).
+V1S-113 takes/pick/reject · 114 bench + bin · 115 rewire spine · 116 Narrate name + one nav bar · 117 Agent model providers · 118 drag and drop · 119 Hold · 120 Animate · 121 push to cut + Cuts tab · 124 Finalize to 1080p · 122 edit inside a cut (swap take, drop entry, source info, running length) · 126 match to music (song lane + per-clip waveforms; aligns a take's own audio — works when the song is in the take's audio, e.g. the SFX-plus-SONG renders; Seedance's own generated music doesn't match, so those beat-snap) · 125 lock a cut (versions kept; sound work should reference `{cut_id, version}` of a locked version) · 123 suggest trims (frame-difference detector; on real Blood Rush takes it flags only TR-05 stutter and TR-20's end freeze; the reported stray frame at the V6-12/13 join did not reproduce in the files on the board).
 
 ## V1S-124 Finalize (done; GitHub #14)
 
@@ -55,7 +56,7 @@ Added in part 2:
 
 ## Next tickets
 
-126 match to music · 127 Raycast bridge test (ready-for-human) · 128 sound stage · 129 effects pass · 130 export · 131 board groups (use splitter.serving.cloud) · 132 owner brief · 133 UI polish.
+127 Raycast bridge test (ready-for-human) · 128 sound stage · 129 effects pass · 130 export · 131 board groups (use splitter.serving.cloud) · 132 owner brief · 133 UI polish.
 
 ## Notes
 

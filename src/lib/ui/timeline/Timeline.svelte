@@ -10,6 +10,8 @@
 		in: number;
 		out: number;
 		speed: SpeedPoint[] | undefined;
+		/** The take's own audio peaks over its full length (see media/waveform), when it has audio. */
+		wave?: number[] | null;
 	}
 </script>
 
@@ -18,6 +20,7 @@
 	import { isFlat, programElapsed } from '$lib/media/speed-curve';
 	import Filmstrip from './Filmstrip.svelte';
 	import SpeedLane from './SpeedLane.svelte';
+	import Waveform from './Waveform.svelte';
 
 	/**
 	 * One-track review timeline. Clips butt end to end in sequence order, each block as
@@ -36,7 +39,9 @@
 		onmove,
 		onspeed,
 		marks = {},
-		locked = false
+		locked = false,
+		beats = [],
+		song = null
 	}: {
 		clips: TimelineClip[];
 		index: number;
@@ -52,6 +57,10 @@
 		marks?: Record<string, Array<{ at: number; edge: 'in' | 'out' }>>;
 		/** A locked cut: click to seek and look at ramps, but nothing can be trimmed, moved or ramped. */
 		locked?: boolean;
+		/** The attached song's beats, in cut seconds, ticked on the ruler. */
+		beats?: number[];
+		/** The attached song's peaks: drawn as the main audio lane under the clips, from the cut's start. */
+		song?: number[] | null;
 	} = $props();
 
 	/** Where a take time sits inside a clip's block, in pixels from its left edge (speed ramp included). */
@@ -159,6 +168,9 @@
 		<!-- Ruler -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="ruler relative h-[20px] cursor-text border-b border-[#1d2528]" onpointerdown={seekDown}>
+			{#each beats.filter((b) => b <= total) as b, i (i)}
+				<div class="pointer-events-none absolute bottom-0 h-[5px] w-px bg-[#f2c14e]/70" style:left={`${b * scale}px`}></div>
+			{/each}
 			{#each ticks as t (t)}
 				{@const major = Math.abs(t / tickStep - Math.round(t / tickStep)) < 1e-6}
 				<div class={['absolute bottom-0 w-px', major ? 'h-[7px] bg-[#3a4a4e]' : 'h-[4px] bg-[#263236]']} style:left={`${t * scale}px`}></div>
@@ -187,6 +199,10 @@
 					onpointerdown={(event) => blockDown(event, i)}
 				>
 					<div class="pointer-events-none absolute inset-0 opacity-80"><Filmstrip bank={clip.bank} inS={clip.in} outS={clip.out} /></div>
+					{#if clip.wave}
+						<!-- The take's own audio, as it plays in the cut: line its peaks up with the song lane below. -->
+						<div class="pointer-events-none absolute inset-x-0 bottom-0 h-[16px] bg-black/55"><Waveform peaks={clip.wave} from={clip.in} to={clip.out} speed={clip.speed} color="#99f6e4" mirror={false} /></div>
+					{/if}
 					<div class="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-1 bg-gradient-to-b from-black/75 to-transparent px-1.5 pb-2 pt-[3px] font-mono text-[9px] text-[#d6f4f5]">
 						<span class="text-[#99f6e4]">{i + 1}</span>
 						<span class="truncate">{clip.title.split(' — ').slice(1).join(' — ') || clip.title}</span>
@@ -209,6 +225,13 @@
 			{/if}
 		</div>
 
+		{#if song}
+			<!-- The song: the main audio the takes were made with, playing straight through under the cut. -->
+			<div class="relative mt-[4px] h-[30px] overflow-hidden rounded-[3px] border border-[#3a3420] bg-[#0f0d07]" aria-label="Song waveform">
+				<div class="absolute inset-y-0 left-0" style:width={`${total * scale}px`}><Waveform peaks={song} from={0} to={total} color="#f2c14e" /></div>
+				<span class="pointer-events-none absolute left-1 top-0 font-mono text-[8px] tracking-[.12em] text-[#8a7a46]">SONG</span>
+			</div>
+		{/if}
 		<!-- Playhead -->
 		<div class="pointer-events-none absolute inset-y-0 z-30" style:left={`${programTime * scale}px`}>
 			<div class="absolute -left-[4px] top-0 h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-[#e6fff8]"></div>

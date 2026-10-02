@@ -1,4 +1,4 @@
-import type { Cut, CutEntry, ProductionState } from './schemas';
+import type { Cut, CutEntry, CutMusic, ProductionState } from './schemas';
 import type { TakeResult } from './takes';
 import { programElapsed } from '../media/speed-curve';
 
@@ -127,6 +127,15 @@ export function applyUnlockCut(production: ProductionState, cutId: string, now: 
 export function cutVersionEntries(cut: Cut, version: number): CutEntry[] | null {
 	if (version === cut.version) return cut.entries;
 	return cut.versions?.find((v) => v.version === version)?.entries ?? null;
+}
+
+/** Attach or remove a cut's song. Music isn't picture, so a locked cut can take one. */
+export function applySetCutMusic(production: ProductionState, cutId: string, music: CutMusic | null, now: string): TakeResult {
+	const cut = cutsOf(production).find((entry) => entry.cut_id === cutId);
+	if (!cut) return { ok: false, message: `Cut ${cutId} not found` };
+	const { music: _old, ...rest } = cut;
+	const next: Cut = music ? { ...rest, music, updated_at: now } : { ...rest, updated_at: now };
+	return { ok: true, production: withCuts(production, cutsOf(production).map((entry) => (entry.cut_id === cutId ? next : entry))) };
 }
 
 export function applyRenameCut(production: ProductionState, cutId: string, name: string, now: string): TakeResult {

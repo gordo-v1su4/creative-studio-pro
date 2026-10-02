@@ -182,6 +182,21 @@ describe('cuts', () => {
 		expect(notLocked.ok).toBeFalse();
 	});
 
+	test('a song attaches to a cut (even a locked one) and can be removed; it never touches the picture', async () => {
+		const { root, gateway, project } = await setup();
+		const pushed = await pushTrailer(gateway, project);
+		const [cut] = cutsOf(pushed.production);
+		const ids = { project_id: project.project_id, cut_id: cut.cut_id };
+		const locked = ok(await gateway.handle({ command: 'lock_cut', ...ids, expected_version: pushed.version }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		const music = { url: `/api/projects/${project.project_id}/files/music/song.mp3`, name: 'song.mp3', duration_s: 30, bpm: 120, beats: [0.5, 1, 1.5] };
+		const attached = ok(await gateway.setCutMusic({ command: 'set_cut_music', ...ids, expected_version: locked.version, music }));
+		expect(cutsOf(attached.production)[0].music).toEqual(music);
+		expect(cutsOf(attached.production)[0].entries).toEqual(cut.entries);
+		expect(await lastEvent(root, project.project_id)).toBe('project.cut_music_set.v1');
+		const removed = ok(await gateway.setCutMusic({ command: 'set_cut_music', ...ids, expected_version: attached.version, music: null }));
+		expect(cutsOf(removed.production)[0].music).toBeUndefined();
+	});
+
 	test('rename persists; refusals are INVALID_COMMAND and stale versions conflict', async () => {
 		const { root, gateway, project } = await setup();
 		const pushed = await pushTrailer(gateway, project);

@@ -16,6 +16,8 @@
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
 	import { acceptAll, type TrimSuggestion } from '$lib/domain/trim-suggest';
+	import type { MatchedEntry } from '$lib/domain/music';
+	import { loadPeaks } from '$lib/media/waveform';
 
 	/**
 	 * Rough-cut review of a selection or a cut: each clip's kept span (in → out) plays
@@ -74,7 +76,46 @@
 	const frameNumber = $derived(current ? Math.floor(playhead * fps + 1e-6) : 0);
 	const frameTotal = $derived(current ? Math.round(current.duration * fps) : 0);
 
+	// --- The cut's song (V1S-126): plays from the cut's start, kept in step with the program time.
+	let song: HTMLAudioElement | null = null;
+	let songOn = $state(true);
+	$effect(() => {
+		const url = cut?.music?.url;
+		if (!url) return;
+		const audio = new Audio(url);
+		audio.preload = 'auto';
+		song = audio;
+		syncSong();
+		return () => { audio.pause(); audio.removeAttribute('src'); audio.load(); if (song === audio) song = null; };
+	});
+
+	// Waveforms: the song lane and each take's own audio, loaded in the background.
+	let songPeaks = $state<number[] | null>(null);
+	let takePeaks = $state<Record<string, number[] | null>>({});
+	$effect(() => {
+		const url = cut?.music?.url;
+		songPeaks = null;
+		if (url) void loadPeaks(url).then((peaks) => { if (cut?.music?.url === url) songPeaks = peaks; });
+	});
+	$effect(() => {
+		for (const src of new Set(clips.map((clip) => clip.src))) {
+			if (src in takePeaks) continue;
+			takePeaks[src] = null;
+			void loadPeaks(src).then((peaks) => (takePeaks[src] = peaks));
+		}
+	});
+	const timelineClips = $derived(clips.map((clip) => ({ ...clip, wave: takePeaks[clip.src] ?? null })));
+
+	function syncSong(play = !paused) {
+		if (!song) return;
+		if (!songOn || !clips.length || programTime >= (cut?.music?.duration_s ?? Infinity)) { song.pause(); return; }
+		if (Math.abs(song.currentTime - programTime) > 0.12) song.currentTime = programTime;
+		if (play) void song.play().catch(() => {});
+		else song.pause();
+	}
+
 	function syncAudio(play = !paused) {
+		syncSong(play);
 		const audio = current ? voices.get(current.id) : undefined;
 		for (const [id, other] of voices) if (id !== current?.id) other.pause();
 		if (!audio || !current) return;
@@ -98,6 +139,7 @@
 			const audio = voices.get(clip.id);
 			if (audio && Math.abs(audio.playbackRate - rate) > 0.01) audio.playbackRate = rate;
 			if (playhead >= clip.out) startClip(index + 1);
+			else if (song && songOn && !song.paused && Math.abs(song.currentTime - programTime) > 0.25) song.currentTime = programTime;
 		}
 		const resident = clip?.bank?.frameAt(Math.min(playhead, clip.bank.duration - 1e-3));
 		if (draw && resident) draw(resident.view);
@@ -107,6 +149,7 @@
 
 	function pauseAll() {
 		for (const audio of voices.values()) audio.pause();
+		song?.pause();
 	}
 
 	function togglePause() {
@@ -275,6 +318,75 @@
 		scheduleSave();
 	}
 
+	// --- Match to music (V1S-126): a preview of the proposed trims with the song underneath; saved only on keep.
+	let matching = $state(false);
+	let matchPreview = $state<{ before: Clip[]; report: MatchedEntry[] } | null>(null);
+	let attaching = $state(false);
+	const matchReport = $derived(matchPreview ? Object.fromEntries(matchPreview.report.map((r) => [r.entry_id, r])) : {});
+	const matchCounts = $derived(matchPreview ? (['aligned', 'snapped', 'kept'] as const).map((mode) => `${matchPreview!.report.filter((r) => r.mode === mode).length} ${mode}`).join(' · ') : '');
+
+	async function attachSong(file: File | undefined) {
+		if (!file || source.kind !== 'cut') return;
+		attaching = true; error = '';
+		try {
+			const query = new URLSearchParams({ cut_id: source.cutId, expected_version: String(project.version), name: file.name });
+			const response = await fetch(`/api/projects/${project.project_id}/cuts/music?${query}`, { method: 'POST', headers: { 'content-type': file.type || 'audio/*' }, body: file });
+			const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			onUpdated(result.data);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Attaching the song failed'; }
+		finally { attaching = false; }
+	}
+
+	async function removeSong() {
+		if (source.kind !== 'cut') return;
+		try { await post('cuts', { command: 'set_cut_music', expected_version: project.version, cut_id: source.cutId, music: null }); }
+		catch (cause) { error = cause instanceof Error ? cause.message : 'Removing the song failed'; }
+	}
+
+	async function matchMusic() {
+		if (source.kind !== 'cut' || matching) return;
+		matching = true; error = '';
+		try {
+			await flushSave();
+			const response = await fetch(`/api/projects/${project.project_id}/cuts/match`, {
+				method: 'POST', headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ cut_id: source.cutId, entries: clips.map((clip) => ({ entry_id: clip.id, asset_id: clip.assetId, in_s: clip.in, out_s: clip.out, duration_s: clip.duration, ...(clip.speed ? { speed: clip.speed } : {}) })) })
+			});
+			const result = (await response.json()) as { ok: true; data: MatchedEntry[] } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			const byId = new Map(result.data.map((r) => [r.entry_id, r]));
+			const before = clips.map((clip) => ({ ...clip }));
+			clips = clips.map((clip) => {
+				const r = byId.get(clip.id);
+				if (!r) return clip;
+				const out = Math.min(clip.duration, r.out_s);
+				return { ...clip, in: Math.min(r.in_s, out - MIN_SPAN), out };
+			});
+			matchPreview = { before, report: result.data };
+			suggestions = {};
+			songOn = true;
+			paused = false;
+			startClip(0);
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : 'Match to music failed';
+		} finally {
+			matching = false;
+		}
+	}
+
+	function keepMatch() {
+		matchPreview = null;
+		scheduleSave();
+	}
+
+	function undoMatch() {
+		if (!matchPreview) return;
+		clips = matchPreview.before;
+		matchPreview = null;
+		startClip(0);
+	}
+
 	function speed(i: number, points: SpeedPoint[]) {
 		if (frozen) return;
 		clips[i] = { ...clips[i], speed: isFlat(points) ? undefined : normalizeSpeed(points) };
@@ -315,7 +427,7 @@
 	}
 
 	function scheduleSave() {
-		if (readOnly) return;
+		if (readOnly || matchPreview) return;
 		saveState = 'saving';
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => void save(), 500);
@@ -475,7 +587,21 @@
 			</span>
 			<span class="grow"></span>
 			{#if saveState}<span class="text-[#55747c]">{saveState === 'saving' ? 'saving…' : 'saved'}</span>{/if}
-			{#if source.kind === 'cut' && !readOnly}
+			{#if source.kind === 'cut' && cut}
+				{#if matchPreview}
+					<span class="text-[#f2c14e]" title="Previewing: nothing is saved until you keep it">matched: {matchCounts}</span>
+					<button type="button" class="ctl suggest" onclick={keepMatch}>keep</button>
+					<button type="button" class="ctl" onclick={undoMatch}>undo</button>
+				{:else if cut.music}
+					<span class="max-w-[220px] truncate text-[#f2c14e]" title={`${cut.music.name} · ${cut.music.bpm} BPM · ${cut.music.duration_s.toFixed(1)}s, plays from the cut's start`}>♪ {cut.music.name} · {cut.music.bpm} BPM</span>
+					<label class="flex items-center gap-1"><input type="checkbox" bind:checked={songOn} onchange={() => syncSong()} /> song</label>
+					{#if !frozen && !readOnly}<button type="button" class="ctl suggest" onclick={() => void matchMusic()} disabled={matching || !clips.length} title="Slide each entry within its own footage to where its audio matches the song, keeping your order; entries that can't match confidently snap their cut to the nearest beat. You preview it before anything is saved.">{matching ? 'matching…' : 'match to music'}</button>{/if}
+					<button type="button" class="ctl" onclick={() => void removeSong()} title="Detach the song from this cut (the file stays in the project)">remove song</button>
+				{:else}
+					<label class={['ctl suggest cursor-pointer', attaching && 'opacity-50']} title="Attach a song to this cut: it plays from the cut's start, and its beat grid is computed for Match to music">{attaching ? 'attaching…' : 'attach song'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="hidden" disabled={attaching} onchange={(event) => { void attachSong(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
+				{/if}
+			{/if}
+			{#if source.kind === 'cut' && !readOnly && !matchPreview}
 				{#if suggestionCount}
 					<span class="text-[#f2c14e]">{suggestionCount} suggested {suggestionCount === 1 ? 'trim' : 'trims'}</span>
 					<button type="button" class="ctl suggest" onclick={acceptAllSuggestions}>accept all</button>
@@ -516,7 +642,7 @@
 
 		<div class="mt-3 rounded-[3px] border border-[#1d2528] bg-[#0b0e10] p-2">
 			{#if clips.length}
-				<Timeline {clips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} />
+				<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} beats={cut?.music?.beats ?? []} song={cut?.music ? songPeaks : null} />
 			{:else}
 				<div class="h-[170px]"></div>
 			{/if}
@@ -538,6 +664,10 @@
 					{#if swapping}<span class="text-[#55747c]">loading…</span>{/if}
 					<button type="button" class="ctl" onclick={() => dropEntry(index)} disabled={readOnly || clips.length < 2} title={clips.length < 2 ? 'A cut keeps at least one entry' : 'Remove this entry from the cut; the take stays on its beat'}>drop entry</button>
 				</div>
+				{#if matchReport[current.id]}
+					{@const r = matchReport[current.id]}
+					<p class="mt-1.5 text-[#f2c14e]"><span class="uppercase">{r.mode}</span> <span class="text-[#c9b27a]">{r.note}</span></p>
+				{/if}
 				{#if suggestions[current.id]?.length}
 					<ul class="mt-1.5 grid gap-1" aria-label="Suggested trims for this entry">
 						{#each suggestions[current.id] as suggestion (suggestion.frames.join('-') + suggestion.edge)}
