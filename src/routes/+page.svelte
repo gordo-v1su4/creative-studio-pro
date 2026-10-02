@@ -28,6 +28,8 @@
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
 	import { groupOf, groupsOf, MAIN_GROUP } from '$lib/domain/groups';
+	import { readingOrder } from '$lib/domain/board-order';
+	import Pick from '$lib/ui/controls/Pick.svelte';
 	import { CLOSING_MS, draftsClosingSoon, finalizingIds, timeLeft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
@@ -237,7 +239,9 @@
 		ui.activeProjectTitle = project.title;
 		ui.activeProject = project;
 		layout = nextLayout;
-		nodes = projectToNodes(project, nextLayout);
+		// Keep what's selected on the board across project updates (polling, saves).
+		const keep = new Set(nodes.filter((node) => node.selected).map((node) => node.id));
+		nodes = projectToNodes(project, nextLayout).map((node) => (keep.has(node.id) ? { ...node, selected: true } : node));
 		const shown = new Set(nodes.map((node) => node.id));
 		edges = projectToEdges(project).filter((edge) => shown.has(edge.source) && shown.has(edge.target));
 		syncPolling(project);
@@ -313,20 +317,67 @@
 		if (activeProject) adoptProject(activeProject);
 	}
 
+	// Beats picked on the board (click, or shift-drag a box over several), in reading order.
+	const selectedBeats = $derived(readingOrder(nodes.filter((node) => node.selected && isBeat(node.id)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y }))).map((item) => item.id));
+	const beatTitle = (cardId: string) => activeProject?.production.cards.find((card) => card.card_id === cardId)?.title ?? 'the beat';
+	const groupName = (groupId: string) => (activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId)?.name : null) ?? 'that group';
+	const beatsLabel = (ids: string[]) => (ids.length === 1 ? beatTitle(ids[0]) : `${ids.length} beats`);
+
+	function clearSelection() {
+		nodes = nodes.map((node) => (node.selected ? { ...node, selected: false } : node));
+		selectedNodeId = null;
+	}
+
+	/** A new group; with beats selected, they move into it (it's how a row becomes "Teaser 20s"). */
 	function createGroup() {
 		const name = newGroupName?.trim();
 		if (!name) return;
 		const groupId = crypto.randomUUID();
+		const moving = [...selectedBeats];
 		newGroupName = null;
 		sendBoardCommand({ command: 'create_group', group_id: groupId, name });
+		if (moving.length) {
+			sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: moving });
+			notify(`Made ${name} with ${beatsLabel(moving)}. Pick it under Groups to see them.`);
+			clearSelection();
+		}
 	}
 
 	function moveSelectedTo(groupId: string) {
-		if (!selectedNodeId || !isBeat(selectedNodeId)) return;
-		const title = activeProject?.production.cards.find((card) => card.card_id === selectedNodeId)?.title;
-		sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: [selectedNodeId] });
-		notify(`Moved ${title ?? 'the beat'} to ${activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId)?.name : 'that group'}.`);
-		selectedNodeId = null;
+		const moving = selectedBeats.filter((id) => { const card = activeProject?.production.cards.find((c) => c.card_id === id); return card && groupOf(card) !== groupId; });
+		if (!moving.length) return;
+		sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: moving });
+		notify(`Moved ${beatsLabel(moving)} to ${groupName(groupId)}.`);
+		clearSelection();
+	}
+
+	/** Group from the selection: open the rail's name box; Enter makes the group and moves them in. */
+	function groupSelection() {
+		setRailCollapsed(false);
+		newGroupName = '';
+	}
+
+	// Rename a group in place (double-click its name). Main keeps its name.
+	let renaming = $state<{ group_id: string; name: string } | null>(null);
+	function renameGroup() {
+		const target = renaming;
+		renaming = null;
+		if (!target || !target.name.trim() || target.name.trim() === groupName(target.group_id)) return;
+		sendBoardCommand({ command: 'rename_group', group_id: target.group_id, name: target.name.trim() });
+	}
+
+	/** Play the selected beats' picks in reading order (benched beats and stills are skipped). */
+	function playSelection() {
+		const project = activeProject;
+		if (!project) return;
+		const items = selectedBeats.flatMap((id) => {
+			const card = project.production.cards.find((c) => c.card_id === id);
+			const pick = card && !card.benched ? pickFor(project.production, card) : null;
+			return card && pick?.kind === 'video' ? [{ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id }] : [];
+		});
+		if (!items.length) { notify('None of the selected beats has a video pick to play.'); return; }
+		reviewSequence.items = items;
+		reviewSequence.playing = true;
 	}
 
 	/** Split a video take into shots through the splitter: a new group of shot beats, then show it. */
@@ -806,25 +857,29 @@
 				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Cycle a beat's takes; the one showing is its pick.</p>
 				{#if activeProject}
 					{@const groups = groupsOf(activeProject.production)}
-					{@const selectedBeat = selectedNodeId && isBeat(selectedNodeId) ? activeProject.production.cards.find((card) => card.card_id === selectedNodeId) : null}
 					<div class="meta-label mt-5 flex items-center">Groups<span class="grow"></span><button type="button" class="group-add" onclick={() => (newGroupName = '')} aria-label="New group">+ new</button></div>
 					<ul class="mt-2 grid gap-px" aria-label="Board groups">
 						{#each groups as group (group.group_id)}
 							<li class={['group-row', group.group_id === activeGroup && 'active']}>
-								<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} aria-pressed={group.group_id === activeGroup}>
-									<b class="min-w-0 grow truncate" title={group.name}>{group.name}</b>
-									<small>{group.count}</small>
-								</button>
-								{#if selectedBeat && groupOf(selectedBeat) !== group.group_id}
-									<button type="button" class="group-move" onclick={() => moveSelectedTo(group.group_id)} title={`Move ${selectedBeat.title} here`} aria-label={`Move ${selectedBeat.title} to ${group.name}`}>→</button>
+								{#if renaming?.group_id === group.group_id}
+									<!-- svelte-ignore a11y_autofocus -->
+									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
+								{:else}
+									<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every beat not in a group' : 'Show this group · double-click to rename'}>
+										<b class="min-w-0 grow truncate">{group.name}</b>
+										<small>{group.count}</small>
+									</button>
+								{/if}
+								{#if selectedBeats.length && group.group_id !== activeGroup}
+									<button type="button" class="group-move" onclick={() => moveSelectedTo(group.group_id)} title={`Move ${beatsLabel(selectedBeats)} here`} aria-label={`Move ${beatsLabel(selectedBeats)} to ${group.name}`}>→</button>
 								{/if}
 							</li>
 						{/each}
 					</ul>
 					{#if newGroupName !== null}
-						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder="Group name" aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
+						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder={selectedBeats.length ? `Name for ${beatsLabel(selectedBeats)}` : 'Group name'} aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
 					{/if}
-					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{selectedBeat ? `Click → on a group to move ${selectedBeat.title} there.` : 'Pick a group to show its beats. Select a beat to move it.'}</p>
+					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Shift-drag a box over beats to select a row, then group it. Double-click a group to rename it.'}</p>
 					{@const bin = benchedBeats(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
 					{#if bin.length === 0}
@@ -886,7 +941,7 @@
 						onreconnect={onSpineReconnect}
 						onreconnectend={onSpineReconnectEnd}
 						onbeforedelete={beforeBoardDelete}
-						selectionKey={null}
+						selectionKey="Shift"
 						onnodeclick={({ node }) => (selectedNodeId = node.id)}
 						onnodedragstop={scheduleLayoutSave}
 						onmoveend={scheduleLayoutSave}
@@ -899,6 +954,16 @@
 						/>
 						<Controls showLock={false} position="bottom-left" />
 					</SvelteFlow>
+					{#if selectedBeats.length > 1 && activeProject}
+						{@const moveTargets = groupsOf(activeProject.production).filter((g) => g.group_id !== activeGroup)}
+						<div class="sel-bar" role="group" aria-label="Selected beats">
+							<span class="seq-cap">{selectedBeats.length} beats</span>
+							<button type="button" class="bar-key agent" onclick={playSelection} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>
+							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and move these beats into it">New group…</button>
+							{#if moveTargets.length}<Pick label="Move the selected beats to a group" placeholder="Move to…" options={moveTargets.map((g) => ({ value: g.group_id, label: g.name, hint: String(g.count) }))} onchange={(groupId) => moveSelectedTo(groupId)} />{/if}
+							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>
+						</div>
+					{/if}
 					{#if reviewSequence.items.length}
 						<div class="seq-bar" role="group" aria-label="Selected sequence">
 							<span class="seq-cap">Sequence</span>
@@ -1094,6 +1159,8 @@
 	.bar-key:disabled { opacity: 0.4; }
 	.bar-key.agent { border-color: rgba(78, 232, 210, 0.4); color: #9eeee3; }
 	.seq-bar { position: absolute; bottom: 12px; left: 50%; z-index: 10; display: flex; max-width: calc(100% - 120px); align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid var(--color-nr-line); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+	.sel-bar { position: absolute; top: 12px; left: 50%; z-index: 10; display: flex; align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid color-mix(in srgb, var(--color-nr-accent) 35%, var(--color-nr-line)); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+	.sel-bar .bar-key { height: 22px; padding: 0 8px; font-size: 9px; }
 	.seq-bar .bar-key { height: 22px; padding: 0 8px; font-size: 9px; }
 	.seq-cap { margin-right: 4px; color: var(--color-nr-accent); font: 600 9px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
 	.seq-item { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 6px; color: var(--color-nr-muted); font: 10px/20px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }

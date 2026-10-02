@@ -225,7 +225,7 @@
 		<footer class="nodrag flex items-center gap-1 border-t border-nr-line px-1 py-0.5">
 			{#if cycle.length >= 2}
 				<button type="button" class="take-btn" onclick={() => step(-1)} aria-label={`Previous take for ${card.title}`}>‹</button>
-				<span class="font-mono text-[9px] text-nr-muted" aria-live="polite">Take {shownIndex + 1} of {cycle.length}</span>
+				<span class="shrink-0 whitespace-nowrap font-mono text-[9px] text-nr-muted" aria-live="polite" aria-label={`Take ${shownIndex + 1} of ${cycle.length}`} title={`Take ${shownIndex + 1} of ${cycle.length}`}>TK {shownIndex + 1}/{cycle.length}</span>
 				<button type="button" class="take-btn" onclick={() => step(1)} aria-label={`Next take for ${card.title}`}>›</button>
 			{/if}
 			<span class="grow"></span>
@@ -264,7 +264,7 @@
 	.face-tab { border: 0; background: transparent; padding: 3px 4px; color: var(--color-nr-dim); font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
 	.face-tab:hover { background: var(--color-nr-raised); color: var(--color-nr-muted); }
 	.face-tab.active { background: var(--color-nr-raised); box-shadow: inset 0 -1px 0 var(--color-nr-accent); color: var(--color-nr-accent); }
-	.take-btn { border: 0; background: transparent; padding: 2px 6px; color: var(--color-nr-dim); font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
+	.take-btn { flex: none; border: 0; background: transparent; padding: 2px 6px; white-space: nowrap; color: var(--color-nr-dim); font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
 	.take-btn:hover, .take-btn.active { background: var(--color-nr-raised); color: var(--color-nr-muted); }
 	.rejected-mark { position: absolute; top: 6px; left: 6px; border: 1px solid var(--color-nr-danger-line); background: var(--color-nr-danger-bg); padding: 1px 5px; color: var(--color-nr-danger-text); font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.hold-form { position: absolute; inset: auto 6px 6px 6px; display: grid; gap: 4px; border: 1px solid var(--color-nr-accent-deep); background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 6px; color: var(--color-nr-muted); font: 600 9px var(--font-mono); text-transform: uppercase; }
