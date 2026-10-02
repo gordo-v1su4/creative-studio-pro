@@ -343,12 +343,44 @@
 		}
 	}
 
-	function moveSelectedTo(groupId: string) {
-		const moving = selectedBeats.filter((id) => { const card = activeProject?.production.cards.find((c) => c.card_id === id); return card && groupOf(card) !== groupId; });
+	function moveSelectedTo(groupId: string, ids: string[] = selectedBeats) {
+		const moving = ids.filter((id) => { const card = activeProject?.production.cards.find((c) => c.card_id === id); return card && groupOf(card) !== groupId; });
 		if (!moving.length) return;
 		sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: moving });
 		notify(`Moved ${beatsLabel(moving)} to ${groupName(groupId)}.`);
 		clearSelection();
+	}
+
+	// Drag beats from the board onto a group in the left panel to move them there. The cards go
+	// back to where the drag started, so they keep their place on the board inside the new group.
+	let dragStart = new Map<string, { x: number; y: number }>();
+	let dropGroup = $state<string | null>(null);
+	let draggingBeats = $state(false);
+	function groupUnder(event: MouseEvent | TouchEvent): string | null {
+		const point = 'changedTouches' in event ? (event.changedTouches[0] ?? event.touches[0]) : event;
+		if (!point) return null;
+		const row = document.elementFromPoint(point.clientX, point.clientY)?.closest<HTMLElement>('[data-group-id]');
+		const groupId = row?.dataset.groupId ?? null;
+		return groupId && groupId !== activeGroup ? groupId : null;
+	}
+	function onNodeDragStart({ nodes: dragged }: { nodes: Node[] }) {
+		dragStart = new Map(dragged.map((node) => [node.id, { ...node.position }]));
+		draggingBeats = dragged.some((node) => isBeat(node.id));
+	}
+	function onNodeDrag({ event }: { event: MouseEvent | TouchEvent }) {
+		if (draggingBeats) dropGroup = groupUnder(event);
+	}
+	function onNodeDragStop({ nodes: dragged, event }: { nodes: Node[]; event: MouseEvent | TouchEvent }) {
+		const target = draggingBeats ? groupUnder(event) : null;
+		dropGroup = null;
+		draggingBeats = false;
+		const beats = dragged.filter((node) => isBeat(node.id)).map((node) => node.id);
+		if (target && beats.length) {
+			nodes = nodes.map((node) => { const from = dragStart.get(node.id); return from ? { ...node, position: from } : node; });
+			moveSelectedTo(target, readingOrder(dragged.filter((node) => isBeat(node.id)).map((node) => ({ id: node.id, ...(dragStart.get(node.id) ?? node.position) }))).map((item) => item.id));
+			return;
+		}
+		scheduleLayoutSave();
 	}
 
 	/** Group from the selection: open the rail's name box; Enter makes the group and moves them in. */
@@ -619,9 +651,10 @@
 			const next: CanvasLayout = {
 				schema_version: 1,
 				project_id: activeProject.project_id,
-				nodes: nodes.filter((n) => !n.id.startsWith('story-placeholder-')).map((n) => {
+				// The board shows one group at a time: keep the saved places of beats in other groups.
+				nodes: [...(layout?.nodes ?? []).filter((p) => !nodes.some((n) => n.id === p.node_id) && activeProject!.production.cards.some((card) => card.card_id === p.node_id)), ...nodes.filter((n) => !n.id.startsWith('story-placeholder-')).map((n) => {
 					const previous = layout?.nodes.find((p) => p.node_id === n.id);
-					const type = n.type === 'voice' ? 'voice' : n.type === 'story_card' ? 'story_card' : 'seed';
+					const type: CanvasLayout['nodes'][number]['type'] = n.type === 'voice' ? 'voice' : n.type === 'story_card' ? 'story_card' : 'seed';
 					return {
 						node_id: n.id,
 						type,
@@ -631,7 +664,7 @@
 						width: previous?.width ?? 320,
 						height: previous?.height ?? (type === 'voice' ? 280 : 400)
 					};
-				}),
+				})],
 				viewport,
 				updated_at: layout?.updated_at ?? new Date().toISOString()
 			};
@@ -860,7 +893,7 @@
 					<div class="meta-label mt-5 flex items-center">Groups<span class="grow"></span><button type="button" class="group-add" onclick={() => (newGroupName = '')} aria-label="New group">+ new</button></div>
 					<ul class="mt-2 grid gap-px" aria-label="Board groups">
 						{#each groups as group (group.group_id)}
-							<li class={['group-row', group.group_id === activeGroup && 'active']}>
+							<li class={['group-row', group.group_id === activeGroup && 'active', draggingBeats && group.group_id !== activeGroup && 'droppable', dropGroup === group.group_id && 'drop']} data-group-id={group.group_id}>
 								{#if renaming?.group_id === group.group_id}
 									<!-- svelte-ignore a11y_autofocus -->
 									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
@@ -879,7 +912,7 @@
 					{#if newGroupName !== null}
 						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder={selectedBeats.length ? `Name for ${beatsLabel(selectedBeats)}` : 'Group name'} aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
 					{/if}
-					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Shift-drag a box over beats to select a row, then group it. Double-click a group to rename it.'}</p>
+					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the beats there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a beat onto a group to move it. Shift-drag a box over beats to select a row, then group it. Double-click a group to rename it.'}</p>
 					{@const bin = benchedBeats(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
 					{#if bin.length === 0}
@@ -943,7 +976,9 @@
 						onbeforedelete={beforeBoardDelete}
 						selectionKey="Shift"
 						onnodeclick={({ node }) => (selectedNodeId = node.id)}
-						onnodedragstop={scheduleLayoutSave}
+						onnodedragstart={onNodeDragStart}
+						onnodedrag={onNodeDrag}
+						onnodedragstop={onNodeDragStop}
 						onmoveend={scheduleLayoutSave}
 					>
 						<Background
@@ -1174,6 +1209,8 @@
 	.rail-handle-label { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
 	.group-row { display: flex; align-items: stretch; color: #8d9ca1; }
 	.group-row.active { background: linear-gradient(90deg, rgba(78, 232, 210, 0.1), rgba(74, 184, 255, 0.04)); color: #c9f3ee; box-shadow: inset 2px 0 0 #4ee8d2; }
+	.group-row.droppable { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-nr-accent) 25%, transparent); }
+	.group-row.drop { background: color-mix(in srgb, var(--color-nr-accent) 16%, transparent); color: var(--color-nr-ink); box-shadow: inset 0 0 0 1px var(--color-nr-accent), inset 3px 0 0 var(--color-nr-accent); }
 	.group-pick { display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px; border: 0; background: transparent; padding: 5px 7px; color: inherit; text-align: left; }
 	.group-pick:hover { background: #151a1d; }
 	.group-pick b { font-size: 11px; font-weight: 500; }
