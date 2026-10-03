@@ -24,7 +24,7 @@ or stories treat the founding wireframes as authoritative. Required UX updates:
 
 - live Raycast catalog harvesting;
 - randomized roster plus reshuffle/pin/add/remove controls;
-- Racknerd/M3/desktop/Splitter capability states;
+- Phase 0 deployment host/M3/desktop/Splitter capability states;
 - Sora 2, Seedance 2.0, and Seedance 2.5 teaser variants;
 - S0–S10 gate and draft/submit-ready states.
 

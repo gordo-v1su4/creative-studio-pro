@@ -11,6 +11,8 @@ Creative Studio Pro is a canvas-first studio for short films and trailers: story
 - WebGPU resident frame banks for clip preview and filmstrips
 - Bun, Vite, Tailwind CSS
 
+Service URLs and API keys use environment variables (see `.env.example`); set values in your local `.env.local` (git-ignored).
+
 **What it does**
 
 - Plan and connect beats on a board; attach multiple takes per beat and pick one for the spine

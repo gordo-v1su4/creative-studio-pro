@@ -14,7 +14,7 @@ sources:
 
 Creative Studio Pro is a desktop-first responsive web workbench built with
 SvelteKit 2.70.3, Svelte 5 runes, Tailwind 4, and Svelte Flow. The product
-starts on Racknerd and later moves durable hosting to the home server without
+starts on Phase 0 deployment host and later moves durable hosting to the home server without
 changing its interaction model. `DESIGN.md` owns visual identity; this document owns behavior.
 
 The canvas is the primary product surface. M3-only Raycast, desktop-only
@@ -42,7 +42,7 @@ provenance remain visible throughout the experience.
 | Library `/library` | Top nav, Promote action | Browse versioned SpecCards and approved artifacts |
 | Runs `/runs` | Top nav, node audit link | Inspect catalog snapshots, raw responses, jobs, quotes, confirmations, and failures |
 | Settings `/settings` | Top nav | Configure and test service contracts without exposing secrets |
-| Capability Drawer | Global status control | See Racknerd/home host, M3 bridge, desktop stack, Splitter, and provider states |
+| Capability Drawer | Global status control | See Phase 0 deployment host/home host, M3 bridge, desktop stack, Splitter, and provider states |
 | Media Lightbox | Artifact/thumbnail click | Review image/video at useful scale with seek/scrub controls |
 | Command Palette | `⌘K` / `Ctrl+K` | Navigate, create, focus lanes, and run context-safe actions |
 
@@ -134,7 +134,7 @@ Behavioral rules; visual tokens live in `DESIGN.md.Components`.
 
 | State | Treatment |
 |---|---|
-| Racknerd app ready | Open last project or project picker. |
+| Phase 0 deployment host app ready | Open last project or project picker. |
 | Home-server target not yet active | Settings labels it `PLANNED`, not offline. |
 | M3 offline | Creative Room Run disabled; existing captured voices remain readable. |
 | Desktop offline | SwarmUI/ComfyUI actions disabled; Higgsfield/Sora remain separate explicit choices if configured. |
@@ -316,7 +316,7 @@ promotion and batch remain blocked.
 ### Flow 5 — Service loss without hidden substitution (Gordo, returning later)
 
 1. Gordo opens the Capability Drawer.
-2. Racknerd is available, M3 is offline, desktop is offline, Splitter is ready,
+2. Phase 0 deployment host is available, M3 is offline, desktop is offline, Splitter is ready,
    and Higgsfield has a real provider error.
 3. Canvas, captured runs, and local project state remain readable.
 4. Actions requiring unavailable capabilities are disabled with explanations.

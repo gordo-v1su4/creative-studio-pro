@@ -21,13 +21,13 @@ it out and connects the pieces needed to turn it into a finished deliverable.
 
 Gordo only, for now. It is a personal production tool operated by one creative
 director with AI models and specialist agents as the production team. It spans
-the whole Tailnet rather than living on one machine.
+the private operator network rather than living on one machine.
 
 ## Critical runtime and platform constraints
 
-- **Deployment** — start the CSP web app on Racknerd for Phase 0, then move
+- **Deployment** — start the CSP web app on Phase 0 deployment host for Phase 0, then move
   durable hosting to the home server. The creative orchestrator can remain a
-  separate Racknerd service unless later architecture work moves it.
+  separate Phase 0 deployment host service unless later architecture work moves it.
 - **Desktop only** — SwarmUI and ComfyUI image/video generation are reachable
   only through the desktop; CSP must treat that machine as a remote capability,
   never as a local dependency.
@@ -36,7 +36,7 @@ the whole Tailnet rather than living on one machine.
   through that bridge. The bridge harvests the models Raycast actually exposes
   at run time; CSP does not hard-code provider versions.
 - **Splitter service** — CSP consumes the hosted API at
-  `https://splitter.serving.cloud` using its published OpenAPI/Swagger
+  `the hosted Splitter service (`CSP_SPLITTER_URL`)` using its published OpenAPI/Swagger
   contract; it does not require a local M3 Splitter process.
 - **Higgsfield** — remains the primary image and video provider today, reached
   through its existing service/CLI contracts rather than the desktop runtime.

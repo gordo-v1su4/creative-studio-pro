@@ -45,10 +45,10 @@ storyboardSchema = {
 ## Slices
 
 1. **Domain + store** — schemas, gateway commands `save_storyboard` / `add_shots`, ledger events, tests. No UI.
-2. **Slice + import via splitter** — all cutting goes through the existing **splitter-pro2** service (`https://splitter.serving.cloud`, source `Github/splitter-pro2`, API in `backend/src/backend/app.py`), not app-local ffmpeg:
+2. **Slice + import via splitter** — all cutting goes through the existing **splitter-pro2** service (`the hosted Splitter service (`CSP_SPLITTER_URL`)`, source `Github/splitter-pro2`, API in `backend/src/backend/app.py`), not app-local ffmpeg:
    - Grids → stills: `POST /api/image-split/fixed-grid` (`rows=3, cols=3, gutter_px`) or `/api/image-split/auto` (gutter detection).
    - Seedance drafts → clips: `POST /api/jobs` (`split_mode=scenes`, file upload) → poll `GET /api/jobs/{id}` → `GET /api/jobs/{id}/result` manifest → pull segments from `/api/jobs/{id}/assets/{path}`; thumbnails from `/segments/{i}/keyframe`; `/contact-sheet?segment_indices=…` doubles as "compose selected shots into a grid" for step 5.
-   - Auth: splitter sits behind a PIN access gate (`POST /api/access-gate` → session cookie, SameSite=strict). CSP needs the access code as a server-side secret (`SPLITTER_ACCESS_CODE` in `.env.local`, real value from the homelab secrets store — see `proxmox-home/secrets/credentials.template.md` → Splitter) and a small adapter that unlocks once and reuses the cookie.
+   - Auth: splitter sits behind a PIN access gate (`POST /api/access-gate` → session cookie, SameSite=strict). CSP needs the access code as a server-side secret (`SPLITTER_ACCESS_CODE` in `.env.local`, real value from the homelab secrets store — see `your operator secrets store` → Splitter) and a small adapter that unlocks once and reuses the cookie.
    - Store each result as ProductionAssets + shots; keep the splitter job id on the shot for traceability.
    - One-time import of the existing `files/trailer/pool/pool.json` (63 grid stills + 26 draft clips) and `storyboard-trailer-v1.json`.
    - Note: draft 03's strobe transitions register as many tiny scene cuts — merge segments under ~0.4 s into the previous shot (or tune splitter's scene threshold) so flicker doesn't become fake shots.

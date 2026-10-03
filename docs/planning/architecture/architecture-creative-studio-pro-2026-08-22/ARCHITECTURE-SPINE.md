@@ -175,11 +175,11 @@ schemas; domain/application never import adapters or Svelte routes.
 
 ### AD-14 — Private deployment, portable runtime [ADOPTED]
 
-- **Binds:** Phase 0 Racknerd deployment and home-server target.
+- **Binds:** Phase 0 Phase 0 deployment host deployment and home-server target.
 - **Prevents:** host-specific paths/config forcing a feature rewrite on migration.
-- **Rule:** Phase 0 binds privately on the Tailnet. Runtime config, project root,
+- **Rule:** Phase 0 binds privately on the private network. Runtime config, project root,
   media adapter, and capability endpoints are environment-injected. The same
-  build artifact and store contract deploy on Racknerd or the home server.
+  build artifact and store contract deploy on Phase 0 deployment host or the home server.
 
 ### AD-15 — Verification is a release boundary [ADOPTED]
 
@@ -215,7 +215,7 @@ schemas; domain/application never import adapters or Svelte routes.
 | Config | Explicit environment schema at startup; fail closed on missing required values |
 | Tooling | Bun only for JS/TS; uv for any Python tooling/service; no npm |
 | Logging | Structured JSON with request/job/project correlation IDs; no prompt/raw-secret logging |
-| Auth | Phase 0 Tailnet boundary; no public listener. Public auth is deferred. |
+| Auth | Phase 0 private network boundary; no public listener. Public auth is deferred. |
 
 ## Stack
 
@@ -258,12 +258,12 @@ creative-studio-pro/
 
 ```mermaid
 flowchart TB
-  subgraph Tailnet
-    CSP[CSP on Racknerd → home server]
+  subgraph private network
+    CSP[CSP on Phase 0 deployment host → home server]
     M3[M3 Raycast bridge]
     DESKTOP[Desktop SwarmUI / ComfyUI]
   end
-  SPLITTER[splitter.serving.cloud]
+  SPLITTER[the hosted Splitter service]
   HIGGS[Higgsfield / Sora adapters]
   MEDIA[Media gateway / RustFS]
   CSP -->|typed bridge| M3
@@ -288,7 +288,7 @@ flowchart TB
 
 ## Deferred
 
-- Public/Vercel exposure and user authentication — revisit before any non-Tailnet
+- Public/Vercel exposure and user authentication — revisit before any non-private network
   listener or second user.
 - SQLite/Postgres — revisit when one project needs concurrent writers or file
   ledger/index rebuild no longer meets measured needs.
@@ -298,5 +298,5 @@ flowchart TB
   choose centralized metrics/alerts when Phase 0 measurements show an operator
   need, without allowing feature modules to invent separate telemetry stacks.
 - Home-server cutover procedure, backups, and service supervision — operations
-  story after Phase 0 behavior passes on Racknerd.
+  story after Phase 0 behavior passes on Phase 0 deployment host.
 - Audio/NLE architecture — outside v1 non-goals.

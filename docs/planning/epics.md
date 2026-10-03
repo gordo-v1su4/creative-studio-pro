@@ -52,7 +52,7 @@ FR-014: Character-sheet trigger — Any image intake shall offer the built-in ch
 
 FR-015: Character-sheet outputs — An approved character-sheet task shall create three identity-consistent, separately generated outputs: 16:9 full-body front with the head removed, full-body back, and high-resolution close-up face. CSP shall never derive the close-up by cropping the wide view. If the selected provider is billable, the task shall require a live quote and matching explicit confirmation. Ad-hoc launch creates or links the task at S6; it does not force-advance the parent project's stage gates.
 
-FR-016: Hosted Splitter client — CSP shall validate against the live `splitter.serving.cloud/openapi.json` contract, upload videos through `POST /api/jobs`, poll job state, retrieve the result, and resolve returned assets through documented routes.
+FR-016: Hosted Splitter client — CSP shall validate against the live `the Splitter OpenAPI document (from `CSP_SPLITTER_URL`)` contract, upload videos through `POST /api/jobs`, poll job state, retrieve the result, and resolve returned assets through documented routes.
 
 FR-017: Storyboard result — A completed split shall create a Storyboard Grid node containing ordered segment IDs, frame ranges, durations, stills, and playable previews from the returned manifest.
 
@@ -84,7 +84,7 @@ FR-030: Version history — CSP shall retain every artifact and SpecCard version
 
 FR-031: Operations read model — creative-studio-os shall be able to read project stage, gate, due/stalled state, and approved artifact references without becoming the owner of project data.
 
-FR-032: Capability state — CSP shall expose whether the Racknerd app, home-server target, M3 bridge, desktop generation stack, Splitter service, and configured generation providers are available, degraded, or offline.
+FR-032: Capability state — CSP shall expose whether the Phase 0 deployment host app, home-server target, M3 bridge, desktop generation stack, Splitter service, and configured generation providers are available, degraded, or offline.
 
 ### NonFunctional Requirements
 
@@ -148,7 +148,7 @@ NFR-018: Phase 0 shall pass browser verification at 1440px and 375px and shall p
 
 - AR-11: One read-model/index builder serves UI and creative-studio-os; operations never mutate project truth.
 
-- AR-12: Phase 0 is Tailnet-private on Racknerd; runtime/config/store contracts remain portable to the home server.
+- AR-12: Phase 0 is private network-private on Phase 0 deployment host; runtime/config/store contracts remain portable to the home server.
 
 - AR-13: Default resilience: connect 10s, sync 120s, submit/quote 60s, poll 30s, 3 idempotent-read retries, async deadline 1800s.
 
@@ -261,7 +261,7 @@ Gordo can create and reopen a durable canvas project, arrange creative state spa
 
 As Gordo,
 I want the CSP application shell available privately,
-So that I can open the creative workspace across my Tailnet.
+So that I can open the creative workspace across my private network.
 
 **Requirements:** AR-01, AR-02, AR-05, AR-12, UX-DR01, UX-DR02, UX-DR15–18, NFR-004, NFR-011–015, NFR-018
 

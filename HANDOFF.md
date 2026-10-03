@@ -20,9 +20,9 @@ bun src/server.ts
 # CSP (second PowerShell)
 Set-Location ..\creative-studio-pro
 $env:CSP_PROJECT_ROOT = '<absolute-project-data-path>'
-$env:CSP_RAYCAST_BRIDGE_URL = 'http://127.0.0.1:8787'
+$env:CSP_RAYCAST_BRIDGE_URL = '<bridge-base-url>'
 $env:CSP_RAYCAST_BRIDGE_TOKEN = '<same-bridge-token>'
-$env:CSP_OPERATOR_ID = 'gordo'
+$env:CSP_OPERATOR_ID = '<operator-id>'
 $env:CSP_OPERATOR_TOKEN = '<operator-credential>'
 bun run dev -- --port 5174
 ```
@@ -33,9 +33,7 @@ bun run dev -- --port 5174
 
 Kimi is the temporary default for completing the remaining BMAD epics. Raycast remains an explicit optional provider and never becomes an automatic fallback.
 
-Before starting the bridge, retrieve `KIMI_API_KEY` from BWS project `hermes_keys` into the process environment, then set `CREATIVE_ROOM_PROVIDER=kimi`, `KIMI_API_BASE_URL=https://api.kimi.com/coding/v1`, `KIMI_MODEL=k3`, and `KIMI_MODEL_LABEL=Kimi K3`. The bridge uses the official OpenAI-compatible chat-completion endpoint, sends the text-only/no-tools story contract, and persists the verbatim answer plus hashes inside the same durable comparison-run folder. A restart reads the terminal result and never resubmits it.
-
-The key is also available in the gitignored local `.env` for this workstation. Never commit it. The BWS copy is canonical for runtime injection.
+Set `KIMI_API_KEY`, `KIMI_API_BASE`, and `KIMI_MODEL` in your local `.env.local` (git-ignored) before starting the bridge. The bridge uses the OpenAI-compatible chat-completion endpoint, sends the text-only/no-tools story contract, and persists the verbatim answer plus hashes inside the same durable comparison-run folder. A restart reads the terminal result and never resubmits it. Never commit keys or service URLs.
 
 ## Windows Raycast capture contract
 

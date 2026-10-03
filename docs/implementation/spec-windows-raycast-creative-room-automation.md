@@ -40,13 +40,13 @@ context:
 ## Code Map
 
 - `.agents/skills/raycast-creative-room-windows/SKILL.md` -- new concise project workflow; invokes Script Commands and confines GUI work to Computer.
-- `C:/Users/Gordo/Documents/Github/raycast-pro-bridge/src/directors-cut/concept-run.ts:160` -- existing prepare/status service and active-state contract; reuse rather than add a second state store.
-- `C:/Users/Gordo/Documents/Github/raycast-pro-bridge/script-commands/directors-cut-prepare-automated-capture.ps1` -- currently writes the raw question to `active-capture-prompt.txt`; wrap it in the text-only structured response contract while preserving the brief verbatim.
-- `C:/Users/Gordo/Documents/Github/raycast-pro-bridge/script-commands/directors-cut-capture-active-answer.ps1` -- existing exact-label, lock, hash, correction, and parser path; extend state validation without weakening verbatim capture.
-- `C:/Users/Gordo/Documents/Github/raycast-pro-bridge/script-commands/` -- add CSP Prepare Story Room Prompt, CSP Show Active Capture, and CSP Capture Last Text Reply commands as safe Windows entry points.
-- `C:/Users/Gordo/Documents/Github/raycast-pro-bridge/tests/windows-capture.test.ts` and `tests/platform-contract.test.ts` -- cover prompt guards, phases, exact labels, restart, stale state, and unchanged Darwin selection.
+- `<local-clone>/raycast-pro-bridge/src/directors-cut/concept-run.ts:160` -- existing prepare/status service and active-state contract; reuse rather than add a second state store.
+- `<local-clone>/raycast-pro-bridge/script-commands/directors-cut-prepare-automated-capture.ps1` -- currently writes the raw question to `active-capture-prompt.txt`; wrap it in the text-only structured response contract while preserving the brief verbatim.
+- `<local-clone>/raycast-pro-bridge/script-commands/directors-cut-capture-active-answer.ps1` -- existing exact-label, lock, hash, correction, and parser path; extend state validation without weakening verbatim capture.
+- `<local-clone>/raycast-pro-bridge/script-commands/` -- add CSP Prepare Story Room Prompt, CSP Show Active Capture, and CSP Capture Last Text Reply commands as safe Windows entry points.
+- `<local-clone>/raycast-pro-bridge/tests/windows-capture.test.ts` and `tests/platform-contract.test.ts` -- cover prompt guards, phases, exact labels, restart, stale state, and unchanged Darwin selection.
 - `HANDOFF.md` and bridge `README.md` -- replace obsolete `Ctrl+Space`/generic-command instructions with the verified persistent-AI-Chat contract.
-- `C:/Users/Gordo/Documents/Creative Studio Pro/raycast-state` and Bloodrush download folders -- live evidence only; never commit project state or source references.
+- `<CSP_PROJECT_ROOT>/raycast-state` and Bloodrush download folders -- live evidence only; never commit project state or source references.
 
 ## Tasks & Acceptance
 

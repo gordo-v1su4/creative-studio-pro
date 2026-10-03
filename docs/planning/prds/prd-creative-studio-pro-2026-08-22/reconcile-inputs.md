@@ -5,7 +5,7 @@
 Status: reconciled.
 
 - Trailer, cold-open, and first-short-episode scope appears in the Vision.
-- Racknerd-first/home-server-target hosting and M3/desktop boundaries match.
+- Phase 0 deployment host-first/home-server-target hosting and M3/desktop boundaries match.
 - Review Room remains visual reference only.
 - Character-sheet system, spend gate, and S6 linkage match.
 - Sora 2 / Seedance 2.0 / Seedance 2.5 runtimes and pacing match.

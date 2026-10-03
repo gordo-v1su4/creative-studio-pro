@@ -46,6 +46,9 @@ Commit straight to `main` and push. No feature branches, no PRs, and no
 GitHub issue or Linear ticket is needed before starting work. The specs in
 `docs/` describe what to build; they are not a ticket queue to work through.
 
+Backend and hosting URLs come from environment variables in `.env.local`
+(git-ignored); never hardcode or commit them.
+
 ## Agent skills
 
 ### Issue tracker

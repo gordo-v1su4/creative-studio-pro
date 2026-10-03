@@ -72,7 +72,7 @@ G2. The first input step is a multi-model creative room reached only through
     plus parallel teaser prompt variants for Sora 2 (12s), Seedance 2.0 (15s),
     and Seedance 2.5 (up to 30s). Before S4 these are concept drafts marked
     `DRAFT — not for Studio`, not generation-ready prompts.
-G3. Source video splitting through the hosted `splitter.serving.cloud` OpenAPI
+G3. Source video splitting through the hosted `the hosted Splitter service` OpenAPI
     service is a first-class canvas lane: submit a job, poll status, retrieve
     the result and assets, show the storyboard grid, and preview each clip.
     CSP owns non-destructive merge/trim metadata. Clip extension is a separate
@@ -100,11 +100,11 @@ G6. Winners promote to a reusable spec library (Directors Cut card model).
 | Donor | What Creative Studio Pro takes | What it does NOT take |
 |---|---|---|
 | storyception (M3 Mac) | Canvas/graph environment as main UI; beat cards (320x400), branch nodes, reference/character rail above story nodes, 2x2 variant option boards → selected option → 3x3 expansion; dark premium aesthetic, mono micro-labels | Its Gemini/Vertex-specific pipeline, its persistence layer, its archetype catalog verbatim |
-| splitter-pro2 / `splitter.serving.cloud` | Hosted FastAPI/OpenAPI service for PySceneDetect video jobs, job polling, result manifests, clip/thumbnail assets, and image-grid splitting; CSP ports the storyboard/preview UX onto the canvas | Its standalone UI or a local M3 deployment; CSP consumes the published service contract |
+| splitter-pro2 / `the hosted Splitter service` | Hosted FastAPI/OpenAPI service for PySceneDetect video jobs, job polling, result manifests, clip/thumbnail assets, and image-grid splitting; CSP ports the storyboard/preview UX onto the canvas | Its standalone UI or a local M3 deployment; CSP consumes the published service contract |
 | trailercraft (M3 Mac) | Trailer assembly workflow, trailer-specific pacing/structure steps | React/Vite implementation details; license is absent — conceptual transfer only |
 | directors-cut (M3 Mac) | Comparison runs + answers.jsonl schema, concept approval gate, quote→confirm→generate flow, prompt-card library, `--dc-*` dark editorial token baseline | The table-first Projects UI as the primary metaphor (canvas replaces it) |
 | raycast-pro-bridge (M3 Mac) | Typed tool contract, Script Commands, multi-model creative-room run schema (`creative_concept_v1` extended with image_sequence_prompt + image_grid_prompt + teaser_trailer_prompt), auth/allowlist/audit | The HTTP server itself — CSP calls it, doesn't absorb it |
-| creative-studio-os (Racknerd) | Ops spine: cron digest, Linear roadmap, Discord reach, gates-as-review-blocks | Nothing UI — it coordinates from outside |
+| creative-studio-os (Phase 0 deployment host) | Ops spine: cron digest, Linear roadmap, Discord reach, gates-as-review-blocks | Nothing UI — it coordinates from outside |
 | [`gordo-v1su4/super-seed2`](https://github.com/gordo-v1su4/super-seed2) | **Authoritative production methodology, not an optional donor:** `AGENTS.md`; mandatory S0–S10 gates and confidence math in `pipeline/creative-stages.md`; teaser/commercial story shape in `pipeline/production-types/commercial.md`; Seedance 2.5 strict prompt format; LIRA/CINEDANCE/ACTING skills; and proven project pacing/examples. Agents must inspect the live repository before changing story, prompt, or generation requirements. Baseline reviewed: `84f61f1`. | Production project media itself; CSP references the methodology and service contracts rather than copying active project trees |
 
 ## 6. Users
@@ -176,7 +176,7 @@ submit-ready prompt and requires one approved pilot generation before batch.
 ### 7.3 Source Split lane
 
 1. User drops source video onto the canvas (Source node).
-2. CSP uploads the video to `POST https://splitter.serving.cloud/api/jobs`
+2. CSP uploads the video with `POST /api/jobs` on the hosted Splitter service
    using the published multipart OpenAPI schema.
 3. CSP polls `GET /api/jobs/{job_id}` until the hosted job reaches a terminal
    state, then reads `GET /api/jobs/{job_id}/result` and resolves returned
@@ -191,7 +191,7 @@ submit-ready prompt and requires one approved pilot generation before batch.
 7. Selected or extended clips become canvas media nodes with provenance.
 
 CSP must generate its client from or validate it against the live OpenAPI
-contract at `https://splitter.serving.cloud/openapi.json`; undocumented routes
+contract at `the Splitter OpenAPI document (from `CSP_SPLITTER_URL`)`; undocumented routes
 or a local Splitter process are not assumed. The verified v0.2.0 contract has
 no clip-extension route.
 
@@ -254,7 +254,7 @@ The Ops spine (creative-studio-os) reads status; it does not own this data.
   (`@xyflow/svelte` — xyflow's native Svelte port of React Flow, same team and
   same node/edge graph model Storyception uses, without pulling in React).
 - Deployment and machine boundaries:
-  - Phase 0 web app starts on Racknerd; the durable hosting target is the home
+  - Phase 0 web app starts on Phase 0 deployment host; the durable hosting target is the home
     server. Migration timing is an architecture/operations decision, not a
     feature fork.
   - raycast-pro-bridge exists only on the M3 Mac. CSP must route all Raycast
@@ -270,7 +270,7 @@ The Ops spine (creative-studio-os) reads status; it does not own this data.
     hard-codes ChatGPT/Claude defaults, so Phase 1 must add a typed model-catalog
     operation sourced from the M3's live Raycast UI before CSP relies on random
     rotation.
-  - `https://splitter.serving.cloud` — hosted FastAPI service; Swagger at
+  - `the hosted Splitter service (`CSP_SPLITTER_URL`)` — hosted FastAPI service; Swagger at
     `/docs`, machine contract at `/openapi.json`, video jobs under `/api/jobs`
   - generation providers via bridge quote/confirm contract
 - Auth/secrets: tokens in `.env.local` / BWS; never in static client code;
@@ -329,12 +329,12 @@ Acceptance: approved concept appears in library; digest references it.
    with no React.
 2. **Repository:** resolved — `creative-studio-pro` is the focused product;
    Pindeck remains a standalone asset/intake layer.
-3. **Splitter:** resolved — consume `https://splitter.serving.cloud` through
+3. **Splitter:** resolved — consume `the hosted Splitter service (`CSP_SPLITTER_URL`)` through
    its live OpenAPI contract; do not run a local Splitter service.
 4. **Creative Room models:** resolved — Raycast-bridge-only for initial
    creative spurts. Harvest current availability, randomly rotate a varied
    subset, let Gordo override it, and record exact displayed model labels.
-5. **Hosting:** resolved for kickoff — start Phase 0 on Racknerd and target the
+5. **Hosting:** resolved for kickoff — start Phase 0 on Phase 0 deployment host and target the
    home server for durable hosting.
 6. **Machine boundaries:** resolved — Raycast bridge only on the M3; SwarmUI
    and ComfyUI only on the desktop.
@@ -401,7 +401,7 @@ Acceptance: approved concept appears in library; digest references it.
 ### Source Split lane
 
 - **FR-016 — Hosted Splitter client:** CSP shall validate against the live
-  `splitter.serving.cloud/openapi.json` contract, upload videos through
+  `the Splitter OpenAPI document (from `CSP_SPLITTER_URL`)` contract, upload videos through
   `POST /api/jobs`, poll job state, retrieve the result, and resolve returned
   assets through documented routes.
 - **FR-017 — Storyboard result:** A completed split shall create a Storyboard
@@ -457,7 +457,7 @@ Acceptance: approved concept appears in library; digest references it.
 - **FR-031 — Operations read model:** creative-studio-os shall be able to read
   project stage, gate, due/stalled state, and approved artifact references
   without becoming the owner of project data.
-- **FR-032 — Capability state:** CSP shall expose whether the Racknerd app,
+- **FR-032 — Capability state:** CSP shall expose whether the Phase 0 deployment host app,
   home-server target, M3 bridge, desktop generation stack, Splitter service,
   and configured generation providers are available, degraded, or offline.
 

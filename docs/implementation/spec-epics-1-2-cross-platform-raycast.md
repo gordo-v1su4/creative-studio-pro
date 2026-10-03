@@ -41,13 +41,13 @@ context:
 
 ## Code Map
 
-- `C:/Users/Gordo/Documents/Github/super-seed2/pipeline/creative-stages.md` -- read-only source for S1/S2 confidence, artifacts, and gates.
+- `<local-clone>/super-seed2/pipeline/creative-stages.md` -- read-only source for S1/S2 confidence, artifacts, and gates.
 - `src/lib/domain/schemas.ts`, `src/lib/domain/gates.ts` -- model confidence rounds, S1 transition, versioned brief, S2 lock, and legal actions.
 - `src/lib/application/gateway.ts`, `src/lib/adapters/project-store.ts` -- enforce expected-version append-only interview/brief/approval commands.
 - `src/routes/api/projects/[projectId]/**`, `src/lib/server/operator-auth.ts` -- add stage endpoints and server-derived S2 audit identity.
 - `src/routes/+page.svelte`, `src/lib/ui/StageGatePanel.svelte`, `src/lib/ui/chat/AgentChat.svelte` -- accessible S1 rounds, gaps, brief editor, and explicit lock UX.
 - `src/lib/adapters/m3-bridge.ts`, `src/lib/adapters/capability.ts`, `src/lib/server/config.ts` -- host-neutral Raycast config/provenance with legacy aliases.
-- `C:/Users/Gordo/Documents/Github/raycast-pro-bridge/src/**`, `script-commands/**` -- shared Bun services, safe path containment, native Windows PowerShell driver, retained Darwin driver.
+- `<local-clone>/raycast-pro-bridge/src/**`, `script-commands/**` -- shared Bun services, safe path containment, native Windows PowerShell driver, retained Darwin driver.
 - CSP `tests/**` and bridge test/CI files -- cover every matrix row, restart/auth, Windows paths, exact capture, and macOS regression.
 
 ## Tasks & Acceptance
@@ -91,4 +91,4 @@ Windows is the implementation and live E2E priority. Manual-assisted capture is 
 - Bridge: 6 tests / 38 assertions with 3 Darwin-only skips, TypeScript, contract 25/25, security 29/29, concept decisions 13/13, image 8/8, video 28/28, and Hermes 7/7 all pass.
 - Persistent Browser walkthrough: corrected exact-label voice captures reconcile to full title/logline; S1 passes at confidence 88; S2 brief v1 locks as `gordo`; a fresh CSP process reopens the same project at S2 PASSED.
 - Native Raycast 2.0.5.0 is installed and running on Windows. Computer visibly opens its Root Search overlay with `Ctrl+Space` and verifies that Quick AI is offered separately from Search Files, but Raycast still does not expose the overlay as a targetable window for the next input. The bridge/PowerShell path and provenance remain verified as manual-assisted only; no Quick AI/Agent answer claim is made.
-- Persistent example assets: three accepted Higgsfield Nano Banana Pro plates are stored at `C:/Users/Gordo/Documents/Creative Studio Pro/projects/01a02aa1-3f1e-75b3-b882-48f237813bfc/assets`; the manifest records 2K, 16:9, Unlimited-on, exact SHA-256 hashes, visual acceptance rules, and zero video generation.
+- Persistent example assets: three accepted Higgsfield Nano Banana Pro plates are stored at `<CSP_PROJECT_ROOT>/projects/01a02aa1-3f1e-75b3-b882-48f237813bfc/assets`; the manifest records 2K, 16:9, Unlimited-on, exact SHA-256 hashes, visual acceptance rules, and zero video generation.

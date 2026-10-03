@@ -20,7 +20,7 @@
   · ≤30s peer variants.
 - Generic generation readiness → explicit S0–S10 stage/gate states,
   `DRAFT — not for Studio`, pilot eligibility, and batch eligibility.
-- Implicit services → visible Racknerd/home, M3, desktop, Splitter, and provider
+- Implicit services → visible Phase 0 deployment host/home, M3, desktop, Splitter, and provider
   capability states.
 - Splitter-owned EXTEND implication → CSP creates a separate gated generation
   task anchored to the segment's final frame.
