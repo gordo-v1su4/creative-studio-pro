@@ -262,6 +262,35 @@ textarea::-webkit-resizer {
 	background-size: 100% 100%, 300% 100%;
 }
 
+/* The Agent key, the same in every top bar: a slim hairline key, the palette as a quiet border, no motion. */
+.agent-key {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 24px;
+	border: 1px solid transparent;
+	border-radius: 2px;
+	background:
+		linear-gradient(var(--color-surface-base), var(--color-surface-base)) padding-box,
+		linear-gradient(90deg, color-mix(in srgb, #4ee8d2 45%, transparent), color-mix(in srgb, #4ab8ff 40%, transparent), color-mix(in srgb, #8174e8 45%, transparent)) border-box;
+	padding: 0 10px 0 8px;
+	color: #a9d8d2;
+	font: 600 9.5px var(--font-sans);
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	transition: color 140ms ease, background 140ms ease;
+}
+.agent-key .glyph { background: linear-gradient(135deg, #4ee8d2, #4ab8ff 55%, #8174e8); -webkit-background-clip: text; background-clip: text; color: transparent; font-size: 11px; line-height: 1; }
+.agent-key:hover:not(:disabled) {
+	color: #e6fff8;
+	background:
+		linear-gradient(color-mix(in srgb, #4ee8d2 6%, var(--color-surface-base)), color-mix(in srgb, #8174e8 6%, var(--color-surface-base))) padding-box,
+		linear-gradient(90deg, #4ee8d2, #4ab8ff, #8174e8) border-box;
+}
+.agent-key:focus-visible { outline: 1px solid #4ab8ff; outline-offset: 2px; }
+.agent-key:disabled { opacity: 0.4; }
+
 @keyframes charm-button-shift {
 	to { background-position: 0 0, 300% 0; }
 }

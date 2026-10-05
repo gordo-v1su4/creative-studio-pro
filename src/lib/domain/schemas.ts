@@ -251,6 +251,14 @@ export const storyCardSchema = z.object({
 		dialogue: z.string().max(4000).optional(), audio: z.string().max(4000).optional(), refs: z.string().max(4000).optional(),
 		shot_size: z.string().max(100).optional(), lens: z.string().max(100).optional(), camera: z.string().max(100).optional(), angle: z.string().max(100).optional(),
 		characters: z.array(z.string().max(100)).max(40).optional()
+	}).optional(),
+	/** Written by "Fit to length" (not in Notion): the length it filled toward, its lint result and the shot details. */
+	fit: z.object({
+		target_min: z.number().int().positive().max(120),
+		at: rfc3339Schema,
+		lint: z.object({ rounds: z.number().int().nonnegative(), fixed: z.number().int().nonnegative(), remaining: z.number().int().nonnegative() }),
+		dialogue: z.string().max(4000).optional(), audio: z.string().max(4000).optional(), refs: z.string().max(4000).optional(),
+		characters: z.array(z.string().max(100)).max(40).optional()
 	}).optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;
@@ -712,6 +720,9 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.finalize_sent.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// A Notion series episode imported onto the board.
 	z.object({ type: z.literal('project.episode_imported.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// Fit to length: the Agent's new shots added to a scene, or taken out again.
+	z.object({ type: z.literal('project.episode_fitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.episode_unfitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
 	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);

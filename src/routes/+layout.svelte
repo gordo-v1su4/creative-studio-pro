@@ -51,36 +51,32 @@
 <div class="flex h-screen flex-col bg-surface-base text-text-primary">
 	<!-- The project screen carries its own single navigation bar; other pages share this one. -->
 	{#if page.url.pathname !== '/'}
-		<header class="flex h-12 shrink-0 items-center border-b border-border-default bg-surface-base px-4">
-			<a href="/" class="flex items-center gap-2.5">
-				<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
-				<span class="text-[12px] font-semibold uppercase tracking-[0.22em] text-[#b8c4c8]">Creative Studio Pro</span>
+		<header class="flex h-12 shrink-0 items-center border-b border-border-default bg-surface-base px-4 max-sm:px-3">
+			<a href="/" class="flex min-w-0 items-center gap-2.5">
+				<span class="block h-2 w-2 shrink-0 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
+				<span class="truncate whitespace-nowrap text-[12px] font-semibold uppercase tracking-[0.22em] text-[#b8c4c8] max-sm:text-[11px] max-sm:tracking-[0.16em]">Creative Studio Pro</span>
 			</a>
 			<nav class="ml-6 hidden items-center gap-1 md:flex" aria-label="Primary">
 				{#each navItems as item (item.href)}
 					{@const active = page.url.pathname === item.href}
-					<a
-						href={item.href}
-						class={[
-							'rounded-sm px-2.5 py-1 transition-colors',
-							active
-								? 'bg-surface-raised-2 font-medium text-text-primary'
-								: 'text-text-dim hover:text-text-muted'
-						]}
-						aria-current={active ? 'page' : undefined}
-					>
-						{item.label}
-					</a>
+					<a href={item.href} class={['rounded-sm px-2.5 py-1 transition-colors', active ? 'bg-surface-raised-2 font-medium text-text-primary' : 'text-text-dim hover:text-text-muted']} aria-current={active ? 'page' : undefined}>{item.label}</a>
 				{/each}
 			</nav>
-			<div class="ml-auto flex items-center gap-2">
-				<button type="button" class="btn btn-charm" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
-					<span class="charm-gradient-text font-bold">✦</span>
-					Agent
+			<div class="ml-auto flex shrink-0 items-center gap-2 pl-3">
+				<button type="button" class="agent-key" title="The Agent: your assistant for this project" onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+					<span class="glyph" aria-hidden="true">✦</span>Agent
 				</button>
-				<CapabilityChip />
+				<!-- The capability status is in the command palette too; on a phone it gives the header its room back. -->
+				<span class="max-sm:hidden"><CapabilityChip /></span>
 			</div>
 		</header>
+		<!-- Narrow screens: the page links as their own scrolling row under the header. -->
+		<nav class="flex h-9 shrink-0 items-center gap-1 overflow-x-auto border-b border-border-default bg-surface-base px-2 md:hidden" aria-label="Primary">
+			{#each navItems as item (item.href)}
+				{@const active = page.url.pathname === item.href}
+				<a href={item.href} class={['shrink-0 rounded-sm px-2.5 py-1 text-[13px] transition-colors', active ? 'bg-surface-raised-2 font-medium text-text-primary' : 'text-text-dim hover:text-text-muted']} aria-current={active ? 'page' : undefined}>{item.label}</a>
+			{/each}
+		</nav>
 	{/if}
 
 	<div class="min-h-0 grow">

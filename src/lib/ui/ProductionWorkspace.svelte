@@ -163,7 +163,7 @@
 	{#if tab === 'story'}
 		<div class="mx-auto max-w-4xl p-5">
 			{#if project.series}
-				<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} /></div>
+				<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} {onUpdated} /></div>
 			{/if}
 			<div class="mb-12">
 				<TrailerHousePanel {project} {onUpdated} onBuildStory={() => void generate()} building={busy} />

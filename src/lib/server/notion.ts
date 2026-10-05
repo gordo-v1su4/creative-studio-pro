@@ -85,6 +85,8 @@ export interface SeriesRead {
 	root_id: string;
 	story: { page_id: string; title: string; text: string } | null;
 	sources: SeriesSources;
+	/** The database (page) ids behind the sources, for links into Notion. */
+	databases: SeriesSources;
 	checks: Record<DatabaseKey, TemplateCheck>;
 	episodes: Array<SeriesEpisode & { scene_count: number }>;
 }
@@ -109,6 +111,7 @@ const KEY_BY_TITLE: Array<[RegExp, DatabaseKey]> = [[/^episodes?$/i, 'episodes']
 export async function readSeries(api: NotionApi, rootId: string): Promise<SeriesRead> {
 	const { pages, databases } = await walk(api, rootId);
 	const sources: SeriesSources = { episodes: null, scenes: null, shots: null };
+	const databaseIds: SeriesSources = { episodes: null, scenes: null, shots: null };
 	const schemas: Record<DatabaseKey, NotionSchema | null> = { episodes: null, scenes: null, shots: null };
 	for (const databaseId of databases) {
 		const database = await api.database(databaseId);
@@ -116,7 +119,7 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 			const source = await api.dataSource(ref.id);
 			const name = (plain(source.title) || ref.name || '').trim();
 			const key = KEY_BY_TITLE.find(([pattern]) => pattern.test(name))?.[1];
-			if (key && !sources[key]) { sources[key] = source.id; schemas[key] = source.properties; }
+			if (key && !sources[key]) { sources[key] = source.id; schemas[key] = source.properties; databaseIds[key] = bareId(databaseId); }
 		}
 	}
 	const checks = { episodes: checkDatabase('episodes', schemas.episodes), scenes: checkDatabase('scenes', schemas.scenes), shots: checkDatabase('shots', schemas.shots) };
@@ -126,7 +129,7 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 	const episodes = sources.episodes && checks.episodes.ok
 		? (await all((cursor) => api.query(sources.episodes!, cursor))).map(toEpisode).map((episode) => ({ ...episode, scene_count: episode.scene_ids.length })).sort((a, b) => a.number - b.number)
 		: [];
-	return { root_id: bareId(rootId), story, sources, checks, episodes };
+	return { root_id: bareId(rootId), story, sources, databases: databaseIds, checks, episodes };
 }
 
 /** One episode with its scenes and shots, laid out (needs all three databases to pass the template). */

@@ -36,7 +36,9 @@ import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset, StoryCard, TrailerHouse } from '$lib/domain/schemas';
-import { trailerHouseSchema } from '$lib/domain/schemas';
+import { storyCardSchema, trailerHouseSchema } from '$lib/domain/schemas';
+import { FIT_MAX_SHOTS, insertIntoGroup, removeFitted } from '$lib/domain/episode-fit';
+import { z } from 'zod';
 import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
@@ -370,6 +372,40 @@ export class ProjectCommandGateway {
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Import failed';
 			if (message.includes('already has beats')) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
+	/** Fit to length: the Agent's new beats for one scene, right after its last beat (the Agent call happens in the route). */
+	async fitScene(projectId: string, expectedVersion: number, groupId: string, cards: StoryCard[]): Promise<CommandOutcome<Project>> {
+		const parsed = z.array(storyCardSchema).min(1).max(FIT_MAX_SHOTS + 2).safeParse(cards);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Invalid fitted beats');
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				if (!current.series) throw new Error('Only an episode imported from Notion can be fitted');
+				if (!current.production.groups?.some((group) => group.group_id === groupId)) throw new Error('That scene is no longer on the board');
+				return { ...current, production: { ...insertIntoGroup(current.production, groupId, parsed.data), updated_at: new Date().toISOString() } };
+			}, 'project.episode_fitted.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Fit failed';
+			if (/fitted|no longer on the board/.test(message)) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
+	/** Take the fitted beats out again (all, or some scenes'); beats that already have takes stay. */
+	async unfitEpisode(projectId: string, expectedVersion: number, groupIds?: string[]): Promise<CommandOutcome<Project>> {
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				const result = removeFitted(current.production, groupIds);
+				if (result.removed === 0) throw new Error(result.kept ? 'Every fitted beat there already has a take; bench or delete those by hand' : 'No fitted beats to take out');
+				return { ...current, production: { ...result.production, updated_at: new Date().toISOString() } };
+			}, 'project.episode_unfitted.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Undo failed';
+			if (/fitted beat/.test(message)) return invalid(message);
 			return this.storeError(e);
 		}
 	}

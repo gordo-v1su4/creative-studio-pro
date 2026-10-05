@@ -7,7 +7,7 @@ import { plannedMinutes } from '$lib/domain/notion-series';
  * time the board holds for it now, and who appears where. Read from the live board, so edits show at once.
  */
 export type OutlineSeries = Pick<NonNullable<Project['series']>, 'episode_number' | 'episode_title' | 'scenes'>;
-export type OutlineCard = Pick<StoryCard, 'card_id' | 'duration_ms' | 'benched' | 'source'> & { group_id?: string };
+export type OutlineCard = Pick<StoryCard, 'card_id' | 'duration_ms' | 'benched' | 'source' | 'fit'> & { group_id?: string };
 
 export interface OutlineSceneRow {
 	page_id: string; number: number; title: string; act: string; summary: string; story_beats: string; timecode: string; location: string;
@@ -43,7 +43,7 @@ export function episodeOutline(series: OutlineSeries, cards: OutlineCard[], targ
 	const rows: OutlineSceneRow[] = scenes.map((scene, i) => {
 		const own = live.filter((card) => card.group_id === scene.group_id);
 		const characters = [...scene.characters];
-		for (const name of own.flatMap((card) => card.source?.characters ?? [])) if (!characters.includes(name)) characters.push(name);
+		for (const name of own.flatMap((card) => card.source?.characters ?? card.fit?.characters ?? [])) if (!characters.includes(name)) characters.push(name);
 		return {
 			page_id: scene.page_id, number: scene.number, title: scene.title, act: scene.act || 'Unassigned', summary: scene.summary, story_beats: scene.story_beats,
 			timecode: scene.timecode, location: scene.location, group_id: scene.group_id, characters,

@@ -93,11 +93,20 @@
 				</div>
 
 				<!-- The template check: the three databases and their required properties -->
-				<div class="flex flex-wrap gap-2">
-					{#each [['Episodes', s.checks.episodes], ['Scenes', s.checks.scenes], ['Shots', s.checks.shots]] as const as [name, check] (name)}
-						<span class={['chip', check.ok ? 'ok' : 'bad']} title={[...check.missing, ...check.wrongType].join('\n') || (check.optionalMissing.length ? `Optional, not found: ${check.optionalMissing.join(', ')}` : 'Matches the template')}>{check.ok ? '✓' : '✗'} {name}</span>
+				<div class="chips">
+					{#each [['Episodes', s.checks.episodes, s.databases?.episodes], ['Scenes', s.checks.scenes, s.databases?.scenes], ['Shots', s.checks.shots, s.databases?.shots]] as const as [name, check, databaseId] (name)}
+						{@const tip = [...check.missing, ...check.wrongType].join('\n') || (check.optionalMissing.length ? `Optional, not found: ${check.optionalMissing.join(', ')}` : 'Matches the template')}
+						{#if databaseId}
+							<a class={['chip', check.ok ? 'ok' : 'bad']} href={notionUrl(databaseId)} target="_blank" rel="noreferrer" title={`${tip}\nOpen the ${name} database in Notion`}>{check.ok ? '✓' : '✗'} {name} ↗</a>
+						{:else}
+							<span class={['chip', check.ok ? 'ok' : 'bad']} title={tip}>{check.ok ? '✓' : '✗'} {name}</span>
+						{/if}
 					{/each}
-					<span class={['chip', s.story ? 'ok' : 'bad']}>{s.story ? '✓' : '✗'} Story page</span>
+					{#if s.story}
+						<a class="chip ok" href={notionUrl(s.story.page_id)} target="_blank" rel="noreferrer" title={`Open “${s.story.title}” in Notion`}>✓ Story ↗</a>
+					{:else}
+						<span class="chip bad">✗ Story</span>
+					{/if}
 				</div>
 				{#if !allOk(s)}
 					<ul class="grid gap-0.5 text-[12px] text-nr-danger-text">
@@ -106,39 +115,43 @@
 				{/if}
 
 				{#if s.story}
-					<div>
-						<button type="button" class="link" onclick={() => (storyOpen = storyOpen === s.series_id ? null : s.series_id)}>{storyOpen === s.series_id ? 'Hide' : 'Read'} the season story · {s.story.title}</button>
+					<div class="min-w-0">
+						<button type="button" class="link" onclick={() => (storyOpen = storyOpen === s.series_id ? null : s.series_id)} title={s.story.title}>{storyOpen === s.series_id ? 'Hide' : 'Read'} the season story · {s.story.title}</button>
 						{#if storyOpen === s.series_id}<pre class="story">{s.story.text}</pre>{/if}
 					</div>
 				{/if}
 
 				<!-- Episode length to plan for -->
-				<div class="flex flex-wrap items-center gap-2">
+				<div class="length">
 					<span class="cap">Episode length</span>
 					{#each [10, 15, 30] as minutes (minutes)}
 						<button type="button" class={['key', s.runtime_min === minutes && 'accent']} aria-pressed={s.runtime_min === minutes} onclick={() => setRuntime(s.series_id, minutes)} disabled={!!busy}>{minutes} min</button>
 					{/each}
-					<span class="text-[11px] text-nr-faint">≈ {s.runtime_min * 12} shots of 5 s per episode</span>
+					<span class="hint" title={`About ${s.runtime_min * 12} shots of 5 s per episode`}>≈ {s.runtime_min * 12} shots</span>
 				</div>
 
 				<!-- Episodes -->
 				<div class="episodes">
+					<div class="episode-head" aria-hidden="true"><span></span><span>Episode</span><span>Act</span><span>Status</span><span>Scenes</span><span></span></div>
 					{#each s.episodes as episode (episode.page_id)}
 						{@const project = s.episode_projects[episode.page_id]}
 						<div class="episode">
 							<span class="num">{String(episode.number).padStart(2, '0')}</span>
-							<div class="min-w-0 grow">
-								<p class="text-[13px] text-nr-ink">{episode.title}</p>
+							<div class="min-w-0">
+								<p class="text-[13px] text-nr-ink">{episode.title} <a class="notion" href={notionUrl(episode.page_id)} target="_blank" rel="noreferrer" title="Open this episode in Notion" aria-label={`Open ${episode.title} in Notion`}>↗</a></p>
 								<p class="line-clamp-2 text-[11.5px] leading-5 text-nr-muted">{episode.summary}</p>
+								<p class="meta-line">{[episode.act, episode.status, `${episode.scene_count} scene${episode.scene_count === 1 ? '' : 's'}`].filter(Boolean).join(' · ')}</p>
 							</div>
 							<span class="meta">{episode.act || '—'}</span>
 							<span class="meta">{episode.status || '—'}</span>
-							<span class="meta">{episode.scene_count} scenes</span>
-							{#if project}
-								<a class="key" href={`/?project=${project}&tab=story`}>Open</a>
-							{:else}
-								<button type="button" class={['key', episode.scene_count && 'accent']} onclick={() => void importEpisode(s.series_id, episode.page_id)} disabled={!!busy || !allOk(s) || episode.scene_count === 0} title={episode.scene_count === 0 ? 'No scenes in Notion yet: an outline only' : 'Import this episode as its own project'}>{busy === `import:${episode.page_id}` ? 'Importing…' : 'Import'}</button>
-							{/if}
+							<span class="meta">{episode.scene_count} scene{episode.scene_count === 1 ? '' : 's'}</span>
+							<span class="action">
+								{#if project}
+									<a class="key" href={`/?project=${project}&tab=story`}>Open</a>
+								{:else}
+									<button type="button" class={['key', episode.scene_count && 'accent']} onclick={() => void importEpisode(s.series_id, episode.page_id)} disabled={!!busy || !allOk(s) || episode.scene_count === 0} title={episode.scene_count === 0 ? 'No scenes in Notion yet: an outline only' : 'Import this episode as its own project'}>{busy === `import:${episode.page_id}` ? 'Importing…' : 'Import'}</button>
+								{/if}
+							</span>
 						</div>
 					{/each}
 				</div>
@@ -163,10 +176,42 @@
 	.chip { border: 1px solid var(--color-nr-line); border-radius: 2px; padding: 0 7px; font: 600 9px/18px var(--font-sans); letter-spacing: 0.1em; text-transform: uppercase; }
 	.chip.ok { border-color: color-mix(in srgb, var(--color-nr-accent) 40%, transparent); color: var(--color-nr-accent); }
 	.chip.bad { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
+	/* Each of these rows stays on one line; on a phone they get smaller rather than wrap. */
+	.chips { display: flex; flex-wrap: nowrap; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+	.chip { flex: none; white-space: nowrap; }
+	a.chip { text-decoration: none; transition: border-color 140ms ease, color 140ms ease; }
+	a.chip.ok:hover { border-color: color-mix(in srgb, var(--color-nr-accent) 70%, transparent); color: var(--color-nr-ink); }
+	.length { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; white-space: nowrap; }
+	.length .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-nr-faint); font-size: 11px; }
+	.notion { margin-left: 2px; color: var(--color-nr-dim); font-size: 11px; text-decoration: none; }
+	.notion:hover { color: var(--color-nr-accent); }
+	.link { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+	@media (max-width: 640px) {
+		.chips { gap: 5px; }
+		.chip { padding: 0 5px; font-size: 8.5px; letter-spacing: 0.06em; }
+		.length { gap: 5px; }
+		.length .cap { font-size: 9px; letter-spacing: 0.1em; }
+		.length .key { padding: 0 7px; }
+		.link { font-size: 11.5px; }
+	}
 	.link { border: 0; background: transparent; padding: 0; color: var(--color-nr-accent); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
 	.story { margin-top: 6px; max-height: 420px; overflow: auto; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: var(--color-nr-deep); padding: 10px 12px; color: var(--color-nr-text); font: 12px/1.6 var(--font-sans); white-space: pre-wrap; }
 	.episodes { display: grid; gap: 4px; }
-	.episode { display: flex; align-items: center; gap: 12px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 8px 10px; }
-	.num { flex: none; color: var(--color-nr-accent); font: 500 12px var(--font-mono); }
-	.meta { flex: none; width: 76px; color: var(--color-nr-dim); font-size: 11px; }
+	/* One grid for the header and every row, so Act / Status / Scenes / the button line up whatever the button says. */
+	.episode, .episode-head { display: grid; grid-template-columns: 22px minmax(0, 1fr) 76px 76px 72px 92px; align-items: center; column-gap: 12px; padding: 8px 10px; }
+	.episode { border: 1px solid var(--color-nr-line-soft); border-radius: 2px; }
+	.episode-head { padding-block: 0 2px; color: var(--color-nr-faint); font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
+	.num { color: var(--color-nr-accent); font: 500 12px var(--font-mono); }
+	.meta { color: var(--color-nr-dim); font-size: 11px; }
+	.action { display: flex; justify-content: flex-end; }
+	/* Only on narrow screens: Act · Status · Scenes as one line under the summary. */
+	.meta-line { display: none; margin-top: 4px; color: var(--color-nr-dim); font-size: 10.5px; letter-spacing: 0.04em; }
+	@media (max-width: 640px) {
+		.episode, .episode-head { grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 10px; }
+		.episode { align-items: start; padding: 10px; }
+		.episode .num { padding-top: 2px; }
+		.episode .action { padding-top: 0; }
+		.episode .meta, .episode-head { display: none; }
+		.meta-line { display: block; }
+	}
 </style>

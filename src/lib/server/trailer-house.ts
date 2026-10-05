@@ -75,7 +75,7 @@ export interface LintRound { round: number; prompt: string; issues: TeaserIssue[
 
 const HIDDEN = new Set(['banned-word', 'project-rule']);
 /** Black out every banned word (any case) so the Agent never reads one, even inside its own draft. */
-function redactAll(text: string, words: string[]): string {
+export function redactAll(text: string, words: string[]): string {
 	let out = text;
 	for (const word of [...new Set(words.map((w) => w.toLowerCase()))].filter(Boolean)) out = out.replace(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '▇▇▇');
 	return out;
@@ -107,11 +107,11 @@ function promptOnly(answer: string): string {
  * The operator's Seedance linter runs on the teaser's prompt; the Agent fixes every finding and it is linted
  * again, up to `maxRounds` fixes. Each round is reported (draft first) so the app can show the highlights live.
  */
-export async function lintAndFix(client: AgentModelClient, input: { system: string; context: string; prompt: string; banned: string[]; images?: ModelImage[] }, onRound: (round: LintRound) => void | Promise<void> = () => {}, maxRounds = 3): Promise<{ prompt: string; rounds: LintRound[] }> {
+export async function lintAndFix(client: AgentModelClient, input: { system: string; context: string; prompt: string; banned: string[]; images?: ModelImage[]; ignore?: string[] }, onRound: (round: LintRound) => void | Promise<void> = () => {}, maxRounds = 3): Promise<{ prompt: string; rounds: LintRound[] }> {
 	let prompt = input.prompt;
 	const rounds: LintRound[] = [];
 	for (let round = 0; ; round++) {
-		const issues = lintTeaser(prompt, input.banned);
+		const issues = lintTeaser(prompt, input.banned).filter((issue) => !input.ignore?.includes(issue.rule));
 		const current = { round, prompt, issues };
 		rounds.push(current);
 		await onRound(current);

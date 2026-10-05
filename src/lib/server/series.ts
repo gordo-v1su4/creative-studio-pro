@@ -19,6 +19,8 @@ export const seriesRecordSchema = z.object({
 	title: z.string().min(1).max(300),
 	notion_root_id: z.string().min(1).max(64),
 	sources: z.object({ episodes: z.string().nullable(), scenes: z.string().nullable(), shots: z.string().nullable() }),
+	/** The databases behind the sources (page ids, for links into Notion); absent on records read before 2026-10-05. */
+	databases: z.object({ episodes: z.string().nullable(), scenes: z.string().nullable(), shots: z.string().nullable() }).optional(),
 	checks: z.object({ episodes: checkSchema, scenes: checkSchema, shots: checkSchema }),
 	story: z.object({ page_id: z.string(), title: z.string(), text: z.string() }).nullable(),
 	episodes: z.array(z.object({
@@ -67,7 +69,7 @@ export async function connectSeries(api: NotionApi, store: SeriesStore, rootId: 
 	const now = new Date().toISOString();
 	return store.write({
 		schema_version: 1, series_id: read.root_id, title: titleFrom(rootTitle, read.story), notion_root_id: read.root_id,
-		sources: read.sources, checks: read.checks, story: read.story,
+		sources: read.sources, databases: read.databases, checks: read.checks, story: read.story,
 		episodes: read.episodes.map(({ scene_count, ...episode }) => ({ ...episode, scene_count })),
 		runtime_min: existing?.runtime_min ?? 10, episode_projects: existing?.episode_projects ?? {},
 		checked_at: now, created_at: existing?.created_at ?? now

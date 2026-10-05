@@ -30,6 +30,8 @@
 	import { groupOf, groupsOf, MAIN_GROUP } from '$lib/domain/groups';
 	import { readingOrder } from '$lib/domain/board-order';
 	import Pick from '$lib/ui/controls/Pick.svelte';
+	import { replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { CLOSING_MS, draftsClosingSoon, finalizingIds, timeLeft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
@@ -601,6 +603,17 @@
 		}
 	}
 
+	const projectOptions = $derived(projects.map((project) => ({ value: project.project_id, label: project.title, hint: new Date(project.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })));
+
+	/** Open another project from the picker, and keep the address (?project=) pointing at it. */
+	async function switchProject(projectId: string) {
+		await openProject(projectId);
+		const url = new URL(location.href);
+		url.searchParams.set('project', projectId);
+		replaceState(url, page.state);
+		void loadProjects();
+	}
+
 	async function createProject() {
 		creating = true;
 		try {
@@ -831,7 +844,9 @@
 			// ?project=<id> opens that project (the Series page links imported episodes this way); else the newest.
 			const params = new URLSearchParams(location.search);
 			const wanted = params.get('project');
-			const tab = workspaceTabs.find((item) => item.tab === params.get('tab'))?.tab;
+			// The Board tab is the canvas inside; links say "board".
+			const asked = params.get('tab') === 'board' ? 'canvas' : params.get('tab');
+			const tab = workspaceTabs.find((item) => item.tab === asked)?.tab;
 			if (tab) openWorkspace(tab);
 			if (projects.length > 0) void openProject(wanted && projects.some((p) => p.project_id === wanted) ? wanted : projects[0].project_id);
 		});
@@ -855,7 +870,14 @@
 			<span class="brand">Creative Studio Pro</span>
 		</span>
 		<span class="h-4 w-px shrink-0 bg-border-default"></span>
-		<b class="project-name min-w-0 max-w-[260px] truncate" title={activeProject?.title}>{activeProject?.title ?? 'No project open'}</b>
+		{#if projects.length}
+			<!-- Every project, newest first: the way back to any of them (the trailer, an imported episode…). -->
+			<span class="project-pick min-w-0 max-w-[300px]" title={activeProject?.title}>
+				<Pick label="Open a project" value={activeProject?.project_id} options={projectOptions} wide onchange={(id) => void switchProject(id)} />
+			</span>
+		{:else}
+			<b class="project-name min-w-0 max-w-[260px] truncate">No project open</b>
+		{/if}
 		{#if activeProject}
 			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
 		{/if}
@@ -866,8 +888,8 @@
 			{/each}
 		</nav>
 		<span class="grow"></span>
-		<button type="button" class="bar-key agent" disabled={!activeProject} title="The Agent: your assistant for this project. It drafts the brief, beats and prompts, suggests effects, and makes judgment calls inside your rules. Measurable work (lint, trims, levels) is done in code, not by the Agent." onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
-			<span class="charm-gradient-text">✦</span> Agent
+		<button type="button" class="agent-key" disabled={!activeProject} title="The Agent: your assistant for this project. It drafts the brief, beats and prompts, suggests effects, and makes judgment calls inside your rules. Measurable work (lint, trims, levels) is done in code, not by the Agent." onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+			<span class="glyph" aria-hidden="true">✦</span>Agent
 		</button>
 		<button type="button" class="bar-key" onclick={() => void createProject()} disabled={creating} title="Start a new project from a rough idea">
 			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
