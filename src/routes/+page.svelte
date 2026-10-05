@@ -959,7 +959,7 @@
 	>
 		<aside class={['rail hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
 			{#if canvasOpen && !railCollapsed}
-			<div class="min-h-0 grow overflow-y-auto p-3">
+			<div class="min-h-0 grow overflow-y-auto overflow-x-hidden p-3">
 				<div class="meta-label">Canvas layers</div>
 				<div class="mt-3 grid gap-1.5">
 					<div class="layer-row"><span class="bg-voice-1"></span><b>Seed</b><small>1</small></div>
@@ -971,7 +971,7 @@
 				{#if activeProject}
 					{@const groups = groupsOf(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Groups<span class="grow"></span><button type="button" class="group-add" onclick={() => (newGroupName = '')} aria-label="New group">+ new</button></div>
-					<ul class="mt-2 grid gap-px" aria-label="Board groups">
+					<ul class="mt-2 grid grid-cols-[minmax(0,1fr)] gap-px" aria-label="Board groups">
 						{#each groups as group (group.group_id)}
 							<li class={['group-row', group.group_id === activeGroup && 'active', draggingBeats && group.group_id !== activeGroup && 'droppable', dropGroup === group.group_id && 'drop']} data-group-id={group.group_id}>
 								{#if renaming?.group_id === group.group_id}
@@ -1291,11 +1291,11 @@
 	.rail { overflow: hidden; }
 	.rail-collapse { margin: 0 8px 8px; border: 0; border-top: 1px solid #1d2226; background: transparent; padding: 8px 4px 2px; color: #55626a; font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-align: left; text-transform: uppercase; }
 	.rail-collapse:hover { color: #9eeee3; }
-	.rail-handle { position: absolute; left: 0; bottom: 64px; z-index: 40; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; width: 26px; padding: 9px 4px 8px; border: 1px solid #22282d; border-left: 0; border-radius: 0 3px 3px 0; background: rgba(17, 17, 19, 0.92); color: #7b878f; }
+	.rail-handle { position: absolute; left: 0; bottom: 156px; z-index: 40; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; width: 26px; padding: 9px 4px 8px; border: 1px solid #22282d; border-left: 0; border-radius: 0 3px 3px 0; background: rgba(17, 17, 19, 0.92); color: #7b878f; }
 	.rail-handle:hover, .rail-handle:focus-visible { color: #dce7ea; outline: none; }
 	.rail-handle-mark { width: 3px; height: 24px; border-radius: 999px; background: #4ee8d2; box-shadow: 0 0 10px rgba(78, 232, 210, 0.55); }
 	.rail-handle-label { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
-	.group-row { display: flex; align-items: stretch; color: #8d9ca1; }
+	.group-row { display: flex; min-width: 0; align-items: stretch; color: #8d9ca1; }
 	.group-row.active { background: linear-gradient(90deg, rgba(78, 232, 210, 0.1), rgba(74, 184, 255, 0.04)); color: #c9f3ee; box-shadow: inset 2px 0 0 #4ee8d2; }
 	.group-row.droppable { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-nr-accent) 25%, transparent); }
 	.group-row.drop { background: color-mix(in srgb, var(--color-nr-accent) 16%, transparent); color: var(--color-nr-ink); box-shadow: inset 0 0 0 1px var(--color-nr-accent), inset 3px 0 0 var(--color-nr-accent); }
