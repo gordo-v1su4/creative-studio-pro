@@ -24,6 +24,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 data/projects/
 data/series/
+data/published/
 # App settings hold provider keys (Settings → Agent model); never commit.
 app-settings.json
 app-settings.json.*.tmp

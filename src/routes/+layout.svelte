@@ -15,6 +15,7 @@
 	const navItems = [
 		{ label: 'Project', href: '/' },
 		{ label: 'Series', href: '/series' },
+		{ label: 'Watch', href: '/watch' },
 		{ label: 'Library', href: '/library' },
 		{ label: 'Runs', href: '/runs' },
 		{ label: 'Settings', href: '/settings' }
@@ -30,6 +31,8 @@
 	];
 
 	let paletteActions = $derived([...ui.pageActions, ...globalActions]);
+	/** The public watch pages: read-only, no studio navigation, no Agent. */
+	const watching = $derived(page.url.pathname === '/watch' || page.url.pathname.startsWith('/watch/'));
 
 	function onGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -46,8 +49,24 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<svelte:window onkeydown={onGlobalKeydown} />
+<svelte:window onkeydown={(event) => { if (!watching) onGlobalKeydown(event); }} />
 
+{#if watching}
+	<div class="flex h-screen flex-col bg-surface-base text-text-primary">
+		<header class="flex h-12 shrink-0 items-center border-b border-border-default bg-surface-base px-4 max-sm:px-3">
+			<a href="/watch" class="flex min-w-0 items-center gap-2.5">
+				<span class="block h-2 w-2 shrink-0 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
+				<span class="truncate whitespace-nowrap text-[12px] font-semibold uppercase tracking-[0.22em] text-[#b8c4c8] max-sm:text-[11px] max-sm:tracking-[0.16em]">Creative Studio Pro</span>
+			</a>
+			<span class="ml-3 text-[11px] uppercase tracking-[0.16em] text-text-dim">Watch</span>
+			{#if !page.data.publicSite}
+				<!-- On the operator's machine only: the way back into the studio (visitors never see it). -->
+				<a href="/" class="ml-auto shrink-0 rounded-sm border border-border-default px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-text-dim transition-colors hover:text-text-primary">← Studio</a>
+			{/if}
+		</header>
+		<div class="min-h-0 grow overflow-y-auto">{@render children()}</div>
+	</div>
+{:else}
 <div class="flex h-screen flex-col bg-surface-base text-text-primary">
 	<!-- The project screen carries its own single navigation bar; other pages share this one. -->
 	{#if page.url.pathname !== '/'}
@@ -87,3 +106,4 @@
 <AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={ui.activeProject} />
 <CapabilityDrawer />
 <CommandPalette bind:open={ui.paletteOpen} actions={paletteActions} />
+{/if}

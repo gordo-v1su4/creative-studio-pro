@@ -30,6 +30,7 @@
 	import { groupOf, groupsOf, MAIN_GROUP } from '$lib/domain/groups';
 	import { readingOrder } from '$lib/domain/board-order';
 	import Pick from '$lib/ui/controls/Pick.svelte';
+	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { CLOSING_MS, draftsClosingSoon, finalizingIds, timeLeft } from '$lib/domain/finalize';
@@ -89,6 +90,7 @@
 	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', preview: 'cuts' };
 	const secondaryNav = [
 		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
+		{ label: 'Watch', href: '/watch', hint: 'The public, read-only pages: what you have published' },
 		{ label: 'Library', href: '/library', hint: 'Every project, its files and media' },
 		{ label: 'Runs', href: '/runs', hint: 'Agent and generation runs, with their cost and results' },
 		{ label: 'Settings', href: '/settings', hint: 'App settings: the Agent\'s model, video generation (Higgsfield), the sound-effects folder' }
@@ -614,6 +616,25 @@
 		void loadProjects();
 	}
 
+	// ---- Publish: a read-only copy of the open project for the public watch pages ----
+	let publishOpen = $state(false);
+	let publishing = $state(false);
+	let publishPrompts = $state(false);
+	let publishResult = $state<{ url: string; beats: number; cuts: number; copied: number; missing: string[] } | null>(null);
+	let publishError = $state<string | null>(null);
+
+	async function publishProject() {
+		if (!activeProject) return;
+		publishing = true; publishError = null;
+		try {
+			const response = await fetch(`/api/projects/${activeProject.project_id}/publish`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ show_prompts: publishPrompts }) });
+			const body = (await response.json()) as { ok: true; data: NonNullable<typeof publishResult> } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			publishResult = body.data;
+		} catch (cause) { publishError = cause instanceof Error ? cause.message : 'Publish failed'; }
+		finally { publishing = false; }
+	}
+
 	async function createProject() {
 		creating = true;
 		try {
@@ -895,6 +916,24 @@
 			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
 			<span class="hidden sm:inline">{creating ? 'Creating…' : '+ New project'}</span>
 		</button>
+		<span class="relative">
+			<button type="button" class="bar-key" disabled={!activeProject} aria-expanded={publishOpen} onclick={() => { publishOpen = !publishOpen; publishResult = null; publishError = null; }} title="Publish this project to the public watch pages (read-only)">Publish</button>
+			{#if publishOpen && activeProject}
+				<div class="publish-pop" role="dialog" aria-label="Publish">
+					<p class="publish-cap">Publish to Watch</p>
+					<p class="publish-note">Visitors see a read-only copy: the story, the board with each beat's pick, and the cuts with their exported film. Publishing again replaces it.</p>
+					<label class="publish-row"><span>Show the Agent's prompts</span><Toggle label="Show the Agent's prompts" bind:checked={publishPrompts} on="yes" off="no" /></label>
+					{#if publishResult}
+						<p class="publish-ok">Published: {publishResult.beats} beats, {publishResult.cuts} cut{publishResult.cuts === 1 ? '' : 's'}, {publishResult.copied} file{publishResult.copied === 1 ? '' : 's'}.{publishResult.missing.length ? ` ${publishResult.missing.length} file${publishResult.missing.length === 1 ? ' was' : 's were'} missing.` : ''} <a href={publishResult.url} target="_blank" rel="noreferrer">Open {publishResult.url} ↗</a></p>
+					{/if}
+					{#if publishError}<p class="publish-err" role="alert">{publishError}</p>{/if}
+					<div class="flex justify-end gap-2">
+						<button type="button" class="bar-key" onclick={() => (publishOpen = false)}>Close</button>
+						<button type="button" class="bar-key agent" onclick={() => void publishProject()} disabled={publishing}>{publishing ? 'Publishing…' : publishResult ? 'Publish again' : 'Publish'}</button>
+					</div>
+				</div>
+			{/if}
+		</span>
 		<nav class="hidden items-center gap-0.5 xl:flex" aria-label="App">
 			{#each secondaryNav as item (item.href)}
 				<a href={item.href} class="flow-tab" title={item.hint}>{item.label}</a>
@@ -1235,6 +1274,13 @@
 	.bar-key:hover:not(:disabled) { border-color: #44505a; color: #c4d0d6; }
 	.bar-key:disabled { opacity: 0.4; }
 	.bar-key.agent { border-color: rgba(78, 232, 210, 0.4); color: #9eeee3; }
+	.publish-pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 40; display: grid; width: min(340px, calc(100vw - 24px)); gap: 10px; border: 1px solid var(--color-nr-line); border-radius: 3px; background: var(--color-nr-deep); padding: 12px; box-shadow: 0 12px 32px rgb(0 0 0 / 0.5); }
+	.publish-cap { color: var(--color-nr-accent); font: 600 10px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
+	.publish-note { color: var(--color-nr-muted); font-size: 12px; line-height: 1.55; }
+	.publish-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--color-nr-text); font-size: 12px; }
+	.publish-ok { color: var(--color-nr-text); font-size: 12px; line-height: 1.55; }
+	.publish-ok a { color: var(--color-nr-accent); }
+	.publish-err { color: var(--color-nr-danger-text); font-size: 12px; }
 	.seq-bar { position: absolute; bottom: 12px; left: 50%; z-index: 10; display: flex; max-width: calc(100% - 120px); align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid var(--color-nr-line); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
 	.sel-bar { position: absolute; top: 12px; left: 50%; z-index: 10; display: flex; align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid color-mix(in srgb, var(--color-nr-accent) 35%, var(--color-nr-line)); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
 	.sel-bar .bar-key { height: 22px; padding: 0 8px; font-size: 9px; }
