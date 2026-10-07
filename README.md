@@ -2,6 +2,8 @@
 
 Creative Studio Pro is a canvas-first studio for short films and trailers: story beats on a spatial board, generated takes on each beat, and saved cuts you trim and finish.
 
+![Creative Studio Pro Blood Rush story board](docs/images/creative-studio-workspace.png)
+
 **Stack**
 
 - SvelteKit and Svelte 5, with Svelte Flow for the canvas
