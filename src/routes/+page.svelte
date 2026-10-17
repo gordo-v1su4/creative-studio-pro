@@ -13,6 +13,7 @@
 	import VoiceNode from '$lib/ui/nodes/VoiceNode.svelte';
 	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
 	import SpineEdge from '$lib/ui/edges/SpineEdge.svelte';
+	import FitOnOpen from '$lib/ui/FitOnOpen.svelte';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
@@ -50,6 +51,7 @@
 	let nodes = $state<Node[]>([]);
 	let edges = $state<Edge[]>([]);
 	let viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
+	let fitRequest = $state<string | null>(null);
 	let selectedNodeId = $state<string | null>(null);
 	let savingLayout = $state(false);
 	let loadError = $state<string | null>(null);
@@ -312,14 +314,14 @@
 		let saved: string | null = null;
 		try { saved = localStorage.getItem(groupKey(project.project_id)); } catch { /* private mode */ }
 		const known = groupsOf(project.production).some((g) => g.group_id === saved);
-		if (known && saved !== activeGroup) { activeGroup = saved!; adoptProject(project); }
+		if (known && saved !== activeGroup) { activeGroup = saved!; adoptProject(project); fitRequest = `${project.project_id}:${saved}`; }
 	});
 
 	function showGroup(groupId: string) {
 		activeGroup = groupId;
 		try { if (activeProject) localStorage.setItem(groupKey(activeProject.project_id), groupId); } catch { /* private mode */ }
 		selectedNodeId = null;
-		if (activeProject) adoptProject(activeProject);
+		if (activeProject) { adoptProject(activeProject); fitRequest = `${activeProject.project_id}:${groupId}`; }
 	}
 
 	// Beats picked on the board (click, or shift-drag a box over several), in reading order.
@@ -594,8 +596,11 @@
 			const response = await fetch(`/api/projects/${projectId}`);
 			if (!response.ok) throw new Error(`GET /api/projects/${projectId} failed: ${response.status}`);
 			const body = (await response.json()) as { project: Project; layout: CanvasLayout | null };
+			const switching = activeProject?.project_id !== projectId;
 			adoptProject(body.project, body.layout);
 			viewport = body.layout?.viewport ?? { x: 0, y: 0, zoom: 1 };
+			// A project (or group, in showGroup) that just opened is centered on its beats; a reload keeps the view.
+			if (switching) fitRequest = projectId;
 			selectedNodeId = null;
 			loadError = null;
 			seedError = null;
@@ -1069,6 +1074,7 @@
 							patternColor="#3a3a40"
 						/>
 						<Controls showLock={false} position="bottom-left" />
+						<FitOnOpen request={fitRequest} done={() => (fitRequest = null)} />
 					</SvelteFlow>
 					{#if selectedBeats.length > 1 && activeProject}
 						{@const moveTargets = groupsOf(activeProject.production).filter((g) => g.group_id !== activeGroup)}
