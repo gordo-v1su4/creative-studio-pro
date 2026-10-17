@@ -74,8 +74,19 @@ ownership rule is ADR 0002 (`docs/adr/0002-app-writes-codes-into-notion.md`); me
   EP101 is imported fresh (14 scenes, 0 shots) with scene codes CLD … LBC and 14 locked scene folders.
 - **Follow-up (no Linear slot):** mirror shots *added or deleted* in Notion onto the board (field edits already sync).
 - **Unlinked, not deleted:** the first test import, project `01a14b46-a81a-713d-bcc9-6ff0ff2ce2e7`; its folder can be removed by hand.
-- **Next:** V1S-324 (story-interview skill v3 + Agent writes to Notion), then the story pass for EP101's Action and
-  Dialogue; V1S-326 after the operator vets the super-seed2 references.
+- **Later the same day:** Scene # and Shot # are padded **text** in Notion (scenes 3 digits `010`…`140`, shots 4
+  digits `0010`); the app reads text or number. Every scene table shows **Scene code, then Scene #, then the name**.
+  Episode pages use a normal filtered Scenes table (Notion locks the built-in relation table's columns). EP00 (the
+  "Your Woman" teaser) is not being made: marked OMIT in the archived old page; the old series record moved to
+  `data/series/archive/` so the Series page shows only Blood Rush. App, Notion and Review Room were in sync
+  (last Sync wrote nothing, 17 locked folders).
+- **Next, in this order (operator said: do not start Fit yet):**
+  1. Story pass for EP101: write Action and Dialogue for all 14 scenes into Notion (Kimi desktop with the Notion
+     plugin + the skill, or Claude). Operator reviews it in Notion.
+  2. V1S-329: Fit reads linked story beats, Action, Dialogue and References, assigns dialogue lines, checks itself.
+  3. Fit on Kimi writes EP101's shots; operator approves them before anything is sent.
+  - V1S-324 (skill v3 + Agent panel writes Notion) and V1S-326 (references, after the operator vets the
+    super-seed2 files) slot in around these; references ideally before Fit.
 
 ## Parked
 
