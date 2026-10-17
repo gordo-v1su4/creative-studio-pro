@@ -87,6 +87,11 @@ ownership rule is ADR 0002 (`docs/adr/0002-app-writes-codes-into-notion.md`); me
   3. Fit on Kimi writes EP101's shots; operator approves them before anything is sent.
   - V1S-324 (skill v3 + Agent panel writes Notion) and V1S-326 (references, after the operator vets the
     super-seed2 files) slot in around these; references ideally before Fit.
+- **Open story items for the story session (operator, 2026-10-17):**
+  - Walk through the **whole season arc** together before writing EP101's Action and Dialogue.
+  - New character **Bryce**: Kai's love interest, and possibly another evil entity. Not in the Story page,
+    story beats or references yet; decide where Bryce enters and what Bryce really is during the story pass.
+- The operator expects about three more sessions on this; keep each one to a clear step.
 
 ## Parked
 
