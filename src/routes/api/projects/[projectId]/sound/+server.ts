@@ -10,7 +10,8 @@ import type { RequestHandler } from './$types';
 import { idSchema, soundPlanSchema } from '$lib/domain/schemas';
 import { uuid7ish } from '$lib/domain/ids';
 import { safeFileName } from '$lib/domain/media';
-import { getGateway, getProjectRoot, getProjectStore, getSfxFolder, getSfxGenerator, resolveProjectModel } from '$lib/server/config';
+import { getGateway, getProjectRoot, getProjectStore, getPushDeps, getSfxFolder, getSfxGenerator, resolveProjectModel } from '$lib/server/config';
+import { pushDeliverable } from '$lib/server/review-room-takes';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { projectRules } from '$lib/server/animate';
 import { generateEffect, proposeEffects, quoteEffect } from '$lib/server/effects';
@@ -25,7 +26,9 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('save'), cut_id: idSchema, version: z.number().int().positive(), expected_version: z.number().int().nonnegative(), plan: soundPlanSchema }),
 	z.object({ action: z.literal('build'), cut_id: idSchema, version: z.number().int().positive() }),
 	z.object({ action: z.literal('propose'), cut_id: idSchema, version: z.number().int().positive() }),
-	z.object({ action: z.literal('export'), cut_id: idSchema, version: z.number().int().positive() }),
+	z.object({ action: z.literal('export'), cut_id: idSchema, version: z.number().int().positive(),
+		// Series episodes (V1S-280): also store the MP4 as a deliverable in Review Room's _Deliverables.
+		deliverable: z.object({ kind: z.enum(['EPC', 'TSR', 'TRL']), index: z.number().int().min(1).max(99).optional(), scope: z.enum(['episode', 'series']) }).optional() }),
 	z.object({ action: z.literal('quote_effect'), prompt: z.string().min(3).max(300), duration_s: z.number().min(0.5).max(5) }),
 	z.object({
 		action: z.literal('generate_effect'), cut_id: idSchema, version: z.number().int().positive(), prompt: z.string().min(3).max(300),
@@ -82,7 +85,15 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 	}
 	if (body.action === 'export') {
 		const exported = await exportCut(deps, projectId.data, body.cut_id, body.version);
-		return exported.ok ? json({ ok: true, data: exported.project, folder: exported.folder }) : fail(exported.status, exported.message);
+		if (!exported.ok) return fail(exported.status, exported.message);
+		// Series episodes (V1S-280): the MP4 also becomes a deliverable in Review Room's _Deliverables.
+		let deliverable: { code: string; version: number } | { error: string } | null = null;
+		const push = body.deliverable && exported.project.series ? await getPushDeps() : null;
+		if (body.deliverable && push) {
+			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable });
+			deliverable = stored.ok ? { code: stored.code, version: stored.version } : { error: stored.message };
+		}
+		return json({ ok: true, data: exported.project, folder: exported.folder, deliverable });
 	}
 	if (body.action === 'quote_effect') {
 		const quoted = await quoteEffect(getSfxGenerator(), body);

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
-import { episodeCode, formatShotCode } from '$lib/domain/shot-codes';
+import { DELIVERABLE_KINDS, episodeCode, formatDeliverableCode, formatShotCode, type DeliverableKind } from '$lib/domain/shot-codes';
 import { pickFor } from '$lib/domain/takes';
 import type { SeriesStore } from './series';
 import { uploadTake, type ReviewRoomClient } from './review-room';
@@ -22,7 +22,38 @@ export interface PushDeps {
 	poster: (input: string, output: string) => Promise<void>;
 }
 
-type Pushed = { ok: true; project: Project; code: string; version: number } | { ok: false; status: number; message: string };
+/**
+ * Store an exported cut as a deliverable (V1S-280): `BLR_EP101_EPC` in the episode's `_Deliverables`, or
+ * `BLR_S1_TRL01` in the series-level one. Each export of the same deliverable becomes its next version.
+ */
+export async function pushDeliverable(deps: PushDeps, projectId: string, input: { file: string; name: string; kind: DeliverableKind; index?: number; scope: 'episode' | 'series' }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
+	const project = await deps.store.readProject(projectId);
+	if (!project?.series) return { ok: false, status: 400, message: 'Only a series episode has deliverables' };
+	const record = await deps.series.read(project.series.series_id);
+	if (!record?.review_room || !record.show_code) return { ok: false, status: 400, message: 'Link the series to Review Room and set its show code first (Series page)' };
+	const folderKey = input.scope === 'series' ? 'deliverables' : `ep:${project.series.episode_page_id}:deliverables`;
+	const folderId = record.review_room.folders[folderKey];
+	if (!folderId) return { ok: false, status: 400, message: 'No _Deliverables folder yet; sync folders on the Series page' };
+	const season = project.series.season ?? 1;
+	const code = formatDeliverableCode({ show: record.show_code, scope: input.scope === 'series' ? `S${season}` : episodeCode(season, project.series.episode_number), kind: input.kind, index: input.index });
+	const work = await mkdtemp(join(tmpdir(), 'csp-poster-'));
+	try {
+		const posterPath = join(work, 'poster.jpg');
+		await deps.poster(input.file, posterPath);
+		const probed = await deps.probe(input.file);
+		const stored = await uploadTake(deps.client, {
+			projectId: record.review_room.project_id, folderId, assetCode: code, name: input.name, type: 'video/mp4',
+			bytes: new Uint8Array(await readFile(input.file)), poster: new Uint8Array(await readFile(posterPath)),
+			durationSec: probed.duration_s ?? 0, width: probed.width ?? 0, height: probed.height ?? 0,
+			metadata: { sourceLabel: 'Creative Studio Pro', notes: `${DELIVERABLE_KINDS[input.kind]} · ${project.series.episode_title}` }, makeCurrent: true
+		});
+		return { ok: true, code, version: stored.version };
+	} finally {
+		await rm(work, { recursive: true, force: true });
+	}
+}
+
+type Pushed ={ ok: true; project: Project; code: string; version: number } | { ok: false; status: number; message: string };
 
 export async function pushTake(deps: PushDeps, projectId: string, takeId: string): Promise<Pushed> {
 	const project = await deps.store.readProject(projectId);

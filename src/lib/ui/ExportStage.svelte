@@ -21,6 +21,11 @@
 		title: project.production.cards.find((card) => card.card_id === entry.card_id)?.title ?? entry.card_id,
 		take: project.production.assets.find((asset) => asset.asset_id === entry.asset_id)
 	}))) : []);
+	// Series episodes (V1S-280): the MP4 is also stored as a deliverable in Review Room's _Deliverables.
+	let kind = $state<'EPC' | 'TSR' | 'TRL' | 'none'>('EPC');
+	let index = $state(1);
+	let scope = $state<'episode' | 'series'>('episode');
+	let stored = $state<string | null>(null);
 	let exporting = $state(false);
 	let error = $state<string | null>(null);
 
@@ -28,10 +33,12 @@
 		if (!selected) return;
 		exporting = true; error = null;
 		try {
-			const response = await fetch(`/api/projects/${project.project_id}/sound`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'export', cut_id: selected.cut.cut_id, version: selected.v.version }) });
-			const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			const response = await fetch(`/api/projects/${project.project_id}/sound`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'export', cut_id: selected.cut.cut_id, version: selected.v.version, ...(project.series && kind !== 'none' ? { deliverable: { kind, scope, ...(kind === 'EPC' ? {} : { index }) } } : {}) }) });
+			const result = (await response.json()) as { ok: true; data: Project; deliverable?: { code: string; version: number } | { error: string } | null } | { ok: false; error: { message: string } };
 			if (!result.ok) throw new Error(result.error.message);
 			onUpdated(result.data);
+			const d = result.deliverable;
+			stored = d ? ('code' in d ? `Stored in Review Room as ${d.code}_v${String(d.version).padStart(3, '0')}`: `Not stored in Review Room: ${d.error}`) : null;
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Export failed'; }
 		finally { exporting = false; }
 	}
@@ -46,6 +53,11 @@
 		<div class="mt-3 flex flex-wrap items-center gap-3 border-y border-[#1a1f23] py-3">
 			<span class="cap">Cut</span>
 			<Pick label="Locked cut version" value={selected.key} options={versions.map((entry) => ({ value: entry.key, label: `${entry.cut.name} v${entry.v.version}`, hint: `${cutLength(entry.v).toFixed(1)}s${entry.v.sound?.mix ? '' : ' · no mix'}` }))} onchange={(key) => (selectedKey = key)} />
+			{#if project.series}
+				<Pick label="Deliverable kind" value={kind} options={[{ value: 'EPC', label: 'Episode cut' }, { value: 'TSR', label: 'Teaser' }, { value: 'TRL', label: 'Trailer' }, { value: 'none', label: 'Not a deliverable' }]} onchange={(v) => (kind = v as typeof kind)} />
+				{#if kind === 'TSR' || kind === 'TRL'}<Pick label="Deliverable number" value={String(index)} options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: `#${n}` }))} onchange={(v) => (index = Number(v))} />{/if}
+				{#if kind !== 'none'}<Pick label="Deliverable level" value={scope} options={[{ value: 'episode', label: 'This episode' }, { value: 'series', label: 'Season' }]} onchange={(v) => (scope = v as typeof scope)} />{/if}
+			{/if}
 			<span class="grow"></span>
 			{#if !mixed}<span class="text-[11px] text-[#5b6b70]">build its mix in Sound first</span>{/if}
 			<button type="button" class="key" onclick={() => void exportNow()} disabled={!mixed || exporting}>{exporting ? 'Rendering…' : done ? 'Export again' : 'Export MP4 + Resolve timeline'}</button>
@@ -56,6 +68,7 @@
 				<ul class="mt-1 grid gap-0.5 text-[11px] text-[#8a969e]">{#each drafts as d, i (i)}<li><span class="text-[#b9cfd2]">{d.title}</span> · {d.name} · {d.why}</li>{/each}</ul>
 			</div>
 		{/if}
+		{#if stored}<p class="mt-2 text-[11.5px] text-[#7de5dc]" role="status">{stored}</p>{/if}
 		{#if error}<p class="mt-2 text-gate-failed" role="alert">{error}</p>{/if}
 		{#if done}
 			<div class="mt-4" aria-label="Exported files">

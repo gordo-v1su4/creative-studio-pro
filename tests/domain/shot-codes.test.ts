@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
-	codeCandidates, codeProblems, episodeCode, fillEpisodeCodes, formatShotCode, insertShotNumber, isInsert, numberShots,
+	codeCandidates, codeProblems, episodeCode, fillEpisodeCodes, formatDeliverableCode, formatShotCode, insertShotNumber, isInsert, numberShots,
 	parseShotCode, sceneOrder, suggestCode
 } from '../../src/lib/domain/shot-codes';
 
@@ -111,6 +111,15 @@ describe('fillEpisodeCodes', () => {
 	test('running it again changes nothing', () => {
 		const once = fillEpisodeCodes(scenes, cards);
 		expect(fillEpisodeCodes(once.scenes, once.cards)).toEqual(once);
+	});
+});
+
+describe('deliverable codes', () => {
+	test('episode cut, numbered teaser, season trailer', () => {
+		expect(formatDeliverableCode({ show: 'BLR', scope: 'EP101', kind: 'EPC' })).toBe('BLR_EP101_EPC');
+		expect(formatDeliverableCode({ show: 'BLR', scope: 'EP101', kind: 'TSR', index: 1 })).toBe('BLR_EP101_TSR01');
+		expect(formatDeliverableCode({ show: 'BLR', scope: 'S1', kind: 'TRL', index: 2 })).toBe('BLR_S1_TRL02');
+		expect(() => formatDeliverableCode({ show: 'BLR', scope: 'E1', kind: 'EPC' })).toThrow();
 	});
 });
 

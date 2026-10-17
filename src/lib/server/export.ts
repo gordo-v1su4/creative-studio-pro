@@ -21,7 +21,7 @@ const failure = (status: number, message: string): Failure => ({ ok: false, stat
 export async function exportCut(
 	deps: { gateway: ProjectCommandGateway; store: ProjectStore; projectRoot: string },
 	projectId: string, cutId: string, version: number
-): Promise<{ ok: true; project: Project; folder: string } | Failure> {
+): Promise<{ ok: true; project: Project; folder: string; mp4: string } | Failure> {
 	const prepared = await prepareMix(deps, projectId, cutId, version);
 	if (!prepared.ok) return prepared;
 	const { project, cut, locked, plan, files, prefix, local, mix } = prepared;
@@ -75,7 +75,7 @@ export async function exportCut(
 			plan: { ...plan, export: { built_at: new Date().toISOString(), folder, mp4: url(mp4), fcpxml: url(fcpxml), files: listed.map((f) => ({ name: f.name, url: url(f.name) })), drafts } }
 		});
 		if (!saved.ok) return failure(409, saved.error.message);
-		return { ok: true, project: saved.data, folder };
+		return { ok: true, project: saved.data, folder, mp4: join(folder, mp4) };
 	} catch (cause) {
 		return failure(500, `The export render failed: ${cause instanceof Error ? cause.message : 'ffmpeg error'}`);
 	}

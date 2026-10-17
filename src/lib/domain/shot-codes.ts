@@ -93,7 +93,22 @@ export function formatShotCode(parts: CodeParts, version?: number): string {
 	return version === undefined ? base : `${base}_${versionText(version)}`;
 }
 
-const SHOT_CODE = /^([A-Z]{3})_(EP\d{3})_([A-Z]{3})_(\d{4})(?:_v(\d{3}))?$/;
+/** Deliverable kinds (CONTEXT.md "Deliverable"): episode cut, teaser, trailer. */
+export const DELIVERABLE_KINDS = { EPC: 'Episode cut', TSR: 'Teaser', TRL: 'Trailer' } as const;
+export type DeliverableKind = keyof typeof DELIVERABLE_KINDS;
+
+/**
+ * `BLR_EP101_EPC` (one episode cut per episode), `BLR_EP101_TSR01`, `BLR_S1_TRL01` (season level). Review Room
+ * numbers the versions, so a re-export of the same deliverable becomes its next v###.
+ */
+export function formatDeliverableCode(input: { show: string; scope: string; kind: DeliverableKind; index?: number }): string {
+	if (!CODE_PATTERN.test(input.show)) throw new Error('The show code must be three capital letters');
+	if (!/^(EP\d{3}|S\d)$/.test(input.scope)) throw new Error(`"${input.scope}" is not an episode (EP101) or a season (S1)`);
+	const index = input.kind === 'EPC' && input.index === undefined ? '' : String(Math.max(1, Math.min(99, Math.trunc(input.index ?? 1)))).padStart(2, '0');
+	return `${input.show}_${input.scope}_${input.kind}${index}`;
+}
+
+const SHOT_CODE =/^([A-Z]{3})_(EP\d{3})_([A-Z]{3})_(\d{4})(?:_v(\d{3}))?$/;
 
 /** Reads a shot code (with or without its version); null when the text is not one. */
 export function parseShotCode(text: string): (CodeParts & { version: number | null }) | null {
