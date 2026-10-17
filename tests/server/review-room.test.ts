@@ -10,6 +10,11 @@ const episodes = [{
 describe('series tree', () => {
 	test('series _Deliverables, then EP101 with its _Deliverables and one folder per coded scene', () => {
 		expect(bareTitle('EP01 — The Late Shift')).toBe('The Late Shift');
+		// A time is not a prefix (the folder read "47 AM" before this was fixed); "12: Title" still is.
+		expect(bareTitle('2:47 AM')).toBe('2:47 AM');
+		expect(bareTitle('2:47 AM (From Inside)')).toBe('2:47 AM (From Inside)');
+		expect(bareTitle('P01 — 2:47 AM (Teaser)')).toBe('2:47 AM (Teaser)');
+		expect(bareTitle('12: The Party')).toBe('The Party');
 		expect(seriesTree(episodes).map((f) => [f.key, f.title, f.parent])).toEqual([
 			['deliverables', '_Deliverables', null],
 			['ep:e1', 'EP101 — The Late Shift', null],

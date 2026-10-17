@@ -20,8 +20,8 @@ export interface TreeEpisode {
 	scenes: Array<{ page_id: string; title: string; code?: string }>;
 }
 
-/** "EP01 — The Late Shift" → "The Late Shift"; "P01 — 2:47 AM (Teaser)" → "2:47 AM (Teaser)". */
-export const bareTitle = (title: string) => title.replace(/^\s*(?:EP?\s*\d+|P\d+[A-Z]?|\d+)\s*[—–:-]\s*/i, '').trim() || title.trim();
+/** "EP01 — The Late Shift" → "The Late Shift"; "P01 — 2:47 AM (Teaser)" → "2:47 AM (Teaser)"; "2:47 AM" stays (a time, not a prefix). */
+export const bareTitle = (title: string) => title.replace(/^\s*(?:EP?\s*\d+|P\d+[A-Z]?|\d+)\s*(?:[—–-]|:(?=\s))\s*/i, '').trim() || title.trim();
 
 /** The folders a series should have, parents before children. Scenes without a code yet are left out. */
 export function seriesTree(episodes: TreeEpisode[]): TreeFolder[] {
