@@ -105,6 +105,34 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Undo failed'; }
 		finally { saving = false; }
 	}
+	// ---- Send gate (V1S-279): a scene's shots as one batch of 480p drafts, priced and gated, one approval ----
+	type Batch = { group_id: string; items: Array<{ card_id: string; title: string; prompt: string; credits: number | null; blocked: string[] }>; skipped: Array<{ title: string; reason: string }>; total_credits: number; spent_credits: number; remaining_shots: number; projected_credits: number | null; balance: { credits: number } | null };
+	let batch = $state<Batch | null>(null);
+	let batching = $state<string | null>(null);
+	const spent = $derived((project.production.generations ?? []).filter((generation) => generation.status !== 'failed').reduce((sum, generation) => sum + (generation.estimate_credits ?? 0), 0));
+	async function animateCall(payload: Record<string, unknown>) {
+		const response = await fetch(`/api/projects/${project.project_id}/animate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+		const body = await response.json();
+		if (!body.ok) throw new Error([body.error?.message, ...(body.error?.reasons ?? [])].filter(Boolean).join(' · '));
+		return body;
+	}
+	async function quoteScene(groupId: string) {
+		batching = 'quote'; error = null; note = null;
+		try { batch = (await animateCall({ action: 'scene_quote', group_id: groupId })).data as Batch; }
+		catch (cause) { error = cause instanceof Error ? cause.message : 'Pricing the scene failed'; batch = null; }
+		finally { batching = null; }
+	}
+	async function sendScene() {
+		if (!batch) return;
+		batching = 'send'; error = null;
+		try {
+			const body = await animateCall({ action: 'scene_send', group_id: batch.group_id, expected_version: project.version, confirmed_credits: batch.total_credits });
+			onUpdated(body.data as Project);
+			note = `Sent ${body.sent} shot${body.sent === 1 ? '' : 's'} as 480p drafts${body.failed?.length ? `; ${body.failed.length} failed: ${body.failed.map((f: { title: string; message: string }) => `${f.title} (${f.message})`).join(', ')}` : ''}.`;
+			batch = null;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Sending the scene failed'; }
+		finally { batching = null; }
+	}
 	const sceneState = (s: SceneFit | undefined) => !s ? '' : s.state === 'waiting' ? 'waiting' : s.state === 'writing' ? 'writing…' : s.state === 'linting' ? `linting ${s.linted?.size ?? 0}/${s.shots}` : s.state === 'done' ? `+${s.added}` : 'failed';
 </script>
 
@@ -130,6 +158,7 @@
 		<span class="grow"></span>
 		<span class="readout" title="Shots on the board (benched shots left out) against the target length">
 			<b>{clockOf(outline.shot_s)}</b> of shots · <b>{clockOf(outline.target_s)}</b> target
+			{#if spent}· <span title="Credits sent to Higgsfield for this episode (failed generations left out)">{spent} cr spent</span>{/if}
 			{#if short}· <span class="text-nr-muted">+{clockOf(outline.gap_s)} and about {planShots(plan)} shot{planShots(plan) === 1 ? '' : 's'} to reach {minutes} min ({Math.round(outline.fill * 100)}%)</span>{:else}· <span class="text-nr-accent">full</span>{/if}
 		</span>
 	</div>
@@ -196,6 +225,33 @@
 											{#if fittedIn(scene.group_id)}<button type="button" class="key" onclick={() => void unfit(scene.page_id)} disabled={saving}>Take out fitted ({fittedIn(scene.group_id)})</button>{/if}
 										</div>
 									{/if}
+									{#if !fitting}
+										<div class="flex flex-wrap gap-2">
+											<button type="button" class="key" onclick={() => void quoteScene(scene.group_id)} disabled={!!batching} title="Price and check this scene's shots as one batch of 480p drafts">{batching === 'quote' ? 'Checking…' : 'Animate scene (480p drafts)…'}</button>
+										</div>
+									{/if}
+									{#if batch && batch.group_id === scene.group_id}
+										{@const blocked = batch.items.filter((item) => item.blocked.length)}
+										<div class="batch" aria-label="Scene batch">
+											{#each batch.items as item (item.card_id)}
+												<div class={['batch-row', item.blocked.length && 'bad']}>
+													<b>{item.title}</b>
+													<span class="prompt" title={item.prompt}>{item.prompt}</span>
+													<span class="mono">{item.credits ?? '—'} cr</span>
+													{#each item.blocked as reason (reason)}<span class="reason">{reason}</span>{/each}
+												</div>
+											{/each}
+											{#if batch.skipped.length}<p class="text-[11px] text-nr-faint">Left out: {batch.skipped.map((s) => `${s.title} (${s.reason})`).join(' · ')}</p>{/if}
+											<p class="text-[11.5px] text-nr-muted">This batch {batch.total_credits} credits{batch.balance ? ` · balance ${batch.balance.credits}` : ''} · spent so far {batch.spent_credits} · about {batch.projected_credits ?? '—'} to draft the episode's {batch.remaining_shots} remaining shots</p>
+											<div class="flex flex-wrap gap-2">
+												<button type="button" class="key on" onclick={() => void sendScene()} disabled={!!batching || !batch.items.length || blocked.length > 0}
+													title={blocked.length ? 'Fix the blocked prompts first: nothing is sent while any shot is blocked' : 'Send every shot above as a 480p draft'}>
+													{batching === 'send' ? 'Sending…' : blocked.length ? `${blocked.length} blocked` : `Send ${batch.items.length} shot${batch.items.length === 1 ? '' : 's'} · ${batch.total_credits} cr`}
+												</button>
+												<button type="button" class="key" onclick={() => (batch = null)} disabled={batching === 'send'}>Cancel</button>
+											</div>
+										</div>
+									{/if}
 									{#if fitting?.scenes[scene.page_id]?.message}<p class="text-[11.5px] text-nr-danger-text">{fitting.scenes[scene.page_id].message}</p>{/if}
 								</div>
 							{/if}
@@ -246,6 +302,11 @@
 	.scene:hover, .scene[aria-expanded='true'] { border-color: var(--color-nr-line); }
 	.meta { flex: none; min-width: 52px; color: var(--color-nr-dim); font-size: 11px; text-align: right; white-space: nowrap; }
 	.owed { color: var(--color-nr-muted); font-family: var(--font-mono); }
+	.batch { display: grid; gap: 6px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 8px 10px; }
+	.batch-row { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; font-size: 11.5px; color: var(--color-nr-text); }
+	.batch-row .prompt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-nr-muted); }
+	.batch-row .reason { grid-column: 2 / -1; color: var(--color-nr-danger-text); font-size: 11px; }
+	.batch-row.bad b { color: var(--color-nr-danger-text); }
 	.minutes { width: 46px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 3px 6px; color: var(--color-nr-ink); font: 500 12px var(--font-mono); text-align: center; outline: none; }
 	.minutes:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
 	.budget { flex: none; display: grid; width: 104px; gap: 4px; justify-items: end; }

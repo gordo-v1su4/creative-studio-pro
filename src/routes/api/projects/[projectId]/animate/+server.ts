@@ -6,7 +6,7 @@ import { idSchema } from '$lib/domain/schemas';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import { getAnimateDeps, resolveProjectModel } from '$lib/server/config';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
-import { draftAnimatePrompt, estimateAnimate, pollGenerations, projectRules, readStill, sendAnimate, spentThisSession } from '$lib/server/animate';
+import { draftAnimatePrompt, estimateAnimate, pollGenerations, projectRules, quoteSceneBatch, readStill, sendAnimate, sendSceneBatch, spentThisSession } from '$lib/server/animate';
 
 const settingsSchema = z.object({
 	prompt: z.string().max(10_000),
@@ -25,7 +25,10 @@ const requestSchema = z.discriminatedUnion('action', [
 			z.object({ kind: z.literal('yolo'), cap_credits: z.number().nonnegative(), session_id: z.string().min(1).max(100) })
 		])
 	}),
-	z.object({ action: z.literal('poll') })
+	z.object({ action: z.literal('poll') }),
+	// Send gate (V1S-279): one scene's shots as one batch, priced and gated, then one approval sends it.
+	z.object({ action: z.literal('scene_quote'), group_id: idSchema }),
+	z.object({ action: z.literal('scene_send'), group_id: idSchema, expected_version: z.number().int().nonnegative(), confirmed_credits: z.number().nonnegative() })
 ]);
 
 const fail = (status: number, code: string, message: string, extra: Record<string, unknown> = {}) =>
@@ -56,6 +59,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (body.action === 'poll') {
 		const polled = await pollGenerations(deps, projectId.data);
 		return polled.ok ? json({ ok: true, data: polled.project }) : fail(polled.status, polled.code, polled.message);
+	}
+	if (body.action === 'scene_quote') {
+		const project = await deps.store.readProject(projectId.data);
+		if (!project) return fail(404, 'NOT_FOUND', 'Project not found');
+		const quoted = await quoteSceneBatch(deps, project, body.group_id);
+		return quoted.ok ? json({ ok: true, data: quoted.batch }) : fail(quoted.status, quoted.code, quoted.message);
+	}
+	if (body.action === 'scene_send') {
+		const sent = await sendSceneBatch(deps, { project_id: projectId.data, expected_version: body.expected_version, group_id: body.group_id, confirmed_credits: body.confirmed_credits });
+		return sent.ok ? json({ ok: true, data: sent.project, sent: sent.sent, failed: sent.failed }) : fail(sent.status, sent.code, sent.message, { reasons: sent.reasons ?? [] });
 	}
 	if (body.action === 'send') {
 		const sent = await sendAnimate(deps, { project_id: projectId.data, expected_version: body.expected_version, card_id: body.card_id, settings: body.settings, mode: body.mode });

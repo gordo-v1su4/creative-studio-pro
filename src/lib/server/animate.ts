@@ -2,7 +2,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
-import { animateGate, pendingGenerations, seedanceRequest, type AnimateSettings, type SendMode } from '$lib/domain/animate';
+import { ANIMATE_MAX_S, ANIMATE_MIN_S, animateGate, pendingGenerations, seedanceRequest, type AnimateSettings, type SendMode } from '$lib/domain/animate';
 import { uuid7ish } from '$lib/domain/ids';
 import { pickFor, type Take } from '$lib/domain/takes';
 import { draftWindow, finalizeRequest, finalizingIds } from '$lib/domain/finalize';
@@ -147,6 +147,93 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 	});
 	if (!recorded.ok) return failure(409, recorded.error.code, `Sent as ${requestId}, but noting it failed: ${recorded.error.message}`);
 	return { ok: true, project: recorded.data, estimate: priced.estimate };
+}
+
+// ---- Send gate (V1S-279): one scene's shots as one batch, one approval ----
+
+export interface BatchItem { card_id: string; title: string; prompt: string; settings: AnimateSettings; credits: number | null; blocked: string[] }
+export interface SceneBatch {
+	group_id: string;
+	items: BatchItem[];
+	/** Shots left out, and why (already animated, still running, no still pick, benched). */
+	skipped: Array<{ card_id: string; title: string; reason: string }>;
+	total_credits: number;
+	/** Credits already sent for this episode, and about how much its remaining shots will cost at this batch's rate. */
+	spent_credits: number;
+	remaining_shots: number;
+	projected_credits: number | null;
+	balance: { credits: number; plan: string | null } | null;
+}
+
+const draftSettings = (card: StoryCard): AnimateSettings => ({
+	prompt: card.video_prompt,
+	duration_s: Math.min(ANIMATE_MAX_S, Math.max(ANIMATE_MIN_S, Math.round(card.duration_ms / 1000))),
+	resolution: '480p', generate_audio: true
+});
+
+/** The scene's shots ready to animate as 480p drafts, each gated (lint, 2K still) and priced, plus the episode's spend. */
+export async function quoteSceneBatch(deps: AnimateDeps, project: Project, groupId: string): Promise<{ ok: true; batch: SceneBatch } | Failure> {
+	if (!deps.generator) return failure(503, 'NOT_CONFIGURED', 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)');
+	const production = project.production;
+	if (!production.groups?.some((group) => group.group_id === groupId)) return failure(404, 'NOT_FOUND', 'That scene is not on the board');
+	const pending = new Set(pendingGenerations(production).map((generation) => generation.card_id));
+	const hasVideo = (cardId: string) => production.assets.some((asset) => asset.card_id === cardId && asset.kind === 'video' && !asset.rejected);
+	const banned = bannedTerms(await projectRules(deps.projectRoot, project.project_id));
+	const items: BatchItem[] = [];
+	const skipped: SceneBatch['skipped'] = [];
+	for (const card of production.cards.filter((entry) => entry.group_id === groupId).toSorted((a, b) => a.order - b.order)) {
+		if (card.benched) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'benched' }); continue; }
+		if (pending.has(card.card_id)) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'a generation is still running' }); continue; }
+		if (hasVideo(card.card_id)) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'already has a video take' }); continue; }
+		const found = stillOf(deps, project, card.card_id);
+		if (!found.ok) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'no still pick yet' }); continue; }
+		const settings = draftSettings(card);
+		const priced = await estimateAnimate(deps, settings);
+		const credits = priced.ok ? priced.estimate.credits : null;
+		const blocked = priced.ok
+			? animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: credits!, mode: { kind: 'confirm', confirmed_credits: credits! }, banned })
+			: [priced.message];
+		items.push({ card_id: card.card_id, title: card.title, prompt: settings.prompt, settings, credits, blocked });
+	}
+	const priced = items.filter((item) => item.credits !== null);
+	const rate = priced.length ? priced.reduce((sum, item) => sum + item.credits!, 0) / priced.length : null;
+	const remaining = production.cards.filter((card) => !card.benched && !hasVideo(card.card_id) && !pending.has(card.card_id)).length;
+	return {
+		ok: true,
+		batch: {
+			group_id: groupId, items, skipped,
+			total_credits: items.reduce((sum, item) => sum + (item.credits ?? 0), 0),
+			spent_credits: (production.generations ?? []).filter((generation) => generation.status !== 'failed').reduce((sum, generation) => sum + (generation.estimate_credits ?? 0), 0),
+			remaining_shots: remaining,
+			projected_credits: rate === null ? null : Math.round(rate * remaining * 100) / 100,
+			balance: await deps.generator.balance()
+		}
+	};
+}
+
+/**
+ * Send a scene's batch after one approval: re-quote, refuse the whole batch if any shot is blocked or the
+ * price went above what was confirmed, then send shot by shot through the same gate as a single send.
+ */
+export async function sendSceneBatch(deps: AnimateDeps, input: { project_id: string; expected_version: number; group_id: string; confirmed_credits: number }): Promise<{ ok: true; project: Project; sent: number; failed: Array<{ title: string; message: string }> } | Failure> {
+	let project = await deps.store.readProject(input.project_id);
+	if (!project) return failure(404, 'NOT_FOUND', 'Project not found');
+	if (project.version !== input.expected_version) return failure(409, 'VERSION_CONFLICT', `Version conflict: expected ${input.expected_version}, current ${project.version}`);
+	const quoted = await quoteSceneBatch(deps, project, input.group_id);
+	if (!quoted.ok) return quoted;
+	const { batch } = quoted;
+	if (!batch.items.length) return failure(400, 'INVALID_COMMAND', 'Nothing in this scene is ready to animate');
+	const reasons = batch.items.flatMap((item) => item.blocked.map((reason) => `${item.title}: ${reason}`));
+	if (batch.total_credits > input.confirmed_credits + 1e-6) reasons.push(`The batch now costs ${batch.total_credits} credits, above the ${input.confirmed_credits} you confirmed`);
+	if (batch.balance && batch.balance.credits < batch.total_credits) reasons.push(`Not enough credits: ${batch.total_credits} needed, ${batch.balance.credits} left`);
+	if (reasons.length) return failure(422, 'GATE_BLOCKED', 'Blocked before any spend', reasons);
+	let sent = 0;
+	const failed: Array<{ title: string; message: string }> = [];
+	for (const item of batch.items) {
+		const result = await sendAnimate(deps, { project_id: input.project_id, expected_version: project.version, card_id: item.card_id, settings: item.settings, mode: { kind: 'confirm', confirmed_credits: item.credits! } });
+		if (result.ok) { project = result.project; sent += 1; } else failed.push({ title: item.title, message: result.message });
+	}
+	return { ok: true, project, sent, failed };
 }
 
 /** Check every pending generation once; finished ones land as takes. Returns the latest project. */

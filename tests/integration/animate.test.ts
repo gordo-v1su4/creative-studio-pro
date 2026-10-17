@@ -6,7 +6,7 @@ import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { animateGate } from '../../src/lib/domain/animate';
 import { pickFor, takesFor } from '../../src/lib/domain/takes';
-import { draftAnimatePrompt, pollGenerations, resetSessionSpend, sendAnimate, type AnimateDeps } from '../../src/lib/server/animate';
+import { draftAnimatePrompt, pollGenerations, quoteSceneBatch, resetSessionSpend, sendAnimate, sendSceneBatch, type AnimateDeps } from '../../src/lib/server/animate';
 import { createHiggsfieldCli, SEEDANCE_JOB_TYPE, seedanceArgs, type GenerationStatus, type VideoGenerator } from '../../src/lib/server/higgsfield';
 import type { StoryCard } from '../../src/lib/domain/schemas';
 
@@ -128,6 +128,45 @@ describe('Animate against a fake generator', () => {
 		if (!polled.ok) throw new Error(polled.message);
 		expect(takesFor(polled.project.production, 'a')).toHaveLength(1);
 		expect(polled.project.production.generations?.[0].status).toBe('nsfw');
+	});
+});
+
+describe('scene batches (send gate, V1S-279)', () => {
+	async function sceneSetup(prompts: string[]) {
+		const { deps, fake, project, projectId, store } = await setup({ width: 2048, height: 1152 });
+		const cards: StoryCard[] = prompts.map((prompt, i) => ({ card_id: `c${i}`, order: i, title: `Shot ${i}`, beat: 'x', purpose: 'y', duration_ms: 5000, image_prompt: 'p', video_prompt: prompt, status: 'draft', group_id: 'g1' }));
+		const assets = cards.map((card) => ({ asset_id: `s-${card.card_id}`, card_id: card.card_id, kind: 'image' as const, name: 'still.png', mime_type: 'image/png', url: `/api/projects/${projectId}/files/board/still.png`, width: 2048, height: 1152, created_at: '2026-10-01T00:00:00.000Z' }));
+		const saved = await deps.gateway.saveProduction({ command: 'save_production', project_id: projectId, expected_version: project.version,
+			production: { ...project.production, cards, assets, groups: [{ group_id: 'g1', name: 'Scene 010', created_at: '2026-10-01T00:00:00.000Z' }] } });
+		if (!saved.ok) throw new Error(saved.error.message);
+		return { deps, fake, project: saved.data, projectId, store };
+	}
+
+	test('one blocked shot stops the whole batch before any spend', async () => {
+		const { deps, fake, project, projectId } = await sceneSetup([GOOD, 'Cut to @Image 1']);
+		const quoted = await quoteSceneBatch(deps, project, 'g1');
+		if (!quoted.ok) throw new Error(quoted.message);
+		expect(quoted.batch.items.map((item) => item.blocked.length > 0)).toEqual([false, true]);
+		expect(quoted.batch.total_credits).toBe(30);
+		const sent = await sendSceneBatch(deps, { project_id: projectId, expected_version: project.version, group_id: 'g1', confirmed_credits: 30 });
+		expect(sent.ok).toBeFalse();
+		if (!sent.ok) expect(sent.reasons?.join(' ')).toContain('Shot 1');
+		expect(fake.calls.some((call) => call.startsWith('submit'))).toBeFalse();
+	});
+
+	test('a clean batch sends every shot after one approval, and counts the spend', async () => {
+		const { deps, fake, project, projectId } = await sceneSetup([GOOD, GOOD]);
+		const low = await sendSceneBatch(deps, { project_id: projectId, expected_version: project.version, group_id: 'g1', confirmed_credits: 15 });
+		expect(low.ok).toBeFalse();
+		const sent = await sendSceneBatch(deps, { project_id: projectId, expected_version: project.version, group_id: 'g1', confirmed_credits: 30 });
+		if (!sent.ok) throw new Error(sent.message);
+		expect(sent.sent).toBe(2);
+		expect(fake.calls.filter((call) => call.startsWith('submit'))).toHaveLength(2);
+		const again = await quoteSceneBatch(deps, sent.project, 'g1');
+		if (!again.ok) throw new Error(again.message);
+		expect(again.batch.items).toEqual([]);
+		expect(again.batch.skipped.map((s) => s.reason)).toEqual(['a generation is still running', 'a generation is still running']);
+		expect(again.batch.spent_credits).toBe(30);
 	});
 });
 
