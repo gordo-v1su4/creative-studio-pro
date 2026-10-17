@@ -94,14 +94,31 @@ export const STORY_BEATS_TEMPLATE = {
 	] as PropSpec[]
 };
 
+/**
+ * Template v3 (V1S-323): the named images that lock how a character, location or prop looks. Optional, so
+ * older series still import. Name is the exact string printed on the image and used in every prompt.
+ */
+export const REFERENCES_TEMPLATE = {
+	title: 'References',
+	props: [
+		{ name: 'Name', type: 'title', required: true },
+		{ name: 'Kind', type: 'select', required: true },
+		{ name: 'Role line', type: 'rich_text', required: false },
+		{ name: 'Handles', type: 'rich_text', required: false },
+		{ name: 'File name', type: 'rich_text', required: false },
+		{ name: 'Name on sheet', type: 'checkbox', required: false },
+		{ name: 'Scenes', type: 'relation', required: false }
+	] as PropSpec[]
+};
+
 export type DatabaseKey = keyof typeof SERIES_TEMPLATE;
 /** A data source's property schema as the Notion API returns it: name → { type }. */
 export type NotionSchema = Record<string, { type: string }>;
 export interface TemplateCheck { ok: boolean; missing: string[]; wrongType: string[]; optionalMissing: string[] }
 
 /** Does this database match the template? Required properties must exist with the right type. */
-export function checkDatabase(key: DatabaseKey | 'story_beats', schema: NotionSchema | null): TemplateCheck {
-	const spec = key === 'story_beats' ? STORY_BEATS_TEMPLATE : SERIES_TEMPLATE[key];
+export function checkDatabase(key: DatabaseKey | 'story_beats' | 'references', schema: NotionSchema | null): TemplateCheck {
+	const spec = key === 'story_beats' ? STORY_BEATS_TEMPLATE : key === 'references' ? REFERENCES_TEMPLATE : SERIES_TEMPLATE[key];
 	if (!schema) return { ok: false, missing: [`the ${spec.title} database`], wrongType: [], optionalMissing: [] };
 	const missing: string[] = [], wrongType: string[] = [], optionalMissing: string[] = [];
 	for (const prop of spec.props) {
@@ -152,6 +169,10 @@ export function namesOf(page: NotionPage, name: string): string[] {
 	const prop = page.properties[name];
 	return prop?.type === 'multi_select' ? (prop as { multi_select: Array<{ name: string }> }).multi_select.map((option) => option.name) : [];
 }
+export function checkedOf(page: NotionPage, name: string): boolean {
+	const prop = page.properties[name];
+	return prop?.type === 'checkbox' ? Boolean((prop as { checkbox?: boolean }).checkbox) : false;
+}
 export function relationOf(page: NotionPage, name: string): string[] {
 	const prop = page.properties[name];
 	return prop?.type === 'relation' ? (prop as { relation: Array<{ id: string }> }).relation.map((rel) => bareId(rel.id)) : [];
@@ -161,14 +182,30 @@ export function relationOf(page: NotionPage, name: string): string[] {
 // Records
 // ---------------------------------------------------------------------------
 
-export interface SeriesEpisode { page_id: string; number: number; title: string; status: string; act: string; season: number | null; summary: string; twist: string; cliffhanger: string; scene_ids: string[] }
-export interface SeriesScene { page_id: string; number: number; title: string; summary: string; story_beats: string; timecode: string; location: string; characters: string[]; int_ext: string; time_of_day: string; status: string; episode_ids: string[]; act: string }
-export interface SeriesShot { page_id: string; number: number; title: string; description: string; duration_s: number; video_prompt: string; image_prompt: string; refs: string; dialogue: string; audio: string; shot_size: string; lens: string; camera: string; angle: string; characters: string[]; status: string; scene_ids: string[] }
+/** The codes as Notion shows them right now (template v3; written by the app, ADR 0002). Empty when the column is missing. */
+export interface NotionCodes { show: string; episode: string; scene: string; shot: string; shot_number: number | null; locked: boolean }
+const codesOf = (page: NotionPage): NotionCodes => ({
+	show: textOf(page, 'Show code'), episode: textOf(page, 'Episode code'), scene: textOf(page, 'Scene code'), shot: textOf(page, 'Shot code'),
+	shot_number: numberOf(page, 'Shot #'), locked: checkedOf(page, 'Locked')
+});
+
+export interface SeriesEpisode { page_id: string; number: number; title: string; status: string; act: string; season: number | null; summary: string; outline: string; twist: string; cliffhanger: string; scene_ids: string[]; notion_codes: NotionCodes }
+export interface SeriesScene { page_id: string; number: number; title: string; summary: string; story_beats: string; dialogue: string; reference_ids: string[]; timecode: string; location: string; characters: string[]; int_ext: string; time_of_day: string; status: string; episode_ids: string[]; act: string; notion_codes: NotionCodes }
+export interface SeriesShot { page_id: string; number: number; title: string; description: string; duration_s: number; video_prompt: string; image_prompt: string; refs: string; dialogue: string; audio: string; shot_size: string; lens: string; camera: string; angle: string; characters: string[]; status: string; scene_ids: string[]; notion_codes: NotionCodes }
 
 export const toEpisode = (page: NotionPage): SeriesEpisode => ({
 	page_id: bareId(page.id), number: numberOf(page, 'Episode #') ?? 0, title: textOf(page, 'Title') || 'Untitled episode',
 	status: textOf(page, 'Status'), act: textOf(page, 'Act'), season: numberOf(page, 'Season'), summary: textOf(page, 'Summary'),
-	twist: textOf(page, 'Mid-Episode Twist'), cliffhanger: textOf(page, 'Cliffhanger'), scene_ids: relationOf(page, 'Scenes')
+	outline: textOf(page, 'Episode outline'), twist: textOf(page, 'Mid-Episode Twist'), cliffhanger: textOf(page, 'Cliffhanger'),
+	scene_ids: relationOf(page, 'Scenes'), notion_codes: codesOf(page)
+});
+
+/** A reference image row (template v3): exact name, kind, the handles that point at it. */
+export interface SeriesReference { page_id: string; name: string; kind: string; role: string; handles: string[]; file_name: string; name_on_sheet: boolean; scene_ids: string[] }
+export const toReference = (page: NotionPage): SeriesReference => ({
+	page_id: bareId(page.id), name: textOf(page, 'Name'), kind: textOf(page, 'Kind'), role: textOf(page, 'Role line'),
+	handles: textOf(page, 'Handles').split(/[,\s]+/).map((handle) => handle.trim()).filter((handle) => /^@\S+$/.test(handle)),
+	file_name: textOf(page, 'File name'), name_on_sheet: checkedOf(page, 'Name on sheet'), scene_ids: relationOf(page, 'Scenes')
 });
 
 /** The act a scene belongs to, from its timecode ("Act 2 · ~3:00", "0:00–2:00 (Teaser)", "Tag · ~0:45"). */
@@ -192,8 +229,10 @@ export const toScene = (page: NotionPage): SeriesScene => {
 	const section = textOf(page, 'Section');
 	return {
 		page_id: bareId(page.id), number: numberOf(page, 'Scene #') ?? 0, title: textOf(page, 'Scene') || 'Untitled scene', summary: textOf(page, 'Summary'),
-		story_beats: textOf(page, 'Action') || textOf(page, 'Story Beats'), timecode, location: textOf(page, 'Location'), characters: namesOf(page, 'Characters'),
-		int_ext: textOf(page, 'INT/EXT'), time_of_day: textOf(page, 'Time of Day'), status: textOf(page, 'Status'), episode_ids: relationOf(page, 'Episode'), act: ACT_ORDER.includes(section) && section ? section : actOf(timecode)
+		story_beats: textOf(page, 'Action') || textOf(page, 'Story Beats'), dialogue: textOf(page, 'Dialogue'), reference_ids: relationOf(page, 'References'),
+		timecode, location: textOf(page, 'Location'), characters: namesOf(page, 'Characters'),
+		int_ext: textOf(page, 'INT/EXT'), time_of_day: textOf(page, 'Time of Day'), status: textOf(page, 'Status'), episode_ids: relationOf(page, 'Episode'), act: ACT_ORDER.includes(section) && section ? section : actOf(timecode),
+		notion_codes: codesOf(page)
 	};
 };
 
@@ -202,7 +241,7 @@ export const toShot = (page: NotionPage): SeriesShot => ({
 	duration_s: numberOf(page, 'Duration (s)') ?? 0, video_prompt: textOf(page, 'Video Prompt (Seedance 2.5)'), image_prompt: textOf(page, 'Image Prompt (Keyframe)'),
 	refs: textOf(page, 'Seedance Refs'), dialogue: textOf(page, 'Dialogue / VO'), audio: textOf(page, 'Audio / SFX'), shot_size: textOf(page, 'Shot Size'),
 	lens: textOf(page, 'Lens'), camera: textOf(page, 'Camera Movement'), angle: textOf(page, 'Angle'), characters: namesOf(page, 'Characters'),
-	status: textOf(page, 'Status'), scene_ids: relationOf(page, 'Scene')
+	status: textOf(page, 'Status'), scene_ids: relationOf(page, 'Scene'), notion_codes: codesOf(page)
 });
 
 // ---------------------------------------------------------------------------
@@ -269,7 +308,7 @@ export function actBudget(layout: EpisodeLayout, targetMinutes: number): Array<{
 
 /** Where a beat came from in Notion, and the shot details the board card has no field for. */
 export interface ShotSource { notion_page_id: string; scene_page_id: string; dialogue?: string; audio?: string; refs?: string; shot_size?: string; lens?: string; camera?: string; angle?: string; characters?: string[] }
-export interface OutlineScene { page_id: string; number: number; title: string; act: string; summary: string; story_beats: string; timecode: string; location: string; characters: string[]; group_id: string; seconds: number; shot_count: number }
+export interface OutlineScene { page_id: string; number: number; title: string; act: string; summary: string; story_beats: string; dialogue: string; reference_ids: string[]; timecode: string; location: string; characters: string[]; group_id: string; seconds: number; shot_count: number; code?: string }
 export interface ImportedCard { card_id: string; order: number; title: string; beat: string; purpose: string; duration_ms: number; image_prompt: string; video_prompt: string; status: 'draft'; group_id: string; source: ShotSource }
 
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
@@ -284,10 +323,15 @@ export function episodeToBoard(layout: EpisodeLayout, newId: () => string, now: 
 	const groups: Array<{ group_id: string; name: string; created_at: string }> = [];
 	const cards: ImportedCard[] = [];
 	const outline: OutlineScene[] = [];
+	const codes = new Set<string>();
 	for (const scene of layout.scenes) {
 		const group_id = newId();
 		groups.push({ group_id, name: clip(scene.act ? `${scene.act} · ${scene.title}` : scene.title, 120), created_at: now });
-		outline.push({ page_id: scene.page_id, number: scene.number, title: scene.title, act: scene.act, summary: scene.summary, story_beats: scene.story_beats, timecode: scene.timecode, location: scene.location, characters: scene.characters, group_id, seconds: scene.seconds, shot_count: scene.shots.length });
+		// A scene code already in Notion (seeded by hand, or written by an earlier sync) is kept when it is valid and free.
+		const notionCode = scene.notion_codes.scene.trim().toUpperCase();
+		const code = /^[A-Z]{3}$/.test(notionCode) && !codes.has(notionCode) ? notionCode : undefined;
+		if (code) codes.add(code);
+		outline.push({ page_id: scene.page_id, number: scene.number, title: scene.title, act: scene.act, summary: scene.summary, story_beats: scene.story_beats, dialogue: scene.dialogue, reference_ids: scene.reference_ids, timecode: scene.timecode, location: scene.location, characters: scene.characters, group_id, seconds: scene.seconds, shot_count: scene.shots.length, ...(code ? { code } : {}) });
 		for (const shot of scene.shots) {
 			const details: ShotSource = { notion_page_id: shot.page_id, scene_page_id: scene.page_id };
 			for (const [key, value] of [['dialogue', shot.dialogue], ['audio', shot.audio], ['refs', shot.refs], ['shot_size', shot.shot_size], ['lens', shot.lens], ['camera', shot.camera], ['angle', shot.angle]] as const) if (keep(value)) details[key] = clip(value, 4000);

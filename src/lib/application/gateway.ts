@@ -434,6 +434,38 @@ export class ProjectCommandGateway {
 		}
 	}
 
+	/**
+	 * Notion sync (V1S-325): link shots to their Notion pages, remember the plain fields as of this sync, and
+	 * take the edits made in Notion since the last one (description, duration, dialogue line, refs).
+	 */
+	async applyNotionSync(projectId: string, expectedVersion: number, updates: Array<{ card_id: string; notion_page_id: string; scene_page_id: string; synced: { description: string; duration_s: number; dialogue: string; refs: string }; pulled: Partial<{ description: string; duration_s: number; dialogue: string; refs: string }> }>): Promise<CommandOutcome<Project>> {
+		try {
+			const byCard = new Map(updates.map((update) => [update.card_id, update]));
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				const cards = current.production.cards.map((card) => {
+					const update = byCard.get(card.card_id);
+					if (!update) return card;
+					const { pulled } = update;
+					const source = {
+						...(card.source ?? {}), notion_page_id: update.notion_page_id, scene_page_id: update.scene_page_id,
+						...(pulled.dialogue !== undefined ? { dialogue: pulled.dialogue.slice(0, 4000) } : {}),
+						...(pulled.refs !== undefined ? { refs: pulled.refs.slice(0, 4000) } : {}),
+						synced: update.synced
+					};
+					return {
+						...card, source,
+						...(pulled.description?.trim() ? { beat: pulled.description.slice(0, 4000) } : {}),
+						...(pulled.duration_s !== undefined && pulled.duration_s > 0 ? { duration_ms: Math.round(Math.min(120, Math.max(0.5, pulled.duration_s)) * 1000) } : {})
+					};
+				});
+				return { ...current, production: { ...current.production, cards } };
+			}, 'project.notion_synced.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			return this.storeError(e);
+		}
+	}
+
 	/** A take now lives in Review Room (V1S-276): note its asset, version and code on the take. */
 	async markTakeStored(projectId: string, expectedVersion: number, takeId: string, ref: { asset_id: string; version_id: string; version: number; code: string }): Promise<CommandOutcome<Project>> {
 		try {

@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { getGateway, getNotionToken, getProjectStore, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries, importEpisode, treeEpisodes } from '$lib/server/series';
+import { syncSeriesToNotion } from '$lib/server/notion-sync';
 import { createReviewRoomClient, ReviewRoomError, syncSeriesTree } from '$lib/server/review-room';
 import { seriesTree } from '$lib/domain/series-tree';
 import { notionFailure } from '../notion-errors';
@@ -18,6 +19,8 @@ export const GET: RequestHandler = async ({ params }) => {
 const bodySchema = z.discriminatedUnion('action', [
 	// Read the series again from Notion (template check, story, episode list).
 	z.object({ action: z.literal('refresh') }),
+	// V1S-325: read Notion, write codes and shots back to it, then create/rename the Review Room folders (when linked).
+	z.object({ action: z.literal('sync') }),
 	// The episode length to plan for.
 	z.object({ action: z.literal('runtime'), runtime_min: z.number().int().min(1).max(120) }),
 	// Import one episode as a new project.
@@ -73,6 +76,21 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	try {
 		if (body.data.action === 'refresh') {
 			return json({ ok: true, data: await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title)) });
+		}
+		if (body.data.action === 'sync') {
+			const fresh = await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title));
+			const readProject = (id: string) => getProjectStore().readProject(id);
+			const notion = await syncSeriesToNotion(api, fresh, readProject, getGateway());
+			let saved = fresh, folders: { created: number; renamed: number } | null = null, folderError: string | null = null;
+			const config = getReviewRoomConfig();
+			if (config && fresh.review_room?.project_id) {
+				try {
+					const synced = await syncSeriesTree(createReviewRoomClient(config), fresh.series_id, fresh.review_room.project_id, seriesTree(await treeEpisodes(fresh, readProject)), fresh.review_room.folders);
+					saved = await store.write({ ...fresh, review_room: { ...fresh.review_room, folders: synced.folders, synced_at: new Date().toISOString() } });
+					folders = { created: synced.created, renamed: synced.renamed };
+				} catch (cause) { folderError = cause instanceof Error ? cause.message : 'Review Room sync failed'; }
+			}
+			return json({ ok: true, data: saved, notion, folders, folder_error: folderError });
 		}
 		const existing = record.episode_projects[body.data.episode_page_id];
 		if (existing && (await getProjectStore().readProject(existing))) return fail(400, 'That episode is already imported; open its project');

@@ -58,7 +58,8 @@ export function fitContext(input: FitContext): string {
 	const row = input.outline.acts.flatMap((act) => act.scenes).find((scene) => scene.page_id === input.scene.page_id)!;
 	const scene = input.series.scenes.find((entry) => entry.page_id === input.scene.page_id)!;
 	const detail = (card: StoryCard) => {
-		const extra = card.source ?? card.fit;
+		// A Fit shot keeps its details in `fit`; once synced it also has a `source` (its Notion link), so merge field by field.
+		const extra = { dialogue: card.source?.dialogue ?? card.fit?.dialogue, audio: card.source?.audio ?? card.fit?.audio, refs: card.source?.refs ?? card.fit?.refs };
 		return [
 			`- ${card.title} (${Math.round(card.duration_ms / 1000)} s): ${card.beat}`,
 			extra?.dialogue ? `  Dialogue: ${extra.dialogue}` : '',

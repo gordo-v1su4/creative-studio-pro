@@ -25,8 +25,9 @@ const EP1 = '11111111-0000-0000-0000-000000000001';
 const S1 = '22222222-0000-0000-0000-000000000001', S2 = '22222222-0000-0000-0000-000000000002';
 
 /** A fake Notion shaped like the Blood Rush series root. */
-function fakeNotion(v2 = false): NotionApi & { reads: string[] } {
+function fakeNotion(v2 = false): NotionApi & { reads: string[]; writes: Array<{ op: string; id: string; properties: Record<string, unknown> }>; rows: Record<string, NotionPage[]> } {
 	const reads: string[] = [];
+	const writes: Array<{ op: string; id: string; properties: Record<string, unknown> }> = [];
 	const children: Record<string, unknown[]> = {
 		[ROOT]: [
 			{ id: 'story-page', type: 'child_page', child_page: { title: 'Blood Rush — Season 1 Story (v2)' } },
@@ -59,8 +60,32 @@ function fakeNotion(v2 = false): NotionApi & { reads: string[] } {
 		] as unknown as NotionPage[]
 	};
 	const page = <T,>(results: T[]) => ({ results, next_cursor: null, has_more: false });
+	/** A write payload ({ rich_text: [{ text: { content } }] }…) as the API would read it back. */
+	const asRead = (value: Record<string, unknown>) => {
+		if ('rich_text' in value) return rich(((value.rich_text as Array<{ text: { content: string } }>)[0]?.text.content) ?? '');
+		if ('title' in value) return title(((value.title as Array<{ text: { content: string } }>)[0]?.text.content) ?? '');
+		if ('number' in value) return num(value.number as number);
+		if ('checkbox' in value) return { type: 'checkbox', checkbox: value.checkbox };
+		if ('relation' in value) return rel(...(value.relation as Array<{ id: string }>).map((r) => r.id));
+		return value;
+	};
+	const apply = (target: NotionPage, properties: Record<string, unknown>) => { for (const [name, value] of Object.entries(properties)) target.properties[name] = asRead(value as Record<string, unknown>) as never; };
+	let created = 0;
 	return {
-		reads,
+		reads, writes, rows,
+		async updatePage(id, properties) {
+			writes.push({ op: 'update', id, properties });
+			const target = Object.values(rows).flat().find((row) => row.id.replace(/-/g, '') === id.replace(/-/g, ''));
+			if (target) apply(target, properties);
+		},
+		async createPage(source, properties) {
+			const id = `new-shot-${++created}`;
+			writes.push({ op: 'create', id: source, properties });
+			const row = { id, properties: {} } as NotionPage;
+			apply(row, properties);
+			(rows[source] ??= []).push(row);
+			return { id };
+		},
 		async children(id) { reads.push(`children ${id}`); return page((children[id] ?? []) as never[]); },
 		async database(id) { reads.push(`database ${id}`); return { data_sources: [{ id: id.replace('db-', 'ds-') }] }; },
 		async dataSource(id) { reads.push(`source ${id}`); return { id, title: t(sources[id].title), properties: sources[id].properties }; },
@@ -260,5 +285,101 @@ describe('Notion template v3 (V1S-323)', () => {
 		const check = checkDatabase('scenes', v3);
 		expect(check.ok).toBe(true);
 		expect(check.wrongType).toEqual([]);
+	});
+});
+
+describe('Notion sync (V1S-325)', () => {
+	const setup = async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-sync-')); roots.push(root);
+		const projects = new ProjectStore({ root: join(root, 'projects') });
+		const gateway = new ProjectCommandGateway(projects);
+		const store = new SeriesStore(join(root, 'series'));
+		const api = fakeNotion();
+		// Template v3 fields on the fake: a seeded scene code, an outline and a scene's dialogue.
+		const s2 = api.rows['ds-scenes'].find((row) => row.id === S2)!;
+		s2.properties['Scene code'] = rich('QUD') as never;
+		s2.properties.Dialogue = rich('KAI (to the crew): "Smile."') as never;
+		api.rows['ds-episodes'][0].properties['Episode outline'] = rich('Teaser: 2:47 AM. Act 1: the quad.') as never;
+		const record = await connectSeries(api, store, ROOT, 'Blood Rush');
+		const { project, record: after } = await importEpisode(api, store, gateway, record, EP1.replace(/-/g, ''));
+		const { syncSeriesToNotion } = await import('../../src/lib/server/notion-sync');
+		const sync = async () => syncSeriesToNotion(api, (await store.read(after.series_id))!, (id) => projects.readProject(id), gateway);
+		return { api, gateway, projects, store, project, sync };
+	};
+
+	test('import reads the v3 fields and keeps a scene code already in Notion', async () => {
+		const { project } = await setup();
+		const quad = project.series!.scenes.find((scene) => scene.page_id === S2.replace(/-/g, ''))!;
+		expect(quad.code).toBe('QUD');
+		expect(quad.dialogue).toBe('KAI (to the crew): "Smile."');
+		expect(project.series!.outline).toBe('Teaser: 2:47 AM. Act 1: the quad.');
+	});
+
+	test('sync writes the codes, restores a code typed over in Notion, and is quiet when nothing changed', async () => {
+		const { api, project, sync } = await setup();
+		const first = await sync();
+		// The quad scene already shows QUD in Notion, so only the teaser's scene code is written.
+		expect(first).toMatchObject({ episodes: 1, scenes: 1, shots_updated: 3, shots_created: 0 });
+		const episode = api.rows['ds-episodes'][0].properties;
+		expect([episode['Show code'], episode['Episode code']]).toEqual([rich('BLR'), rich('EP101')]);
+		const teaserCode = project.series!.scenes.find((scene) => scene.page_id === S1.replace(/-/g, ''))!.code;
+		const shot1 = api.rows['ds-shots'].find((row) => row.id === 'sh-1')!.properties;
+		expect(shot1['Shot code']).toEqual(rich(`BLR_EP101_${teaserCode}_0010`));
+		expect(shot1['Shot #']).toEqual(num(10));
+
+		// Someone types over a code in Notion: the next sync puts it back, and touches nothing else.
+		shot1['Shot code'] = rich('WRONG') as never;
+		api.writes.length = 0;
+		const second = await sync();
+		expect(second).toMatchObject({ episodes: 0, scenes: 0, shots_updated: 1, shots_created: 0 });
+		expect(shot1['Shot code'] as unknown).toEqual(rich(`BLR_EP101_${teaserCode}_0010`));
+		expect(api.writes).toHaveLength(1);
+		api.writes.length = 0;
+		expect(await sync()).toMatchObject({ episodes: 0, scenes: 0, shots_updated: 0, pulled: 0 });
+		expect(api.writes).toHaveLength(0);
+	});
+
+	test('plain fields: an edit in Notion comes onto the board; an edit on the board goes to Notion', async () => {
+		const { api, projects, project, sync } = await setup();
+		await sync();
+		const shot1 = api.rows['ds-shots'].find((row) => row.id === 'sh-1')!.properties;
+		shot1.Description = rich('Mara on the floor, black tears, eyes open.') as never;
+		const pulled = await sync();
+		expect(pulled.pulled).toBe(1);
+		const card = (await projects.readProject(project.project_id))!.production.cards.find((c) => c.source?.notion_page_id === 'sh1')!;
+		expect(card.beat).toBe('Mara on the floor, black tears, eyes open.');
+
+		// The board changes the dialogue line; Notion has not changed since the last sync, so the board wins.
+		const current = (await projects.readProject(project.project_id))!;
+		const edited = current.production.cards.map((c) => (c.card_id === card.card_id ? { ...c, source: { ...c.source!, dialogue: '"Thirty-six hours earlier."' } } : c));
+		const saved = await new ProjectCommandGateway(projects).saveProduction({ command: 'save_production', project_id: current.project_id, expected_version: current.version, production: { ...current.production, cards: edited } });
+		expect(saved.ok).toBeTrue();
+		await sync();
+		expect(shot1['Dialogue / VO']).toEqual(rich('"Thirty-six hours earlier."'));
+	});
+
+	test('a shot that exists only on the board is created in Notion and linked', async () => {
+		const { api, projects, project, sync, gateway } = await setup();
+		const group = project.series!.scenes[1].group_id;
+		const fitted = { card_id: 'fit-card-0001', order: 0, title: 'Quad reaction', beat: 'Malik glances back.', purpose: 'Coverage.', duration_ms: 4000, image_prompt: 'x', video_prompt: 'y', status: 'draft' as const, group_id: group, fit: { target_min: 10, at: '2026-10-17T00:00:00.000Z', lint: { rounds: 0, fixed: 0, remaining: 0 }, dialogue: 'MALIK: "Later."' } };
+		const fit = await gateway.fitScene(project.project_id, project.version, group, [fitted]);
+		expect(fit.ok).toBeTrue();
+		const report = await sync();
+		expect(report.shots_created).toBe(1);
+		const created = api.rows['ds-shots'].find((row) => row.id === 'new-shot-1')!.properties;
+		expect(created.Description).toEqual(rich('Malik glances back.'));
+		expect(created['Dialogue / VO']).toEqual(rich('MALIK: "Later."'));
+		expect(created['Shot code']).toEqual(rich('BLR_EP101_QUD_0020'));
+		const card = (await projects.readProject(project.project_id))!.production.cards.find((c) => c.card_id === 'fit-card-0001')!;
+		expect(card.source?.notion_page_id).toBe('newshot1');
+		expect(card.fit?.dialogue).toBe('MALIK: "Later."');
+		expect((await sync()).shots_created).toBe(0);
+	});
+
+	test('scene code suggestions skip fragments like "AM" in time titles', async () => {
+		const { suggestCode } = await import('../../src/lib/domain/shot-codes');
+		expect(suggestCode('2:47 AM (From Inside)')).not.toBe('AFI');
+		expect(suggestCode('2:47 AM (From Inside)')).toMatch(/^F/);
+		expect(suggestCode('Morning Quad')).toBe('MRQ');
 	});
 });

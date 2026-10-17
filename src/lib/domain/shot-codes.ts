@@ -24,8 +24,11 @@ const STOP_WORDS = new Set(['THE', 'A', 'AN', 'OF', 'AND', 'IN', 'ON', 'AT', 'TO
 /** The words of a title, upper-cased, without scene prefixes like "P01 —" or "(Teaser)" asides. */
 function wordsOf(title: string, keepAsides = false): string[] {
 	const words = wordsIn(title, keepAsides);
-	// Too few letters without the aside ("2:47 AM (Teaser)")? Use the aside too.
-	return !keepAsides && words.join('').replace(/[^A-Z]/g, '').length < 3 ? wordsIn(title, true) : words;
+	// Too few letters without the aside ("2:47 AM (From Inside)")? Use the aside too, without fragments like "AM".
+	if (keepAsides || words.join('').replace(/[^A-Z]/g, '').length >= 3) return words;
+	const withAside = wordsIn(title, true);
+	const long = withAside.filter((word) => word.replace(/[^A-Z]/g, '').length >= 3);
+	return long.length ? long : withAside;
 }
 
 function wordsIn(title: string, keepAsides: boolean): string[] {

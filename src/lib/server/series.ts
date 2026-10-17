@@ -27,8 +27,15 @@ export const seriesRecordSchema = z.object({
 	story: z.object({ page_id: z.string(), title: z.string(), text: z.string() }).nullable(),
 	episodes: z.array(z.object({
 		page_id: z.string(), number: z.number(), title: z.string(), status: z.string(), act: z.string(), season: z.number().nullable(),
-		summary: z.string(), twist: z.string(), cliffhanger: z.string(), scene_ids: z.array(z.string()), scene_count: z.number()
+		summary: z.string(), twist: z.string(), cliffhanger: z.string(), scene_ids: z.array(z.string()), scene_count: z.number(),
+		/** Template v3: the episode outline. */
+		outline: z.string().optional()
 	})),
+	/** Template v3 (V1S-325): the series' reference images (characters, locations, props), when it has a References database. */
+	references: z.object({
+		database: z.string().nullable(), source: z.string().nullable(), check: checkSchema.nullable(),
+		items: z.array(z.object({ page_id: z.string(), name: z.string(), kind: z.string(), role: z.string(), handles: z.array(z.string()), file_name: z.string(), name_on_sheet: z.boolean(), scene_ids: z.array(z.string()) }))
+	}).optional(),
 	/** The episode length to plan for: 10, 15 or 30 minutes. */
 	runtime_min: z.number().int().positive().max(120),
 	/** Notion episode page id → the project it was imported as. */
@@ -88,7 +95,7 @@ export async function connectSeries(api: NotionApi, store: SeriesStore, rootId: 
 		episodes: read.episodes.map(({ scene_count, ...episode }) => ({ ...episode, scene_count })),
 		runtime_min: existing?.runtime_min ?? 10, episode_projects: existing?.episode_projects ?? {},
 		show_code: existing?.show_code ?? suggestCode(title), codes_locked_at: existing?.codes_locked_at ?? null,
-		story_beats: read.story_beats, review_room: existing?.review_room,
+		story_beats: read.story_beats, references: read.references, review_room: existing?.review_room,
 		checked_at: now, created_at: existing?.created_at ?? now
 	});
 }
@@ -121,7 +128,8 @@ export async function importEpisode(api: NotionApi, store: SeriesStore, gateway:
 		series: {
 			series_id: record.series_id, episode_page_id: episode.page_id, episode_number: episode.number, season: episode.season ?? null, episode_title: episode.title.slice(0, 300),
 			summary: episode.summary.slice(0, 8000), twist: episode.twist.slice(0, 4000), cliffhanger: episode.cliffhanger.slice(0, 4000), imported_at: now,
-			scenes: board.outline.map((scene) => ({ ...scene, story_beat_ids: (record.story_beats?.beats ?? []).filter((beat) => beat.scene_ids.includes(scene.page_id)).map((beat) => beat.page_id), title: scene.title.slice(0, 300), summary: scene.summary.slice(0, 8000), story_beats: scene.story_beats.slice(0, 8000), timecode: scene.timecode.slice(0, 200), location: scene.location.slice(0, 400) }))
+			scenes: board.outline.map((scene) => ({ ...scene, story_beat_ids: (record.story_beats?.beats ?? []).filter((beat) => beat.scene_ids.includes(scene.page_id)).map((beat) => beat.page_id), title: scene.title.slice(0, 300), summary: scene.summary.slice(0, 8000), story_beats: scene.story_beats.slice(0, 8000), dialogue: scene.dialogue.slice(0, 8000), reference_ids: scene.reference_ids.slice(0, 40), timecode: scene.timecode.slice(0, 200), location: scene.location.slice(0, 400) })),
+			outline: episode.outline.slice(0, 8000)
 		},
 		groups: board.groups, cards: board.cards, title: episode.title.slice(0, 200), logline: episode.summary.slice(0, 2000)
 	});

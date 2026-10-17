@@ -1,14 +1,14 @@
 import { Client } from '@notionhq/client';
 import {
 	bareId, checkDatabase, layoutEpisode, toEpisode, toScene, toShot,
-	type DatabaseKey, type EpisodeLayout, type NotionPage, type NotionSchema, type SeriesEpisode, type SeriesStoryBeat, type TemplateCheck, toStoryBeat
+	type DatabaseKey, type EpisodeLayout, type NotionPage, type NotionSchema, type SeriesEpisode, type SeriesReference, type SeriesStoryBeat, type TemplateCheck, toReference, toStoryBeat
 } from '$lib/domain/notion-series';
 
 /**
  * Reads a series from Notion through the official API. The integration (NOTION_TOKEN) only sees pages the
  * operator connected to it; the operator connects one page, the series root, so this reader can never see
  * anything else. It walks from that root only: the Story page and the Episodes, Scenes and Shots databases.
- * Read-only: nothing here writes to Notion.
+ * Reading is everything here except `updatePage` / `createPage`, which only the sync (notion-sync.ts) uses.
  */
 
 type RichText = Array<{ plain_text?: string }>;
@@ -21,6 +21,9 @@ export interface NotionApi {
 	database(databaseId: string): Promise<{ data_sources?: Array<{ id: string; name?: string }> }>;
 	dataSource(dataSourceId: string): Promise<{ id: string; title?: RichText; properties: Record<string, { type: string }> }>;
 	query(dataSourceId: string, cursor?: string): Promise<Paged<NotionPage>>;
+	/** Writes (ADR 0002): only the sync calls these, and only for codes, Locked and shots' plain fields. */
+	updatePage(pageId: string, properties: Record<string, unknown>): Promise<void>;
+	createPage(dataSourceId: string, properties: Record<string, unknown>): Promise<{ id: string }>;
 }
 
 export function createNotionApi(token: string): NotionApi {
@@ -29,7 +32,12 @@ export function createNotionApi(token: string): NotionApi {
 		children: async (blockId, cursor) => (await client.blocks.children.list({ block_id: blockId, start_cursor: cursor, page_size: 100 })) as unknown as Paged<Block>,
 		database: async (databaseId) => (await client.databases.retrieve({ database_id: databaseId })) as unknown as { data_sources?: Array<{ id: string; name?: string }> },
 		dataSource: async (dataSourceId) => (await client.dataSources.retrieve({ data_source_id: dataSourceId })) as unknown as { id: string; title?: RichText; properties: Record<string, { type: string }> },
-		query: async (dataSourceId, cursor) => (await client.dataSources.query({ data_source_id: dataSourceId, start_cursor: cursor, page_size: 100 })) as unknown as Paged<NotionPage>
+		query: async (dataSourceId, cursor) => (await client.dataSources.query({ data_source_id: dataSourceId, start_cursor: cursor, page_size: 100 })) as unknown as Paged<NotionPage>,
+		updatePage: async (pageId, properties) => { await client.pages.update({ page_id: pageId, properties } as never); },
+		createPage: async (dataSourceId, properties) => {
+			const page = (await client.pages.create({ parent: { type: 'data_source_id', data_source_id: dataSourceId }, properties } as never)) as unknown as { id: string };
+			return { id: page.id };
+		}
 	};
 }
 
@@ -91,6 +99,8 @@ export interface SeriesRead {
 	episodes: Array<SeriesEpisode & { scene_count: number }>;
 	/** Template v2 (V1S-272): the season's story beats, when the series has a Story Beats database. */
 	story_beats: { database: string | null; check: TemplateCheck | null; beats: SeriesStoryBeat[] };
+	/** Template v3 (V1S-325): the reference images, when the series has a References database. */
+	references: { database: string | null; source: string | null; check: TemplateCheck | null; items: SeriesReference[] };
 }
 
 /** Child pages and databases under the root, two page levels deep (a "Databases (raw)" page is followed). */
@@ -116,12 +126,14 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 	const databaseIds: SeriesSources = { episodes: null, scenes: null, shots: null };
 	const schemas: Record<DatabaseKey, NotionSchema | null> = { episodes: null, scenes: null, shots: null };
 	let beatsSource: string | null = null, beatsSchema: NotionSchema | null = null, beatsDatabase: string | null = null;
+	let refsSource: string | null = null, refsSchema: NotionSchema | null = null, refsDatabase: string | null = null;
 	for (const databaseId of databases) {
 		const database = await api.database(databaseId);
 		for (const ref of database.data_sources ?? []) {
 			const source = await api.dataSource(ref.id);
 			const name = (plain(source.title) || ref.name || '').trim();
 			if (/^story beats?$/i.test(name) && !beatsSource) { beatsSource = source.id; beatsSchema = source.properties; beatsDatabase = bareId(databaseId); continue; }
+			if (/^references?$/i.test(name) && !refsSource) { refsSource = source.id; refsSchema = source.properties; refsDatabase = bareId(databaseId); continue; }
 			const key = KEY_BY_TITLE.find(([pattern]) => pattern.test(name))?.[1];
 			if (key && !sources[key]) { sources[key] = source.id; schemas[key] = source.properties; databaseIds[key] = bareId(databaseId); }
 		}
@@ -137,7 +149,15 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 	const beats = beatsSource && beatsCheck?.ok
 		? (await all((cursor) => api.query(beatsSource!, cursor))).map(toStoryBeat).sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.title.localeCompare(b.title))
 		: [];
-	return { root_id: bareId(rootId), story, sources, databases: databaseIds, checks, episodes, story_beats: { database: beatsDatabase, check: beatsCheck, beats } };
+	const refsCheck = refsSource ? checkDatabase('references', refsSchema) : null;
+	const items = refsSource && refsCheck?.ok
+		? (await all((cursor) => api.query(refsSource!, cursor))).map(toReference).filter((ref) => ref.name).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
+		: [];
+	return {
+		root_id: bareId(rootId), story, sources, databases: databaseIds, checks, episodes,
+		story_beats: { database: beatsDatabase, check: beatsCheck, beats },
+		references: { database: refsDatabase, source: refsSource, check: refsCheck, items }
+	};
 }
 
 /** One episode with its scenes and shots, laid out (needs all three databases to pass the template). */

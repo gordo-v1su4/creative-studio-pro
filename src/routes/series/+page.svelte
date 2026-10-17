@@ -41,6 +41,15 @@
 		if (done) { root = ''; note = 'Connected. Check the template below, then import an episode.'; }
 	}
 	const refresh = (id: string) => void call(`/api/series/${id}`, { action: 'refresh' }, `refresh:${id}`);
+	async function sync(id: string) {
+		const done = await call(`/api/series/${id}`, { action: 'sync' }, `sync:${id}`);
+		if (!done) return;
+		const n = done.notion as { episodes: number; scenes: number; shots_updated: number; shots_created: number; pulled: number };
+		const folders = done.folders as { created: number; renamed: number } | null;
+		note = `Synced with Notion: ${n.episodes} episode${n.episodes === 1 ? '' : 's'}, ${n.scenes} scene${n.scenes === 1 ? '' : 's'} and ${n.shots_updated + n.shots_created} shot${n.shots_updated + n.shots_created === 1 ? '' : 's'} written (${n.shots_created} new), ${n.pulled} shot${n.pulled === 1 ? '' : 's'} updated from Notion edits.`
+			+ (folders ? ` Review Room: ${folders.created} folder${folders.created === 1 ? '' : 's'} created, ${folders.renamed} renamed.` : '')
+			+ (done.folder_error ? ` Review Room folders failed: ${done.folder_error}` : '');
+	}
 	const setRuntime = (id: string, minutes: number) => void call(`/api/series/${id}`, { action: 'runtime', runtime_min: minutes }, `runtime:${id}`);
 	async function importEpisode(id: string, episodePageId: string) {
 		const done = await call(`/api/series/${id}`, { action: 'import', episode_page_id: episodePageId }, `import:${episodePageId}`);
@@ -58,7 +67,7 @@
 		<header>
 			<p class="cap accent">Series</p>
 			<h1 class="mt-1 text-[18px] font-semibold text-nr-ink">Shows from Notion</h1>
-			<p class="mt-1 max-w-[680px] text-[12.5px] leading-6 text-nr-muted">A series lives in Notion: a root page with the season story and three linked databases, Episodes → Scenes → Shots. Connect the root and import an episode; it becomes its own project, with a board group for each scene and a card for each shot. Notion stays the source. Nothing here writes to it.</p>
+			<p class="mt-1 max-w-[680px] text-[12.5px] leading-6 text-nr-muted">A series lives in Notion: a root page with the season story and three linked databases, Episodes → Scenes → Shots. Connect the root and import an episode; it becomes its own project, with a board group for each scene and a card for each shot. Notion stays the source of the story. <b>Sync</b> writes back only what the app owns: the codes, and each shot's plain fields.</p>
 		</header>
 
 		{#if configured === false}
@@ -66,7 +75,7 @@
 				<p class="cap">Set up the Notion connection (once)</p>
 				<ol class="steps">
 					<li>Open <a href="https://developers.notion.com" target="_blank" rel="noreferrer">developers.notion.com</a> → <b>Developer portal</b> → <b>Build</b> → <b>Internal connections</b> → <b>Create a new connection</b>, named <b>Creative Studio Pro</b>.</li>
-					<li><b>Configuration</b>: leave only <b>Read content</b> on, and copy the installation access token.</li>
+					<li><b>Configuration</b>: turn on <b>Read</b>, <b>Update</b> and <b>Insert content</b> only (no comments, no user information, no agent access), and copy the installation access token.</li>
 					<li><b>Content access</b> → <b>Edit access</b> → select only the top-level <i>Creative Studio Pro</i> page. Each show is a child page under it (duplicate its <i>Series Template</i> for a new one). Nothing else is shared.</li>
 					<li>Add <code>NOTION_TOKEN=…</code> to <code>.env.local</code> and restart the app. The token stays on this machine.</li>
 				</ol>
@@ -91,6 +100,7 @@
 					<span class="grow"></span>
 					<span class="text-[11px] text-nr-faint">checked {new Date(s.checked_at).toLocaleString()}</span>
 					<button type="button" class="key" onclick={() => refresh(s.series_id)} disabled={!!busy}>{busy === `refresh:${s.series_id}` ? 'Re-checking…' : 'Re-check'}</button>
+					<button type="button" class="key accent" onclick={() => void sync(s.series_id)} disabled={!!busy || !allOk(s)} title="Read Notion, write the codes and shots back to it, then create or rename the Review Room folders">{busy === `sync:${s.series_id}` ? 'Syncing…' : 'Sync'}</button>
 				</div>
 
 				<!-- The template check: the three databases and their required properties -->

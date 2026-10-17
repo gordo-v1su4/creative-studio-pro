@@ -252,7 +252,9 @@ export const storyCardSchema = z.object({
 		notion_page_id: z.string().min(1).max(64), scene_page_id: z.string().min(1).max(64),
 		dialogue: z.string().max(4000).optional(), audio: z.string().max(4000).optional(), refs: z.string().max(4000).optional(),
 		shot_size: z.string().max(100).optional(), lens: z.string().max(100).optional(), camera: z.string().max(100).optional(), angle: z.string().max(100).optional(),
-		characters: z.array(z.string().max(100)).max(40).optional()
+		characters: z.array(z.string().max(100)).max(40).optional(),
+		/** V1S-325: the plain fields as of the last Notion sync, so an edit made in Notion since then wins over the board. */
+		synced: z.object({ description: z.string().max(4000), duration_s: z.number().nonnegative(), dialogue: z.string().max(4000), refs: z.string().max(4000) }).optional()
 	}).optional(),
 	/** Written by "Fit to length" (not in Notion): the length it filled toward, its lint result and the shot details. */
 	fit: z.object({
@@ -562,8 +564,13 @@ export const projectSchema = z.object({
 			/** The scene's three-letter code in shot codes (PAR); unique in the episode, fixed once the series' codes lock (V1S-274). */
 			code: z.string().regex(/^[A-Z]{3}$/).optional(),
 			/** Template v2 (V1S-272): the season story beats this scene carries (Story Beats page ids). */
-			story_beat_ids: z.array(z.string().max(64)).max(40).optional()
-		})).max(100)
+			story_beat_ids: z.array(z.string().max(64)).max(40).optional(),
+			/** Template v3 (V1S-325): the scene's Dialogue (spoken lines in order) and its References (page ids). */
+			dialogue: z.string().max(8000).optional(),
+			reference_ids: z.array(z.string().max(64)).max(40).optional()
+		})).max(100),
+		/** Template v3: the episode outline (main story points in order). */
+		outline: z.string().max(8000).optional()
 	}).nullable().default(null),
 	production: productionStateSchema.default({
 		status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null
@@ -738,6 +745,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.episode_fitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.episode_unfitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.shot_codes_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// V1S-325: shots linked to their Notion pages and edits made in Notion brought onto the board.
+	z.object({ type: z.literal('project.notion_synced.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.target_length_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_stored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
