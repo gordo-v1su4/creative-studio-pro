@@ -1,9 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { getGateway, getNotionToken, getProjectStore, getSeriesStore } from '$lib/server/config';
+import { getGateway, getNotionToken, getProjectStore, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
-import { connectSeries, importEpisode } from '$lib/server/series';
+import { connectSeries, importEpisode, treeEpisodes } from '$lib/server/series';
+import { createReviewRoomClient, ReviewRoomError, syncSeriesTree } from '$lib/server/review-room';
+import { seriesTree } from '$lib/domain/series-tree';
 import { notionFailure } from '../notion-errors';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_COMMAND', message } }, { status });
@@ -23,7 +25,9 @@ const bodySchema = z.discriminatedUnion('action', [
 	// Shot codes (V1S-274): the show code, an imported episode's scene codes, and locking them for good.
 	z.object({ action: z.literal('show_code'), show_code: z.string().regex(/^[A-Z]{3}$/, 'The show code must be three capital letters') }),
 	z.object({ action: z.literal('episode_codes'), project_id: z.string().min(1).max(64), expected_version: z.number().int().nonnegative(), scene_codes: z.record(z.string(), z.string()).optional() }),
-	z.object({ action: z.literal('lock_codes') })
+	z.object({ action: z.literal('lock_codes') }),
+	// Review Room (V1S-275): link the series' Review Room project (optional on re-sync) and create/rename its locked folders.
+	z.object({ action: z.literal('review_room_sync'), project_id: z.string().min(1).max(64).optional() })
 ]);
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -40,6 +44,22 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (body.data.action === 'lock_codes') {
 		if (!record.show_code) return fail(400, 'Set a show code before locking');
 		return json({ ok: true, data: record.codes_locked_at ? record : await store.write({ ...record, codes_locked_at: new Date().toISOString() }) });
+	}
+	if (body.data.action === 'review_room_sync') {
+		const config = getReviewRoomConfig();
+		if (!config) return json({ ok: false, error: { code: 'NOT_CONFIGURED', message: 'Add CSP_REVIEW_ROOM_URL and CSP_REVIEW_ROOM_API_KEY to .env.local first' } }, { status: 503 });
+		const projectId = body.data.project_id ?? record.review_room?.project_id;
+		if (!projectId) return fail(400, 'Paste the Review Room project id for this series');
+		const known = record.review_room?.project_id === projectId ? record.review_room.folders : {};
+		try {
+			const episodes = await treeEpisodes(record, (id) => getProjectStore().readProject(id));
+			const synced = await syncSeriesTree(createReviewRoomClient(config), record.series_id, projectId, seriesTree(episodes), known);
+			const saved = await store.write({ ...record, review_room: { project_id: projectId, folders: synced.folders, synced_at: new Date().toISOString() } });
+			return json({ ok: true, data: saved, created: synced.created, renamed: synced.renamed, folders: Object.keys(synced.folders).length });
+		} catch (cause) {
+			const status = cause instanceof ReviewRoomError ? cause.status : 502;
+			return json({ ok: false, error: { code: 'REVIEW_ROOM', message: cause instanceof Error ? cause.message : 'Review Room sync failed' } }, { status: status >= 400 && status < 600 ? status : 502 });
+		}
 	}
 	if (body.data.action === 'episode_codes') {
 		if (!Object.values(record.episode_projects).includes(body.data.project_id)) return fail(400, 'That project is not an episode of this series');

@@ -135,6 +135,13 @@ export function getNotionToken(): string | null {
 	return env.NOTION_TOKEN?.trim() || null;
 }
 
+/** Review Room automation (V1S-275): base URL + a key restricted to the series' Review Room project. */
+export function getReviewRoomConfig(): { baseUrl: string; apiKey: string } | null {
+	const baseUrl = env.CSP_REVIEW_ROOM_URL?.trim();
+	const apiKey = env.CSP_REVIEW_ROOM_API_KEY?.trim();
+	return baseUrl && apiKey ? { baseUrl, apiKey } : null;
+}
+
 export function getSeriesStore(): SeriesStore {
 	return SeriesStore.beside(getProjectRoot());
 }

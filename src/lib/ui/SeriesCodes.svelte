@@ -52,6 +52,14 @@
 		const done = await post({ action: 'episode_codes', project_id: project.project_id, expected_version: project.version, scene_codes: edits }, `episode:${pageId}`);
 		if (done?.project) { episodes = { ...episodes, [pageId]: done.project }; drafts = { ...drafts, [pageId]: {} }; }
 	}
+	let roomProject = $state('');
+	let roomNote = $state<string | null>(null);
+	$effect(() => { roomProject = series.review_room?.project_id ?? ''; });
+	async function syncRoom() {
+		roomNote = null;
+		const done = (await post({ action: 'review_room_sync', project_id: roomProject }, 'room')) as unknown as { created: number; renamed: number; folders: number } | null;
+		if (done) roomNote = `Review Room: ${done.folders} locked folders (${done.created} created, ${done.renamed} renamed).`;
+	}
 	let confirming = $state(false);
 	async function lock() {
 		confirming = false;
@@ -138,6 +146,15 @@
 			</div>
 		{/each}
 	{/if}
+	<!-- Review Room (V1S-275): the series' project and its locked folder tree -->
+	<div class="row">
+		<span class="cap">Review Room</span>
+		<input class="field" value={roomProject} placeholder="Review Room project id" aria-label="Review Room project id for this series" disabled={!!saving}
+			oninput={(event) => (roomProject = event.currentTarget.value.trim())} />
+		<button type="button" class="key accent" onclick={() => void syncRoom()} disabled={!roomProject || !!saving} title="Create or rename this series' locked folders in Review Room (safe to repeat)">{saving === 'room' ? 'Syncing…' : series.review_room ? 'Sync folders' : 'Link and create folders'}</button>
+		{#if series.review_room?.synced_at}<span class="state">{Object.keys(series.review_room.folders).length} folders · synced {new Date(series.review_room.synced_at).toLocaleString()}</span>{/if}
+	</div>
+	{#if roomNote}<p class="state" role="status">{roomNote}</p>{/if}
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
 </div>
 
@@ -150,6 +167,8 @@
 	.code:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
 	.code:disabled { color: var(--color-nr-muted); opacity: 0.8; }
 	.state { color: var(--color-nr-faint); font-size: 11px; }
+	.field { min-width: 0; width: 240px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 3px 8px; color: var(--color-nr-ink); font: 11.5px var(--font-mono); outline: none; }
+	.field:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
 	.confirm { border: 1px solid color-mix(in srgb, var(--color-nr-accent) 35%, transparent); border-radius: 2px; padding: 8px 10px; color: var(--color-nr-text); font-size: 12px; }
 	.state.locked { color: var(--color-nr-accent); }
 	.key { display: inline-flex; align-items: center; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 10px; color: var(--color-nr-muted); font: 600 9px/24px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; transition: border-color 140ms ease, color 140ms ease; }

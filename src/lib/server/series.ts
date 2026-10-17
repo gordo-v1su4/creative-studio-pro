@@ -2,7 +2,8 @@ import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { uuid7ish } from '$lib/domain/ids';
-import { episodeToBoard, type EpisodeLayout } from '$lib/domain/notion-series';
+import { actRank, episodeToBoard, type EpisodeLayout } from '$lib/domain/notion-series';
+import type { TreeEpisode } from '$lib/domain/series-tree';
 import { suggestCode } from '$lib/domain/shot-codes';
 import type { Project } from '$lib/domain/schemas';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
@@ -38,6 +39,8 @@ export const seriesRecordSchema = z.object({
 		check: checkSchema.nullable(),
 		beats: z.array(z.object({ page_id: z.string(), title: z.string(), section: z.string(), order: z.number().nullable(), summary: z.string(), episode_ids: z.array(z.string()), scene_ids: z.array(z.string()) }))
 	}).optional(),
+	/** The series' Review Room project (V1S-275) and its locked folders: tree key (deliverables, ep:<id>, scene:<id>…) → folder id. */
+	review_room: z.object({ project_id: z.string().min(1).max(64), folders: z.record(z.string(), z.string()), synced_at: z.string().nullable() }).optional(),
 	/** The series' three-letter show code in shot codes (BLR); suggested at connect (V1S-274). */
 	show_code: z.string().regex(/^[A-Z]{3}$/).optional(),
 	/** When the show and scene codes were locked (on the first take sent to Review Room, or by hand); null = still editable. */
@@ -85,9 +88,22 @@ export async function connectSeries(api: NotionApi, store: SeriesStore, rootId: 
 		episodes: read.episodes.map(({ scene_count, ...episode }) => ({ ...episode, scene_count })),
 		runtime_min: existing?.runtime_min ?? 10, episode_projects: existing?.episode_projects ?? {},
 		show_code: existing?.show_code ?? suggestCode(title), codes_locked_at: existing?.codes_locked_at ?? null,
-		story_beats: read.story_beats,
+		story_beats: read.story_beats, review_room: existing?.review_room,
 		checked_at: now, created_at: existing?.created_at ?? now
 	});
+}
+
+/** The series tree's episodes from the imported projects: scenes in story order with their codes. */
+export async function treeEpisodes(record: SeriesRecord, readProject: (id: string) => Promise<Project | null>): Promise<TreeEpisode[]> {
+	const episodes: TreeEpisode[] = [];
+	for (const episode of record.episodes) {
+		const projectId = record.episode_projects[episode.page_id];
+		const project = projectId ? await readProject(projectId) : null;
+		if (!project?.series) continue;
+		const scenes = project.series.scenes.toSorted((a, b) => actRank(a.act) - actRank(b.act) || a.number - b.number);
+		episodes.push({ episode_page_id: episode.page_id, number: episode.number, season: project.series.season ?? episode.season, title: episode.title, scenes: scenes.map((scene) => ({ page_id: scene.page_id, title: scene.title, code: scene.code })) });
+	}
+	return episodes;
 }
 
 export interface ImportResult { project: Project; layout: EpisodeLayout; record: SeriesRecord }
