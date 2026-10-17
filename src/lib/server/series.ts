@@ -32,6 +32,12 @@ export const seriesRecordSchema = z.object({
 	runtime_min: z.number().int().positive().max(120),
 	/** Notion episode page id → the project it was imported as. */
 	episode_projects: z.record(z.string(), z.string()),
+	/** Template v2 (V1S-272): the season's story beats (Save the Cat sections), when the series has a Story Beats database. */
+	story_beats: z.object({
+		database: z.string().nullable(),
+		check: checkSchema.nullable(),
+		beats: z.array(z.object({ page_id: z.string(), title: z.string(), section: z.string(), order: z.number().nullable(), summary: z.string(), episode_ids: z.array(z.string()), scene_ids: z.array(z.string()) }))
+	}).optional(),
 	/** The series' three-letter show code in shot codes (BLR); suggested at connect (V1S-274). */
 	show_code: z.string().regex(/^[A-Z]{3}$/).optional(),
 	/** When the show and scene codes were locked (on the first take sent to Review Room, or by hand); null = still editable. */
@@ -79,6 +85,7 @@ export async function connectSeries(api: NotionApi, store: SeriesStore, rootId: 
 		episodes: read.episodes.map(({ scene_count, ...episode }) => ({ ...episode, scene_count })),
 		runtime_min: existing?.runtime_min ?? 10, episode_projects: existing?.episode_projects ?? {},
 		show_code: existing?.show_code ?? suggestCode(title), codes_locked_at: existing?.codes_locked_at ?? null,
+		story_beats: read.story_beats,
 		checked_at: now, created_at: existing?.created_at ?? now
 	});
 }
@@ -98,7 +105,7 @@ export async function importEpisode(api: NotionApi, store: SeriesStore, gateway:
 		series: {
 			series_id: record.series_id, episode_page_id: episode.page_id, episode_number: episode.number, season: episode.season ?? null, episode_title: episode.title.slice(0, 300),
 			summary: episode.summary.slice(0, 8000), twist: episode.twist.slice(0, 4000), cliffhanger: episode.cliffhanger.slice(0, 4000), imported_at: now,
-			scenes: board.outline.map((scene) => ({ ...scene, title: scene.title.slice(0, 300), summary: scene.summary.slice(0, 8000), story_beats: scene.story_beats.slice(0, 8000), timecode: scene.timecode.slice(0, 200), location: scene.location.slice(0, 400) }))
+			scenes: board.outline.map((scene) => ({ ...scene, story_beat_ids: (record.story_beats?.beats ?? []).filter((beat) => beat.scene_ids.includes(scene.page_id)).map((beat) => beat.page_id), title: scene.title.slice(0, 300), summary: scene.summary.slice(0, 8000), story_beats: scene.story_beats.slice(0, 8000), timecode: scene.timecode.slice(0, 200), location: scene.location.slice(0, 400) }))
 		},
 		groups: board.groups, cards: board.cards, title: episode.title.slice(0, 200), logline: episode.summary.slice(0, 2000)
 	});

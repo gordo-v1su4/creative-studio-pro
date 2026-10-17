@@ -35,6 +35,7 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 			{ name: 'Episode', type: 'relation', required: true },
 			{ name: 'Summary', type: 'rich_text', required: true },
 			{ name: 'Story Beats', type: 'rich_text', required: false },
+			{ name: 'Section', type: 'select', required: false }, // template v2: Teaser / Act 1… / Tag; else the act comes from Timecode
 			{ name: 'Timecode', type: 'rich_text', required: false },
 			{ name: 'Location', type: 'rich_text', required: false },
 			{ name: 'Characters', type: 'multi_select', required: false },
@@ -66,14 +67,30 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 	}
 };
 
+/**
+ * Template v2 (V1S-272): the season's story beats, each in one Save the Cat section, linked to the scenes
+ * (and episode) where it plays out. Optional, so a v1 series without it still imports.
+ */
+export const STORY_BEATS_TEMPLATE = {
+	title: 'Story Beats',
+	props: [
+		{ name: 'Beat', type: 'title', required: true },
+		{ name: 'Section', type: 'select', required: true },
+		{ name: 'Order', type: 'number', required: false },
+		{ name: 'Summary', type: 'rich_text', required: false },
+		{ name: 'Episode', type: 'relation', required: false },
+		{ name: 'Scenes', type: 'relation', required: false }
+	] as PropSpec[]
+};
+
 export type DatabaseKey = keyof typeof SERIES_TEMPLATE;
 /** A data source's property schema as the Notion API returns it: name → { type }. */
 export type NotionSchema = Record<string, { type: string }>;
 export interface TemplateCheck { ok: boolean; missing: string[]; wrongType: string[]; optionalMissing: string[] }
 
 /** Does this database match the template? Required properties must exist with the right type. */
-export function checkDatabase(key: DatabaseKey, schema: NotionSchema | null): TemplateCheck {
-	const spec = SERIES_TEMPLATE[key];
+export function checkDatabase(key: DatabaseKey | 'story_beats', schema: NotionSchema | null): TemplateCheck {
+	const spec = key === 'story_beats' ? STORY_BEATS_TEMPLATE : SERIES_TEMPLATE[key];
 	if (!schema) return { ok: false, missing: [`the ${spec.title} database`], wrongType: [], optionalMissing: [] };
 	const missing: string[] = [], wrongType: string[] = [], optionalMissing: string[] = [];
 	for (const prop of spec.props) {
@@ -151,12 +168,21 @@ export function actOf(timecode: string): string {
 	return act ? `Act ${act[1]}` : '';
 }
 
+/** A season story beat from the Story Beats database (template v2). */
+export interface SeriesStoryBeat { page_id: string; title: string; section: string; order: number | null; summary: string; episode_ids: string[]; scene_ids: string[] }
+export const toStoryBeat = (page: NotionPage): SeriesStoryBeat => ({
+	page_id: bareId(page.id), title: textOf(page, 'Beat') || 'Untitled story beat', section: textOf(page, 'Section'), order: numberOf(page, 'Order'),
+	summary: textOf(page, 'Summary'), episode_ids: relationOf(page, 'Episode'), scene_ids: relationOf(page, 'Scenes')
+});
+
 export const toScene = (page: NotionPage): SeriesScene => {
 	const timecode = textOf(page, 'Timecode');
+	// Template v2's Section (Teaser / Act 1… / Tag) wins over the act read from the timecode.
+	const section = textOf(page, 'Section');
 	return {
 		page_id: bareId(page.id), number: numberOf(page, 'Scene #') ?? 0, title: textOf(page, 'Scene') || 'Untitled scene', summary: textOf(page, 'Summary'),
 		story_beats: textOf(page, 'Story Beats'), timecode, location: textOf(page, 'Location'), characters: namesOf(page, 'Characters'),
-		int_ext: textOf(page, 'INT/EXT'), time_of_day: textOf(page, 'Time of Day'), status: textOf(page, 'Status'), episode_ids: relationOf(page, 'Episode'), act: actOf(timecode)
+		int_ext: textOf(page, 'INT/EXT'), time_of_day: textOf(page, 'Time of Day'), status: textOf(page, 'Status'), episode_ids: relationOf(page, 'Episode'), act: ACT_ORDER.includes(section) && section ? section : actOf(timecode)
 	};
 };
 

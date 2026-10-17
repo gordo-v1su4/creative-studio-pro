@@ -23,7 +23,7 @@ const EP1 = '11111111-0000-0000-0000-000000000001';
 const S1 = '22222222-0000-0000-0000-000000000001', S2 = '22222222-0000-0000-0000-000000000002';
 
 /** A fake Notion shaped like the Blood Rush series root. */
-function fakeNotion(): NotionApi & { reads: string[] } {
+function fakeNotion(v2 = false): NotionApi & { reads: string[] } {
 	const reads: string[] = [];
 	const children: Record<string, unknown[]> = {
 		[ROOT]: [
@@ -31,24 +31,29 @@ function fakeNotion(): NotionApi & { reads: string[] } {
 			{ id: 'db-episodes', type: 'child_database', child_database: { title: 'Episodes' } },
 			{ id: 'raw-page', type: 'child_page', child_page: { title: 'Databases (raw)' } }
 		],
-		'raw-page': [{ id: 'db-scenes', type: 'child_database', child_database: { title: 'Scenes' } }, { id: 'db-shots', type: 'child_database', child_database: { title: 'Shots' } }],
+		'raw-page': [{ id: 'db-scenes', type: 'child_database', child_database: { title: 'Scenes' } }, { id: 'db-shots', type: 'child_database', child_database: { title: 'Shots' } }, ...(v2 ? [{ id: 'db-beats', type: 'child_database', child_database: { title: 'Story Beats' } }] : [])],
 		'story-page': [{ id: 'h', type: 'heading_1', heading_1: { rich_text: t('Logline') } }, { id: 'p', type: 'paragraph', paragraph: { rich_text: t('In fall 2001, Kai keeps a hidden crew…') } }]
 	};
 	const sources: Record<string, { title: string; properties: Record<string, { type: string }> }> = {
 		'ds-episodes': { title: 'Episodes', properties: schema({ Title: 'title', 'Episode #': 'number', Summary: 'rich_text', Scenes: 'relation', Status: 'select', Act: 'select' }) },
-		'ds-scenes': { title: 'Scenes', properties: schema({ Scene: 'title', 'Scene #': 'number', Episode: 'relation', Summary: 'rich_text', Timecode: 'rich_text', Location: 'rich_text' }) },
+		'ds-scenes': { title: 'Scenes', properties: schema({ Scene: 'title', 'Scene #': 'number', Episode: 'relation', Summary: 'rich_text', Timecode: 'rich_text', Location: 'rich_text', ...(v2 ? { Section: 'select' } : {}) }) },
+		'ds-beats': { title: 'Story Beats', properties: schema({ Beat: 'title', Section: 'select', Order: 'number', Summary: 'rich_text', Scenes: 'relation' }) },
 		'ds-shots': { title: 'Shots', properties: schema({ Shot: 'title', Scene: 'relation', Description: 'rich_text', 'Duration (s)': 'number', 'Video Prompt (Seedance 2.5)': 'rich_text', 'Shot #': 'number', 'Dialogue / VO': 'rich_text' }) }
 	};
 	const rows: Record<string, NotionPage[]> = {
 		'ds-episodes': [{ id: EP1, properties: { Title: title('EP01 — The Late Shift'), 'Episode #': num(1), Summary: rich('Kai breaks blood law.'), Scenes: rel(S1, S2), Status: { type: 'select', select: { name: 'Shot List' } } } } as unknown as NotionPage],
 		'ds-scenes': [
-			{ id: S2, properties: { Scene: title('P02 — Morning Quad'), 'Scene #': num(2), Episode: rel(EP1), Summary: rich('Day quad.'), Timecode: rich('Act 1 · ~1:30'), Location: rich('College quad') } },
+			{ id: S2, properties: { Scene: title('P02 — Morning Quad'), 'Scene #': num(2), Episode: rel(EP1), Summary: rich('Day quad.'), Timecode: rich('Act 1 · ~1:30'), Location: rich('College quad'), ...(v2 ? { Section: { type: 'select', select: { name: 'Act 2' } } } : {}) } },
 			{ id: S1, properties: { Scene: title('P01 — 2:47 AM (Teaser)'), 'Scene #': num(1), Episode: rel(EP1), Summary: rich('The aftermath.'), Timecode: rich('0:00–2:00 (Teaser)'), Location: rich('Video Haven') } }
 		] as unknown as NotionPage[],
 		'ds-shots': [
 			{ id: 'sh-2', properties: { Shot: title('E01 S01 SH02'), 'Shot #': num(2), Scene: rel(S1), Description: rich('Kai drinks the red vial.'), 'Duration (s)': num(5), 'Video Prompt (Seedance 2.5)': rich('Video prompt 2'), 'Dialogue / VO': rich('') } },
 			{ id: 'sh-1', properties: { Shot: title('E01 S01 SH01'), 'Shot #': num(1), Scene: rel(S1), Description: rich('Mara on the floor, crying black.'), 'Duration (s)': num(6), 'Video Prompt (Seedance 2.5)': rich('Video prompt 1'), 'Dialogue / VO': rich('"36 hours earlier."') } },
 			{ id: 'sh-3', properties: { Shot: title('E01 S02 SH01'), 'Shot #': num(1), Scene: rel(S2), Description: rich('Kai crosses the quad.'), 'Duration (s)': num(4), 'Video Prompt (Seedance 2.5)': rich(''), 'Dialogue / VO': rich('') } }
+		] as unknown as NotionPage[],
+		'ds-beats': [
+			{ id: 'b-2', properties: { Beat: title('Mara wakes crying black'), Section: { type: 'select', select: { name: 'Catalyst' } }, Order: num(4), Summary: rich('The turning went wrong.'), Scenes: rel(S1) } },
+			{ id: 'b-1', properties: { Beat: title('Kai keeps the crew hidden'), Section: { type: 'select', select: { name: 'Set-Up' } }, Order: num(3), Summary: rich(''), Scenes: rel(S1, S2) } }
 		] as unknown as NotionPage[]
 	};
 	const page = <T,>(results: T[]) => ({ results, next_cursor: null, has_more: false });
@@ -143,5 +148,27 @@ describe('Notion series: connect, check, import an episode', () => {
 		expect((await gateway.setTargetLength(project.project_id, set.data.version, 0)).ok).toBeFalse();
 		const cleared = await gateway.setTargetLength(project.project_id, set.data.version, null);
 		expect(cleared.ok && cleared.data.series?.target_min).toBeNull();
+	});
+
+	test('template v2: story beats in Save the Cat order, scene sections, scenes linked to their story beats', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-ni-')); roots.push(root);
+		const gateway = new ProjectCommandGateway(new ProjectStore({ root: join(root, 'projects') }));
+		const store = new SeriesStore(join(root, 'series'));
+		const api = fakeNotion(true);
+		const record = await connectSeries(api, store, ROOT, 'Blood Rush');
+		expect(record.story_beats?.check?.ok).toBeTrue();
+		expect(record.story_beats?.beats.map((beat) => [beat.title, beat.section])).toEqual([['Kai keeps the crew hidden', 'Set-Up'], ['Mara wakes crying black', 'Catalyst']]);
+		const { project } = await importEpisode(api, store, gateway, record, EP1.replace(/-/g, ''));
+		const [teaser, quad] = project.series!.scenes;
+		expect(quad.act).toBe('Act 2');
+		expect(teaser.story_beat_ids).toEqual(['b1', 'b2']);
+		expect(quad.story_beat_ids).toEqual(['b1']);
+	});
+
+	test('template v1 (no Story Beats database) still imports', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-ni-')); roots.push(root);
+		const store = new SeriesStore(join(root, 'series'));
+		const record = await connectSeries(fakeNotion(), store, ROOT, 'Blood Rush');
+		expect(record.story_beats).toEqual({ database: null, check: null, beats: [] });
 	});
 });

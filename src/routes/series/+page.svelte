@@ -103,6 +103,10 @@
 							<span class={['chip', check.ok ? 'ok' : 'bad']} title={tip}>{check.ok ? '✓' : '✗'} {name}</span>
 						{/if}
 					{/each}
+					{#if s.story_beats?.database}
+						{@const beatsCheck = s.story_beats.check}
+						<a class={['chip', beatsCheck?.ok ? 'ok' : 'bad']} href={notionUrl(s.story_beats.database)} target="_blank" rel="noreferrer" title={beatsCheck?.ok ? `${s.story_beats.beats.length} season story beats (template v2)` : [...(beatsCheck?.missing ?? []), ...(beatsCheck?.wrongType ?? [])].join('\n')}>{beatsCheck?.ok ? '✓' : '✗'} Story beats ↗</a>
+					{/if}
 					{#if s.story}
 						<a class="chip ok" href={notionUrl(s.story.page_id)} target="_blank" rel="noreferrer" title={`Open “${s.story.title}” in Notion`}>✓ Story ↗</a>
 					{:else}

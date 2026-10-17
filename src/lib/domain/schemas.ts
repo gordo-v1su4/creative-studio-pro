@@ -556,7 +556,9 @@ export const projectSchema = z.object({
 			story_beats: z.string().max(8000), timecode: z.string().max(200), location: z.string().max(400), characters: z.array(z.string().max(100)).max(40),
 			group_id: idSchema, seconds: z.number().nonnegative(), shot_count: z.number().int().nonnegative(),
 			/** The scene's three-letter code in shot codes (PAR); unique in the episode, fixed once the series' codes lock (V1S-274). */
-			code: z.string().regex(/^[A-Z]{3}$/).optional()
+			code: z.string().regex(/^[A-Z]{3}$/).optional(),
+			/** Template v2 (V1S-272): the season story beats this scene carries (Story Beats page ids). */
+			story_beat_ids: z.array(z.string().max(64)).max(40).optional()
 		})).max(100)
 	}).nullable().default(null),
 	production: productionStateSchema.default({

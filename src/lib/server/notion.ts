@@ -1,7 +1,7 @@
 import { Client } from '@notionhq/client';
 import {
 	bareId, checkDatabase, layoutEpisode, toEpisode, toScene, toShot,
-	type DatabaseKey, type EpisodeLayout, type NotionPage, type NotionSchema, type SeriesEpisode, type TemplateCheck
+	type DatabaseKey, type EpisodeLayout, type NotionPage, type NotionSchema, type SeriesEpisode, type SeriesStoryBeat, type TemplateCheck, toStoryBeat
 } from '$lib/domain/notion-series';
 
 /**
@@ -89,6 +89,8 @@ export interface SeriesRead {
 	databases: SeriesSources;
 	checks: Record<DatabaseKey, TemplateCheck>;
 	episodes: Array<SeriesEpisode & { scene_count: number }>;
+	/** Template v2 (V1S-272): the season's story beats, when the series has a Story Beats database. */
+	story_beats: { database: string | null; check: TemplateCheck | null; beats: SeriesStoryBeat[] };
 }
 
 /** Child pages and databases under the root, two page levels deep (a "Databases (raw)" page is followed). */
@@ -113,11 +115,13 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 	const sources: SeriesSources = { episodes: null, scenes: null, shots: null };
 	const databaseIds: SeriesSources = { episodes: null, scenes: null, shots: null };
 	const schemas: Record<DatabaseKey, NotionSchema | null> = { episodes: null, scenes: null, shots: null };
+	let beatsSource: string | null = null, beatsSchema: NotionSchema | null = null, beatsDatabase: string | null = null;
 	for (const databaseId of databases) {
 		const database = await api.database(databaseId);
 		for (const ref of database.data_sources ?? []) {
 			const source = await api.dataSource(ref.id);
 			const name = (plain(source.title) || ref.name || '').trim();
+			if (/^story beats?$/i.test(name) && !beatsSource) { beatsSource = source.id; beatsSchema = source.properties; beatsDatabase = bareId(databaseId); continue; }
 			const key = KEY_BY_TITLE.find(([pattern]) => pattern.test(name))?.[1];
 			if (key && !sources[key]) { sources[key] = source.id; schemas[key] = source.properties; databaseIds[key] = bareId(databaseId); }
 		}
@@ -129,7 +133,11 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 	const episodes = sources.episodes && checks.episodes.ok
 		? (await all((cursor) => api.query(sources.episodes!, cursor))).map(toEpisode).map((episode) => ({ ...episode, scene_count: episode.scene_ids.length })).sort((a, b) => a.number - b.number)
 		: [];
-	return { root_id: bareId(rootId), story, sources, databases: databaseIds, checks, episodes };
+	const beatsCheck = beatsSource ? checkDatabase('story_beats', beatsSchema) : null;
+	const beats = beatsSource && beatsCheck?.ok
+		? (await all((cursor) => api.query(beatsSource!, cursor))).map(toStoryBeat).sort((a, b) => (a.order ?? 1e9) - (b.order ?? 1e9) || a.title.localeCompare(b.title))
+		: [];
+	return { root_id: bareId(rootId), story, sources, databases: databaseIds, checks, episodes, story_beats: { database: beatsDatabase, check: beatsCheck, beats } };
 }
 
 /** One episode with its scenes and shots, laid out (needs all three databases to pass the template). */
