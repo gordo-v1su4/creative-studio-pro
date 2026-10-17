@@ -83,7 +83,7 @@
 					else if (event.type === 'error') throw new Error(String(event.message));
 				}
 			}
-			note = `Fit added ${added} shot${added === 1 ? '' : 's'}${failed ? `; ${failed} scene${failed === 1 ? '' : 's'} failed (try those again)` : ''}${remaining ? `; ${remaining} lint finding${remaining === 1 ? '' : 's'} left after three fixes (open the beats to check)` : ''}.`;
+			note = `Fit added ${added} shot${added === 1 ? '' : 's'}${failed ? `; ${failed} scene${failed === 1 ? '' : 's'} failed (try those again)` : ''}${remaining ? `; ${remaining} lint finding${remaining === 1 ? '' : 's'} left after three fixes (open the shots to check)` : ''}.`;
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Fit failed'; }
 		finally { fitting = null; }
 	}
@@ -117,7 +117,7 @@
 			<button type="button" class={['key', minutes === option && 'on']} aria-pressed={minutes === option} onclick={() => void setLength(option)} disabled={saving}>{option} min</button>
 		{/each}
 		<span class="grow"></span>
-		<span class="readout" title="Shots on the board (benched beats left out) against the episode length">
+		<span class="readout" title="Shots on the board (benched shots left out) against the episode length">
 			<b>{clockOf(outline.shot_s)}</b> of shots · <b>{clockOf(outline.target_s)}</b> episode
 			{#if short}· <span class="text-nr-muted">{clockOf(outline.gap_s)} to write ({Math.round(outline.fill * 100)}%)</span>{:else}· <span class="text-nr-accent">full</span>{/if}
 		</span>

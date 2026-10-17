@@ -79,10 +79,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				rules
 			});
 		} catch (cause) {
-			draftNote = `The Agent couldn't draft a prompt (${cause instanceof Error ? cause.message : 'error'}); starting from the beat's video prompt.`;
+			draftNote = `The Agent couldn't draft a prompt (${cause instanceof Error ? cause.message : 'error'}); starting from the shot's video prompt.`;
 		}
 	} else {
-		draftNote = `No Agent model (${resolved.message}); starting from the beat's video prompt.`;
+		draftNote = `No Agent model (${resolved.message}); starting from the shot's video prompt.`;
 	}
 	const priced = await estimateAnimate(deps, settings);
 	return json({

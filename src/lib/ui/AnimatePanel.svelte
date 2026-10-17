@@ -90,7 +90,7 @@
 		sending = false; confirming = false;
 		if (!result.ok) { error = result.error.message; reasons = result.error.reasons ?? []; return; }
 		onUpdated(result.data as Project);
-		onsent(`Sent ${prepared?.title ?? 'the beat'} to Seedance (${resolution === '480p' ? '480p draft, finalizable to 1080p for 7 days' : resolution}, ${duration}s, ${estimate.credits} credits). It lands as a new take when it finishes.`);
+		onsent(`Sent ${prepared?.title ?? 'the shot'} to Seedance (${resolution === '480p' ? '480p draft, finalizable to 1080p for 7 days' : resolution}, ${duration}s, ${estimate.credits} credits). It lands as a new take when it finishes.`);
 		onclose();
 	}
 </script>

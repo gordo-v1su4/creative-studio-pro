@@ -45,7 +45,7 @@ function stillOf(deps: AnimateDeps, project: Project, cardId: string): { ok: tru
 	const card = project.production.cards.find((entry) => entry.card_id === cardId);
 	if (!card) return failure(404, 'NOT_FOUND', `Beat ${cardId} not on this project`);
 	const still = pickFor(project.production, card);
-	if (!still || still.kind !== 'image') return failure(400, 'INVALID_COMMAND', 'Animate needs a beat whose pick is a still');
+	if (!still || still.kind !== 'image') return failure(400, 'INVALID_COMMAND', 'Animate needs a shot whose pick is a still');
 	const files = resolve(join(deps.projectRoot, project.project_id, 'files'));
 	const prefix = `/api/projects/${project.project_id}/files/`;
 	if (!still.url.startsWith(prefix)) return failure(400, 'INVALID_COMMAND', 'Animate needs a still stored in the project folder');
@@ -84,7 +84,7 @@ export async function draftAnimatePrompt(
 		'- Start with a short declaration line, e.g. "Image_1 is Mara." Declare a name only (one or two words, a person or a named place), never a pose or description; put the action in the shots. Cite it as @Image_1.',
 		'- Never use pronouns (he, she, her, him, they, it…); repeat the declared name every time.',
 		'- Name places specifically (or by their declared name), never a generic "the room" or "the interior".',
-		'- Prefer several hard cuts in one generation when the beat allows.',
+		'- Prefer several hard cuts in one generation when the shot allows.',
 		'Follow the project rules exactly; never break a must-not. Return JSON only: {"prompt": string}.'
 	].join('\n');
 	const context = JSON.stringify({ beat: input.card.title, what_happens: input.card.beat, purpose: input.card.purpose, previous_video_prompt: input.card.video_prompt, duration_s: input.card.duration_ms / 1000, project_rules: input.rules ?? '(none)' }, null, 2);

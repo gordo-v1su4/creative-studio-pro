@@ -17,7 +17,7 @@
 		order: number;
 		/** 0-based place on the spine; null when off the spine. */
 		spineIndex?: number | null;
-		/** Every take on the beat in creation order, rejected ones included. */
+		/** Every take on the shot in creation order, rejected ones included. */
 		takes?: Take[];
 		pickId?: string | null;
 		onPick?: (takeId: string) => void;
@@ -26,7 +26,7 @@
 		onBench?: (benched: boolean) => void;
 		onHold?: (options: { length_s: number; push_in: boolean; fade: boolean }) => void;
 		onAnimate?: () => void;
-		/** A generation from this beat is still running. */
+		/** A generation from this shot is still running. */
 		animating?: boolean;
 		/** Finalize a draft take to 1080p (opens the priced confirm). */
 		onFinalize?: (takeId: string) => void;
@@ -42,7 +42,7 @@
 	let story = $derived(data as StoryCardNodeData);
 	let card = $derived(story.card);
 	let benched = $derived(card?.benched === true);
-	// 1-based place on the spine; null when the beat is unhooked from the chain.
+	// 1-based place on the spine; null when the shot is unhooked from the chain.
 	let number = $derived(story.spineIndex === null || story.spineIndex === undefined ? null : story.spineIndex + 1);
 	let takes = $derived(story.takes ?? []);
 	let pick = $derived(takes.find((take) => take.asset_id === story.pickId) ?? null);
@@ -55,12 +55,12 @@
 	let cycle = $derived(showRejected ? takes : takes.filter((take) => !take.rejected));
 	let shown = $derived(cycle.find((take) => take.asset_id === viewingId) ?? pick);
 	let shownIndex = $derived(shown ? cycle.indexOf(shown) : -1);
-	// Open on the result when there is one, else the beat text.
+	// Open on the result when there is one, else the shot text.
 	let face = $state<CardFace>(untrack(() => (story.pickId ? 'take' : 'beat')));
 	const faces: CardFace[] = ['beat', 'take'];
 	let inSequence = $derived(card ? reviewSequence.position(card.card_id) : 0);
 
-	// What you see is what plays: a selected beat follows its pick, and leaves the selection when benched.
+	// What you see is what plays: a selected shot follows its pick, and leaves the selection when benched.
 	$effect(() => {
 		const id = card?.card_id;
 		const item = card && !benched && pick?.kind === 'video' ? { id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id } : null;
@@ -143,9 +143,9 @@
 	<header class="flex items-center gap-2 border-b border-nr-line px-2 py-1.5">
 		{#if inSequence}<span class="bg-nr-mark px-1 font-mono text-[10px] font-bold text-black" title="Sequence position">{inSequence}</span>{/if}
 		<span class={['font-mono text-[10px] font-bold', number ? 'text-nr-accent' : 'text-nr-dim']} title={number ? 'Place on the spine' : 'Off the spine: hook a connector in to give it a place'}>{number ? String(number).padStart(2, '0') : '--'}</span>
-		<strong class="min-w-0 grow truncate text-[11px] text-nr-text">{card?.title ?? `Story beat ${story.order + 1}`}</strong>
+		<strong class="min-w-0 grow truncate text-[11px] text-nr-text">{card?.title ?? `Shot ${story.order + 1}`}</strong>
 		{#if benched}<span class="benched-mark">Benched</span>{/if}
-		{#if story.animating}<span class="benched-mark" title="A Seedance generation from this beat is running">Animating…</span>{/if}
+		{#if story.animating}<span class="benched-mark" title="A Seedance generation from this shot is running">Animating…</span>{/if}
 		<span class="font-mono text-[9px] uppercase text-nr-dim">{card ? `${card.duration_ms / 1000}s` : 'placeholder'}</span>
 		{#if card}
 			<button
@@ -154,7 +154,7 @@
 				onclick={(event) => { event.stopPropagation(); story.onBench?.(!benched); }}
 				aria-pressed={benched}
 				aria-label={benched ? `Unbench ${card.title}` : `Bench ${card.title}`}
-				title={benched ? 'Unbench: play this beat again' : 'Bench: keep it here but skip it'}
+				title={benched ? 'Unbench: play this shot again' : 'Bench: keep it here but skip it'}
 			>{benched ? 'Unbench' : 'Bench'}</button>
 		{/if}
 	</header>
@@ -167,7 +167,7 @@
 				class="face-tab"
 				onclick={() => (face = item)}
 				aria-pressed={face === item}
-			>{item}</button>
+			>{item === 'beat' ? 'shot' : item}</button>
 		{/each}
 	</nav>
 
@@ -177,7 +177,7 @@
 				{#if !card}
 					<div class="flex h-full flex-col items-center justify-center px-6 text-center">
 						<span class="font-mono text-[9px] uppercase tracking-[.12em] text-nr-dim">Awaiting story draft</span>
-						<p class="mt-2 text-[11px] leading-5 text-nr-dim">This slot becomes a connected story beat when the Agent builds the spine.</p>
+						<p class="mt-2 text-[11px] leading-5 text-nr-dim">This slot becomes a connected shot when the Agent builds the spine.</p>
 					</div>
 				{:else if face === 'beat'}
 					<div class="h-full overflow-auto p-3">
@@ -245,7 +245,7 @@
 					onblur={() => (armedSplit = null)}
 					disabled={!!story.splitting}
 					aria-label={armedSplit === shown.asset_id ? `Confirm: split this take of ${card.title} into shots` : `Split this take of ${card.title} into shots`}
-					title="Split this take into shots by scene detection: a new group, one beat per shot"
+					title="Split this take into shots by scene detection: a new group, one card per shot"
 				>{story.splitting === shown.asset_id ? 'Splitting…' : armedSplit === shown.asset_id ? 'Split?' : 'Shots'}</button>
 			{/if}
 			{#if rejectedCount > 0}

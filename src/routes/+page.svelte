@@ -83,13 +83,13 @@
 	let selectedVoice = $derived(
 		activeProject?.voices.find((voice) => voice.voice_id === selectedNodeId) ?? null
 	);
-	// Tabs follow the flow: write the story, review on the board, work the beats, cut, sound, finish.
+	// Tabs follow the flow: write the story, review on the board, work the shots, cut, sound, finish.
 	const workspaceTabs: Array<{ label: string; tab: 'canvas' | ProductionTab }> = [
-		{ label: 'Story', tab: 'story' }, { label: 'Board', tab: 'canvas' }, { label: 'Beats', tab: 'beats' },
+		{ label: 'Story', tab: 'story' }, { label: 'Board', tab: 'canvas' }, { label: 'Shots', tab: 'beats' },
 		{ label: 'Cuts', tab: 'cuts' }, { label: 'Sound', tab: 'sound' }, { label: 'Export', tab: 'export' }
 	];
 	// Tabs saved before the Narrate flow land on their nearest successor.
-	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', preview: 'cuts' };
+	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', shots: 'beats', preview: 'cuts' };
 	const secondaryNav = [
 		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
 		{ label: 'Watch', href: '/watch', hint: 'The public, read-only pages: what you have published' },
@@ -229,7 +229,7 @@
 	}
 
 	async function beforeBoardDelete({ edges: doomed }: { nodes: Node[]; edges: Edge[] }) {
-		// Only spine connectors can be deleted from the board; beats, seed and voices stay.
+		// Only spine connectors can be deleted from the board; shots, seed and voices stay.
 		const spine = doomed.filter((edge) => edge.data?.spine);
 		if (spine.length === 0 || !activeProject) return false;
 		rewire(spine.reduce((links, edge) => disconnect(links, linkEnd(edge.source), edge.target), linksOf(activeProject.production)));
@@ -295,10 +295,10 @@
 		}));
 	}
 
-	// --- Animate: the panel for one beat, and polling while any generation is still running.
+	// --- Animate: the panel for one shot, and polling while any generation is still running.
 	let animateCardId = $state<string | null>(null);
 
-	// --- Board groups (V1S-131): which set of beats the board shows (remembered per project).
+	// --- Board groups (V1S-131): which set of shots the board shows (remembered per project).
 	let activeGroup = $state<string>(MAIN_GROUP);
 	let newGroupName = $state<string | null>(null);
 	let groupInput = $state<HTMLInputElement>();
@@ -324,9 +324,9 @@
 		if (activeProject) { adoptProject(activeProject); fitRequest = `${activeProject.project_id}:${groupId}`; }
 	}
 
-	// Beats picked on the board (click, or shift-drag a box over several), in reading order.
+	// Shots picked on the board (click, or shift-drag a box over several), in reading order.
 	const selectedBeats = $derived(readingOrder(nodes.filter((node) => node.selected && isBeat(node.id)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y }))).map((item) => item.id));
-	const beatTitle = (cardId: string) => activeProject?.production.cards.find((card) => card.card_id === cardId)?.title ?? 'the beat';
+	const beatTitle = (cardId: string) => activeProject?.production.cards.find((card) => card.card_id === cardId)?.title ?? 'the shot';
 	const groupName = (groupId: string) => (activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId)?.name : null) ?? 'that group';
 	const beatsLabel = (ids: string[]) => (ids.length === 1 ? beatTitle(ids[0]) : `${ids.length} beats`);
 
@@ -335,7 +335,7 @@
 		selectedNodeId = null;
 	}
 
-	/** A new group; with beats selected, they move into it (it's how a row becomes "Teaser 20s"). */
+	/** A new group; with shots selected, they move into it (it's how a row becomes "Teaser 20s"). */
 	function createGroup() {
 		const name = newGroupName?.trim();
 		if (!name) return;
@@ -358,7 +358,7 @@
 		clearSelection();
 	}
 
-	// Drag beats from the board onto a group in the left panel to move them there. The cards go
+	// Drag shots from the board onto a group in the left panel to move them there. The cards go
 	// back to where the drag started, so they keep their place on the board inside the new group.
 	let dragStart = new Map<string, { x: number; y: number }>();
 	let dropGroup = $state<string | null>(null);
@@ -418,7 +418,7 @@
 		sendBoardCommand({ command: 'rename_group', group_id: target.group_id, name: target.name.trim() });
 	}
 
-	/** Play the selected beats' picks in reading order (benched beats and stills are skipped). */
+	/** Play the selected shots' picks in reading order (benched shots and stills are skipped). */
 	function playSelection() {
 		const project = activeProject;
 		if (!project) return;
@@ -427,12 +427,12 @@
 			const pick = card && !card.benched ? pickFor(project.production, card) : null;
 			return card && pick?.kind === 'video' ? [{ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id }] : [];
 		});
-		if (!items.length) { notify('None of the selected beats has a video pick to play.'); return; }
+		if (!items.length) { notify('None of the selected shots has a video pick to play.'); return; }
 		reviewSequence.items = items;
 		reviewSequence.playing = true;
 	}
 
-	/** Split a video take into shots through the splitter: a new group of shot beats, then show it. */
+	/** Split a video take into shots through the splitter: a new group of shots, then show it. */
 	async function splitTake(takeId: string) {
 		const project = activeProject;
 		if (!project || splittingTake) return;
@@ -446,7 +446,7 @@
 			if (!result.ok) throw new Error(result.error.message);
 			adoptProject(result.data);
 			showGroup(result.group_id);
-			notify(`Split into ${result.shots} shots: a new group, one beat per shot. A better take of a shot is just another take on its beat.`);
+			notify(`Split into ${result.shots} shots: a new group, one card per shot. A better take of a shot is just another take on it.`);
 		} catch (cause) {
 			notify(`Split failed: ${cause instanceof Error ? cause.message : 'error'}`);
 		} finally {
@@ -473,7 +473,7 @@
 					const landed = (result.data.production.generations ?? []).filter((generation) => generation.settled_at && !activeProject?.production.generations?.find((entry) => entry.request_id === generation.request_id)?.settled_at);
 					adoptProject(withPendingPicks(result.data));
 					for (const generation of landed) {
-						const title = result.data.production.cards.find((card) => card.card_id === generation.card_id)?.title ?? 'a beat';
+						const title = result.data.production.cards.find((card) => card.card_id === generation.card_id)?.title ?? 'a shot';
 						if (generation.finalizes) {
 							const take = result.data.production.assets.find((asset) => asset.asset_id === generation.finalizes);
 							notify(generation.status === 'completed' ? `${title} is finalized: ${take?.name ?? 'the take'} is now 1080p.` : `Finalize on ${title} ended: ${generation.status}${generation.error ? ` (${generation.error})` : ''}. The 480p draft is unchanged.`);
@@ -503,7 +503,7 @@
 		);
 	}
 
-	// --- Drag and drop: a file on a beat becomes its new take (and pick); on empty canvas, a new benched beat there.
+	// --- Drag and drop: a file on a shot becomes its new take (and pick); on empty canvas, a new benched shot there.
 	let dropNotice = $state<string | null>(null);
 	let dropNoticeTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -550,7 +550,7 @@
 					const take = result.take as { under_2k?: boolean; name: string; width?: number; height?: number };
 					if (take.under_2k) flagged.push(`${take.name} (${take.width}×${take.height})`);
 					if (!cardId && layout) {
-						// The server placed the new beat at the drop point; mirror it so the board doesn't jump.
+						// The server placed the new shot at the drop point; mirror it so the board doesn't jump.
 						layout = { ...layout, nodes: [...layout.nodes, { node_id: String(result.beat_id), type: 'story_card', lane: 'storyboard', x: Number(params.get('x')), y: Number(params.get('y')), width: 320, height: 400 }] };
 					}
 					report();
@@ -599,7 +599,7 @@
 			const switching = activeProject?.project_id !== projectId;
 			adoptProject(body.project, body.layout);
 			viewport = body.layout?.viewport ?? { x: 0, y: 0, zoom: 1 };
-			// A project (or group, in showGroup) that just opened is centered on its beats; a reload keeps the view.
+			// A project (or group, in showGroup) that just opened is centered on its shots; a reload keeps the view.
 			if (switching) fitRequest = projectId;
 			selectedNodeId = null;
 			loadError = null;
@@ -704,7 +704,7 @@
 			const next: CanvasLayout = {
 				schema_version: 1,
 				project_id: activeProject.project_id,
-				// The board shows one group at a time: keep the saved places of beats in other groups.
+				// The board shows one group at a time: keep the saved places of shots in other groups.
 				nodes: [...(layout?.nodes ?? []).filter((p) => !nodes.some((n) => n.id === p.node_id) && activeProject!.production.cards.some((card) => card.card_id === p.node_id)), ...nodes.filter((n) => !n.id.startsWith('story-placeholder-')).map((n) => {
 					const previous = layout?.nodes.find((p) => p.node_id === n.id);
 					const type: CanvasLayout['nodes'][number]['type'] = n.type === 'voice' ? 'voice' : n.type === 'story_card' ? 'story_card' : 'seed';
@@ -914,7 +914,7 @@
 			{/each}
 		</nav>
 		<span class="grow"></span>
-		<button type="button" class="agent-key" disabled={!activeProject} title="The Agent: your assistant for this project. It drafts the brief, beats and prompts, suggests effects, and makes judgment calls inside your rules. Measurable work (lint, trims, levels) is done in code, not by the Agent." onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
+		<button type="button" class="agent-key" disabled={!activeProject} title="The Agent: your assistant for this project. It drafts the brief, shots and prompts, suggests effects, and makes judgment calls inside your rules. Measurable work (lint, trims, levels) is done in code, not by the Agent." onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
 			<span class="glyph" aria-hidden="true">✦</span>Agent
 		</button>
 		<button type="button" class="bar-key" onclick={() => void createProject()} disabled={creating} title="Start a new project from a rough idea">
@@ -926,10 +926,10 @@
 			{#if publishOpen && activeProject}
 				<div class="publish-pop" role="dialog" aria-label="Publish">
 					<p class="publish-cap">Publish to Watch</p>
-					<p class="publish-note">Visitors see a read-only copy: the story, the board with each beat's pick, and the cuts with their exported film. Publishing again replaces it.</p>
+					<p class="publish-note">Visitors see a read-only copy: the story, the board with each shot's pick, and the cuts with their exported film. Publishing again replaces it.</p>
 					<label class="publish-row"><span>Show the Agent's prompts</span><Toggle label="Show the Agent's prompts" bind:checked={publishPrompts} on="yes" off="no" /></label>
 					{#if publishResult}
-						<p class="publish-ok">Published: {publishResult.beats} beats, {publishResult.cuts} cut{publishResult.cuts === 1 ? '' : 's'}, {publishResult.copied} file{publishResult.copied === 1 ? '' : 's'}.{publishResult.missing.length ? ` ${publishResult.missing.length} file${publishResult.missing.length === 1 ? ' was' : 's were'} missing.` : ''} <a href={publishResult.url} target="_blank" rel="noreferrer">Open {publishResult.url} ↗</a></p>
+						<p class="publish-ok">Published: {publishResult.beats} shots, {publishResult.cuts} cut{publishResult.cuts === 1 ? '' : 's'}, {publishResult.copied} file{publishResult.copied === 1 ? '' : 's'}.{publishResult.missing.length ? ` ${publishResult.missing.length} file${publishResult.missing.length === 1 ? ' was' : 's were'} missing.` : ''} <a href={publishResult.url} target="_blank" rel="noreferrer">Open {publishResult.url} ↗</a></p>
 					{/if}
 					{#if publishError}<p class="publish-err" role="alert">{publishError}</p>{/if}
 					<div class="flex justify-end gap-2">
@@ -969,10 +969,10 @@
 				<div class="mt-3 grid gap-1.5">
 					<div class="layer-row"><span class="bg-voice-1"></span><b>Seed</b><small>1</small></div>
 					<div class="layer-row"><span class="bg-[#4ab8ff]"></span><b>Voices</b><small>{activeProject?.voices.length ?? 0}</small></div>
-					<div class="layer-row"><span class="bg-[#5cffbe]"></span><b>Beats</b><small>{activeProject?.production.cards.length || 6}</small></div>
+					<div class="layer-row"><span class="bg-[#5cffbe]"></span><b>Shots</b><small>{activeProject?.production.cards.length || 6}</small></div>
 					<div class="layer-row"><span class="bg-[#8174e8]"></span><b>Takes</b><small>{activeProject?.production.assets.length ?? 0}</small></div>
 				</div>
-				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Cycle a beat's takes; the one showing is its pick.</p>
+				<p class="mt-4 font-mono text-[9px] leading-4 text-text-dim">Drag cards to arrange the production. Cycle a shot's takes; the one showing is its pick.</p>
 				{#if activeProject}
 					{@const groups = groupsOf(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Groups<span class="grow"></span><button type="button" class="group-add" onclick={() => (newGroupName = '')} aria-label="New group">+ new</button></div>
@@ -983,7 +983,7 @@
 									<!-- svelte-ignore a11y_autofocus -->
 									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
 								{:else}
-									<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every beat not in a group' : 'Show this group · double-click to rename'}>
+									<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every shot not in a group' : 'Show this group · double-click to rename'}>
 										<b class="min-w-0 grow truncate">{group.name}</b>
 										<small>{group.count}</small>
 									</button>
@@ -997,11 +997,11 @@
 					{#if newGroupName !== null}
 						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder={selectedBeats.length ? `Name for ${beatsLabel(selectedBeats)}` : 'Group name'} aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
 					{/if}
-					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the beats there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a beat onto a group to move it. Shift-drag a box over beats to select a row, then group it. Double-click a group to rename it.'}</p>
+					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the shots there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a shot onto a group to move it. Shift-drag a box over shots to select a row, then group it. Double-click a group to rename it.'}</p>
 					{@const bin = benchedBeats(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
 					{#if bin.length === 0}
-						<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">Benched beats land here. They keep their place and are skipped when the story plays.</p>
+						<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">Benched shots land here. They keep their place and are skipped when the story plays.</p>
 					{:else}
 						<ul class="mt-2 grid gap-1" aria-label="Benched beats">
 							{#each bin as card (card.card_id)}
@@ -1079,10 +1079,10 @@
 					{#if selectedBeats.length > 1 && activeProject}
 						{@const moveTargets = groupsOf(activeProject.production).filter((g) => g.group_id !== activeGroup)}
 						<div class="sel-bar" role="group" aria-label="Selected beats">
-							<span class="seq-cap">{selectedBeats.length} beats</span>
+							<span class="seq-cap">{selectedBeats.length} shots</span>
 							<button type="button" class="bar-key agent" onclick={playSelection} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>
-							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and move these beats into it">New group…</button>
-							{#if moveTargets.length}<Pick label="Move the selected beats to a group" placeholder="Move to…" options={moveTargets.map((g) => ({ value: g.group_id, label: g.name, hint: String(g.count) }))} onchange={(groupId) => moveSelectedTo(groupId)} />{/if}
+							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and move these shots into it">New group…</button>
+							{#if moveTargets.length}<Pick label="Move the selected shots to a group" placeholder="Move to…" options={moveTargets.map((g) => ({ value: g.group_id, label: g.name, hint: String(g.count) }))} onchange={(groupId) => moveSelectedTo(groupId)} />{/if}
 							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>
 						</div>
 					{/if}
@@ -1090,7 +1090,7 @@
 						<div class="seq-bar" role="group" aria-label="Selected sequence">
 							<span class="seq-cap">Sequence</span>
 							{#each reviewSequence.items as item, i (item.id)}<span class="seq-item"><b>{i + 1}</b>{item.title.split(' — ')[0]}</span>{/each}
-							<button type="button" class="bar-key agent" onclick={() => (reviewSequence.playing = true)} title="Play the selected beats in order">▶ Play</button>
+							<button type="button" class="bar-key agent" onclick={() => (reviewSequence.playing = true)} title="Play the selected shots in order">▶ Play</button>
 							<button type="button" class="bar-key" onclick={() => reviewSequence.clear()}>Clear</button>
 						</div>
 					{/if}

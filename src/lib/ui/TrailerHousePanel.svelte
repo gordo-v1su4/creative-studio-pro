@@ -361,7 +361,7 @@
 					<span class="grow"></span>
 					<button type="button" class={['key', !house.characters && 'accent']} onclick={() => proceed('characters')} disabled={!!busy}>{busy === 'characters' ? 'Writing…' : house.characters ? 'Redo characters' : 'Main character & relationships'}</button>
 					<button type="button" class={['key', house.characters && !house.outline && 'accent']} onclick={() => proceed('outline')} disabled={!!busy}>{busy === 'outline' ? 'Writing…' : house.outline ? 'Redo outline' : 'Plot outline'}</button>
-					{#if onBuildStory}<button type="button" class={['key', house.outline && 'accent']} onclick={onBuildStory} disabled={!!busy || building} title="Grow the full story arc and its beats from the teaser, the characters and the outline">{building ? 'Building…' : 'Full story arc →'}</button>{/if}
+					{#if onBuildStory}<button type="button" class={['key', house.outline && 'accent']} onclick={onBuildStory} disabled={!!busy || building} title="Grow the full story arc and its story beats from the teaser, the characters and the outline">{building ? 'Building…' : 'Full story arc →'}</button>{/if}
 				</div>
 				{#if house.characters}<div><p class="cap">Characters</p><pre class="text">{house.characters.text}</pre></div>{/if}
 				{#if house.outline}<div><p class="cap">Plot outline</p><pre class="text">{house.outline.text}</pre></div>{/if}

@@ -16,7 +16,11 @@ _Avoid_: Beat, act (unless the structure calls it that)
 
 **Story beat**:
 One thing that clearly happens in this story; it sits in one section and plays out over one or more scenes, and a season or film has roughly ten to fifteen.
-_Avoid_: Beat (alone), plot point, moment
+_Avoid_: Beat (alone), plot point, moment, musical beat
+
+**Musical beat**:
+One pulse of a song's rhythm, found by beat tracking (Essentia), that cuts can snap to; it has nothing to do with story structure.
+_Avoid_: Beat (alone), story beat, hit
 
 **Target length**:
 The running time an episode is being made to, set per episode and defaulting to the series format; it decides how much screen time each scene is owed.

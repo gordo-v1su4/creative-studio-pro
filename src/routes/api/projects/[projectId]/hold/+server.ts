@@ -44,7 +44,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!project) return json({ ok: false, error: { code: 'NOT_FOUND', message: 'Project not found', retryable: false, source: 'project-store' } }, { status: 404 });
 	const card = project.production.cards.find((entry) => entry.card_id === body.card_id);
 	const still = card ? pickFor(project.production, card) : null;
-	if (!still || still.kind !== 'image') return fail(400, 'A Hold needs a beat whose pick is a still');
+	if (!still || still.kind !== 'image') return fail(400, 'A Hold needs a shot whose pick is a still');
 
 	// Only stills stored in this project's folder can be held (same-origin files route).
 	const files = resolve(join(getProjectRoot(), projectId.data, 'files'));

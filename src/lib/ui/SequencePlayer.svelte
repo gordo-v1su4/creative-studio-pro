@@ -590,7 +590,7 @@
 				<span class="tracking-[.14em] text-nr-accent">SEQUENCE</span>
 			{/if}
 			<span>{clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"} · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
-			<span class="text-nr-faint" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and beats are untouched' : 'Trims and ramps save to the takes'}>
+			<span class="text-nr-faint" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and shots are untouched' : 'Trims and ramps save to the takes'}>
 				{source.kind === 'cut' ? (frozen ? 'picture locked · read-only' : readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
 			</span>
 			<span class="grow"></span>
@@ -606,10 +606,10 @@
 				{:else if cut.music}
 					<span class="max-w-[220px] truncate text-nr-mark" title={`${cut.music.name} · ${cut.music.bpm} BPM · ${cut.music.duration_s.toFixed(1)}s, plays from the cut's start`}>♪ {cut.music.name} · {cut.music.bpm} BPM</span>
 					<Toggle label="Play the song" on="song" off="song" bind:checked={songOn} onchange={() => syncSong()} />
-					{#if !frozen && !readOnly}<button type="button" class="ctl suggest" onclick={() => void matchMusic()} disabled={matching || !clips.length} title="Slide each entry within its own footage to where its audio matches the song, keeping your order; entries that can't match confidently snap their cut to the nearest beat. You preview it before anything is saved.">{matching ? 'matching…' : 'match to music'}</button>{/if}
+					{#if !frozen && !readOnly}<button type="button" class="ctl suggest" onclick={() => void matchMusic()} disabled={matching || !clips.length} title="Slide each entry within its own footage to where its audio matches the song, keeping your order; entries that can't match confidently snap their cut to the nearest musical beat. You preview it before anything is saved.">{matching ? 'matching…' : 'match to music'}</button>{/if}
 					<button type="button" class="ctl" onclick={() => void removeSong()} title="Detach the song from this cut (the file stays in the project)">remove song</button>
 				{:else}
-					<label class={['ctl suggest cursor-pointer', attaching && 'opacity-50']} title="Attach a song to this cut: it plays from the cut's start, and its beat grid is computed for Match to music">{attaching ? 'attaching…' : 'attach song'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="hidden" disabled={attaching} onchange={(event) => { void attachSong(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
+					<label class={['ctl suggest cursor-pointer', attaching && 'opacity-50']} title="Attach a song to this cut: it plays from the cut's start, and its musical-beat grid is computed for Match to music">{attaching ? 'attaching…' : 'attach song'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="hidden" disabled={attaching} onchange={(event) => { void attachSong(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
 				{/if}
 			{/if}
 			{#if source.kind === 'cut' && !readOnly && !matchPreview}
@@ -697,7 +697,7 @@
 					<dt>take</dt><dd>{currentTake?.name ?? current.assetId}</dd>
 					<dt>full length</dt><dd>{current.duration.toFixed(2)}s · kept {current.in.toFixed(2)}–{current.out.toFixed(2)}{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
 					<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-nr-faint">no generation job on record</span>{/if}</dd>
-					<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-nr-faint">beat's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-nr-faint">none on record</span>{/if}</dd>
+					<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-nr-faint">shot's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-nr-faint">none on record</span>{/if}</dd>
 				</dl>
 			</section>
 		{/if}

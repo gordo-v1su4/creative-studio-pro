@@ -6,7 +6,7 @@
 	/**
 	 * Series from Notion. Connect a show by its root page (the only page the Creative Studio Pro connection
 	 * can see), check it against the template, read the season story, pick the episode length, and import
-	 * episodes: each becomes its own project, a board group per scene and a beat per shot.
+	 * episodes: each becomes its own project, a board group per scene and a card per shot.
 	 */
 	let configured = $state<boolean | null>(null);
 	let series = $state<SeriesRecord[]>([]);
@@ -58,7 +58,7 @@
 		<header>
 			<p class="cap accent">Series</p>
 			<h1 class="mt-1 text-[18px] font-semibold text-nr-ink">Shows from Notion</h1>
-			<p class="mt-1 max-w-[680px] text-[12.5px] leading-6 text-nr-muted">A series lives in Notion: a root page with the season story and three linked databases, Episodes → Scenes → Shots. Connect the root and import an episode; it becomes its own project, with a board group for each scene and a beat for each shot. Notion stays the source. Nothing here writes to it.</p>
+			<p class="mt-1 max-w-[680px] text-[12.5px] leading-6 text-nr-muted">A series lives in Notion: a root page with the season story and three linked databases, Episodes → Scenes → Shots. Connect the root and import an episode; it becomes its own project, with a board group for each scene and a card for each shot. Notion stays the source. Nothing here writes to it.</p>
 		</header>
 
 		{#if configured === false}

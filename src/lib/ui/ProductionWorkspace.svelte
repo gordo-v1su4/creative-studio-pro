@@ -98,7 +98,7 @@
 	}
 
 	const totalDuration = $derived(draft.cards.reduce((sum, card) => sum + card.duration_ms, 0));
-	// The preview plays the spine: story order, benched beats skipped.
+	// The preview plays the spine: story order, benched shots skipped.
 	let spine = $derived(liveSpine(draft));
 	let previewCard = $derived(spine.find((card) => card.card_id === previewCardId) ?? spine[0] ?? null);
 
@@ -154,7 +154,7 @@
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
 	<div class="sticky top-0 z-10 flex min-w-max items-center justify-end gap-3 border-b border-[#26333a] bg-[#10141a]/95 px-4 py-2 backdrop-blur">
-		<span class="meta-label text-[#63838c]">{draft.cards.length} beats · {(totalDuration / 1000).toFixed(0)}s</span>
+		<span class="meta-label text-[#63838c]">{draft.cards.length} shots · {(totalDuration / 1000).toFixed(0)}s</span>
 		<button type="button" class="btn btn-accent" onclick={() => void save()} disabled={saving || busy}>{saving ? 'Saving…' : 'Save workspace'}</button>
 	</div>
 
@@ -227,7 +227,7 @@
 		<div class="mx-auto max-w-5xl p-5">
 			<div class="mb-4 border-b border-[#223039] pb-4">
 				<div class="meta-label text-[#59d9cf]">CUTS</div>
-				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Shift-click beats on the board, play the selection, and push it into a named cut. A cut keeps its own order, trims and ramps: board edits never change it, and editing it never changes the takes.</p>
+				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Shift-click shots on the board, play the selection, and push it into a named cut. A cut keeps its own order, trims and ramps: board edits never change it, and editing it never changes the takes.</p>
 			</div>
 			{#if cuts.length === 0}
 				<p class="mb-6 border border-dashed border-[#29434a] p-4 text-[12px] text-[#668d98]">No cuts yet.</p>

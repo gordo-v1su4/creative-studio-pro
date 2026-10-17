@@ -26,7 +26,7 @@
 							{#if entry.episode}<span class="chip">{entry.episode}</span>{/if}
 							<span class="title">{entry.title}</span>
 							{#if entry.logline}<span class="logline">{entry.logline}</span>{/if}
-							<span class="meta">{entry.beats} beats{entry.cuts ? ` · ${entry.cuts} cut${entry.cuts === 1 ? '' : 's'}` : ''} · {new Date(entry.published_at).toLocaleDateString()}</span>
+							<span class="meta">{entry.beats} shots{entry.cuts ? ` · ${entry.cuts} cut${entry.cuts === 1 ? '' : 's'}` : ''} · {new Date(entry.published_at).toLocaleDateString()}</span>
 						</span>
 					</a>
 				</li>

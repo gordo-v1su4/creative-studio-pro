@@ -369,7 +369,7 @@ export class ProjectCommandGateway {
 	async importEpisode(projectId: string, expectedVersion: number, input: { series: NonNullable<Project['series']>; groups: Array<{ group_id: string; name: string; created_at: string }>; cards: StoryCard[]; title: string; logline: string }): Promise<CommandOutcome<Project>> {
 		try {
 			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
-				if (current.production.cards.length > 0) throw new Error('This project already has beats on its board; import into a new project');
+				if (current.production.cards.length > 0) throw new Error('This project already has shots on its board; import into a new project');
 				return withCodes({
 					...current,
 					series: input.series,
@@ -379,7 +379,7 @@ export class ProjectCommandGateway {
 			return { ok: true, data: project };
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Import failed';
-			if (message.includes('already has beats')) return invalid(message);
+			if (message.includes('already has shots')) return invalid(message);
 			return this.storeError(e);
 		}
 	}
@@ -387,7 +387,7 @@ export class ProjectCommandGateway {
 	/** Fit to length: the Agent's new beats for one scene, right after its last beat (the Agent call happens in the route). */
 	async fitScene(projectId: string, expectedVersion: number, groupId: string, cards: StoryCard[]): Promise<CommandOutcome<Project>> {
 		const parsed = z.array(storyCardSchema).min(1).max(FIT_MAX_SHOTS + 2).safeParse(cards);
-		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Invalid fitted beats');
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Invalid fitted shots');
 		try {
 			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
 				if (!current.series) throw new Error('Only an episode imported from Notion can be fitted');
@@ -439,13 +439,13 @@ export class ProjectCommandGateway {
 		try {
 			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
 				const result = removeFitted(current.production, groupIds);
-				if (result.removed === 0) throw new Error(result.kept ? 'Every fitted beat there already has a take; bench or delete those by hand' : 'No fitted beats to take out');
+				if (result.removed === 0) throw new Error(result.kept ? 'Every fitted shot there already has a take; bench or delete those by hand' : 'No fitted shots to take out');
 				return { ...current, production: { ...result.production, updated_at: new Date().toISOString() } };
 			}, 'project.episode_unfitted.v1');
 			return { ok: true, data: project };
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Undo failed';
-			if (/fitted beat/.test(message)) return invalid(message);
+			if (/fitted shot/.test(message)) return invalid(message);
 			return this.storeError(e);
 		}
 	}
