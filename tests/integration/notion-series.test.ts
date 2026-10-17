@@ -243,3 +243,22 @@ describe('Notion series: connect, check, import an episode', () => {
 		expect(record.story_beats).toEqual({ database: null, check: null, beats: [] });
 	});
 });
+describe('Notion template v3 (V1S-323)', () => {
+	test('a scene reads its Action, falling back to the v2 "Story Beats" field', async () => {
+		const { toScene } = await import('../../src/lib/domain/notion-series');
+		const scene = (props: Record<string, unknown>) => toScene({ id: S1, properties: { Scene: title('Morning Quad'), 'Scene #': num(20), ...props } } as NotionPage);
+		expect(scene({ Action: rich('Kai signs nothing.') }).story_beats).toBe('Kai signs nothing.');
+		expect(scene({ 'Story Beats': rich('Old field.') }).story_beats).toBe('Old field.');
+		expect(scene({ Action: rich('New.'), 'Story Beats': rich('Old.') }).story_beats).toBe('New.');
+	});
+
+	test('the template check accepts the v3 fields and still passes without them', async () => {
+		const { checkDatabase } = await import('../../src/lib/domain/notion-series');
+		const v2 = schema({ Scene: 'title', 'Scene #': 'number', Episode: 'relation', Summary: 'rich_text', 'Story Beats': 'rich_text' });
+		const v3 = schema({ Scene: 'title', 'Scene #': 'number', Episode: 'relation', Summary: 'rich_text', Action: 'rich_text', Dialogue: 'rich_text', References: 'relation', 'Scene code': 'rich_text', Locked: 'checkbox' });
+		expect(checkDatabase('scenes', v2).ok).toBe(true);
+		const check = checkDatabase('scenes', v3);
+		expect(check.ok).toBe(true);
+		expect(check.wrongType).toEqual([]);
+	});
+});

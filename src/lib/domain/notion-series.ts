@@ -9,7 +9,7 @@
 // The template
 // ---------------------------------------------------------------------------
 
-type PropType = 'title' | 'rich_text' | 'number' | 'select' | 'multi_select' | 'relation' | 'status';
+type PropType = 'title' | 'rich_text' | 'number' | 'select' | 'multi_select' | 'relation' | 'status' | 'checkbox';
 interface PropSpec { name: string; type: PropType | PropType[]; required: boolean }
 
 export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: string; props: PropSpec[] }> = {
@@ -24,7 +24,12 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 			{ name: 'Act', type: 'select', required: false },
 			{ name: 'Season', type: 'number', required: false },
 			{ name: 'Mid-Episode Twist', type: 'rich_text', required: false },
-			{ name: 'Cliffhanger', type: 'rich_text', required: false }
+			{ name: 'Cliffhanger', type: 'rich_text', required: false },
+			// Template v3 (V1S-323): the outline is the writer's; the codes are written by the app (ADR 0002).
+			{ name: 'Episode outline', type: 'rich_text', required: false },
+			{ name: 'Show code', type: 'rich_text', required: false },
+			{ name: 'Episode code', type: 'rich_text', required: false },
+			{ name: 'Locked', type: 'checkbox', required: false }
 		]
 	},
 	scenes: {
@@ -34,7 +39,11 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 			{ name: 'Scene #', type: 'number', required: true },
 			{ name: 'Episode', type: 'relation', required: true },
 			{ name: 'Summary', type: 'rich_text', required: true },
-			{ name: 'Story Beats', type: 'rich_text', required: false },
+			{ name: 'Action', type: 'rich_text', required: false }, // template v3; v1/v2 called it "Story Beats"
+			{ name: 'Dialogue', type: 'rich_text', required: false },
+			{ name: 'References', type: 'relation', required: false },
+			{ name: 'Scene code', type: 'rich_text', required: false },
+			{ name: 'Locked', type: 'checkbox', required: false },
 			{ name: 'Section', type: 'select', required: false }, // template v2: Teaser / Act 1… / Tag; else the act comes from Timecode
 			{ name: 'Timecode', type: 'rich_text', required: false },
 			{ name: 'Location', type: 'rich_text', required: false },
@@ -62,7 +71,9 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 			{ name: 'Camera Movement', type: 'select', required: false },
 			{ name: 'Angle', type: 'select', required: false },
 			{ name: 'Characters', type: 'multi_select', required: false },
-			{ name: 'Status', type: ['select', 'status'], required: false }
+			{ name: 'Status', type: ['select', 'status'], required: false },
+			{ name: 'Shot code', type: 'rich_text', required: false },
+			{ name: 'Locked', type: 'checkbox', required: false }
 		]
 	}
 };
@@ -181,7 +192,7 @@ export const toScene = (page: NotionPage): SeriesScene => {
 	const section = textOf(page, 'Section');
 	return {
 		page_id: bareId(page.id), number: numberOf(page, 'Scene #') ?? 0, title: textOf(page, 'Scene') || 'Untitled scene', summary: textOf(page, 'Summary'),
-		story_beats: textOf(page, 'Story Beats'), timecode, location: textOf(page, 'Location'), characters: namesOf(page, 'Characters'),
+		story_beats: textOf(page, 'Action') || textOf(page, 'Story Beats'), timecode, location: textOf(page, 'Location'), characters: namesOf(page, 'Characters'),
 		int_ext: textOf(page, 'INT/EXT'), time_of_day: textOf(page, 'Time of Day'), status: textOf(page, 'Status'), episode_ids: relationOf(page, 'Episode'), act: ACT_ORDER.includes(section) && section ? section : actOf(timecode)
 	};
 };
