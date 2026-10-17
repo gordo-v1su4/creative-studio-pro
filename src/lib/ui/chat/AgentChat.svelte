@@ -8,11 +8,14 @@
 	import { getSpeechRecognitionConstructor, mergeTranscript } from './speech-recognition';
 	import type { SpeechRecognitionLike } from './speech-recognition';
 	import ProjectModelPanel from './ProjectModelPanel.svelte';
+	import StoryChat from './StoryChat.svelte';
 
 	let { open = $bindable(false), projectTitle = '', project = null }: { open?: boolean; projectTitle?: string; project?: Project | null } = $props();
 	type TranscriptMessage = Pick<UIMessage, 'id' | 'role'> & { text: string };
 	type AgentData = { project: Project; message: string; next_question: string | null; provider?: string; model?: string };
 
+	/** Brief: the scripted S1 interview. Story: the free story-interview chat on the AI SDK (V1S-282). */
+	let mode = $state<'brief' | 'story'>('brief');
 	let composer = $state('');
 	let pendingQuestion = $state<string | null>(null);
 	let assistantMessage = $state('');
@@ -204,10 +207,17 @@
 				</div>
 				<div class="agent-path truncate">~\projects\{projectTitle || 'no-project'} · {project?.stage.id ?? '—'} · {modelLabel || 'model'}</div>
 			</div>
+			<div class="flex gap-1" role="group" aria-label="Agent mode">
+				<button type="button" class={['agent-key', mode === 'brief' && 'is-on']} aria-pressed={mode === 'brief'} onclick={() => (mode = 'brief')} title="The S1 brief interview">brief</button>
+				<button type="button" class={['agent-key', mode === 'story' && 'is-on']} aria-pressed={mode === 'story'} onclick={() => (mode = 'story')} title="Story interview: idea → three directions → season and episode structure">story</button>
+			</div>
 			<button type="button" class="agent-key" onclick={() => (ui.chatMode = docked ? 'focus' : 'dock')} aria-label={docked ? 'Open Agent in focus mode' : 'Dock Agent on the right'}>{docked ? 'focus' : 'dock'}</button>
 			<button type="button" class="agent-key" onclick={() => (open = false)} aria-label="Close the Agent">esc</button>
 		</header>
 
+		{#if mode === 'story' && project}
+			<div class="min-h-0 grow px-4 py-4"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} /></div></div>
+		{:else}
 		<div class="agent-transcript min-h-0 grow overflow-y-auto px-4 py-4" aria-live="polite">
 			{#if !project}
 				<div class="mx-auto mt-16 max-w-md text-center text-text-muted">Open a project to talk with the Agent.</div>
@@ -274,6 +284,7 @@
 				</div>
 			</div>
 		</footer>
+		{/if}
 	</div>
 {/if}
 
@@ -375,6 +386,10 @@
 		opacity: 0.35;
 	}
 
+	.agent-key.is-on {
+		border-color: var(--agent-teal, #4ee8d2);
+		color: var(--agent-teal, #7de5dc);
+	}
 	.agent-key.is-listening {
 		border-color: var(--agent-violet);
 		color: #a9a3ff;
