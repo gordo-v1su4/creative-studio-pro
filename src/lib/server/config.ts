@@ -17,6 +17,9 @@ import type { ModelSettingsDeps } from '$lib/server/model-settings';
 import type { AnimateDeps } from '$lib/server/animate';
 import { cliRunner, createHiggsfieldCli, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator } from '$lib/server/higgsfield';
 import { probeMedia } from '$lib/server/media-probe';
+import { createReviewRoomClient } from '$lib/server/review-room';
+import type { PushDeps } from '$lib/server/review-room-takes';
+import { runFfmpeg } from '$lib/server/ffmpeg';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -133,6 +136,17 @@ export async function getSfxFolder(): Promise<string | null> {
 /** The Notion integration token (server-side only; the integration sees only the series root shared with it). */
 export function getNotionToken(): string | null {
 	return env.NOTION_TOKEN?.trim() || null;
+}
+
+/** What pushing a series take to Review Room needs (V1S-276); null until Review Room is configured. */
+export async function getPushDeps(): Promise<PushDeps | null> {
+	const config = getReviewRoomConfig();
+	if (!config) return null;
+	return {
+		store: getProjectStore(), gateway: getGateway(), series: getSeriesStore(), projectRoot: getProjectRoot(),
+		client: createReviewRoomClient(config), probe: probeMedia,
+		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output])
+	};
 }
 
 /** Review Room automation (V1S-275): base URL + a key restricted to the series' Review Room project. */

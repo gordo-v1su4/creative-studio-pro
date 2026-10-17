@@ -285,6 +285,8 @@ export const productionAssetSchema = z.object({
 	duration_s: z.number().positive().optional(),
 	/** A slice of another take (split into shots): which take, and where in it — so a finalized source can be re-split at the same points. */
 	source_take: z.object({ asset_id: idSchema, in_s: z.number().nonnegative(), out_s: z.number().positive() }).optional(),
+	/** Series takes stored in Review Room (V1S-276, ADR 0001): the shot's asset, this take's version, its v### and shot code. */
+	review_room: z.object({ asset_id: z.string().max(64), version_id: z.string().max(64), version: z.number().int().positive(), code: z.string().max(40) }).optional(),
 	/** Generated takes: the provider's job id and what was asked for (Finalize and source info read these). */
 	job_id: z.string().min(1).max(200).optional(),
 	generation: z.object({
@@ -735,6 +737,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.episode_unfitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.shot_codes_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.target_length_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_stored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
 	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);

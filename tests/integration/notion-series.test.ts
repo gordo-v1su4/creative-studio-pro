@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
@@ -7,6 +7,8 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { pageIdOf, type NotionApi } from '../../src/lib/server/notion';
 import { connectSeries, importEpisode, SeriesStore } from '../../src/lib/server/series';
 import type { NotionPage } from '../../src/lib/domain/notion-series';
+import { pushTake } from '../../src/lib/server/review-room-takes';
+import type { ReviewRoomClient } from '../../src/lib/server/review-room';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -163,6 +165,35 @@ describe('Notion series: connect, check, import an episode', () => {
 		expect(quad.act).toBe('Act 2');
 		expect(teaser.story_beat_ids).toEqual(['b1', 'b2']);
 		expect(quad.story_beat_ids).toEqual(['b1']);
+	});
+
+	test('pushTake: a series take goes to its scene folder by shot code, is marked stored and locks the codes', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-ni-')); roots.push(root);
+		const store = new ProjectStore({ root: join(root, 'projects') });
+		const gateway = new ProjectCommandGateway(store);
+		const series = new SeriesStore(join(root, 'series'));
+		const api = fakeNotion();
+		const { project, record } = await importEpisode(api, series, gateway, await connectSeries(api, series, ROOT, 'Blood Rush'), EP1.replace(/-/g, ''));
+		const card = project.production.cards[0];
+		const scene = project.series!.scenes.find((s) => s.group_id === card.group_id)!;
+		await series.write({ ...record, review_room: { project_id: 'rr-p1', folders: { [`scene:${scene.page_id}`]: 'f-scene' }, synced_at: null } });
+		await mkdir(join(root, 'projects', project.project_id, 'files', 'board'), { recursive: true });
+		await writeFile(join(root, 'projects', project.project_id, 'files', 'board', 'still.png'), new Uint8Array([1, 2, 3]));
+		const saved = await gateway.saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version,
+			production: { ...project.production, assets: [{ asset_id: 'still', card_id: card.card_id, kind: 'image', name: 'still.png', mime_type: 'image/png', url: `/api/projects/${project.project_id}/files/board/still.png`, width: 2048, height: 1152, created_at: '2026-10-17T00:00:00.000Z' }] } });
+		if (!saved.ok) throw new Error(saved.error.message);
+		const uploads: Array<Record<string, unknown>> = [];
+		const client = {
+			changes: async () => ({ cursor: '1', assets: [], versions: [{ versionId: 'v1', assetId: 'a1', version: 1, isCurrent: false, processingState: 'ready', mimeType: 'image/png', createdAt: 1 }], removedAssets: [] }),
+			beginUpload: async (input: Record<string, unknown>) => { uploads.push(input); return { sessionId: 's', url: 'u', posterUrl: 'p' }; },
+			putSigned: async () => {}, completeUpload: async () => ({ assetId: 'a1' }), putMetadata: async () => {}, setCurrentVersion: async () => {}
+		} as unknown as ReviewRoomClient;
+		const pushed = await pushTake({ store, gateway, series, projectRoot: join(root, 'projects'), client, probe: async () => ({ width: 2048, height: 1152 }), poster: async (_input, output) => { await writeFile(output, new Uint8Array([9])); } }, project.project_id, 'still');
+		if (!pushed.ok) throw new Error(pushed.message);
+		expect(pushed.code).toBe(`BLR_EP101_${scene.code}_0010`);
+		expect(uploads[0]).toMatchObject({ projectId: 'rr-p1', folderId: 'f-scene', assetCode: pushed.code, keepCurrentVersion: false });
+		expect(pushed.project.production.assets[0].review_room).toEqual({ asset_id: 'a1', version_id: 'v1', version: 1, code: pushed.code });
+		expect((await series.read(record.series_id))?.codes_locked_at).toBeTruthy();
 	});
 
 	test('template v1 (no Story Beats database) still imports', async () => {

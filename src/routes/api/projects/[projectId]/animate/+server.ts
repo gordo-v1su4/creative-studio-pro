@@ -4,7 +4,8 @@ import type { RequestHandler } from './$types';
 import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, animateGate } from '$lib/domain/animate';
 import { idSchema } from '$lib/domain/schemas';
 import { bannedTerms } from '$lib/domain/brief-rules';
-import { getAnimateDeps, resolveProjectModel } from '$lib/server/config';
+import { getAnimateDeps, getPushDeps, resolveProjectModel } from '$lib/server/config';
+import { pushTake } from '$lib/server/review-room-takes';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { draftAnimatePrompt, estimateAnimate, pollGenerations, projectRules, quoteSceneBatch, readStill, sendAnimate, sendSceneBatch, spentThisSession } from '$lib/server/animate';
 
@@ -58,7 +59,18 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 	if (body.action === 'poll') {
 		const polled = await pollGenerations(deps, projectId.data);
-		return polled.ok ? json({ ok: true, data: polled.project }) : fail(polled.status, polled.code, polled.message);
+		if (!polled.ok) return fail(polled.status, polled.code, polled.message);
+		// Series episodes linked to Review Room: settled generations are stored there right away (V1S-276).
+		let project = polled.project;
+		const push = project.series ? await getPushDeps() : null;
+		if (push) {
+			const settled = new Set((project.production.generations ?? []).filter((generation) => generation.status === 'completed' && generation.take_id).map((generation) => generation.take_id!));
+			for (const take of project.production.assets.filter((asset) => settled.has(asset.asset_id) && !asset.review_room)) {
+				const pushed = await pushTake(push, projectId.data, take.asset_id);
+				if (pushed.ok) project = pushed.project;
+			}
+		}
+		return json({ ok: true, data: project });
 	}
 	if (body.action === 'scene_quote') {
 		const project = await deps.store.readProject(projectId.data);

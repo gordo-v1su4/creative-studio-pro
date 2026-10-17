@@ -434,6 +434,21 @@ export class ProjectCommandGateway {
 		}
 	}
 
+	/** A take now lives in Review Room (V1S-276): note its asset, version and code on the take. */
+	async markTakeStored(projectId: string, expectedVersion: number, takeId: string, ref: { asset_id: string; version_id: string; version: number; code: string }): Promise<CommandOutcome<Project>> {
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				if (!current.production.assets.some((asset) => asset.asset_id === takeId)) throw new Error('That take is no longer on the board');
+				return { ...current, production: { ...current.production, assets: current.production.assets.map((asset) => (asset.asset_id === takeId ? { ...asset, review_room: ref } : asset)) } };
+			}, 'project.take_stored.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Saving the take failed';
+			if (/no longer on the board/.test(message)) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
 	/** An episode's own target length in minutes (V1S-277); null goes back to the series format. */
 	async setTargetLength(projectId: string, expectedVersion: number, minutes: number | null): Promise<CommandOutcome<Project>> {
 		if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 120)) return invalid('The target length is 1 to 120 whole minutes');
