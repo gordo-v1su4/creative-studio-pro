@@ -91,6 +91,8 @@ ownership rule is ADR 0002 (`docs/adr/0002-app-writes-codes-into-notion.md`); me
   - Walk through the **whole season arc** together before writing EP101's Action and Dialogue.
   - New character **Bryce**: Kai's love interest, and possibly another evil entity. Not in the Story page,
     story beats or references yet; decide where Bryce enters and what Bryce really is during the story pass.
+    **Elias** was originally going to be the love interest; that role moves to Bryce, so Elias's arc needs a
+    look too. The operator already has pictures of Bryce (to vet with the other references, V1S-326).
 - The operator expects about three more sessions on this; keep each one to a clear step.
 
 ## Parked
