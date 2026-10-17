@@ -434,6 +434,22 @@ export class ProjectCommandGateway {
 		}
 	}
 
+	/** An episode's own target length in minutes (V1S-277); null goes back to the series format. */
+	async setTargetLength(projectId: string, expectedVersion: number, minutes: number | null): Promise<CommandOutcome<Project>> {
+		if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 120)) return invalid('The target length is 1 to 120 whole minutes');
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				if (!current.series) throw new Error('Only an episode imported from a series has a target length');
+				return { ...current, series: { ...current.series, target_min: minutes } };
+			}, 'project.target_length_set.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Saving the length failed';
+			if (/target length/.test(message)) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
 	/** Take the fitted beats out again (all, or some scenes'); beats that already have takes stay. */
 	async unfitEpisode(projectId: string, expectedVersion: number, groupIds?: string[]): Promise<CommandOutcome<Project>> {
 		try {

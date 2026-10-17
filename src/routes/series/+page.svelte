@@ -126,11 +126,11 @@
 
 				<!-- Episode length to plan for -->
 				<div class="length">
-					<span class="cap">Episode length</span>
-					{#each [10, 15, 30] as minutes (minutes)}
-						<button type="button" class={['key', s.runtime_min === minutes && 'accent']} aria-pressed={s.runtime_min === minutes} onclick={() => setRuntime(s.series_id, minutes)} disabled={!!busy}>{minutes} min</button>
-					{/each}
-					<span class="hint" title={`About ${s.runtime_min * 12} shots of 5 s per episode`}>≈ {s.runtime_min * 12} shots</span>
+					<span class="cap">Series format</span>
+					<input class="field minutes" type="text" inputmode="numeric" value={s.runtime_min} aria-label="Series format: default episode length in minutes" disabled={!!busy}
+						onkeydown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+						onblur={(event) => { const n = Number(event.currentTarget.value); if (Number.isInteger(n) && n >= 1 && n <= 120 && n !== s.runtime_min) setRuntime(s.series_id, n); else event.currentTarget.value = String(s.runtime_min); }} />
+					<span class="hint" title="The target length of every episode that doesn't set its own (each episode's own length is set in its Story tab)">min per episode · ≈ {s.runtime_min * 12} shots of 5 s · an episode can set its own in its Story tab</span>
 				</div>
 
 				<!-- Episodes -->
@@ -185,6 +185,7 @@
 	a.chip { text-decoration: none; transition: border-color 140ms ease, color 140ms ease; }
 	a.chip.ok:hover { border-color: color-mix(in srgb, var(--color-nr-accent) 70%, transparent); color: var(--color-nr-ink); }
 	.length { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; white-space: nowrap; }
+	.field.minutes { width: 52px; padding: 3px 6px; font-family: var(--font-mono); text-align: center; }
 	.length .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-nr-faint); font-size: 11px; }
 	.notion { margin-left: 2px; color: var(--color-nr-dim); font-size: 11px; text-decoration: none; }
 	.notion:hover { color: var(--color-nr-accent); }
@@ -194,7 +195,6 @@
 		.chip { padding: 0 5px; font-size: 8.5px; letter-spacing: 0.06em; }
 		.length { gap: 5px; }
 		.length .cap { font-size: 9px; letter-spacing: 0.1em; }
-		.length .key { padding: 0 7px; }
 		.link { font-size: 11.5px; }
 	}
 	.link { border: 0; background: transparent; padding: 0; color: var(--color-nr-accent); font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }

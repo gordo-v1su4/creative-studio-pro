@@ -5,36 +5,41 @@
 
 	/**
 	 * The Episode outline, at the top of the Story tab for an episode imported from Notion: the act timeline
-	 * sized to the episode length (10 / 15 / 30 min, the series' setting), each scene's time budget against
+	 * sized to the episode's target length (its own, else the series format), each scene's time budget against
 	 * the shots the board holds for it now, and who appears where. Reads the live board (`cards`), so edits
 	 * and bench/unbench show at once.
 	 */
 	let { project, cards, onUpdated }: { project: Project; cards: OutlineCard[]; onUpdated: (project: Project) => void } = $props();
 	const series = $derived(project.series!);
 
-	let minutes = $state(10);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 	let open = $state<string | null>(null);
 
-	// The episode length is the series' setting (also set on the Series page).
+	// The target length is this episode's own (V1S-277); without one it follows the series format (set on the Series page).
+	let seriesFormat = $state(10);
 	$effect(() => {
 		const id = series.series_id;
 		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { runtime_min: number } }) => {
-			if (body.ok && body.data && id === series.series_id) minutes = body.data.runtime_min;
+			if (body.ok && body.data && id === series.series_id) seriesFormat = body.data.runtime_min;
 		}).catch(() => {});
 	});
+	const minutes = $derived(series.target_min ?? seriesFormat);
+	let draft = $state('');
+	$effect(() => { draft = String(minutes); });
 
-	async function setLength(next: number) {
-		const previous = minutes;
-		minutes = next; saving = true; error = null;
+	async function setLength(next: number | null) {
+		if (next !== null && (!Number.isInteger(next) || next < 1 || next > 120)) { error = 'The target length is 1 to 120 whole minutes'; draft = String(minutes); return; }
+		saving = true; error = null;
 		try {
-			const response = await fetch(`/api/series/${series.series_id}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'runtime', runtime_min: next }) });
-			const body = (await response.json()) as { ok: boolean; error?: { message: string } };
-			if (!body.ok) throw new Error(body.error?.message ?? 'Could not save the episode length');
-		} catch (cause) { minutes = previous; error = cause instanceof Error ? cause.message : 'Could not save the episode length'; }
+			const response = await fetch(`/api/projects/${project.project_id}/fit`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'target', expected_version: project.version, target_min: next }) });
+			const body = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			onUpdated(body.data);
+		} catch (cause) { draft = String(minutes); error = cause instanceof Error ? cause.message : 'Could not save the target length'; }
 		finally { saving = false; }
 	}
+	const commitDraft = () => { const n = Number(draft); if (n !== minutes) void setLength(n); };
 
 	const outline = $derived(episodeOutline(series, cards, minutes));
 	const pct = (part: number, whole: number) => `${Math.max(0, Math.min(100, whole ? (part / whole) * 100 : 0)).toFixed(1)}%`;
@@ -42,6 +47,7 @@
 
 	// ---- Fit to length: the Agent writes the missing shots, scene by scene, every prompt linted ----
 	const plan = $derived(fitPlan(outline));
+	const owedFor = (pageId: string) => plan.find((entry) => entry.page_id === pageId);
 	const planShots = (scenes: FitScene[]) => scenes.reduce((sum, scene) => sum + scene.shots_wanted, 0);
 	const fittedIn = (groupId: string) => cards.filter((card) => card.fit && card.group_id === groupId).length;
 	const fittedTotal = $derived(cards.filter((card) => card.fit).length);
@@ -112,14 +118,19 @@
 
 	<!-- Length and fill -->
 	<div class="mt-4 flex flex-wrap items-center gap-2">
-		<span class="cap">Episode length</span>
-		{#each [10, 15, 30] as option (option)}
-			<button type="button" class={['key', minutes === option && 'on']} aria-pressed={minutes === option} onclick={() => void setLength(option)} disabled={saving}>{option} min</button>
-		{/each}
+		<span class="cap">Target length</span>
+		<input class="minutes" type="text" inputmode="numeric" bind:value={draft} aria-label="Target length in minutes" disabled={saving}
+			onblur={commitDraft} onkeydown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
+		<span class="text-[11px] text-nr-dim">min</span>
+		{#if series.target_min != null}
+			<button type="button" class="key" onclick={() => void setLength(null)} disabled={saving} title={`Go back to the series format (${seriesFormat} min)`}>Use series {seriesFormat} min</button>
+		{:else}
+			<span class="text-[11px] text-nr-faint">series format</span>
+		{/if}
 		<span class="grow"></span>
-		<span class="readout" title="Shots on the board (benched shots left out) against the episode length">
-			<b>{clockOf(outline.shot_s)}</b> of shots · <b>{clockOf(outline.target_s)}</b> episode
-			{#if short}· <span class="text-nr-muted">{clockOf(outline.gap_s)} to write ({Math.round(outline.fill * 100)}%)</span>{:else}· <span class="text-nr-accent">full</span>{/if}
+		<span class="readout" title="Shots on the board (benched shots left out) against the target length">
+			<b>{clockOf(outline.shot_s)}</b> of shots · <b>{clockOf(outline.target_s)}</b> target
+			{#if short}· <span class="text-nr-muted">+{clockOf(outline.gap_s)} and about {planShots(plan)} shot{planShots(plan) === 1 ? '' : 's'} to reach {minutes} min ({Math.round(outline.fill * 100)}%)</span>{:else}· <span class="text-nr-accent">full</span>{/if}
 		</span>
 	</div>
 	<!-- Fit to length -->
@@ -167,7 +178,7 @@
 								{:else if fittedIn(scene.group_id)}
 									<span class="fit-chip done" title="Shots written by Fit">+{fittedIn(scene.group_id)} fit</span>
 								{/if}
-								<span class="meta">{scene.shots} shot{scene.shots === 1 ? '' : 's'}</span>
+								<span class="meta">{scene.shots} shot{scene.shots === 1 ? '' : 's'}{#if owedFor(scene.page_id)}<span class="owed" title="Still needed for this scene's share of the target length"> · +{clockOf(owedFor(scene.page_id)!.gap_s)} ≈ {owedFor(scene.page_id)!.shots_wanted}</span>{/if}</span>
 								<span class="budget">
 									<span class="mono">{clockOf(scene.shot_s)} / {clockOf(scene.target_s)}</span>
 									<span class="meter"><span style:width={pct(scene.shot_s, scene.target_s)}></span></span>
@@ -233,7 +244,10 @@
 	.act-head .line { flex: 1; height: 1px; background: var(--color-nr-line-soft); }
 	.scene { display: flex; width: 100%; align-items: center; gap: 12px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: transparent; padding: 7px 10px; transition: border-color 140ms ease; }
 	.scene:hover, .scene[aria-expanded='true'] { border-color: var(--color-nr-line); }
-	.meta { flex: none; width: 52px; color: var(--color-nr-dim); font-size: 11px; text-align: right; }
+	.meta { flex: none; min-width: 52px; color: var(--color-nr-dim); font-size: 11px; text-align: right; white-space: nowrap; }
+	.owed { color: var(--color-nr-muted); font-family: var(--font-mono); }
+	.minutes { width: 46px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 3px 6px; color: var(--color-nr-ink); font: 500 12px var(--font-mono); text-align: center; outline: none; }
+	.minutes:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
 	.budget { flex: none; display: grid; width: 104px; gap: 4px; justify-items: end; }
 	.meter { display: block; width: 100%; height: 2px; background: var(--color-nr-line-soft); }
 	.meter span { display: block; height: 100%; background: linear-gradient(90deg, #4ee8d2, #4ab8ff); transition: width 300ms ease; }

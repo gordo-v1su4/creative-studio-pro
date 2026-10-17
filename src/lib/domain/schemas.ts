@@ -545,6 +545,8 @@ export const projectSchema = z.object({
 		/** The episode's season (EP101 = season 1, episode 01); absent on episodes imported before V1S-274 = season 1. */
 		season: z.number().int().positive().max(9).nullable().optional(),
 		episode_title: z.string().max(300),
+		/** This episode's target length in minutes (V1S-277); absent/null = the series format. */
+		target_min: z.number().int().min(1).max(120).nullable().optional(),
 		summary: z.string().max(8000),
 		twist: z.string().max(4000),
 		cliffhanger: z.string().max(4000),
@@ -730,6 +732,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.episode_fitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.episode_unfitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.shot_codes_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.target_length_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
 	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);

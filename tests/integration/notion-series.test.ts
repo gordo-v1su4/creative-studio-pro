@@ -129,4 +129,19 @@ describe('Notion series: connect, check, import an episode', () => {
 		const again = await gateway.setShotCodes(project.project_id, edited.data.version, { locked: true });
 		expect(again.ok && again.data.production.cards.map((card) => card.shot_number)).toEqual([10, 20, 10]);
 	});
+
+	test('target length: an episode sets its own minutes, or goes back to the series format', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-ni-')); roots.push(root);
+		const gateway = new ProjectCommandGateway(new ProjectStore({ root: join(root, 'projects') }));
+		const store = new SeriesStore(join(root, 'series'));
+		const api = fakeNotion();
+		const { project } = await importEpisode(api, store, gateway, await connectSeries(api, store, ROOT, 'Blood Rush'), EP1.replace(/-/g, ''));
+		expect(project.series?.target_min ?? null).toBeNull();
+		const set = await gateway.setTargetLength(project.project_id, project.version, 10);
+		expect(set.ok && set.data.series?.target_min).toBe(10);
+		if (!set.ok) return;
+		expect((await gateway.setTargetLength(project.project_id, set.data.version, 0)).ok).toBeFalse();
+		const cleared = await gateway.setTargetLength(project.project_id, set.data.version, null);
+		expect(cleared.ok && cleared.data.series?.target_min).toBeNull();
+	});
 });

@@ -19,7 +19,9 @@ const bodySchema = z.discriminatedUnion('action', [
 	// The Agent fills every short scene (or only these) toward the episode length; streamed, saved scene by scene.
 	z.object({ action: z.literal('fit'), expected_version: version, target_min: z.number().int().min(1).max(120), scene_ids: z.array(z.string().max(64)).max(100).optional() }),
 	// Take fitted beats out again (all, or these scenes'); beats with takes stay.
-	z.object({ action: z.literal('unfit'), expected_version: version, scene_ids: z.array(z.string().max(64)).max(100).optional() })
+	z.object({ action: z.literal('unfit'), expected_version: version, scene_ids: z.array(z.string().max(64)).max(100).optional() }),
+	// This episode's own target length (V1S-277); null = the series format.
+	z.object({ action: z.literal('target'), expected_version: version, target_min: z.number().int().min(1).max(120).nullable() })
 ]);
 
 /** One JSON object per line: status, the shots as written, each lint round, each saved scene, then done or error. */
@@ -53,6 +55,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return outcome.ok
 			? json({ ...outcome, removed: project.production.cards.length - outcome.data.production.cards.length })
 			: json(outcome, { status: commandStatus(outcome.error) });
+	}
+
+	if (body.data.action === 'target') {
+		const outcome = await getGateway().setTargetLength(projectId.data, body.data.expected_version, body.data.target_min);
+		return outcome.ok ? json(outcome) : json(outcome, { status: commandStatus(outcome.error) });
 	}
 
 	const { target_min, scene_ids } = body.data;
