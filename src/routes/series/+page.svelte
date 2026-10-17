@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { SeriesRecord } from '$lib/server/series';
+	import SeriesCodes from '$lib/ui/SeriesCodes.svelte';
 
 	/**
 	 * Series from Notion. Connect a show by its root page (the only page the Creative Studio Pro connection
@@ -120,6 +121,8 @@
 						{#if storyOpen === s.series_id}<pre class="story">{s.story.text}</pre>{/if}
 					</div>
 				{/if}
+
+				<SeriesCodes series={s} busy={!!busy} onchange={(record) => (series = series.map((item) => (item.series_id === record.series_id ? record : item)))} />
 
 				<!-- Episode length to plan for -->
 				<div class="length">

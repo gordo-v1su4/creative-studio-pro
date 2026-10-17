@@ -38,6 +38,7 @@ import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset, StoryCard, TrailerHouse } from '$lib/domain/schemas';
 import { storyCardSchema, trailerHouseSchema } from '$lib/domain/schemas';
 import { FIT_MAX_SHOTS, insertIntoGroup, removeFitted } from '$lib/domain/episode-fit';
+import { CODE_PATTERN, fillEpisodeCodes } from '$lib/domain/shot-codes';
 import { z } from 'zod';
 import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
@@ -73,6 +74,13 @@ const conflict = (message: string): CommandFailure => ({
 	ok: false,
 	error: { code: 'VERSION_CONFLICT', message, retryable: true, source: 'project-store' }
 });
+
+/** A series episode with any missing scene codes and shot numbers filled in (existing ones never change). */
+function withCodes(project: Project): Project {
+	if (!project.series) return project;
+	const filled = fillEpisodeCodes(project.series.scenes, project.production.cards);
+	return { ...project, series: { ...project.series, scenes: filled.scenes }, production: { ...project.production, cards: filled.cards } };
+}
 
 const invalid = (message: string): CommandFailure => ({
 	ok: false,
@@ -362,11 +370,11 @@ export class ProjectCommandGateway {
 		try {
 			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
 				if (current.production.cards.length > 0) throw new Error('This project already has beats on its board; import into a new project');
-				return {
+				return withCodes({
 					...current,
 					series: input.series,
 					production: { ...current.production, status: 'draft', title: input.title, logline: input.logline, cards: input.cards, groups: input.groups, updated_at: input.series.imported_at }
-				};
+				});
 			}, 'project.episode_imported.v1');
 			return { ok: true, data: project };
 		} catch (e) {
@@ -384,12 +392,44 @@ export class ProjectCommandGateway {
 			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
 				if (!current.series) throw new Error('Only an episode imported from Notion can be fitted');
 				if (!current.production.groups?.some((group) => group.group_id === groupId)) throw new Error('That scene is no longer on the board');
-				return { ...current, production: { ...insertIntoGroup(current.production, groupId, parsed.data), updated_at: new Date().toISOString() } };
+				return withCodes({ ...current, production: { ...insertIntoGroup(current.production, groupId, parsed.data), updated_at: new Date().toISOString() } });
 			}, 'project.episode_fitted.v1');
 			return { ok: true, data: project };
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Fit failed';
 			if (/fitted|no longer on the board/.test(message)) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
+	/**
+	 * Shot codes (V1S-274): fill in any missing scene codes and shot numbers, and apply scene-code edits
+	 * (group id → three letters). Edits are refused once the series' codes are locked; numbers never change.
+	 */
+	async setShotCodes(projectId: string, expectedVersion: number, input: { scene_codes?: Record<string, string>; locked: boolean }): Promise<CommandOutcome<Project>> {
+		const edits = Object.entries(input.scene_codes ?? {});
+		if (edits.length && input.locked) return invalid('The codes are locked; scene codes can no longer change');
+		for (const [, code] of edits) if (!CODE_PATTERN.test(code)) return invalid(`"${code}" is not three capital letters`);
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				if (!current.series) throw new Error('Only an episode imported from a series has shot codes');
+				const scenes = current.series.scenes.map((scene) => {
+					const code = input.scene_codes?.[scene.group_id];
+					return code ? { ...scene, code } : scene;
+				});
+				const seen = new Map<string, string>();
+				for (const scene of scenes) {
+					if (!scene.code) continue;
+					const other = seen.get(scene.code);
+					if (other) throw new Error(`Scene code ${scene.code} is used by both ${other} and ${scene.title}`);
+					seen.set(scene.code, scene.title);
+				}
+				return withCodes({ ...current, series: { ...current.series, scenes } });
+			}, 'project.shot_codes_set.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Saving codes failed';
+			if (/Scene code|shot codes/.test(message)) return invalid(message);
 			return this.storeError(e);
 		}
 	}

@@ -245,6 +245,8 @@ export const storyCardSchema = z.object({
 	benched: z.boolean().optional(),
 	/** The board group the beat belongs to (V1S-131); absent = Main. */
 	group_id: idSchema.optional(),
+	/** In a series episode: the shot's number within its scene (0010, 0015…), part of its shot code; never changes once set (V1S-274). */
+	shot_number: z.number().int().positive().max(9999).optional(),
 	/** Imported from a Notion series: the shot it came from and the details the card has no field for. */
 	source: z.object({
 		notion_page_id: z.string().min(1).max(64), scene_page_id: z.string().min(1).max(64),
@@ -540,6 +542,8 @@ export const projectSchema = z.object({
 		series_id: z.string().min(1).max(64),
 		episode_page_id: z.string().min(1).max(64),
 		episode_number: z.number(),
+		/** The episode's season (EP101 = season 1, episode 01); absent on episodes imported before V1S-274 = season 1. */
+		season: z.number().int().positive().max(9).nullable().optional(),
 		episode_title: z.string().max(300),
 		summary: z.string().max(8000),
 		twist: z.string().max(4000),
@@ -548,7 +552,9 @@ export const projectSchema = z.object({
 		scenes: z.array(z.object({
 			page_id: z.string().max(64), number: z.number(), title: z.string().max(300), act: z.string().max(40), summary: z.string().max(8000),
 			story_beats: z.string().max(8000), timecode: z.string().max(200), location: z.string().max(400), characters: z.array(z.string().max(100)).max(40),
-			group_id: idSchema, seconds: z.number().nonnegative(), shot_count: z.number().int().nonnegative()
+			group_id: idSchema, seconds: z.number().nonnegative(), shot_count: z.number().int().nonnegative(),
+			/** The scene's three-letter code in shot codes (PAR); unique in the episode, fixed once the series' codes lock (V1S-274). */
+			code: z.string().regex(/^[A-Z]{3}$/).optional()
 		})).max(100)
 	}).nullable().default(null),
 	production: productionStateSchema.default({
@@ -723,6 +729,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	// Fit to length: the Agent's new shots added to a scene, or taken out again.
 	z.object({ type: z.literal('project.episode_fitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.episode_unfitted.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.shot_codes_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
 	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);

@@ -173,7 +173,7 @@ export const toShot = (page: NotionPage): SeriesShot => ({
 // ---------------------------------------------------------------------------
 
 const ACT_ORDER = ['Teaser', 'Act 1', 'Act 2', 'Act 3', 'Act 4', 'Act 5', 'Tag', ''];
-const actRank = (act: string) => { const i = ACT_ORDER.indexOf(act); return i < 0 ? ACT_ORDER.length : i; };
+export const actRank = (act: string) => { const i = ACT_ORDER.indexOf(act); return i < 0 ? ACT_ORDER.length : i; };
 
 export interface EpisodeLayout {
 	episode: SeriesEpisode;

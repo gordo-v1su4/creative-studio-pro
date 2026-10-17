@@ -100,4 +100,33 @@ describe('Notion series: connect, check, import an episode', () => {
 		const again = await gateway.importEpisode(project.project_id, project.version, { series: project.series!, groups: [], cards: project.production.cards, title: 'x', logline: '' });
 		expect(again.ok).toBeFalse();
 	});
+
+	test('shot codes: a show code at connect, scene codes and shot numbers at import, edits refused once locked', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-ni-')); roots.push(root);
+		const gateway = new ProjectCommandGateway(new ProjectStore({ root: join(root, 'projects') }));
+		const store = new SeriesStore(join(root, 'series'));
+		const api = fakeNotion();
+		const record = await connectSeries(api, store, ROOT, 'Blood Rush');
+		expect(record.show_code).toBe('BLR');
+		expect(record.codes_locked_at).toBeNull();
+		const { project } = await importEpisode(api, store, gateway, record, EP1.replace(/-/g, ''));
+		const codes = project.series!.scenes.map((scene) => scene.code);
+		expect(codes.every((code) => /^[A-Z]{3}$/.test(code ?? ''))).toBeTrue();
+		expect(new Set(codes).size).toBe(codes.length);
+		expect(project.production.cards.map((card) => card.shot_number)).toEqual([10, 20, 10]);
+
+		// Re-checking keeps the show code; editing a scene code works until the codes lock.
+		expect((await connectSeries(api, store, ROOT, 'Blood Rush')).show_code).toBe('BLR');
+		const group = project.series!.scenes[1].group_id;
+		const edited = await gateway.setShotCodes(project.project_id, project.version, { scene_codes: { [group]: 'QUD' }, locked: false });
+		expect(edited.ok && edited.data.series!.scenes[1].code).toBe('QUD');
+		if (!edited.ok) return;
+		const clash = await gateway.setShotCodes(project.project_id, edited.data.version, { scene_codes: { [project.series!.scenes[0].group_id]: 'QUD' }, locked: false });
+		expect(clash.ok).toBeFalse();
+		const refused = await gateway.setShotCodes(project.project_id, edited.data.version, { scene_codes: { [group]: 'QAD' }, locked: true });
+		expect(refused.ok).toBeFalse();
+		// Numbers never change on a later save.
+		const again = await gateway.setShotCodes(project.project_id, edited.data.version, { locked: true });
+		expect(again.ok && again.data.production.cards.map((card) => card.shot_number)).toEqual([10, 20, 10]);
+	});
 });
