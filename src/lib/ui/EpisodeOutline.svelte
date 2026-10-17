@@ -2,6 +2,7 @@
 	import type { Project } from '$lib/domain/schemas';
 	import { clockOf, episodeOutline, type OutlineCard } from '$lib/domain/episode-outline';
 	import { fitPlan, type FitScene } from '$lib/domain/episode-fit';
+	import { SAVE_THE_CAT, sectionRank, storyBeatColor } from '$lib/domain/structures';
 
 	/**
 	 * The Episode outline, at the top of the Story tab for an episode imported from Notion: the act timeline
@@ -18,10 +19,14 @@
 
 	// The target length is this episode's own (V1S-277); without one it follows the series format (set on the Series page).
 	let seriesFormat = $state(10);
+	let seasonBeats = $state<Array<{ page_id: string; title: string }>>([]);
+	const beatDots = (ids: string[] | undefined) => (ids ?? []).map((id) => ({ id, i: seasonBeats.findIndex((beat) => beat.page_id === id) })).filter((dot) => dot.i >= 0).map((dot) => ({ id: dot.id, title: seasonBeats[dot.i].title, color: storyBeatColor(dot.i, seasonBeats.length) }));
 	$effect(() => {
 		const id = series.series_id;
-		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { runtime_min: number } }) => {
-			if (body.ok && body.data && id === series.series_id) seriesFormat = body.data.runtime_min;
+		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { runtime_min: number; story_beats?: { beats: Array<{ page_id: string; title: string; section: string; order: number | null }> } } }) => {
+			if (!body.ok || !body.data || id !== series.series_id) return;
+			seriesFormat = body.data.runtime_min;
+			seasonBeats = (body.data.story_beats?.beats ?? []).toSorted((a, b) => sectionRank(SAVE_THE_CAT, a.section) - sectionRank(SAVE_THE_CAT, b.section) || (a.order ?? 0) - (b.order ?? 0));
 		}).catch(() => {});
 	});
 	const minutes = $derived(series.target_min ?? seriesFormat);
@@ -199,7 +204,7 @@
 						<li>
 							<button type="button" class="scene" aria-expanded={open === scene.page_id} onclick={() => (open = open === scene.page_id ? null : scene.page_id)}>
 								<span class="min-w-0 grow text-left">
-									<span class="block truncate text-[12.5px] text-nr-ink">{scene.title}</span>
+									<span class="block truncate text-[12.5px] text-nr-ink">{#each beatDots(series.scenes.find((s) => s.page_id === scene.page_id)?.story_beat_ids) as dot (dot.id)}<span class="beat-dot" style:background={dot.color} title={`Story beat: ${dot.title}`}></span>{/each}{scene.title}</span>
 									<span class="block truncate text-[11px] text-nr-dim">{scene.location || '—'}{scene.characters.length ? ` · ${scene.characters.join(', ')}` : ''}</span>
 								</span>
 								{#if fitting?.scenes[scene.page_id]}
@@ -301,6 +306,7 @@
 	.scene { display: flex; width: 100%; align-items: center; gap: 12px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: transparent; padding: 7px 10px; transition: border-color 140ms ease; }
 	.scene:hover, .scene[aria-expanded='true'] { border-color: var(--color-nr-line); }
 	.meta { flex: none; min-width: 52px; color: var(--color-nr-dim); font-size: 11px; text-align: right; white-space: nowrap; }
+	.beat-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
 	.owed { color: var(--color-nr-muted); font-family: var(--font-mono); }
 	.batch { display: grid; gap: 6px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 8px 10px; }
 	.batch-row { display: grid; grid-template-columns: 80px minmax(0, 1fr) auto; column-gap: 10px; align-items: baseline; font-size: 11.5px; color: var(--color-nr-text); }

@@ -11,6 +11,7 @@
 	import BriefPanel from '$lib/ui/BriefPanel.svelte';
 	import TrailerHousePanel from '$lib/ui/TrailerHousePanel.svelte';
 	import EpisodeOutline from '$lib/ui/EpisodeOutline.svelte';
+	import SeasonStructure from '$lib/ui/SeasonStructure.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
@@ -163,7 +164,8 @@
 	{#if tab === 'story'}
 		<div class="mx-auto max-w-4xl p-5">
 			{#if project.series}
-				<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} {onUpdated} /></div>
+				<SeasonStructure {project} />
+			<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} {onUpdated} /></div>
 			{/if}
 			<div class="mb-12">
 				<TrailerHousePanel {project} {onUpdated} onBuildStory={() => void generate()} building={busy} />

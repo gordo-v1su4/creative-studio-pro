@@ -27,6 +27,12 @@ export function sectionRank(structure: Structure, section: string): number {
 	return at < 0 ? structure.sections.length : at;
 }
 
+/** A story beat's colour: its place in the season spread over teal → blue → violet (the app's accent ramp, never a rainbow). */
+export function storyBeatColor(index: number, total: number): string {
+	const t = total <= 1 ? 0 : index / (total - 1);
+	return `hsl(${Math.round(172 + t * 98)} 70% 62%)`;
+}
+
 /** Sections of a structure that no story beat fills yet, in order. */
 export function emptySections(structure: Structure, filled: Iterable<string>): string[] {
 	const have = new Set([...filled].map((name) => name.trim().toLowerCase()));
