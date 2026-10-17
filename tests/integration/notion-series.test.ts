@@ -7,7 +7,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { pageIdOf, type NotionApi } from '../../src/lib/server/notion';
 import { connectSeries, importEpisode, SeriesStore } from '../../src/lib/server/series';
 import type { NotionPage } from '../../src/lib/domain/notion-series';
-import { pushTake } from '../../src/lib/server/review-room-takes';
+import { pullTakes, pushTake } from '../../src/lib/server/review-room-takes';
 import type { ReviewRoomClient } from '../../src/lib/server/review-room';
 
 const roots: string[] = [];
@@ -194,6 +194,46 @@ describe('Notion series: connect, check, import an episode', () => {
 		expect(uploads[0]).toMatchObject({ projectId: 'rr-p1', folderId: 'f-scene', assetCode: pushed.code, keepCurrentVersion: false });
 		expect(pushed.project.production.assets[0].review_room).toEqual({ asset_id: 'a1', version_id: 'v1', version: 1, code: pushed.code });
 		expect((await series.read(record.series_id))?.codes_locked_at).toBeTruthy();
+	});
+
+	test('pullTakes: a version dropped in Review Room becomes a take and, as current version, the pick; misfiled drops are reported', async () => {
+		const root = await mkdtemp(join(tmpdir(), 'csp-ni-')); roots.push(root);
+		const store = new ProjectStore({ root: join(root, 'projects') });
+		const gateway = new ProjectCommandGateway(store);
+		const series = new SeriesStore(join(root, 'series'));
+		const api = fakeNotion();
+		const { project, record } = await importEpisode(api, series, gateway, await connectSeries(api, series, ROOT, 'Blood Rush'), EP1.replace(/-/g, ''));
+		const card = project.production.cards[0];
+		const scene = project.series!.scenes.find((s) => s.group_id === card.group_id)!;
+		await series.write({ ...record, review_room: { project_id: 'rr-p1', folders: { [`scene:${scene.page_id}`]: 'f-scene' }, synced_at: null } });
+		const code = `BLR_EP101_${scene.code}_0010`;
+		const feed = {
+			cursor: '42',
+			assets: [
+				{ assetId: 'a1', folderId: 'f-scene', assetCode: code, title: code, currentVersionId: 'v2', misfiled: false, copiedFromAssetId: null, updatedAt: 1 },
+				{ assetId: 'a2', folderId: 'f-scene', assetCode: null, title: 'random-drop.mp4', currentVersionId: 'v9', misfiled: true, copiedFromAssetId: null, updatedAt: 1 }
+			],
+			versions: [{ versionId: 'v2', assetId: 'a1', version: 2, isCurrent: true, processingState: 'ready', mimeType: 'video/mp4', createdAt: 1_700_000_000_000 }],
+			removedAssets: []
+		};
+		const cursors: string[] = [];
+		const client = {
+			changes: async (_project: string, since: string) => { cursors.push(String(since)); return feed; },
+			versionMedia: async () => ({ original: { url: 'https://storage.test/v2.mp4', mimeType: 'video/mp4', sizeBytes: 3, expiresAt: 0 }, poster: null }),
+			download: async () => new Uint8Array([0, 0, 0, 24])
+		} as unknown as ReviewRoomClient;
+		const deps = { store, gateway, series, projectRoot: join(root, 'projects'), client, probe: async () => ({}), poster: async () => {} };
+		const pulled = await pullTakes(deps, project.project_id);
+		if (!pulled.ok) throw new Error(pulled.message);
+		expect(pulled.added).toBe(1);
+		expect(pulled.misfiled).toEqual([{ scene: scene.title, title: 'random-drop.mp4' }]);
+		const take = pulled.project.production.assets.find((asset) => asset.review_room?.version_id === 'v2')!;
+		expect(take).toMatchObject({ card_id: card.card_id, kind: 'video', name: `${code}_v002.mp4` });
+		expect(pulled.project.production.cards[0].pick_take_id).toBe(take.asset_id);
+		expect((await series.read(record.series_id))?.review_room?.cursor).toBe('42');
+		const again = await pullTakes(deps, project.project_id);
+		expect(again.ok && again.added).toBe(0);
+		expect(cursors).toEqual(['0', '42']);
 	});
 
 	test('template v1 (no Story Beats database) still imports', async () => {

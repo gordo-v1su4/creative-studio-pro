@@ -161,6 +161,26 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'The grid failed'; }
 		finally { if (grids) delete grids.waiting[item.chunk]; batching = null; }
 	}
+	// ---- Review Room (V1S-276): pull takes added there and its picks, store takes not sent yet, list misfiled drops ----
+	let misfiled = $state<Array<{ scene: string; title: string }>>([]);
+	async function syncRoom() {
+		batching = 'room'; error = null; note = null;
+		try {
+			const call = async (action: string) => {
+				const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action }) });
+				const body = await response.json();
+				if (!body.ok) throw new Error(body.error?.message ?? 'Review Room sync failed');
+				return body;
+			};
+			const pulled = await call('pull');
+			onUpdated(pulled.data as Project);
+			misfiled = pulled.misfiled ?? [];
+			const pushed = await call('push_all');
+			onUpdated(pushed.data as Project);
+			note = `Review Room: ${pulled.added} take${pulled.added === 1 ? '' : 's'} pulled, ${pulled.picked} pick${pulled.picked === 1 ? '' : 's'} followed, ${pushed.stored} stored${pushed.failed?.length ? `, ${pushed.failed.length} not stored (${pushed.failed[0].message})` : ''}.`;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Review Room sync failed'; }
+		finally { batching = null; }
+	}
 	const sceneState = (s: SceneFit | undefined) => !s ? '' : s.state === 'waiting' ? 'waiting' : s.state === 'writing' ? 'writing…' : s.state === 'linting' ? `linting ${s.linted?.size ?? 0}/${s.shots}` : s.state === 'done' ? `+${s.added}` : 'failed';
 </script>
 
@@ -204,6 +224,14 @@
 			{#if fittedTotal}<button type="button" class="key" onclick={() => void unfit()} disabled={saving} title="Take out every shot Fit wrote that has no takes yet">Take out fitted ({fittedTotal})</button>{/if}
 		{/if}
 	</div>
+	<div class="mt-2 flex flex-wrap items-center gap-2">
+		<button type="button" class="key" onclick={() => void syncRoom()} disabled={!!batching} title="Pull takes added in Review Room and its picks, then store this episode's takes that aren't there yet">{batching === 'room' ? 'Syncing…' : 'Sync with Review Room'}</button>
+	</div>
+	{#if misfiled.length}
+		<ul class="misfiled" aria-label="Misfiled in Review Room">
+			{#each misfiled as item, i (i)}<li>Misfiled in <b>{item.scene}</b>: {item.title} — file it as a shot's take or move it in Review Room</li>{/each}
+		</ul>
+	{/if}
 	{#if note}<p class="mt-2 text-[12px] text-nr-accent" role="status">{note}</p>{/if}
 	{#if error}<p class="mt-2 text-[12px] text-nr-danger-text" role="alert">{error}</p>{/if}
 
@@ -350,6 +378,8 @@
 	.scene { display: flex; width: 100%; align-items: center; gap: 12px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: transparent; padding: 7px 10px; transition: border-color 140ms ease; }
 	.scene:hover, .scene[aria-expanded='true'] { border-color: var(--color-nr-line); }
 	.meta { flex: none; min-width: 52px; color: var(--color-nr-dim); font-size: 11px; text-align: right; white-space: nowrap; }
+	.misfiled { margin-top: 6px; display: grid; gap: 2px; color: var(--color-nr-danger-text); font-size: 11.5px; }
+	.misfiled b { font-weight: 600; }
 	.beat-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; vertical-align: 1px; }
 	.owed { color: var(--color-nr-muted); font-family: var(--font-mono); }
 	.batch { display: grid; gap: 6px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 8px 10px; }

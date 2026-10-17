@@ -61,6 +61,15 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 		async putMetadata(versionId: string, metadata: Record<string, unknown>, expectedUpdatedAt: number | null = null): Promise<void> {
 			await request('PUT', `/api/v1/versions/${encodeURIComponent(versionId)}/metadata`, { metadata, expectedUpdatedAt });
 		},
+		/** Short-lived signed URLs for one version's original and poster (V1S-284). */
+		async versionMedia(versionId: string) {
+			return request<{ original: { url: string; mimeType: string; sizeBytes: number; expiresAt: number }; poster: { url: string; expiresAt: number } | null }>('GET', `/api/v1/versions/${encodeURIComponent(versionId)}/media`);
+		},
+		async download(url: string): Promise<Uint8Array> {
+			const response = await call(url);
+			if (!response.ok) throw new ReviewRoomError(response.status, `Download failed (${response.status})`);
+			return new Uint8Array(await response.arrayBuffer());
+		},
 		async changes(projectId: string, since: number | string) {
 			return request<ChangeFeed>('GET', `/api/v1/projects/${encodeURIComponent(projectId)}/changes?since=${encodeURIComponent(String(since))}`);
 		}

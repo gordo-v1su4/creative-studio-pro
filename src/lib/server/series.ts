@@ -40,7 +40,7 @@ export const seriesRecordSchema = z.object({
 		beats: z.array(z.object({ page_id: z.string(), title: z.string(), section: z.string(), order: z.number().nullable(), summary: z.string(), episode_ids: z.array(z.string()), scene_ids: z.array(z.string()) }))
 	}).optional(),
 	/** The series' Review Room project (V1S-275) and its locked folders: tree key (deliverables, ep:<id>, scene:<id>…) → folder id. */
-	review_room: z.object({ project_id: z.string().min(1).max(64), folders: z.record(z.string(), z.string()), synced_at: z.string().nullable() }).optional(),
+	review_room: z.object({ project_id: z.string().min(1).max(64), folders: z.record(z.string(), z.string()), synced_at: z.string().nullable(), cursor: z.string().max(40).optional() }).optional(),
 	/** The series' three-letter show code in shot codes (BLR); suggested at connect (V1S-274). */
 	show_code: z.string().regex(/^[A-Z]{3}$/).optional(),
 	/** When the show and scene codes were locked (on the first take sent to Review Room, or by hand); null = still editable. */
