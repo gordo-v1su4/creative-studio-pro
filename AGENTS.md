@@ -49,6 +49,17 @@ GitHub issue or Linear ticket is needed before starting work. The specs in
 Backend and hosting URLs come from environment variables in `.env.local`
 (git-ignored); never hardcode or commit them.
 
+**Every env variable is documented before a chunk is done.** A value lives only
+in BWS (`hermes_keys`) and `.env.local`/`.env`. Its name goes in `.env.example`;
+secret-like names (`…KEY/TOKEN/PIN/SECRET/PASSWORD`) also go in the env → BWS
+table of the Hermes vault note `04-Projects/Creative Studio Pro/README.md`, and
+proxmox-home documents where it is and how it works. `bun run check:env` checks
+the names (never values); it runs as the git pre-commit hook (`.githooks`, set by
+`bun install`) and as a Claude Code Stop hook.
+
+**Chunks and PRs.** This repo commits to `main` when a chunk (ticket) is complete
+and verified. Repos that use PRs open one only when the whole chunk is done.
+
 ## Agent skills
 
 ### Issue tracker

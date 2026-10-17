@@ -1,0 +1,6 @@
+#!/bin/sh
+# Every env variable the code reads must be documented (scripts/check-env.ts).
+bun scripts/check-env.ts || {
+	echo "pre-commit: fix the env documentation above, then commit again." >&2
+	exit 1
+}
