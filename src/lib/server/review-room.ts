@@ -42,10 +42,68 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 		},
 		async renameFolder(projectId: string, folderId: string, title: string, key: string): Promise<void> {
 			await request('PATCH', `/api/v1/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folderId)}`, { title }, key);
+		},
+		// ---- Takes (V1S-276): upload by shot code, pick = current version, metadata, changes feed ----
+		async beginUpload(input: { projectId: string; folderId: string; assetCode: string; name: string; type: string; size: number; sha256: string; keepCurrentVersion?: boolean }, key: string) {
+			return request<{ sessionId: string; url: string; posterUrl: string; assetId?: string }>('POST', '/api/v1/uploads', input, key);
+		},
+		/** PUT bytes to a signed storage URL (no Review Room bearer; the URL is the credential). */
+		async putSigned(url: string, bytes: Uint8Array, type: string): Promise<void> {
+			const response = await call(url, { method: 'PUT', headers: { 'content-type': type }, body: new Blob([bytes as Uint8Array<ArrayBuffer>], { type }) });
+			if (!response.ok) throw new ReviewRoomError(response.status, `Storage upload failed (${response.status})`);
+		},
+		async completeUpload(sessionId: string, input: { posterSizeBytes: number; durationSec: number; width: number; height: number }) {
+			return request<{ assetId: string; jobId?: string }>('POST', `/api/v1/uploads/${encodeURIComponent(sessionId)}/complete`, input);
+		},
+		async setCurrentVersion(assetId: string, versionId: string, key: string): Promise<void> {
+			await request('PUT', `/api/v1/assets/${encodeURIComponent(assetId)}/current-version`, { versionId }, key);
+		},
+		async putMetadata(versionId: string, metadata: Record<string, unknown>, expectedUpdatedAt: number | null = null): Promise<void> {
+			await request('PUT', `/api/v1/versions/${encodeURIComponent(versionId)}/metadata`, { metadata, expectedUpdatedAt });
+		},
+		async changes(projectId: string, since: number | string) {
+			return request<ChangeFeed>('GET', `/api/v1/projects/${encodeURIComponent(projectId)}/changes?since=${encodeURIComponent(String(since))}`);
 		}
 	};
 }
 export type ReviewRoomClient = ReturnType<typeof createReviewRoomClient>;
+
+/** Review Room's changes feed (docs/agent-api.md "Changes since a cursor"). */
+export interface ChangeFeed {
+	cursor: string;
+	assets: Array<{ assetId: string; folderId: string | null; assetCode: string | null; title: string; currentVersionId: string | null; misfiled: boolean; copiedFromAssetId: string | null; updatedAt: number }>;
+	versions: Array<{ versionId: string; assetId: string; version: number; isCurrent: boolean; processingState: string; mimeType: string; createdAt: number }>;
+	removedAssets: Array<{ assetId: string; mergedIntoAssetId: string | null; reason: string }>;
+}
+
+export interface TakeUpload {
+	projectId: string; folderId: string; assetCode: string; name: string; type: string;
+	bytes: Uint8Array; poster: Uint8Array; durationSec: number; width: number; height: number;
+	/** Model, prompt, references, grid… written as the version's creative metadata. */
+	metadata: Record<string, unknown>;
+	/** Make it the pick (Review Room's current version); false adds the take without changing the pick. */
+	makeCurrent: boolean;
+}
+
+/**
+ * Upload one take (V1S-276): begin by shot code (an existing shot gets its next version), PUT the original and
+ * a JPEG poster to the signed URLs, complete, find the new version in the changes feed, write its metadata,
+ * and set it current when it is the pick. Returns where it lives in Review Room.
+ */
+export async function uploadTake(client: ReviewRoomClient, take: TakeUpload): Promise<{ assetId: string; versionId: string; version: number }> {
+	const sha256 = createHash('sha256').update(take.bytes).digest('hex');
+	const before = await client.changes(take.projectId, 0).then((feed) => feed.cursor).catch(() => '0');
+	const begun = await client.beginUpload({ projectId: take.projectId, folderId: take.folderId, assetCode: take.assetCode, name: take.name, type: take.type, size: take.bytes.byteLength, sha256, keepCurrentVersion: !take.makeCurrent }, idempotencyKey('upload', take.projectId, take.assetCode, sha256));
+	await client.putSigned(begun.url, take.bytes, take.type);
+	await client.putSigned(begun.posterUrl, take.poster, 'image/jpeg');
+	const done = await client.completeUpload(begun.sessionId, { posterSizeBytes: take.poster.byteLength, durationSec: take.durationSec, width: take.width, height: take.height });
+	const feed = await client.changes(take.projectId, before);
+	const version = feed.versions.filter((entry) => entry.assetId === done.assetId).toSorted((a, b) => b.version - a.version)[0];
+	if (!version) throw new ReviewRoomError(502, `Uploaded ${take.assetCode}, but its new version is not in the changes feed yet`);
+	await client.putMetadata(version.versionId, take.metadata);
+	if (take.makeCurrent && !version.isCurrent) await client.setCurrentVersion(done.assetId, version.versionId, idempotencyKey('current', done.assetId, version.versionId));
+	return { assetId: done.assetId, versionId: version.versionId, version: version.version };
+}
 
 /**
  * Make the series tree in Review Room match `wanted`: create missing folders (locked, owned by this app),

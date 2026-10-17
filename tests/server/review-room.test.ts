@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { bareTitle, planTree, seriesTree, type RemoteFolder } from '../../src/lib/domain/series-tree';
-import { createReviewRoomClient, idempotencyKey, syncSeriesTree } from '../../src/lib/server/review-room';
+import { createReviewRoomClient, idempotencyKey, syncSeriesTree, uploadTake } from '../../src/lib/server/review-room';
 
 const episodes = [{
 	episode_page_id: 'e1', number: 1, season: 1, title: 'EP01 — The Late Shift',
@@ -30,6 +30,44 @@ describe('series tree', () => {
 		expect(steps.map((s) => [s.folder.key, s.kind])).toEqual([
 			['deliverables', 'keep'], ['ep:e1', 'rename'], ['ep:e1:deliverables', 'create'], ['scene:s1', 'create'], ['scene:s2', 'create']
 		]);
+	});
+});
+
+describe('uploadTake against a fake Review Room', () => {
+	function fakeUploads() {
+		const calls: Array<{ method: string; path: string; auth: boolean; body: unknown }> = [];
+		const versions: Array<{ versionId: string; assetId: string; version: number; isCurrent: boolean; processingState: string; mimeType: string; createdAt: number }> = [{ versionId: 'v1', assetId: 'a1', version: 1, isCurrent: true, processingState: 'ready', mimeType: 'video/mp4', createdAt: 1 }];
+		const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+			const u = String(url); const method = init?.method ?? 'GET';
+			const headers = (init?.headers ?? {}) as Record<string, string>;
+			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+			calls.push({ method, path: u.replace(/^https:\/\/[^/]+/, '').split('?')[0], auth: !!headers.authorization, body });
+			if (u.startsWith('https://storage.test')) return new Response(null, { status: 200 });
+			if (u.includes('/changes')) return new Response(JSON.stringify({ cursor: '5', assets: [], versions, removedAssets: [] }));
+			if (method === 'POST' && u.endsWith('/api/v1/uploads')) return new Response(JSON.stringify({ sessionId: 's1', url: 'https://storage.test/o', posterUrl: 'https://storage.test/p', assetId: 'a1' }), { status: 201 });
+			if (u.endsWith('/complete')) { versions.push({ versionId: 'v2', assetId: 'a1', version: 2, isCurrent: false, processingState: 'processing', mimeType: 'video/mp4', createdAt: 2 }); return new Response(JSON.stringify({ assetId: 'a1', jobId: 'j1' })); }
+			return new Response(JSON.stringify({ ok: true }));
+		}) as typeof fetch;
+		return { client: createReviewRoomClient({ baseUrl: 'https://review.test', apiKey: 'k', fetch: fetcher }), calls };
+	}
+	const take = { projectId: 'p1', folderId: 'f-par', assetCode: 'BLR_EP101_PAR_0020', name: 'BLR_EP101_PAR_0020.mp4', type: 'video/mp4', bytes: new Uint8Array([1, 2, 3]), poster: new Uint8Array([9]), durationSec: 5, width: 854, height: 480, metadata: { model: 'seedance_2_5', prompt: 'x' } };
+
+	test('uploads by shot code as the next version, writes metadata, makes it the pick', async () => {
+		const { client, calls } = fakeUploads();
+		const out = await uploadTake(client, { ...take, makeCurrent: true });
+		expect(out).toEqual({ assetId: 'a1', versionId: 'v2', version: 2 });
+		const begin = calls.find((c) => c.path === '/api/v1/uploads')!;
+		expect(begin.body).toMatchObject({ assetCode: 'BLR_EP101_PAR_0020', folderId: 'f-par', keepCurrentVersion: false, size: 3 });
+		expect(calls.filter((c) => c.path === '/o' || c.path === '/p').every((c) => !c.auth)).toBeTrue();
+		expect(calls.some((c) => c.method === 'PUT' && c.path === '/api/v1/versions/v2/metadata')).toBeTrue();
+		expect(calls.some((c) => c.method === 'PUT' && c.path === '/api/v1/assets/a1/current-version')).toBeTrue();
+	});
+
+	test('a take that is not the pick keeps the current version', async () => {
+		const { client, calls } = fakeUploads();
+		await uploadTake(client, { ...take, makeCurrent: false });
+		expect(calls.find((c) => c.path === '/api/v1/uploads')!.body).toMatchObject({ keepCurrentVersion: true });
+		expect(calls.some((c) => c.path.endsWith('/current-version'))).toBeFalse();
 	});
 });
 
