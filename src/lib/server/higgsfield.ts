@@ -133,6 +133,40 @@ export function createHiggsfieldSfx(run: CliRunner): SoundEffectGenerator {
 	};
 }
 
+/** Grid stills (V1S-278): Nano Banana Pro, 16:9 at 4K, so a 3×3 grid gives ~1280-px cells. */
+export const GRID_JOB_TYPE = 'nano_banana_pro';
+export interface GridRequest { prompt: string; references: string[] }
+export interface ImageGenerator {
+	estimate(request: GridRequest): Promise<{ credits: number }>;
+	submit(request: GridRequest): Promise<{ job_id: string }>;
+	status(jobId: string): Promise<{ status: GenerationStatus; url?: string; error?: string }>;
+}
+
+export function gridArgs(request: GridRequest, promptFile: string): string[] {
+	return [GRID_JOB_TYPE, '--prompt', `@${promptFile}`, '--aspect_ratio', '16:9', '--resolution', '4k', ...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])];
+}
+
+export function createHiggsfieldImages(run: CliRunner): ImageGenerator {
+	return {
+		async estimate(request) {
+			const result = (await withPrompt(request.prompt, (file) => run(['generate', 'cost', ...gridArgs({ prompt: request.prompt, references: [] }, file)]))) as { credits?: unknown };
+			const credits = Number(result?.credits);
+			if (!Number.isFinite(credits)) throw new GeneratorError('Higgsfield CLI gave no credit estimate');
+			return { credits };
+		},
+		async submit(request) {
+			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...gridArgs(request, file)]));
+			const jobId = jobIdOf(result);
+			if (!jobId) throw new GeneratorError(`Higgsfield CLI created no job id: ${JSON.stringify(result).slice(0, 200)}`);
+			return { job_id: jobId };
+		},
+		async status(jobId) {
+			const job = (await run(['generate', 'get', jobId])) as { status?: string; result_url?: string; error?: string };
+			return { status: STATUS[String(job?.status ?? '').toLowerCase()] ?? 'in_progress', url: job?.result_url ?? undefined, error: job?.error };
+		}
+	};
+}
+
 export function createHiggsfieldCli(run: CliRunner): VideoGenerator {
 	return {
 		async estimate(request) {

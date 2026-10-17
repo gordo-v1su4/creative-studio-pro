@@ -138,6 +138,29 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Sending the scene failed'; }
 		finally { batching = null; }
 	}
+	// ---- Grid stills (V1S-278): a scene's shots without a still, nine per 4K grid, each grid approved on its own ----
+	type GridQuote = { chunk: number; card_ids: string[]; titles: string[]; credits: number | null; blocked: string[] };
+	let grids = $state<{ group_id: string; items: GridQuote[]; waiting: Record<number, string> } | null>(null);
+	async function quoteGridStills(groupId: string) {
+		batching = 'grid'; error = null; note = null;
+		try { grids = { group_id: groupId, items: (await animateCall({ action: 'grid_quote', group_id: groupId })).data as GridQuote[], waiting: {} }; }
+		catch (cause) { error = cause instanceof Error ? cause.message : 'Pricing the grids failed'; grids = null; }
+		finally { batching = null; }
+	}
+	async function sendGridStills(item: GridQuote) {
+		if (!grids) return;
+		batching = `grid:${item.chunk}`; error = null;
+		try {
+			const sent = (await animateCall({ action: 'grid_send', group_id: grids.group_id, chunk: item.chunk, confirmed_credits: item.credits ?? 0 })).data as { job_id: string; card_ids: string[] };
+			grids.waiting[item.chunk] = sent.job_id;
+			for (let tries = 0; tries < 120 && grids; tries++) {
+				await new Promise((done) => setTimeout(done, 5000));
+				const settled = await animateCall({ action: 'grid_settle', job_id: sent.job_id, card_ids: sent.card_ids });
+				if (!settled.pending) { onUpdated(settled.data as Project); note = `Grid ${item.chunk + 1}: ${settled.added} still${settled.added === 1 ? '' : 's'} added.`; break; }
+			}
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'The grid failed'; }
+		finally { if (grids) delete grids.waiting[item.chunk]; batching = null; }
+	}
 	const sceneState = (s: SceneFit | undefined) => !s ? '' : s.state === 'waiting' ? 'waiting' : s.state === 'writing' ? 'writing…' : s.state === 'linting' ? `linting ${s.linted?.size ?? 0}/${s.shots}` : s.state === 'done' ? `+${s.added}` : 'failed';
 </script>
 
@@ -232,7 +255,28 @@
 									{/if}
 									{#if !fitting}
 										<div class="flex flex-wrap gap-2">
+											<button type="button" class="key" onclick={() => void quoteGridStills(scene.group_id)} disabled={!!batching} title="Stills first: this scene's shots without a still, nine per 4K grid, then split into one still per shot">{batching === 'grid' ? 'Checking…' : 'Grid stills…'}</button>
 											<button type="button" class="key" onclick={() => void quoteScene(scene.group_id)} disabled={!!batching} title="Price and check this scene's shots as one batch of 480p drafts">{batching === 'quote' ? 'Checking…' : 'Animate scene (480p drafts)…'}</button>
+										</div>
+									{/if}
+									{#if grids && grids.group_id === scene.group_id}
+										<div class="batch" aria-label="Grid stills">
+											{#each grids.items as item (item.chunk)}
+												<div class={['batch-row', item.blocked.length && 'bad']}>
+													<b>Grid {item.chunk + 1}</b>
+													<span class="prompt" title={item.titles.join(', ')}>{item.titles.length} shot{item.titles.length === 1 ? '' : 's'}: {item.titles.join(', ')}</span>
+													<span class="mono">{item.credits ?? '—'} cr</span>
+													{#each item.blocked as reason, r (r)}<span class="reason">{reason}</span>{/each}
+												</div>
+												<div class="flex flex-wrap gap-2">
+													<button type="button" class="key on" onclick={() => void sendGridStills(item)} disabled={!!batching || item.blocked.length > 0 || item.credits === null}>
+														{grids.waiting[item.chunk] ? 'Drawing… (checks every 5 s)' : item.blocked.length ? 'Blocked' : `Draw grid ${item.chunk + 1} · ${item.credits} cr`}
+													</button>
+												</div>
+											{:else}
+												<p class="text-[11.5px] text-nr-muted">Every shot in this scene already has a still.</p>
+											{/each}
+											<div><button type="button" class="key" onclick={() => (grids = null)} disabled={!!batching && batching.startsWith('grid:')}>Close</button></div>
 										</div>
 									{/if}
 									{#if batch && batch.group_id === scene.group_id}
@@ -243,7 +287,7 @@
 													<b>{item.title}</b>
 													<span class="prompt" title={item.prompt}>{item.prompt}</span>
 													<span class="mono">{item.credits ?? '—'} cr</span>
-													{#each item.blocked as reason (reason)}<span class="reason">{reason}</span>{/each}
+													{#each item.blocked as reason, r (r)}<span class="reason">{reason}</span>{/each}
 												</div>
 											{/each}
 											{#if batch.skipped.length}<p class="text-[11px] text-nr-faint">Left out: {batch.skipped.map((s) => `${s.title} (${s.reason})`).join(' · ')}</p>{/if}

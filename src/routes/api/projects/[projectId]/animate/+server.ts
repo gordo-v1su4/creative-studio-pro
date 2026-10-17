@@ -4,7 +4,8 @@ import type { RequestHandler } from './$types';
 import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, animateGate } from '$lib/domain/animate';
 import { idSchema } from '$lib/domain/schemas';
 import { bannedTerms } from '$lib/domain/brief-rules';
-import { getAnimateDeps, getPushDeps, resolveProjectModel } from '$lib/server/config';
+import { getAnimateDeps, getGridDeps, getPushDeps, resolveProjectModel } from '$lib/server/config';
+import { quoteGrids, sendGrid, settleGrid } from '$lib/server/grid';
 import { pushTake } from '$lib/server/review-room-takes';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { draftAnimatePrompt, estimateAnimate, pollGenerations, projectRules, quoteSceneBatch, readStill, sendAnimate, sendSceneBatch, spentThisSession } from '$lib/server/animate';
@@ -29,6 +30,10 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('poll') }),
 	// Send gate (V1S-279): one scene's shots as one batch, priced and gated, then one approval sends it.
 	z.object({ action: z.literal('scene_quote'), group_id: idSchema }),
+	// Grid stills (V1S-278): quote a scene's grids, send one after approval, settle it into still takes.
+	z.object({ action: z.literal('grid_quote'), group_id: idSchema }),
+	z.object({ action: z.literal('grid_send'), group_id: idSchema, chunk: z.number().int().nonnegative(), confirmed_credits: z.number().nonnegative() }),
+	z.object({ action: z.literal('grid_settle'), job_id: z.string().min(1).max(200), card_ids: z.array(idSchema).min(1).max(9) }),
 	z.object({ action: z.literal('scene_send'), group_id: idSchema, expected_version: z.number().int().nonnegative(), confirmed_credits: z.number().nonnegative() })
 ]);
 
@@ -71,6 +76,21 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			}
 		}
 		return json({ ok: true, data: project });
+	}
+	if (body.action === 'grid_quote' || body.action === 'grid_send' || body.action === 'grid_settle') {
+		const grid = await getGridDeps();
+		if (body.action === 'grid_quote') {
+			const project = await grid.store.readProject(projectId.data);
+			if (!project) return fail(404, 'NOT_FOUND', 'Project not found');
+			const quoted = await quoteGrids(grid, project, body.group_id);
+			return quoted.ok ? json({ ok: true, data: quoted.grids }) : fail(quoted.status, 'INVALID_COMMAND', quoted.message);
+		}
+		if (body.action === 'grid_send') {
+			const sent = await sendGrid(grid, { project_id: projectId.data, group_id: body.group_id, chunk: body.chunk, confirmed_credits: body.confirmed_credits });
+			return sent.ok ? json({ ok: true, data: sent }) : fail(sent.status, sent.status === 422 ? 'GATE_BLOCKED' : 'INVALID_COMMAND', sent.message, { reasons: sent.reasons ?? [] });
+		}
+		const settled = await settleGrid(grid, { project_id: projectId.data, job_id: body.job_id, card_ids: body.card_ids });
+		return settled.ok ? json({ ok: true, ...(settled.pending ? { pending: true } : { pending: false, data: settled.project, added: settled.added }) }) : fail(settled.status, 'PROVIDER_ERROR', settled.message);
 	}
 	if (body.action === 'scene_quote') {
 		const project = await deps.store.readProject(projectId.data);

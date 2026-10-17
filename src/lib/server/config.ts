@@ -15,11 +15,13 @@ import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/mod
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
 import type { AnimateDeps } from '$lib/server/animate';
-import { cliRunner, createHiggsfieldCli, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator } from '$lib/server/higgsfield';
+import { cliRunner, createHiggsfieldCli, createHiggsfieldImages, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator } from '$lib/server/higgsfield';
 import { probeMedia } from '$lib/server/media-probe';
 import { createReviewRoomClient } from '$lib/server/review-room';
 import type { PushDeps } from '$lib/server/review-room-takes';
 import { runFfmpeg } from '$lib/server/ffmpeg';
+import type { GridDeps } from '$lib/server/grid';
+import { createSplitter } from '$lib/server/splitter';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -136,6 +138,18 @@ export async function getSfxFolder(): Promise<string | null> {
 /** The Notion integration token (server-side only; the integration sees only the series root shared with it). */
 export function getNotionToken(): string | null {
 	return env.NOTION_TOKEN?.trim() || null;
+}
+
+/** Grid stills (V1S-278): Nano Banana Pro through the Higgsfield CLI, split by the splitter service. */
+export async function getGridDeps(): Promise<GridDeps> {
+	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
+	const animate = await getAnimateDeps();
+	return {
+		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(),
+		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null,
+		splitter: env.CSP_SPLITTER_URL ? createSplitter({ url: env.CSP_SPLITTER_URL, pin: env.SPLITTER_APP_ACCESS_PIN || null }) : null,
+		download: animate.download, probe: probeMedia
+	};
 }
 
 /** What pushing a series take to Review Room needs (V1S-276); null until Review Room is configured. */

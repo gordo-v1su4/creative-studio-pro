@@ -9,6 +9,8 @@ import type { SplitterManifest } from '$lib/domain/groups';
  */
 export interface Splitter {
 	split(file: string, onProgress?: (stage: string) => void): Promise<{ manifest: SplitterManifest; download: (clipPath: string) => Promise<Uint8Array> }>;
+	/** Grid stills (V1S-278): cut a rows × cols shot grid into its panels, in reading order. */
+	splitGrid(file: string, rows: number, cols: number): Promise<{ panels: Array<{ index: number; label: string }>; download: (index: number) => Promise<Uint8Array> }>;
 }
 
 export function createSplitter(config: { url: string; pin: string | null; fetch?: typeof fetch; wait?: (ms: number) => Promise<void> }): Splitter {
@@ -28,6 +30,28 @@ export function createSplitter(config: { url: string; pin: string | null; fetch?
 	}
 
 	return {
+		async splitGrid(file, rows, cols) {
+			const cookie = await unlock();
+			const headers = cookie ? { cookie } : undefined;
+			const form = new FormData();
+			form.append('file', new Blob([await readFile(file)], { type: file.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg' }), basename(file));
+			form.append('rows', String(rows));
+			form.append('cols', String(cols));
+			const response = await http(`${base}/api/image-split/fixed-grid`, { method: 'POST', headers, body: form });
+			if (!response.ok) throw new Error(`The splitter didn't split the grid (${response.status}: ${(await response.text()).slice(0, 200)})`);
+			const { manifest } = (await response.json()) as { manifest: { split_id: string; panels: Array<{ index: number; label: string; asset_path: string }> } };
+			const panels = manifest.panels.toSorted((a, b) => a.index - b.index);
+			return {
+				panels: panels.map(({ index, label }) => ({ index, label })),
+				download: async (index) => {
+					const panel = panels.find((entry) => entry.index === index);
+					if (!panel) throw new Error(`The grid has no panel ${index}`);
+					const got = await http(`${base}/api/image-split/${encodeURIComponent(manifest.split_id)}/panels/${panel.asset_path.split('/').map(encodeURIComponent).join('/')}`, { headers });
+					if (!got.ok) throw new Error(`Downloading panel ${index} failed (${got.status})`);
+					return new Uint8Array(await got.arrayBuffer());
+				}
+			};
+		},
 		async split(file, onProgress) {
 			const cookie = await unlock();
 			const headers = cookie ? { cookie } : undefined;
