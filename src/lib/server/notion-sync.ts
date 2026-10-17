@@ -1,5 +1,5 @@
 import { bareId, toEpisode, toScene, toShot, type NotionPage, type SeriesShot } from '$lib/domain/notion-series';
-import { episodeCode, formatShotCode } from '$lib/domain/shot-codes';
+import { episodeCode, formatShotCode, shotNumberText } from '$lib/domain/shot-codes';
 import type { Project, StoryCard } from '$lib/domain/schemas';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { NotionApi } from '$lib/server/notion';
@@ -78,6 +78,9 @@ export async function syncSeriesToNotion(api: NotionApi, record: SeriesRecord, r
 		report.episodes++;
 	}
 
+	// Shot # is padded text ("0010") in template v3, a plain number before.
+	const shotNumberIsText = (await api.dataSource(record.sources.shots)).properties['Shot #']?.type === 'rich_text';
+	const shotNo = (n: number) => (shotNumberIsText ? rich(shotNumberText(n)) : { number: n });
 	const scenePages = new Map((await all(api, record.sources.scenes)).map(toScene).map((scene) => [scene.page_id, scene]));
 	const shotPages = new Map((await all(api, record.sources.shots)).map(toShot).map((shot) => [shot.page_id, shot]));
 
@@ -109,7 +112,7 @@ export async function syncSeriesToNotion(api: NotionApi, record: SeriesRecord, r
 				const props: Record<string, unknown> = {};
 				for (const [field, value] of Object.entries(push) as Array<[keyof PlainFields, string | number]>) props[NOTION_PROP[field]] = toProp(field, value);
 				if (code && page.notion_codes.shot !== code) props['Shot code'] = rich(code);
-				if (card.shot_number && page.notion_codes.shot_number !== card.shot_number) props['Shot #'] = { number: card.shot_number };
+				if (card.shot_number && page.notion_codes.shot_number !== card.shot_number) props['Shot #'] = shotNo(card.shot_number);
 				if (page.notion_codes.locked !== locked) props.Locked = { checkbox: locked };
 				if (Object.keys(props).length) { await api.updatePage(page.page_id, props); report.shots_updated++; }
 				if (Object.keys(pull).length) report.pulled++;
@@ -119,7 +122,7 @@ export async function syncSeriesToNotion(api: NotionApi, record: SeriesRecord, r
 				const created = await api.createPage(record.sources.shots, {
 					Shot: title(code || card.title), Scene: { relation: [{ id: scene.page_id }] }, Episode: { relation: [{ id: episodePageId }] },
 					Description: rich(board.description), 'Duration (s)': { number: board.duration_s }, 'Dialogue / VO': rich(board.dialogue), 'Seedance Refs': rich(board.refs),
-					'Shot code': rich(code), ...(card.shot_number ? { 'Shot #': { number: card.shot_number } } : {}), Locked: { checkbox: locked }
+					'Shot code': rich(code), ...(card.shot_number ? { 'Shot #': shotNo(card.shot_number) } : {}), Locked: { checkbox: locked }
 				});
 				report.shots_created++;
 				updates.push({ card_id: card.card_id, notion_page_id: bareId(created.id), scene_page_id: scene.page_id, synced: board, pulled: {} });

@@ -36,7 +36,7 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 		title: 'Scenes',
 		props: [
 			{ name: 'Scene', type: 'title', required: true },
-			{ name: 'Scene #', type: 'number', required: true },
+			{ name: 'Scene #', type: ['number', 'rich_text'], required: true }, // v3: text "010" so Notion shows the padding
 			{ name: 'Episode', type: 'relation', required: true },
 			{ name: 'Summary', type: 'rich_text', required: true },
 			{ name: 'Action', type: 'rich_text', required: false }, // template v3; v1/v2 called it "Story Beats"
@@ -61,7 +61,7 @@ export const SERIES_TEMPLATE: Record<'episodes' | 'scenes' | 'shots', { title: s
 			{ name: 'Description', type: 'rich_text', required: true },
 			{ name: 'Duration (s)', type: 'number', required: true },
 			{ name: 'Video Prompt (Seedance 2.5)', type: 'rich_text', required: true },
-			{ name: 'Shot #', type: 'number', required: false },
+			{ name: 'Shot #', type: ['number', 'rich_text'], required: false }, // v3: text "0010"
 			{ name: 'Image Prompt (Keyframe)', type: 'rich_text', required: false },
 			{ name: 'Seedance Refs', type: 'rich_text', required: false },
 			{ name: 'Dialogue / VO', type: 'rich_text', required: false },
@@ -169,6 +169,13 @@ export function namesOf(page: NotionPage, name: string): string[] {
 	const prop = page.properties[name];
 	return prop?.type === 'multi_select' ? (prop as { multi_select: Array<{ name: string }> }).multi_select.map((option) => option.name) : [];
 }
+/** An order number kept as a number (v1/v2) or as padded text ("010", template v3); null when empty or not a number. */
+export function ordinalOf(page: NotionPage, name: string): number | null {
+	const prop = page.properties[name];
+	if (prop?.type === 'number') return (prop as { number: number | null }).number;
+	const text = textOf(page, name).trim();
+	return /^\d+$/.test(text) ? Number(text) : null;
+}
 export function checkedOf(page: NotionPage, name: string): boolean {
 	const prop = page.properties[name];
 	return prop?.type === 'checkbox' ? Boolean((prop as { checkbox?: boolean }).checkbox) : false;
@@ -186,7 +193,7 @@ export function relationOf(page: NotionPage, name: string): string[] {
 export interface NotionCodes { show: string; episode: string; scene: string; shot: string; shot_number: number | null; locked: boolean }
 const codesOf = (page: NotionPage): NotionCodes => ({
 	show: textOf(page, 'Show code'), episode: textOf(page, 'Episode code'), scene: textOf(page, 'Scene code'), shot: textOf(page, 'Shot code'),
-	shot_number: numberOf(page, 'Shot #'), locked: checkedOf(page, 'Locked')
+	shot_number: ordinalOf(page, 'Shot #'), locked: checkedOf(page, 'Locked')
 });
 
 export interface SeriesEpisode { page_id: string; number: number; title: string; status: string; act: string; season: number | null; summary: string; outline: string; twist: string; cliffhanger: string; scene_ids: string[]; notion_codes: NotionCodes }
@@ -228,7 +235,7 @@ export const toScene = (page: NotionPage): SeriesScene => {
 	// Template v2's Section (Teaser / Act 1… / Tag) wins over the act read from the timecode.
 	const section = textOf(page, 'Section');
 	return {
-		page_id: bareId(page.id), number: numberOf(page, 'Scene #') ?? 0, title: textOf(page, 'Scene') || 'Untitled scene', summary: textOf(page, 'Summary'),
+		page_id: bareId(page.id), number: ordinalOf(page, 'Scene #') ?? 0, title: textOf(page, 'Scene') || 'Untitled scene', summary: textOf(page, 'Summary'),
 		story_beats: textOf(page, 'Action') || textOf(page, 'Story Beats'), dialogue: textOf(page, 'Dialogue'), reference_ids: relationOf(page, 'References'),
 		timecode, location: textOf(page, 'Location'), characters: namesOf(page, 'Characters'),
 		int_ext: textOf(page, 'INT/EXT'), time_of_day: textOf(page, 'Time of Day'), status: textOf(page, 'Status'), episode_ids: relationOf(page, 'Episode'), act: ACT_ORDER.includes(section) && section ? section : actOf(timecode),
@@ -237,7 +244,7 @@ export const toScene = (page: NotionPage): SeriesScene => {
 };
 
 export const toShot = (page: NotionPage): SeriesShot => ({
-	page_id: bareId(page.id), number: numberOf(page, 'Shot #') ?? 0, title: textOf(page, 'Shot') || 'Untitled shot', description: textOf(page, 'Description'),
+	page_id: bareId(page.id), number: ordinalOf(page, 'Shot #') ?? 0, title: textOf(page, 'Shot') || 'Untitled shot', description: textOf(page, 'Description'),
 	duration_s: numberOf(page, 'Duration (s)') ?? 0, video_prompt: textOf(page, 'Video Prompt (Seedance 2.5)'), image_prompt: textOf(page, 'Image Prompt (Keyframe)'),
 	refs: textOf(page, 'Seedance Refs'), dialogue: textOf(page, 'Dialogue / VO'), audio: textOf(page, 'Audio / SFX'), shot_size: textOf(page, 'Shot Size'),
 	lens: textOf(page, 'Lens'), camera: textOf(page, 'Camera Movement'), angle: textOf(page, 'Angle'), characters: namesOf(page, 'Characters'),

@@ -383,3 +383,16 @@ describe('Notion sync (V1S-325)', () => {
 		expect(suggestCode('Morning Quad')).toBe('MRQ');
 	});
 });
+
+describe('padded numbers (Scene # / Shot # as text)', () => {
+	test('"010" reads as 10, numbers still read, empty is null', async () => {
+		const { ordinalOf, checkDatabase } = await import('../../src/lib/domain/notion-series');
+		const page = (value: unknown) => ({ id: 'x', properties: { 'Scene #': value } }) as unknown as NotionPage;
+		expect(ordinalOf(page(rich('010')), 'Scene #')).toBe(10);
+		expect(ordinalOf(page(rich('140')), 'Scene #')).toBe(140);
+		expect(ordinalOf(page(num(30)), 'Scene #')).toBe(30);
+		expect(ordinalOf(page(rich('')), 'Scene #')).toBeNull();
+		const v3 = schema({ Scene: 'title', 'Scene #': 'rich_text', Episode: 'relation', Summary: 'rich_text' });
+		expect(checkDatabase('scenes', v3).ok).toBe(true);
+	});
+});
