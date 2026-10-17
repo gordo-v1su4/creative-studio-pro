@@ -27,8 +27,28 @@ The running time an episode is being made to, set per episode and defaulting to 
 _Avoid_: Runtime, episode length, duration (in prose)
 
 **Scene**:
-A run of shots in one place and time, belonging to one episode.
-_Avoid_: Sequence, group (in prose)
+A run of shots in one place and time, belonging to one episode; it is titled by name only, and its order and scene code are kept beside the name.
+_Avoid_: Sequence, group (in prose), P01-style titles
+
+**Action**:
+What happens inside one scene, moment by moment, in the order it plays.
+_Avoid_: Story beats (for this), breakdown, beat-by-beat
+
+**Dialogue**:
+A scene's spoken lines in order, each with its speaker and delivery; every line is spoken in exactly one shot, word for word.
+_Avoid_: Script, screenplay, lines (alone)
+
+**Episode outline**:
+An episode's main story points in order, each marked with its section, written before its scenes are fleshed out.
+_Avoid_: Synopsis, treatment
+
+**Story pass**:
+The conversation, with any model, that turns an idea or a rough story into the filled Notion template: season story beats, episode outlines, and scenes for the episode being made.
+_Avoid_: Story interview (as the name of the step), writing session
+
+**Fit to length**:
+The Agent writing the shots a scene still needs to fill its share of the episode's target length, from the scene's action, dialogue, story beats and references.
+_Avoid_: Auto-fill, generate shots
 
 ### Board
 
@@ -117,8 +137,28 @@ A Review Room folder that belongs to a series tree; media can be added inside it
 _Avoid_: Read-only folder, synced folder
 
 **Shot code**:
-A shot's permanent production ID: show code, season and episode, scene, shot (e.g. `BLR_101_010_0020`); a take of it adds its version (`_v003`).
+A shot's permanent production ID: show code, episode code, scene code, shot number (e.g. `BLR_EP101_PAR_0020`); a take of it adds its version (`_v003`).
 _Avoid_: Shot name, asset code, clip ID
+
+**Show code**:
+The three letters that name a series in every code, such as `BLR`.
+_Avoid_: Prefix, project code
+
+**Episode code**:
+`EP` plus the season and the two-digit episode number, such as `EP101` for season 1, episode 01.
+_Avoid_: EP01 (in codes)
+
+**Scene code**:
+A three-letter mnemonic for a scene, unique within its episode, such as `PAR` for the parking lot; the scene's story order (`010`, `020`…) travels beside it, never inside it.
+_Avoid_: Sequence code, scene number (for the letters)
+
+**Reference**:
+A named image that locks how a character, location or prop looks in every shot that uses it; its exact name is printed on the image and written the same way in every prompt. A location's reference also carries the look and grade.
+_Avoid_: Ref (in prose), sheet (alone), asset, look reference
+
+**Handle**:
+A short `@` name for a reference (such as `@Kai`) that is swapped for the reference's exact name, its image number and its attachment before a prompt is checked or sent.
+_Avoid_: Alias, tag, mention
 
 **Deliverable**:
 A finished export (an episode cut, a teaser, a trailer) kept in the `_Deliverables` folder of its episode, or of the series when it spans episodes; it has its own code, such as `BLR_EP101_EPC_v002` or `BLR_S1_TRL01_v003`.

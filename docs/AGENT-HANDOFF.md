@@ -4,6 +4,7 @@ For any agent picking up this repo.
 
 ## Read first (in order)
 
+0. **Series production (Blood Rush EP101) work:** `docs/planning/series-production-v3.md` — the current decisions, ticket order and what went wrong before. Then `CONTEXT.md` and `docs/adr/`.
 1. `README.md` — rules.
 2. `docs/planning/prds/prd-creative-studio-pro-2026-08-22/prd.md`
    — canonical requirements; the donor map tells you exactly which existing
