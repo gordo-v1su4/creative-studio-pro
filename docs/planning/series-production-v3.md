@@ -67,6 +67,16 @@ ownership rule is ADR 0002 (`docs/adr/0002-app-writes-codes-into-notion.md`); me
 2. "Which skills or workflows do you use to keep a character consistent across many shots in one scene, and can you show me the exact prompt structure they produce?"
 3. "When the last frame of the previous shot is used as a reference for continuity, should it be the start frame or an extra reference image, and where does it go in the order?"
 
+## Status (end of 2026-10-17)
+
+- **Done:** V1S-323 (Notion v3, Blood Rush and the blank template), the env check hook, V1S-325 (Sync: codes and
+  shots to Notion, Review Room folders). Blood Rush is linked to Review Room project `ks7d3aqsgbrpz030qvkvha5rtd8ge2pm`;
+  EP101 is imported fresh (14 scenes, 0 shots) with scene codes CLD … LBC and 14 locked scene folders.
+- **Follow-up (no Linear slot):** mirror shots *added or deleted* in Notion onto the board (field edits already sync).
+- **Unlinked, not deleted:** the first test import, project `01a14b46-a81a-713d-bcc9-6ff0ff2ce2e7`; its folder can be removed by hand.
+- **Next:** V1S-324 (story-interview skill v3 + Agent writes to Notion), then the story pass for EP101's Action and
+  Dialogue; V1S-326 after the operator vets the super-seed2 references.
+
 ## Parked
 
 Dialogue length driving scene length; a master-shot pass then coverage angles; a vision check of sheet names; a
