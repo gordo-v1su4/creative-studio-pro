@@ -4,30 +4,52 @@ A production studio for short films and trailers: story beats are generated as i
 
 ## Language
 
+### Story
+
+**Structure**:
+The storytelling template a project follows (a TV episode's acts, Save the Cat, Three-Act…), made of named, empty sections.
+_Avoid_: Format, framework, beat sheet
+
+**Section**:
+One named slot of a structure, such as Act 2, Tag, Catalyst or All Is Lost; it holds story beats but is not one.
+_Avoid_: Beat, act (unless the structure calls it that)
+
+**Story beat**:
+One thing that clearly happens in this story; it sits in one section and plays out over one or more scenes, and a season or film has roughly ten to fifteen.
+_Avoid_: Beat (alone), plot point, moment
+
+**Target length**:
+The running time an episode is being made to, set per episode and defaulting to the series format; it decides how much screen time each scene is owed.
+_Avoid_: Runtime, episode length, duration (in prose)
+
+**Scene**:
+A run of shots in one place and time, belonging to one episode.
+_Avoid_: Sequence, group (in prose)
+
 ### Board
 
-**Beat**:
-One moment of the story, shown as a card on the board.
-_Avoid_: Shot, card (in prose), slot
+**Shot**:
+One continuous piece of picture, shown as a card on the board; the smallest unit the story is built from.
+_Avoid_: Beat, card (in prose), slot, clip
 
 **Take**:
-One generated clip or still attached to a beat; a beat can hold several.
+One generated clip or still attached to a shot; a shot can hold several.
 _Avoid_: Asset, alternate, version
 
 **Pick**:
-The take currently chosen to represent its beat.
+The take currently chosen to represent its shot.
 _Avoid_: Selected take, active take
 
 **Spine**:
-The story order of the beats, set by how they are connected on the board.
+The story order of the shots, set by how they are connected on the board.
 _Avoid_: Timeline, master cut, sequence
 
 **Benched**:
-A beat that keeps its place on the spine but is skipped wherever the spine is played or assembled.
+A shot that keeps its place on the spine but is skipped wherever the spine is played or assembled.
 _Avoid_: Deactivated, disabled, hidden
 
 **Selection**:
-The beats shift-clicked on the board, in click order, previewed together before anything is kept.
+The shots shift-clicked on the board, in click order, previewed together before anything is kept.
 _Avoid_: Sequence, playlist
 
 ### Cuts
@@ -75,6 +97,36 @@ _Avoid_: Freeze frame, still video
 **Animate**:
 Making a video take from a still by sending it to a video model as the start frame.
 _Avoid_: Image-to-video (in prose), I2V
+
+### Media
+
+**Review Room**:
+The separate app where every take's media is stored and reviewed; this app refers to those files and keeps no copies of its own.
+_Avoid_: RustFS, bucket, media server (in prose)
+
+**Series tree**:
+The folders for one series (series, then episode, then scene) that this app creates in Review Room; its shape is decided here, never there.
+_Avoid_: Folder structure, hierarchy
+
+**Locked folder**:
+A Review Room folder that belongs to a series tree; media can be added inside it there, but it cannot be renamed, moved or deleted there.
+_Avoid_: Read-only folder, synced folder
+
+**Shot code**:
+A shot's permanent production ID: show code, season and episode, scene, shot (e.g. `BLR_101_010_0020`); a take of it adds its version (`_v003`).
+_Avoid_: Shot name, asset code, clip ID
+
+**Deliverable**:
+A finished export (an episode cut, a teaser, a trailer) kept in the `_Deliverables` folder of its episode, or of the series when it spans episodes; it has its own code, such as `BLR_EP101_EPC_v002` or `BLR_S1_TRL01_v003`.
+_Avoid_: Final, export (as a noun), master
+
+**Misfiled**:
+Media in a series tree whose name or folder does not match any shot; it stays visible and flagged until someone confirms where it belongs.
+_Avoid_: Rejected, invalid, orphan
+
+**Grid**:
+One 4K image holding a scene's stills as a 3×3 sheet, generated together for continuity and then split into still takes; it stays attached to them as a reference.
+_Avoid_: Contact sheet, storyboard, collage
 
 ### Finishing
 
