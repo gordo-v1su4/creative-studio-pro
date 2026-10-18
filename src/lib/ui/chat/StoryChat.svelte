@@ -5,7 +5,8 @@
 	/**
 	 * The Agent's Story mode (V1S-282): a streamed chat on the Vercel AI SDK that runs the story-interview
 	 * skill (idea → three directions → Save the Cat season and TV-episode acts, at most three rounds), reading
-	 * the connected Notion series through a tool whose results show inline.
+	 * the connected Notion series through a tool whose results show inline. V1S-324: it can also write story
+	 * beats, episode outlines and this episode's scenes into Notion; each write shows inline with its link.
 	 */
 	let { projectId }: { projectId: string } = $props();
 	const chat = $derived(new Chat({ transport: new DefaultChatTransport({ api: `/api/projects/${projectId}/agent/chat` }) }));
@@ -19,6 +20,9 @@
 		void chat.sendMessage({ text });
 	}
 	const toolLabel = (type: string) => type.replace(/^tool-/, '').replaceAll('_', ' ');
+	type WriteOutput = { ok: true; action: string; kind: string; title: string; url: string } | { ok: false; error: string };
+	const isWrite = (type: string) => type.startsWith('tool-write_');
+	const written = (output: unknown) => output as WriteOutput;
 </script>
 
 <div class="story-chat">
@@ -31,6 +35,18 @@
 				{#each message.parts as part, i (i)}
 					{#if part.type === 'text'}
 						<p class="text">{part.text}</p>
+					{:else if isWrite(part.type)}
+						{@const toolPart = part as { type: string; state?: string; output?: unknown }}
+						{@const out = toolPart.output ? written(toolPart.output) : null}
+						<p class={['write', out && !out.ok && 'refused']}>
+							{#if !out}
+								<span>Writing {toolLabel(toolPart.type).replace(/^write /, '')}…</span>
+							{:else if out.ok}
+								<span>Notion · {out.action} {out.kind}</span> <a href={out.url} target="_blank" rel="noreferrer">{out.title}</a>
+							{:else}
+								<span>Notion refused: {out.error}</span>
+							{/if}
+						</p>
 					{:else if part.type.startsWith('tool-')}
 						{@const toolPart = part as { type: string; state?: string; output?: unknown }}
 						<details class="tool">
@@ -64,6 +80,11 @@
 	.tool { border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 4px 8px; font-size: 11px; color: var(--color-nr-dim); }
 	.tool summary { cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; font-size: 9.5px; }
 	.tool pre { margin-top: 6px; max-height: 220px; overflow: auto; color: var(--color-nr-muted); font: 10.5px/1.5 var(--font-mono); white-space: pre-wrap; }
+	.write { border-left: 2px solid var(--color-nr-accent-deep); padding: 2px 8px; font-size: 11px; color: var(--color-nr-muted); }
+	.write span { font: 600 9.5px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-nr-dim); }
+	.write a { color: var(--color-nr-accent); text-decoration: underline; text-underline-offset: 2px; }
+	.write.refused { border-left-color: var(--color-nr-danger-line); }
+	.write.refused span { color: var(--color-nr-danger-text); text-transform: none; letter-spacing: 0; }
 	.error { color: var(--color-nr-danger-text); font-size: 12px; }
 	.composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 	textarea { resize: none; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 6px 9px; color: var(--color-nr-ink); font: 12.5px/1.5 var(--font-sans); outline: none; }
