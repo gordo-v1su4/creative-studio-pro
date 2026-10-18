@@ -7,7 +7,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { episodeOutline } from '../../src/lib/domain/episode-outline';
 import { fitPlan, fittedCards } from '../../src/lib/domain/episode-fit';
 import { liveSpine } from '../../src/lib/domain/spine';
-import { fitScene, fitSystemPrompt } from '../../src/lib/server/episode-fit';
+import { fitScene, fitSystemPrompt, SceneCheckFailed } from '../../src/lib/server/episode-fit';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import type { Project, StoryCard } from '../../src/lib/domain/schemas';
 
@@ -56,7 +56,7 @@ describe('Fit to length (server side)', () => {
 			{ description: 'Kai Santana crosses the quad.', duration_s: 6, video_prompt: CLEAN, audio: 'Birds.', characters: ['Kai Santana'] },
 			{ description: 'Kai Santana smiles.', duration_s: 5, video_prompt: PRONOUN, dialogue: '' }
 		] });
-		const agent = scripted([answer, FIXED]);
+		const agent = scripted([answer, answer, FIXED]);
 		const rounds: Array<[number, number, number]> = [];
 		const shots = await fitScene(agent.client, { system: await fitSystemPrompt(), story: 'Fall 2001. Kai Santana keeps a hidden crew.', series, outline, target_min: 1, scene: plan, sceneCards: [project.production.cards[1]], nextScene: null, banned: [] }, () => {}, (i, round) => { rounds.push([i, round.round, round.issues.length]); });
 
@@ -96,5 +96,55 @@ describe('Fit to length (server side)', () => {
 		if (!created.ok) throw new Error(created.error.message);
 		const refused = await gateway.fitScene(created.data.project_id, created.data.version, G1, [card(5, G1, 'X.01', 6)]);
 		expect(refused.ok).toBeFalse();
+	});
+
+	test('V1S-329: Fit reads Action, Dialogue, story beats and References, checks itself, and lints with handles compiled', async () => {
+		const series: NonNullable<Project['series']> = {
+			series_id: 'series', episode_page_id: 'ep', episode_number: 101, episode_title: 'EP101 — Pilot', summary: 'Kai meets Mara.', twist: '', cliffhanger: '', imported_at: '2026-10-17T00:00:00.000Z',
+			scenes: [{ ...scene(1, G1, 'Morning Quad', 'Act 1', 20), story_beats: '1. Kai crosses the quad.\n2. Mara stops him.', dialogue: 'MARA (sharp): "You dropped this."\nKAI: "Keep it."', reference_ids: ['r-kai', 'r-mara'], story_beat_ids: ['b1'] }]
+		};
+		const outline = episodeOutline(series, [], 1);
+		const [plan] = fitPlan(outline);
+		const refs = [
+			{ name: 'Kai "Hoodie" Santana', kind: 'Character', role: 'the lead', handles: ['@Kai'] },
+			{ name: 'Mara Quinn', kind: 'Character', role: 'the new girl', handles: ['@Mara'] }
+		];
+		const all = [...refs, { name: 'Bryce Hale', kind: 'Character', role: '', handles: ['@Bryce'] }];
+		const shotA = { description: 'Kai crosses.', duration_s: 6, dialogue: '', characters: [], video_prompt: 'Wide. @Kai crosses the quad at noon, slow dolly in. Birds call.\nSpeak only the scripted lines, verbatim. No subtitles. No on-screen text.' };
+		const shotB = { description: 'Mara stops Kai.', duration_s: 6, dialogue: 'MARA (sharp): "You dropped this."', characters: [], video_prompt: '@Mara steps in front of @Kai, cut to a close-up.\nMARA, to @Kai, sharp:\n"You dropped this."\nSpeak only the scripted lines, verbatim. No subtitles. No on-screen text.' };
+		const shotC = { description: 'Kai walks on.', duration_s: 6, dialogue: 'KAI: "Keep it."', characters: [], video_prompt: '@Kai walks past @Mara, cut to a wide.\nKAI, to @Mara, flat:\n"Keep it."\nSpeak only the scripted lines, verbatim. No subtitles. No on-screen text.' };
+		// First answer forgets Kai's line and brings in Bryce; the self-check fixes both.
+		const first = JSON.stringify({ shots: [shotA, { ...shotB, video_prompt: `${shotB.video_prompt} @Bryce watches.` }] });
+		const fixed = JSON.stringify({ shots: [shotA, shotB, shotC] });
+		const agent = scripted([first, fixed]);
+		const checks: Array<[number, number]> = [];
+		const shots = await fitScene(agent.client, { system: await fitSystemPrompt(), story: '', series, outline, target_min: 1, scene: { ...plan, shots_wanted: 3 }, sceneCards: [], nextScene: null, banned: [], storyBeats: [{ title: 'Meet cute', section: 'Set-up', summary: 'Kai and Mara meet.' }], references: refs, allReferences: all }, () => {}, () => {}, 4, (round, problems) => { checks.push([round, problems.length]); });
+		const ask = agent.asked[0].prompt;
+		expect(ask).toContain('ACTION (what happens, in order; cover all of it):\n1. Kai crosses the quad.');
+		expect(ask).toContain('MARA (sharp): "You dropped this."');
+		expect(ask).toContain('- Meet cute (Set-up): Kai and Mara meet.');
+		expect(ask).toContain('- @Kai → Kai "Hoodie" Santana (Character) — the lead');
+		expect(agent.asked[1].prompt).toContain('CHECK YOUR SHOTS AGAINST THIS CHECKLIST');
+		expect(agent.asked[1].prompt).toContain('Dialogue line not placed in any shot: KAI: "Keep it."');
+		expect(agent.asked[1].prompt).toContain('@Bryce is not one of this scene\'s references');
+		expect(checks).toEqual([[0, 2], [2, 0]]);
+		// Prompts keep their handles (the send compiles them); compiled, they lint clean, so no fix round was asked for.
+		expect(shots.map((shot) => shot.lint.remaining)).toEqual([0, 0, 0]);
+		expect(shots[1].video_prompt.startsWith('@Mara steps in')).toBe(true);
+		expect(agent.asked).toHaveLength(2);
+	});
+
+	test('V1S-329: a scene that still fails its check after the fixes is not returned', async () => {
+		const series: NonNullable<Project['series']> = {
+			series_id: 'series', episode_page_id: 'ep', episode_number: 101, episode_title: 'EP101', summary: '', twist: '', cliffhanger: '', imported_at: '2026-10-17T00:00:00.000Z',
+			scenes: [{ ...scene(1, G1, 'Quad', 'Act 1', 20), dialogue: 'KAI: "Keep it."' }]
+		};
+		const outline = episodeOutline(series, [], 1);
+		const [plan] = fitPlan(outline);
+		const silent = JSON.stringify({ shots: [{ description: 'A wide.', duration_s: 6, video_prompt: CLEAN }] });
+		const agent = scripted([silent, silent, silent]);
+		const failed = await fitScene(agent.client, { system: 's', story: '', series, outline, target_min: 1, scene: plan, sceneCards: [], nextScene: null, banned: [] }).catch((cause) => cause);
+		expect(failed).toBeInstanceOf(SceneCheckFailed);
+		expect((failed as SceneCheckFailed).problems).toEqual(['Dialogue line not placed in any shot: KAI: "Keep it."']);
 	});
 });

@@ -88,6 +88,7 @@
 					if (event.type === 'plan') for (const scene of event.scenes as FitScene[]) live.scenes[scene.page_id] = { state: 'waiting' };
 					else if (event.type === 'status') { live.status = String(event.text); if (at && at.state === 'waiting') at.state = 'writing'; }
 					else if (event.type === 'shots' && at) { at.state = 'linting'; at.shots = (event.shots as unknown[]).length; at.linted = new Set(); }
+					else if (event.type === 'check' && at) { const n = (event.problems as unknown[]).length; live.status = n ? `The Agent is fixing ${n} miss${n === 1 ? '' : 'es'} its check found (dialogue, references)…` : 'The Agent is checking its shots against the scene…'; }
 					else if (event.type === 'lint' && at && Number(event.issues) === 0) at.linted = new Set([...(at.linted ?? []), Number(event.shot)]);
 					else if (event.type === 'scene_done' && at) { at.state = 'done'; at.added = Number(event.added); at.remaining = Number(event.lint_remaining); added += at.added; remaining += at.remaining; onUpdated(event.data as Project); }
 					else if (event.type === 'scene_failed' && at) { at.state = 'failed'; at.message = String(event.message); failed += 1; }

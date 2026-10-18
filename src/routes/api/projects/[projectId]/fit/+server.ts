@@ -10,7 +10,7 @@ import { getGateway, getProjectRoot, getProjectStore, getSeriesStore, resolvePro
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { projectRules } from '$lib/server/animate';
-import { fitScene, fitSystemPrompt } from '$lib/server/episode-fit';
+import { fitScene, fitSystemPrompt, SceneCheckFailed } from '$lib/server/episode-fit';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'VERSION_CONFLICT' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'fit' } }, { status });
 
@@ -69,7 +69,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!resolved.ok) return fail(503, `No Agent model: ${resolved.message}`);
 	const client = createOpenAICompatibleClient(resolved.connection);
 	const agent = resolved.connection.choice.provider === 'kimi' ? `Kimi ${resolved.connection.choice.model}` : resolved.connection.choice.model;
-	const story = (await getSeriesStore().read(series.series_id))?.story?.text ?? '';
+	const record = await getSeriesStore().read(series.series_id);
+	const story = record?.story?.text ?? '';
+	const allReferences = record?.references?.items ?? [];
+	const beats = record?.story_beats?.beats ?? [];
 	const banned = bannedTerms((await projectRules(getProjectRoot(), projectId.data)) ?? '');
 	const system = await fitSystemPrompt();
 
@@ -82,19 +85,24 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			const at = order.findIndex((row) => row.page_id === scene.page_id);
 			const next = order[at + 1];
 			const sceneCards = current.production.cards.filter((card) => card.group_id === scene.group_id).toSorted((a, b) => a.order - b.order);
+			// V1S-329: the scene's linked season story beats and its References (exact names, handles, kinds).
+			const imported = series.scenes.find((entry) => entry.page_id === scene.page_id);
+			const storyBeats = beats.filter((beat) => imported?.story_beat_ids?.includes(beat.page_id) || beat.scene_ids.includes(scene.page_id)).toSorted((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((beat) => ({ title: beat.title, section: beat.section, summary: beat.summary }));
+			const references = allReferences.filter((ref) => imported?.reference_ids?.includes(ref.page_id) || ref.scene_ids.includes(scene.page_id));
 			send({ type: 'status', scene: scene.page_id, text: `${agent} is writing ${scene.shots_wanted} shot${scene.shots_wanted === 1 ? '' : 's'} for ${scene.title} (${index + 1} of ${plan.length})…` });
 			let shots;
 			try {
 				shots = await fitScene(client, {
-					system, story, series, outline, target_min, scene, sceneCards, banned,
+					system, story, series, outline, target_min, scene, sceneCards, banned, storyBeats, references, allReferences,
 					nextScene: next ? { title: next.title, summary: next.summary } : null
 				}, (written) => {
 					send({ type: 'shots', scene: scene.page_id, shots: written.map((shot) => ({ description: shot.description, duration_s: shot.duration_s })) });
 					send({ type: 'status', scene: scene.page_id, text: `Linting ${written.length} prompt${written.length === 1 ? '' : 's'} for ${scene.title}…` });
-				}, (shot, round) => send({ type: 'lint', scene: scene.page_id, shot, round: round.round, issues: round.issues.length }));
+				}, (shot, round) => send({ type: 'lint', scene: scene.page_id, shot, round: round.round, issues: round.issues.length }), 4,
+				(round, problems) => send({ type: 'check', scene: scene.page_id, round, problems }));
 			} catch (cause) {
 				// One scene failing does not undo the scenes already saved.
-				send({ type: 'scene_failed', scene: scene.page_id, message: cause instanceof Error ? cause.message : 'model error' });
+				send({ type: 'scene_failed', scene: scene.page_id, message: cause instanceof Error ? cause.message : 'model error', ...(cause instanceof SceneCheckFailed ? { problems: cause.problems } : {}) });
 				continue;
 			}
 			const cards = fittedCards(scene, sceneCards, shots, { newId: uuid7ish, now: new Date().toISOString(), target_min, summary: series.scenes.find((s) => s.page_id === scene.page_id)?.summary ?? '' });

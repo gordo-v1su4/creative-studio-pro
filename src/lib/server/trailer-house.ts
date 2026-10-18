@@ -82,8 +82,8 @@ export function redactAll(text: string, words: string[]): string {
 }
 
 /** Every finding of the operator's Seedance linter on this prompt (banned words included, with the project's own bans). */
-export function lintTeaser(prompt: string, banned: string[]): TeaserIssue[] {
-	return lintPrompt(prompt, 'seedance', banned).issues.map((issue) => ({
+export function lintTeaser(prompt: string, banned: string[], references?: Array<{ name: string }>): TeaserIssue[] {
+	return lintPrompt(prompt, 'seedance', banned, { references }).issues.map((issue) => ({
 		rule: issue.rule, severity: issue.severity as TeaserIssue['severity'], index: issue.index,
 		length: issue.match === '(whole prompt)' ? 0 : issue.match.length, match: issue.match, message: issue.message
 	}));
@@ -107,17 +107,22 @@ function promptOnly(answer: string): string {
  * The operator's Seedance linter runs on the teaser's prompt; the Agent fixes every finding and it is linted
  * again, up to `maxRounds` fixes. Each round is reported (draft first) so the app can show the highlights live.
  */
-export async function lintAndFix(client: AgentModelClient, input: { system: string; context: string; prompt: string; banned: string[]; images?: ModelImage[]; ignore?: string[] }, onRound: (round: LintRound) => void | Promise<void> = () => {}, maxRounds = 3): Promise<{ prompt: string; rounds: LintRound[] }> {
+export async function lintAndFix(client: AgentModelClient, input: {
+	system: string; context: string; prompt: string; banned: string[]; images?: ModelImage[]; ignore?: string[];
+	/** The handle compile (V1S-327): the prompt is linted as it will be sent, against the series' reference names. */
+	compile?: (prompt: string) => string; references?: Array<{ name: string }>;
+}, onRound: (round: LintRound) => void | Promise<void> = () => {}, maxRounds = 3): Promise<{ prompt: string; rounds: LintRound[] }> {
 	let prompt = input.prompt;
 	const rounds: LintRound[] = [];
 	for (let round = 0; ; round++) {
-		const issues = lintTeaser(prompt, input.banned).filter((issue) => !input.ignore?.includes(issue.rule));
+		const checked = input.compile ? input.compile(prompt) : prompt;
+		const issues = lintTeaser(checked, input.banned, input.references).filter((issue) => !input.ignore?.includes(issue.rule));
 		const current = { round, prompt, issues };
 		rounds.push(current);
 		await onRound(current);
 		if (issues.length === 0 || round >= maxRounds) return { prompt, rounds };
 		const hidden = issues.filter((issue) => HIDDEN.has(issue.rule)).map((issue) => issue.match);
-		const ask = `${redactAll(input.context, hidden)}\n\nYOUR SEEDANCE PROMPT:\n${redactAll(prompt, hidden)}\n\nTHE OPERATOR'S PROMPT LINTER FOUND THESE PROBLEMS:\n${issuesForAgent(prompt, issues, hidden)}\n\nRewrite the SEEDANCE PROMPT so every problem is fixed: declare every character and place, then use only the exact declared names. Keep everything else as it is. Return only the corrected SEEDANCE PROMPT text, with no header before it and nothing after it.`;
+		const ask = `${redactAll(input.context, hidden)}\n\nYOUR SEEDANCE PROMPT:\n${redactAll(prompt, hidden)}\n\nTHE OPERATOR'S PROMPT LINTER FOUND THESE PROBLEMS:\n${issuesForAgent(checked, issues, hidden)}\n\nRewrite the SEEDANCE PROMPT so every problem is fixed: ${input.compile ? 'write every character, place and prop that has a reference as its @handle (the app declares it and writes the exact name), and declare everything else with "No image:"' : 'declare every character and place, then use only the exact declared names'}. Keep everything else as it is. Return only the corrected SEEDANCE PROMPT text, with no header before it and nothing after it.`;
 		const answer = promptOnly(await client.generate({ system: input.system, prompt: ask, images: input.images, maxOutputTokens: 4000, timeoutMs: 120_000 }));
 		if (!answer) return { prompt, rounds };
 		prompt = answer;
