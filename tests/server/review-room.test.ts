@@ -17,6 +17,10 @@ describe('series tree', () => {
 		expect(bareTitle('12: The Party')).toBe('The Party');
 		expect(seriesTree(episodes).map((f) => [f.key, f.title, f.parent])).toEqual([
 			['deliverables', '_Deliverables', null],
+			['refs', '_References', null],
+			['refs:characters', 'Characters', 'refs'],
+			['refs:locations', 'Locations', 'refs'],
+			['refs:props', 'Props', 'refs'],
 			['ep:e1', 'EP101 — The Late Shift', null],
 			['ep:e1:deliverables', '_Deliverables', 'ep:e1'],
 			['scene:s1', '010 AMT — 2:47 AM (Teaser)', 'ep:e1'],
@@ -33,7 +37,7 @@ describe('series tree', () => {
 		];
 		const steps = planTree(wanted, { 'ep:e1': 'f-ep' }, remote);
 		expect(steps.map((s) => [s.folder.key, s.kind])).toEqual([
-			['deliverables', 'keep'], ['ep:e1', 'rename'], ['ep:e1:deliverables', 'create'], ['scene:s1', 'create'], ['scene:s2', 'create']
+			['deliverables', 'keep'], ['refs', 'create'], ['refs:characters', 'create'], ['refs:locations', 'create'], ['refs:props', 'create'], ['ep:e1', 'rename'], ['ep:e1:deliverables', 'create'], ['scene:s1', 'create'], ['scene:s2', 'create']
 		]);
 	});
 });
@@ -102,8 +106,9 @@ describe('syncSeriesTree against a fake Review Room', () => {
 	test('creates the tree locked, then a second run changes nothing; a renamed scene renames its folder', async () => {
 		const room = fakeReviewRoom();
 		const first = await syncSeriesTree(room.client, 'series-1', 'p1', seriesTree(episodes), {});
-		expect(first).toMatchObject({ created: 5, renamed: 0 });
+		expect(first).toMatchObject({ created: 9, renamed: 0 });
 		expect(room.folders.every((f) => f.locked)).toBeTrue();
+		expect(room.folders.find((f) => f.title === 'Characters')?.parentFolderId).toBe(first.folders.refs);
 		expect(room.folders.find((f) => f.title === '020 PAR — Parking Lot')?.parentFolderId).toBe(first.folders['ep:e1']);
 		expect(room.calls.filter((c) => c.startsWith('POST')).every((c) => c.endsWith('keyed'))).toBeTrue();
 

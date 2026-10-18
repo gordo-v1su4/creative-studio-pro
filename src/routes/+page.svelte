@@ -39,6 +39,7 @@
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
 	import type { Project, ProjectSummary, CanvasLayout, ShotReference } from '$lib/domain/schemas';
 	import { previousPick } from '$lib/domain/shot-references';
+	import ReferencesDrawer from '$lib/ui/ReferencesDrawer.svelte';
 
 	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
 	const edgeTypes = { spine: SpineEdge };
@@ -59,20 +60,27 @@
 	// The series' references (V1S-326): names for the chips on shots, thumbnails in the References drawer.
 	type SeriesRef = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean };
 	let seriesRefs = $state<SeriesRef[]>([]);
+	let seriesRefFiles = $state<Record<string, { width: number; height: number; file_name: string }>>({});
 	let seriesRefsFor = $state<string | null>(null);
+	function loadSeriesRefs(id: string) {
+		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { references?: { items: SeriesRef[] }; reference_files?: Record<string, { width: number; height: number; file_name: string }> } }) => {
+			if (body.ok && seriesRefsFor === id) {
+				seriesRefs = body.data?.references?.items ?? [];
+				seriesRefFiles = body.data?.reference_files ?? {};
+				if (activeProject) nodes = projectToNodes(activeProject, layout);
+			}
+		}).catch(() => {});
+	}
 	$effect(() => {
 		const id = activeProject?.series?.series_id ?? null;
 		if (id === seriesRefsFor) return;
 		seriesRefsFor = id;
 		seriesRefs = [];
-		if (!id) return;
-		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { references?: { items: SeriesRef[] } } }) => {
-			if (body.ok && seriesRefsFor === id) {
-				seriesRefs = body.data?.references?.items ?? [];
-				if (activeProject) nodes = projectToNodes(activeProject, layout);
-			}
-		}).catch(() => {});
+		seriesRefFiles = {};
+		if (id) loadSeriesRefs(id);
 	});
+	/** The selected shot on the board, for "Attach" in the References drawer. */
+	let selectedCard = $derived(activeProject?.production.cards.find((card) => card.card_id === selectedNodeId) ?? null);
 	let creating = $state(false);
 	// The board has no permanent right panel (V1S-132): the brief lives in Story; the inspector opens on demand.
 	let inspectorOpen = $state(false);
@@ -1182,6 +1190,16 @@
 			aria-hidden={!inspectorOpen}
 		>
 			<div class="h-full w-[300px] overflow-y-auto p-3">
+				{#if activeProject?.series}
+					<ReferencesDrawer
+						seriesId={activeProject.series.series_id}
+						references={seriesRefs}
+						files={seriesRefFiles}
+						selectedTitle={selectedCard?.title ?? null}
+						onAttach={(pageId) => selectedCard && setShotReferences(selectedCard.card_id, [...(selectedCard.references ?? []).filter((reference) => reference.kind === 'series'), { kind: 'series', page_id: pageId }, ...(selectedCard.references ?? []).filter((reference) => reference.kind !== 'series')])}
+						onUploaded={() => activeProject?.series && loadSeriesRefs(activeProject.series.series_id)}
+					/>
+				{/if}
 				{#if activeProject}
 					<div class="meta-label">Seed</div>
 					<label class="meta-label mt-2 block" for="seed-title">Title</label>

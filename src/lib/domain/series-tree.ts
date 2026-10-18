@@ -3,10 +3,19 @@ import { episodeCode, sceneOrder } from './shot-codes';
 /**
  * The series tree in Review Room (V1S-275, ADR 0001): one Review Room project per series holding a series-level
  * `_Deliverables` folder and, per imported episode, `EP101 — Title` with its own `_Deliverables` and one
- * `010 PAR — Scene title` folder per scene. Every folder is created locked, owned by this app.
+ * `010 PAR — Scene title` folder per scene, and (V1S-326) `_References` with `Characters`, `Locations` and
+ * `Props`, where the vetted reference images live. Every folder is created locked, owned by this app.
  */
 
 export const DELIVERABLES = '_Deliverables';
+export const REFERENCES = '_References';
+/** Reference kind (as Notion's Kind select has it) → its folder key and title under `_References`. */
+export const REFERENCE_FOLDERS = [
+	{ kind: 'Character', key: 'refs:characters', title: 'Characters' },
+	{ kind: 'Location', key: 'refs:locations', title: 'Locations' },
+	{ kind: 'Prop', key: 'refs:props', title: 'Props' }
+] as const;
+export const referenceFolderKey = (kind: string) => REFERENCE_FOLDERS.find((folder) => folder.kind.toLowerCase() === kind.trim().toLowerCase().replace(/s$/, ''))?.key ?? null;
 
 /** One folder the tree should have: a stable key (what it is), its title, and its parent's key (null = project root). */
 export interface TreeFolder { key: string; title: string; parent: string | null }
@@ -25,7 +34,11 @@ export const bareTitle = (title: string) => title.replace(/^\s*(?:EP?\s*\d+|P\d+
 
 /** The folders a series should have, parents before children. Scenes without a code yet are left out. */
 export function seriesTree(episodes: TreeEpisode[]): TreeFolder[] {
-	const folders: TreeFolder[] = [{ key: 'deliverables', title: DELIVERABLES, parent: null }];
+	const folders: TreeFolder[] = [
+		{ key: 'deliverables', title: DELIVERABLES, parent: null },
+		{ key: 'refs', title: REFERENCES, parent: null },
+		...REFERENCE_FOLDERS.map((folder) => ({ key: folder.key, title: folder.title, parent: 'refs' }))
+	];
 	for (const episode of episodes.toSorted((a, b) => a.number - b.number)) {
 		const ep = `ep:${episode.episode_page_id}`;
 		folders.push({ key: ep, title: `${episodeCode(episode.season, episode.number)} — ${bareTitle(episode.title)}`, parent: null });

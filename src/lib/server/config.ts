@@ -21,6 +21,8 @@ import { createReviewRoomClient } from '$lib/server/review-room';
 import type { PushDeps } from '$lib/server/review-room-takes';
 import { runFfmpeg } from '$lib/server/ffmpeg';
 import type { GridDeps } from '$lib/server/grid';
+import { reviewRoomReferenceFiles, type ReferenceFileDeps } from '$lib/server/reference-files';
+import { dirname, join as joinPath } from 'node:path';
 import { createSplitter } from '$lib/server/splitter';
 
 /**
@@ -148,7 +150,17 @@ export async function getGridDeps(): Promise<GridDeps> {
 		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(),
 		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null,
 		splitter: env.CSP_SPLITTER_URL ? createSplitter({ url: env.CSP_SPLITTER_URL, pin: env.SPLITTER_APP_ACCESS_PIN || null }) : null,
-		download: animate.download, probe: probeMedia
+		download: animate.download, probe: probeMedia, referenceFiles: animate.referenceFiles
+	};
+}
+
+/** Reference images in Review Room (V1S-326); null until Review Room is configured. The cache sits beside the series records. */
+export function getReferenceFileDeps(): ReferenceFileDeps | null {
+	const config = getReviewRoomConfig();
+	if (!config) return null;
+	return {
+		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: joinPath(dirname(getProjectRoot()), 'series', 'reference-cache'), probe: probeMedia,
+		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output])
 	};
 }
 
@@ -181,6 +193,7 @@ export async function getAnimateDeps(): Promise<AnimateDeps> {
 		projectRoot: getProjectRoot(),
 		generator: getVideoGenerator(),
 		probe: probeMedia,
+		referenceFiles: (() => { const refs = getReferenceFileDeps(); return refs ? reviewRoomReferenceFiles(refs) : undefined; })(),
 		download: async (url) => {
 			const response = await fetch(url);
 			if (!response.ok) throw new Error(`Download failed: ${response.status}`);
