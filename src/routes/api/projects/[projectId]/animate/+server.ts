@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, animateGate } from '$lib/domain/animate';
 import { idSchema } from '$lib/domain/schemas';
 import { bannedTerms } from '$lib/domain/brief-rules';
+import { compileForSend, seriesReferences } from '$lib/server/references';
 import { getAnimateDeps, getGridDeps, getPushDeps, resolveProjectModel } from '$lib/server/config';
 import { quoteGrids, sendGrid, settleGrid } from '$lib/server/grid';
 import { pushTake } from '$lib/server/review-room-takes';
@@ -130,6 +131,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		draftNote = `No Agent model (${resolved.message}); starting from the shot's video prompt.`;
 	}
 	const priced = await estimateAnimate(deps, settings);
+	// The gate preview checks the prompt as it will be sent: handles compiled against the series' references.
+	const references = await seriesReferences(deps.projectRoot, project);
+	const compiled = await compileForSend(settings.prompt, references, 'seedance', deps.referenceFiles);
 	return json({
 		ok: true,
 		data: {
@@ -142,7 +146,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			session_spent_credits: spentThisSession(body.session_id),
 			// Gate preview with the current price (confirm mode); the send re-runs the gate for real.
 			banned,
-			blocked: priced.ok ? animateGate({ prompt: settings.prompt, still: still.still, estimate_credits: priced.estimate.credits, mode: { kind: 'confirm', confirmed_credits: priced.estimate.credits }, banned }) : []
+			references: references.map(({ name, kind, handles }) => ({ name, kind, handles })),
+			blocked: priced.ok ? [...animateGate({ prompt: compiled.prompt, still: still.still, estimate_credits: priced.estimate.credits, mode: { kind: 'confirm', confirmed_credits: priced.estimate.credits }, banned, references }), ...compiled.blocked] : []
 		}
 	});
 };

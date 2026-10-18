@@ -14,6 +14,7 @@ import { generateStructured, type AgentModelClient } from './model-provider';
 import { lintPrompt } from '$lib/domain/prompt-lint';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import type { MediaProbe } from './media-probe';
+import { compileForSend, seriesReferences, type ReferenceFiles } from './references';
 
 /**
  * Animate flow (V1S-120): prepare (Agent-drafted prompt, gate preview, price),
@@ -30,6 +31,8 @@ export interface AnimateDeps {
 	generator: VideoGenerator | null;
 	probe: (file: string) => Promise<MediaProbe>;
 	download: (url: string) => Promise<Uint8Array>;
+	/** Reference files to attach (V1S-326); absent = none available, so a prompt using a handle is blocked. */
+	referenceFiles?: ReferenceFiles;
 }
 
 /** YOLO spend per browser session, held by the server so the cap can't be talked around. */
@@ -122,17 +125,21 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 	if (project.version !== input.expected_version) return failure(409, 'VERSION_CONFLICT', `Version conflict: expected ${input.expected_version}, current ${project.version}`);
 	const found = stillOf(deps, project, input.card_id);
 	if (!found.ok) return found;
-	const priced = await estimateAnimate(deps, input.settings);
+	// Handles (@Kai) become image labels and exact names before the gate, and their sheets are attached (V1S-327).
+	const references = await seriesReferences(deps.projectRoot, project);
+	const compiled = await compileForSend(input.settings.prompt, references, 'seedance', deps.referenceFiles);
+	const settings = { ...input.settings, prompt: compiled.prompt };
+	const priced = await estimateAnimate(deps, settings);
 	if (!priced.ok) return priced;
 	const mode: SendMode = input.mode.kind === 'confirm'
 		? input.mode
 		: { kind: 'yolo', cap_credits: input.mode.cap_credits, spent_credits: spentThisSession(input.mode.session_id) };
 	const banned = bannedTerms(await projectRules(deps.projectRoot, input.project_id));
-	const reasons = animateGate({ prompt: input.settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode, banned });
+	const reasons = [...animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode, banned, references }), ...compiled.blocked];
 	if (reasons.length) return failure(422, 'GATE_BLOCKED', 'Blocked before any spend', reasons);
 
 	// Gate passed: from here on money can move.
-	const request = seedanceRequest(input.settings, found.path);
+	const request = { ...seedanceRequest(settings, found.path), ...(compiled.files.length ? { image_references: compiled.files } : {}) };
 	let requestId: string;
 	try {
 		({ job_id: requestId } = await deps.generator!.submit(request));
@@ -179,6 +186,7 @@ export async function quoteSceneBatch(deps: AnimateDeps, project: Project, group
 	const pending = new Set(pendingGenerations(production).map((generation) => generation.card_id));
 	const hasVideo = (cardId: string) => production.assets.some((asset) => asset.card_id === cardId && asset.kind === 'video' && !asset.rejected);
 	const banned = bannedTerms(await projectRules(deps.projectRoot, project.project_id));
+	const references = await seriesReferences(deps.projectRoot, project);
 	const items: BatchItem[] = [];
 	const skipped: SceneBatch['skipped'] = [];
 	for (const card of production.cards.filter((entry) => entry.group_id === groupId).toSorted((a, b) => a.order - b.order)) {
@@ -187,11 +195,12 @@ export async function quoteSceneBatch(deps: AnimateDeps, project: Project, group
 		if (hasVideo(card.card_id)) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'already has a video take' }); continue; }
 		const found = stillOf(deps, project, card.card_id);
 		if (!found.ok) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'no still pick yet' }); continue; }
-		const settings = draftSettings(card);
+		const compiled = await compileForSend(card.video_prompt, references, 'seedance', deps.referenceFiles);
+		const settings = { ...draftSettings(card), prompt: compiled.prompt };
 		const priced = await estimateAnimate(deps, settings);
 		const credits = priced.ok ? priced.estimate.credits : null;
 		const blocked = priced.ok
-			? animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: credits!, mode: { kind: 'confirm', confirmed_credits: credits! }, banned })
+			? [...animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: credits!, mode: { kind: 'confirm', confirmed_credits: credits! }, banned, references }), ...compiled.blocked]
 			: [priced.message];
 		items.push({ card_id: card.card_id, title: card.title, prompt: settings.prompt, settings, credits, blocked });
 	}

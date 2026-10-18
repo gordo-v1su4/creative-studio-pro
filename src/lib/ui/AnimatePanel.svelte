@@ -4,6 +4,7 @@
 	import Pick from '$lib/ui/controls/Pick.svelte';
 	import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, type AnimateResolution } from '$lib/domain/animate';
 	import { lintPrompt } from '$lib/domain/prompt-lint';
+	import { compileHandles } from '$lib/domain/handles';
 	import { MIN_LONG_EDGE } from '$lib/domain/media';
 	import type { Project } from '$lib/domain/schemas';
 
@@ -19,7 +20,7 @@
 
 	type Prepared = {
 		title: string; still: { url: string; name: string; width: number | null; height: number | null };
-		draft_note: string | null; configured: boolean; banned?: string[]; estimate: { credits: number } | null; estimate_error: string | null; session_spent_credits: number;
+		draft_note: string | null; configured: boolean; banned?: string[]; references?: Array<{ name: string; kind: string; handles: string[] }>; estimate: { credits: number } | null; estimate_error: string | null; session_spent_credits: number;
 		balance: { credits: number; plan: string | null } | null;
 	};
 
@@ -41,7 +42,8 @@
 	let error = $state<string | null>(null);
 	let reasons = $state<string[]>([]);
 
-	let lint = $derived(lintPrompt(prompt, 'seedance', prepared?.banned ?? []).issues);
+	// Lint the prompt as it will be sent: @Handles compiled to image labels and exact names (V1S-327).
+	let lint = $derived(lintPrompt(compileHandles(prompt, prepared?.references ?? [], 'seedance').prompt, 'seedance', prepared?.banned ?? [], { references: prepared?.references ?? [] }).issues);
 	let lintErrors = $derived(lint.filter((issue) => issue.severity === 'error'));
 	let stillUnder2K = $derived(!!prepared?.still.width && !!prepared?.still.height && Math.max(prepared.still.width, prepared.still.height) < MIN_LONG_EDGE);
 

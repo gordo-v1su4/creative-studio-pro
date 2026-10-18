@@ -11,6 +11,7 @@ import { projectRules } from './animate';
 import type { ImageGenerator } from './higgsfield';
 import type { Splitter } from './splitter';
 import type { MediaProbe } from './media-probe';
+import { compileForSend, seriesReferences, type ReferenceFiles } from './references';
 
 /**
  * Grid stills (V1S-278): a scene's shots without a still, nine per grid, each grid one Nano Banana Pro 4K
@@ -22,11 +23,13 @@ export interface GridDeps {
 	store: ProjectStore; gateway: ProjectCommandGateway; projectRoot: string;
 	images: ImageGenerator | null; splitter: Splitter | null;
 	download: (url: string) => Promise<Uint8Array>; probe: (file: string) => Promise<MediaProbe>;
+	/** Reference files to attach (V1S-326); absent = none available, so a grid using a handle is blocked. */
+	referenceFiles?: ReferenceFiles;
 }
 type Failure = { ok: false; status: number; message: string; reasons?: string[] };
 const fail = (status: number, message: string, reasons?: string[]): Failure => ({ ok: false, status, message, ...(reasons ? { reasons } : {}) });
 
-export interface GridQuote { chunk: number; card_ids: string[]; titles: string[]; prompt: string; credits: number | null; blocked: string[] }
+export interface GridQuote { chunk: number; card_ids: string[]; titles: string[]; prompt: string; credits: number | null; blocked: string[]; /** Reference files attached, in image order (V1S-327). */ references: string[] }
 
 export async function quoteGrids(deps: GridDeps, project: Project, groupId: string): Promise<{ ok: true; grids: GridQuote[] } | Failure> {
 	if (!deps.images) return fail(503, 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)');
@@ -36,15 +39,19 @@ export async function quoteGrids(deps: GridDeps, project: Project, groupId: stri
 	const hasStill = (cardId: string) => project.production.assets.some((asset) => asset.card_id === cardId && asset.kind === 'image' && !asset.rejected);
 	const shots = project.production.cards.filter((card) => card.group_id === groupId && !card.benched && !hasStill(card.card_id)).toSorted((a, b) => a.order - b.order);
 	const banned = bannedTerms(await projectRules(deps.projectRoot, project.project_id));
+	const references = await seriesReferences(deps.projectRoot, project);
 	const grids: GridQuote[] = [];
 	for (const [chunk, cards] of gridChunks(shots).entries()) {
-		const prompt = gridPrompt({ scene: scene?.title ?? group.name, location: scene?.location ?? '', summary: scene?.summary ?? '', characters: scene?.characters ?? [], shots: cards.map((card) => ({ card_id: card.card_id, title: card.title, image_prompt: card.image_prompt, description: card.beat })) });
+		const written = gridPrompt({ scene: scene?.title ?? group.name, location: scene?.location ?? '', summary: scene?.summary ?? '', characters: scene?.characters ?? [], shots: cards.map((card) => ({ card_id: card.card_id, title: card.title, image_prompt: card.image_prompt, description: card.beat })) });
+		// Handles (@Kai) become image labels and exact names before lint, and their sheets are attached.
+		const compiled = await compileForSend(written, references, 'nano_banana', deps.referenceFiles);
+		const prompt = compiled.prompt;
 		const counts = new Map<string, number>();
-		for (const issue of lintPrompt(prompt, 'nano_banana', banned).issues) if (issue.severity === 'error') { const key = `Prompt rule ${issue.rule}: ${issue.message}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
-		const blocked = [...counts].map(([reason, n]) => (n > 1 ? `${reason} (×${n})` : reason));
+		for (const issue of lintPrompt(prompt, 'nano_banana', banned, { references }).issues) if (issue.severity === 'error') { const key = `Prompt rule ${issue.rule}: ${issue.message}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
+		const blocked = [...[...counts].map(([reason, n]) => (n > 1 ? `${reason} (×${n})` : reason)), ...compiled.blocked];
 		let credits: number | null = null;
-		try { credits = (await deps.images.estimate({ prompt, references: [] })).credits; } catch (cause) { blocked.push(cause instanceof Error ? cause.message : 'Price check failed'); }
-		grids.push({ chunk, card_ids: cards.map((card) => card.card_id), titles: cards.map((card) => card.title), prompt, credits, blocked });
+		try { credits = (await deps.images.estimate({ prompt, references: compiled.files })).credits; } catch (cause) { blocked.push(cause instanceof Error ? cause.message : 'Price check failed'); }
+		grids.push({ chunk, card_ids: cards.map((card) => card.card_id), titles: cards.map((card) => card.title), prompt, credits, blocked, references: compiled.files });
 	}
 	return { ok: true, grids };
 }
@@ -61,7 +68,7 @@ export async function sendGrid(deps: GridDeps, input: { project_id: string; grou
 	if (grid.credits !== null && grid.credits > input.confirmed_credits + 1e-6) reasons.push(`The grid now costs ${grid.credits} credits, above the ${input.confirmed_credits} you confirmed`);
 	if (reasons.length) return fail(422, 'Blocked before any spend', reasons);
 	try {
-		const { job_id } = await deps.images!.submit({ prompt: grid.prompt, references: [] });
+		const { job_id } = await deps.images!.submit({ prompt: grid.prompt, references: grid.references });
 		return { ok: true, job_id, card_ids: grid.card_ids, credits: grid.credits ?? 0 };
 	} catch (cause) {
 		return fail(502, cause instanceof Error ? cause.message : 'Send failed');

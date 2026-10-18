@@ -110,7 +110,12 @@ function contextAt(text: string, index: number, length: number): string {
 	return `${from > 0 ? '…' : ''}${text.slice(from, to).replace(/\s+/g, ' ')}${to < text.length ? '…' : ''}`;
 }
 
-export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', projectBanned: string[] = []): LintResult {
+export interface LintOptions {
+	/** The series' references (V1S-327): their exact names must carry an image label, as the handle compile writes them. */
+	references?: Array<{ name: string }>;
+}
+
+export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', projectBanned: string[] = [], options: LintOptions = {}): LintResult {
 	const text = promptToText(raw);
 	const { declarations, spans } = extractDeclarations(text);
 	const issues: LintIssue[] = [];
@@ -122,6 +127,8 @@ export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', proj
 		for (const m of text.matchAll(/@\w*/g)) push('at-sign', 'error', m, 'Nano Banana: never use @ — write "Image 1".');
 	} else {
 		for (const m of text.matchAll(/@Image\s+\d+/g)) push('seedance-underscore', 'error', m, 'Seedance: use @Image_1 (underscore), not "@Image 1".');
+		// Handles are swapped before lint (V1S-327); one still here matched no reference.
+		for (const m of text.matchAll(/@(?!Image[ _]?\d)[A-Za-z][A-Za-z0-9_-]*/g)) push('unknown-handle', 'error', m, `${m[0]} matches no reference.`);
 	}
 	for (const m of text.matchAll(BANNED)) push('banned-word', 'error', m, 'Banned word.');
 	// The project's own bans: words its brief's must-nots quote (rules file, V1S-132).
@@ -142,6 +149,15 @@ export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', proj
 	// Everything else runs on the prompt with declarations and declared names masked out.
 	let body = text;
 	for (const [start, end] of spans) body = mask(body, start, end);
+	// A reference's exact name always travels with its image label: "@Image_1 (Kai "Hoodie" Santana)".
+	for (const reference of options.references ?? []) {
+		if (!reference.name.trim()) continue;
+		const pattern = new RegExp(reference.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+		for (const m of body.matchAll(pattern)) {
+			const before = body.slice(Math.max(0, m.index - 16), m.index);
+			if (!/@?Image[ _]?\d+ \($/.test(before)) push('unlabelled-name', 'error', m, `"${reference.name}" without its image label — write its @handle so the compile adds it.`);
+		}
+	}
 	const names = declarations.map((d) => d.name).sort((a, b) => b.length - a.length);
 	for (const name of names) {
 		// Sentence-initial capitalisation ("The man on the floor") still counts as the declared name.
