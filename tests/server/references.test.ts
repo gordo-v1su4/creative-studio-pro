@@ -30,3 +30,20 @@ describe('compile for send', () => {
 		expect(fileNameHasName('kai.png', 'Kai "Hoodie" Santana')).toBe(false);
 	});
 });
+
+describe('hand-attached references', () => {
+	test('a chip is declared and attached without a handle; the previous frame comes last', async () => {
+		const out = await compileForSend('@Kai turns, hard cut.', [kai, store], 'seedance', async (ref) => `/refs/${ref.file_name}`, { series: ['s'], previousFrame: { file: '/prev.jpg', width: 2560, height: 1440 } });
+		expect(out.prompt.split('\n').slice(0, 3)).toEqual([
+			'@Image_1 = Kai "Hoodie" Santana — definitive identity and wardrobe lock',
+			'@Image_2 = the Video Haven interior — exact location lock',
+			'@Image_3 = the last frame of the previous shot — continuity reference'
+		]);
+		expect(out.files).toEqual(['/refs/Kai_Hoodie_Santana_sheet.png', '/refs/haven.png', '/prev.jpg']);
+	});
+
+	test('a previous frame under 2K, or a chip no longer in the series, blocks the send', async () => {
+		const out = await compileForSend('A wide, hard cut.', [kai], 'seedance', async () => '/f.png', { series: ['gone'], previousFrame: { file: '/prev.jpg', width: 854, height: 480 } });
+		expect(out.blocked).toEqual(['A reference attached to the shot is no longer in the series (re-sync, or remove its chip)', "The previous shot's frame is 854×480, under 2048 px on the long edge"]);
+	});
+});

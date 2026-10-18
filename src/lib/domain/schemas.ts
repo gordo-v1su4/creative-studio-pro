@@ -229,6 +229,19 @@ export type Voice = z.infer<typeof voiceSchema>;
 // End-to-end production workspace (story -> cards -> media -> assembly)
 // ---------------------------------------------------------------------------
 
+/**
+ * A reference attached to one shot: a series Reference (V1S-326, dragged from the drawer) or the last frame
+ * of the previous shot's pick (V1S-328, taken from Review Room). Attached after the prompt's handles.
+ */
+export const shotReferenceSchema = z.discriminatedUnion('kind', [
+	z.object({ kind: z.literal('series'), page_id: z.string().min(1).max(64) }),
+	z.object({
+		kind: z.literal('previous_frame'), from_card_id: idSchema, take_id: idSchema, url: z.string().min(1).max(2000),
+		width: z.number().int().positive().optional(), height: z.number().int().positive().optional(), at: rfc3339Schema
+	})
+]);
+export type ShotReference = z.infer<typeof shotReferenceSchema>;
+
 export const storyCardSchema = z.object({
 	card_id: idSchema,
 	order: z.number().int().nonnegative(),
@@ -256,6 +269,8 @@ export const storyCardSchema = z.object({
 		/** V1S-325: the plain fields as of the last Notion sync, so an edit made in Notion since then wins over the board. */
 		synced: z.object({ description: z.string().max(4000), duration_s: z.number().nonnegative(), dialogue: z.string().max(4000), refs: z.string().max(4000) }).optional()
 	}).optional(),
+	/** References attached to this shot by hand (chips on the card); the prompt's @handles add their own at send. */
+	references: z.array(shotReferenceSchema).max(20).optional(),
 	/** Written by "Fit to length" (not in Notion): the length it filled toward, its lint result and the shot details. */
 	fit: z.object({
 		target_min: z.number().int().positive().max(120),
@@ -749,6 +764,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.notion_synced.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.target_length_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_stored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.shot_references_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
 	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
@@ -872,6 +888,15 @@ export const restoreTakeCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	take_id: idSchema
+});
+
+/** The shot's attached references, replaced as a whole (chips added or removed on the card). */
+export const setShotReferencesCommandSchema = z.object({
+	command: z.literal('set_shot_references'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	card_id: idSchema,
+	references: z.array(shotReferenceSchema).max(20)
 });
 
 export const benchBeatCommandSchema = z.object({

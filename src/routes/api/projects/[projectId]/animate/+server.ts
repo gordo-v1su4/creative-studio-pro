@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { ANIMATE_MAX_S, ANIMATE_MIN_S, ANIMATE_RESOLUTIONS, animateGate } from '$lib/domain/animate';
 import { idSchema } from '$lib/domain/schemas';
 import { bannedTerms } from '$lib/domain/brief-rules';
-import { compileForSend, seriesReferences } from '$lib/server/references';
+import { compileForSend, seriesReferences, shotAttachments } from '$lib/server/references';
 import { getAnimateDeps, getGridDeps, getPushDeps, resolveProjectModel } from '$lib/server/config';
 import { quoteGrids, sendGrid, settleGrid } from '$lib/server/grid';
 import { pushTake } from '$lib/server/review-room-takes';
@@ -133,7 +133,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const priced = await estimateAnimate(deps, settings);
 	// The gate preview checks the prompt as it will be sent: handles compiled against the series' references.
 	const references = await seriesReferences(deps.projectRoot, project);
-	const compiled = await compileForSend(settings.prompt, references, 'seedance', deps.referenceFiles);
+	const compiled = await compileForSend(settings.prompt, references, 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, still.card));
 	return json({
 		ok: true,
 		data: {

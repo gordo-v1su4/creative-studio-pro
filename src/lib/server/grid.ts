@@ -12,6 +12,7 @@ import type { ImageGenerator } from './higgsfield';
 import type { Splitter } from './splitter';
 import type { MediaProbe } from './media-probe';
 import { compileForSend, seriesReferences, type ReferenceFiles } from './references';
+import { seriesReferenceIds } from '$lib/domain/shot-references';
 
 /**
  * Grid stills (V1S-278): a scene's shots without a still, nine per grid, each grid one Nano Banana Pro 4K
@@ -44,7 +45,7 @@ export async function quoteGrids(deps: GridDeps, project: Project, groupId: stri
 	for (const [chunk, cards] of gridChunks(shots).entries()) {
 		const written = gridPrompt({ scene: scene?.title ?? group.name, location: scene?.location ?? '', summary: scene?.summary ?? '', characters: scene?.characters ?? [], shots: cards.map((card) => ({ card_id: card.card_id, title: card.title, image_prompt: card.image_prompt, description: card.beat })) });
 		// Handles (@Kai) become image labels and exact names before lint, and their sheets are attached.
-		const compiled = await compileForSend(written, references, 'nano_banana', deps.referenceFiles);
+		const compiled = await compileForSend(written, references, 'nano_banana', deps.referenceFiles, { series: [...new Set(cards.flatMap((card) => seriesReferenceIds(card)))] });
 		const prompt = compiled.prompt;
 		const counts = new Map<string, number>();
 		for (const issue of lintPrompt(prompt, 'nano_banana', banned, { references }).issues) if (issue.severity === 'error') { const key = `Prompt rule ${issue.rule}: ${issue.message}`; counts.set(key, (counts.get(key) ?? 0) + 1); }

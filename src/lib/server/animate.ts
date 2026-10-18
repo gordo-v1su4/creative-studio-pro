@@ -14,7 +14,7 @@ import { generateStructured, type AgentModelClient } from './model-provider';
 import { lintPrompt } from '$lib/domain/prompt-lint';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import type { MediaProbe } from './media-probe';
-import { compileForSend, seriesReferences, type ReferenceFiles } from './references';
+import { compileForSend, seriesReferences, shotAttachments, type ReferenceFiles } from './references';
 
 /**
  * Animate flow (V1S-120): prepare (Agent-drafted prompt, gate preview, price),
@@ -127,7 +127,7 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 	if (!found.ok) return found;
 	// Handles (@Kai) become image labels and exact names before the gate, and their sheets are attached (V1S-327).
 	const references = await seriesReferences(deps.projectRoot, project);
-	const compiled = await compileForSend(input.settings.prompt, references, 'seedance', deps.referenceFiles);
+	const compiled = await compileForSend(input.settings.prompt, references, 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, found.card));
 	const settings = { ...input.settings, prompt: compiled.prompt };
 	const priced = await estimateAnimate(deps, settings);
 	if (!priced.ok) return priced;
@@ -195,7 +195,7 @@ export async function quoteSceneBatch(deps: AnimateDeps, project: Project, group
 		if (hasVideo(card.card_id)) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'already has a video take' }); continue; }
 		const found = stillOf(deps, project, card.card_id);
 		if (!found.ok) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'no still pick yet' }); continue; }
-		const compiled = await compileForSend(card.video_prompt, references, 'seedance', deps.referenceFiles);
+		const compiled = await compileForSend(card.video_prompt, references, 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, card));
 		const settings = { ...draftSettings(card), prompt: compiled.prompt };
 		const priced = await estimateAnimate(deps, settings);
 		const credits = priced.ok ? priced.estimate.credits : null;

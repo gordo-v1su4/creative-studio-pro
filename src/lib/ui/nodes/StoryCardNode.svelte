@@ -36,10 +36,21 @@
 		onSplit?: (takeId: string) => void;
 		/** The take being split right now, if any. */
 		splitting?: string | null;
+		/** A series episode's shot: it has reference chips (V1S-326) and can take the previous shot's last frame (V1S-328). */
+		series?: boolean;
+		references?: Array<{ key: string; kind: 'series' | 'previous_frame'; label: string; url: string | null }>;
+		canAttachPrevious?: boolean;
+		onAttachPrevious?: () => void;
+		onRemoveReference?: (key: string) => void;
+		onDropReference?: (pageId: string) => void;
 	};
 
 	let { data, selected }: NodeProps = $props();
+	/** Drag type the References drawer sets on a thumbnail (V1S-326). */
+	const REFERENCE_DRAG = 'application/x-csp-reference';
+	let referenceOver = $state(false);
 	let story = $derived(data as StoryCardNodeData);
+	let hasPreviousFrame = $derived((story.references ?? []).some((reference) => reference.kind === 'previous_frame'));
 	let card = $derived(story.card);
 	let benched = $derived(card?.benched === true);
 	// 1-based place on the spine; null when the shot is unhooked from the chain.
@@ -129,13 +140,19 @@
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
 <article
 	onclick={select}
-	ondragenter={(event) => { if (card && event.dataTransfer?.types.includes('Files')) dropping = true; }}
-	ondragleave={(event) => { if (!(event.currentTarget as Element).contains(event.relatedTarget as Node)) dropping = false; }}
-	ondrop={() => (dropping = false)}
+	ondragenter={(event) => { if (card && event.dataTransfer?.types.includes('Files')) dropping = true; if (card && story.series && event.dataTransfer?.types.includes(REFERENCE_DRAG)) referenceOver = true; }}
+	ondragover={(event) => { if (card && story.series && event.dataTransfer?.types.includes(REFERENCE_DRAG)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+	ondragleave={(event) => { if (!(event.currentTarget as Element).contains(event.relatedTarget as Node)) { dropping = false; referenceOver = false; } }}
+	ondrop={(event) => {
+		dropping = false; referenceOver = false;
+		const pageId = event.dataTransfer?.getData(REFERENCE_DRAG);
+		if (card && story.series && pageId) { event.preventDefault(); event.stopPropagation(); story.onDropReference?.(pageId); }
+	}}
 	class={[
 		'story-node w-[240px] overflow-hidden border bg-nr-card',
 		benched && 'benched',
 		dropping && 'dropping',
+		referenceOver && 'dropping',
 		inSequence ? 'border-nr-mark shadow-[0_0_18px_rgba(242,193,78,.18)]' : selected ? 'border-nr-accent shadow-[0_0_18px_rgba(85,223,213,.14)]' : 'border-nr-line'
 	]}
 	aria-label={card ? `Story card ${number ?? 'off the spine'}, ${card.title}` : `Story card ${story.order + 1}, awaiting draft`}
@@ -221,6 +238,29 @@
 		{/key}
 	</div>
 
+	{#if card && story.series}
+		<div class="nodrag flex flex-wrap items-center gap-1 border-t border-nr-line px-1.5 py-1" aria-label={`References on ${card.title}`}>
+			{#each story.references ?? [] as reference (reference.key)}
+				<span class={['ref-chip', reference.kind === 'previous_frame' && 'prev', reference.label === 'Missing reference' && 'missing']} title={reference.kind === 'previous_frame' ? "The previous shot's last frame, attached after the other references" : reference.label}>
+					{#if reference.url}<img src={reference.url} alt="" class="h-3 w-5 object-cover" />{/if}
+					<span class="max-w-[120px] truncate">{reference.label}</span>
+					<button type="button" onclick={(event) => { event.stopPropagation(); story.onRemoveReference?.(reference.key); }} aria-label={`Remove ${reference.label} from ${card.title}`}>×</button>
+				</span>
+			{:else}
+				<span class="font-mono text-[9px] text-nr-dim">No references · drag one from References</span>
+			{/each}
+			<span class="grow"></span>
+			<button
+				type="button"
+				class="take-btn"
+				onclick={(event) => { event.stopPropagation(); story.onAttachPrevious?.(); }}
+				disabled={!story.canAttachPrevious}
+				aria-label={`Attach the last frame of the previous shot to ${card.title}`}
+				title={story.canAttachPrevious ? (hasPreviousFrame ? "Take the previous shot's last frame again (its pick may have changed)" : "Attach the last frame of the previous shot's pick as a reference") : 'The previous shot has no pick yet'}
+			>{hasPreviousFrame ? 'Prev ↻' : '+ Prev frame'}</button>
+		</div>
+	{/if}
+
 	{#if card && (cycle.length >= 2 || shown || rejectedCount > 0)}
 		<footer class="nodrag flex items-center gap-1 border-t border-nr-line px-1 py-0.5">
 			{#if cycle.length >= 2}
@@ -272,6 +312,12 @@
 	.hold-form input[type='number'] { width: 52px; border: 1px solid var(--color-nr-line); background: var(--color-nr-card); padding: 1px 4px; color: var(--color-nr-text); font: inherit; }
 	.draft-badge { position: absolute; top: 6px; right: 6px; border: 1px solid var(--color-nr-mark-line); background: var(--color-nr-mark-bg); padding: 1px 5px; color: var(--color-nr-mark); font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.draft-badge.closing { border-color: var(--color-nr-danger-line); background: var(--color-nr-danger-bg); color: var(--color-nr-danger); }
+	.ref-chip { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--color-nr-accent-deep); padding: 0 2px 0 4px; color: var(--color-nr-muted); font: 600 9px var(--font-mono); }
+	.ref-chip.prev { border-color: var(--color-nr-blue); }
+	.ref-chip.missing { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
+	.ref-chip button { border: 0; background: transparent; padding: 0 2px; color: var(--color-nr-dim); font: inherit; }
+	.ref-chip button:hover { color: var(--color-nr-text); }
+	.take-btn:disabled { opacity: .35; cursor: default; background: transparent; }
 	.dropping { outline: 1px dashed var(--color-nr-accent); outline-offset: 3px; }
 	.benched > :not(header) { opacity: .4; }
 	.benched header { opacity: .7; }

@@ -1,6 +1,12 @@
-import type { Project } from '$lib/domain/schemas';
+import { join, resolve, sep } from 'node:path';
+import type { Project, StoryCard } from '$lib/domain/schemas';
+import { previousFrameOf, seriesReferenceIds } from '$lib/domain/shot-references';
 import { compileHandles, type HandleTarget } from '$lib/domain/handles';
+import { MIN_LONG_EDGE } from '$lib/domain/media';
 import { SeriesStore, type SeriesRecord } from './series';
+
+/** How the previous shot's last frame is declared (V1S-328); always after the references. */
+export const PREVIOUS_FRAME = 'the last frame of the previous shot — continuity reference';
 
 /**
  * A series episode's references and the handle compile at send time (V1S-327): the card keeps the prompt
@@ -25,9 +31,14 @@ export const fileNameHasName = (fileName: string, name: string) => Boolean(squas
 
 export interface CompiledForSend { prompt: string; files: string[]; blocked: string[]; references: SeriesReferenceItem[] }
 
+/** What one shot (or a grid's shots) attached by hand: series references by page id, the previous shot's last frame. */
+export interface ShotAttachments { series?: string[]; previousFrame?: { file: string; width?: number; height?: number } | null }
+
 /** Compile a prompt's handles, check each used reference (name on sheet, file name, a file to attach). */
-export async function compileForSend(prompt: string, references: SeriesReferenceItem[], target: HandleTarget, files: ReferenceFiles = noReferenceFiles): Promise<CompiledForSend> {
-	const compiled = compileHandles(prompt, references, target);
+export async function compileForSend(prompt: string, references: SeriesReferenceItem[], target: HandleTarget, files: ReferenceFiles = noReferenceFiles, shot: ShotAttachments = {}): Promise<CompiledForSend> {
+	const include = (shot.series ?? []).map((id) => references.find((reference) => reference.page_id === id)).filter((reference): reference is SeriesReferenceItem => Boolean(reference));
+	const previous = shot.previousFrame ?? null;
+	const compiled = compileHandles(prompt, references, target, { include, extras: previous ? [PREVIOUS_FRAME] : [] });
 	const blocked: string[] = [];
 	for (const handle of compiled.ambiguous) blocked.push(`${handle} points at more than one reference; give each reference its own handle`);
 	const attach: string[] = [];
@@ -38,5 +49,23 @@ export async function compileForSend(prompt: string, references: SeriesReference
 		if (file) attach.push(file);
 		else blocked.push(`Reference "${reference.name}" has no file to attach yet (upload it to the series' _References in Review Room)`);
 	}
+	for (const id of shot.series ?? []) if (!include.some((reference) => reference.page_id === id)) blocked.push('A reference attached to the shot is no longer in the series (re-sync, or remove its chip)');
+	if (previous) {
+		attach.push(previous.file);
+		if (!previous.width || !previous.height) blocked.push("The previous shot's frame has no known size; it must be checked against 2K first");
+		else if (Math.max(previous.width, previous.height) < MIN_LONG_EDGE) blocked.push(`The previous shot's frame is ${previous.width}×${previous.height}, under ${MIN_LONG_EDGE} px on the long edge`);
+	}
 	return { prompt: compiled.prompt, files: attach, blocked, references };
+}
+
+/** A shot's hand-attached references as the compile needs them; the previous frame's project URL becomes its path. */
+export function shotAttachments(projectRoot: string, project: Project, card: StoryCard): ShotAttachments {
+	const frame = previousFrameOf(card);
+	const prefix = `/api/projects/${project.project_id}/files/`;
+	const files = resolve(join(projectRoot, project.project_id, 'files'));
+	const path = frame?.url.startsWith(prefix) ? resolve(join(files, decodeURIComponent(frame.url.slice(prefix.length)))) : null;
+	return {
+		series: seriesReferenceIds(card),
+		previousFrame: frame && path && path.startsWith(files + sep) ? { file: path, width: frame.width, height: frame.height } : null
+	};
 }

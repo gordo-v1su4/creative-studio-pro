@@ -37,7 +37,8 @@
 	import { CLOSING_MS, draftsClosingSoon, finalizingIds, timeLeft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
-	import type { Project, ProjectSummary, CanvasLayout } from '$lib/domain/schemas';
+	import type { Project, ProjectSummary, CanvasLayout, ShotReference } from '$lib/domain/schemas';
+	import { previousPick } from '$lib/domain/shot-references';
 
 	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
 	const edgeTypes = { spine: SpineEdge };
@@ -55,6 +56,23 @@
 	let selectedNodeId = $state<string | null>(null);
 	let savingLayout = $state(false);
 	let loadError = $state<string | null>(null);
+	// The series' references (V1S-326): names for the chips on shots, thumbnails in the References drawer.
+	type SeriesRef = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean };
+	let seriesRefs = $state<SeriesRef[]>([]);
+	let seriesRefsFor = $state<string | null>(null);
+	$effect(() => {
+		const id = activeProject?.series?.series_id ?? null;
+		if (id === seriesRefsFor) return;
+		seriesRefsFor = id;
+		seriesRefs = [];
+		if (!id) return;
+		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { references?: { items: SeriesRef[] } } }) => {
+			if (body.ok && seriesRefsFor === id) {
+				seriesRefs = body.data?.references?.items ?? [];
+				if (activeProject) nodes = projectToNodes(activeProject, layout);
+			}
+		}).catch(() => {});
+	});
 	let creating = $state(false);
 	// The board has no permanent right panel (V1S-132): the brief lives in Story; the inspector opens on demand.
 	let inspectorOpen = $state(false);
@@ -154,6 +172,12 @@
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
 					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
 					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched),
+					series: Boolean(project.series),
+					references: card ? (card.references ?? []).map((reference) => ({ key: referenceKey(reference), kind: reference.kind, label: reference.kind === 'series' ? (seriesRefs.find((item) => item.page_id === reference.page_id)?.name ?? 'Missing reference') : 'Prev frame', url: reference.kind === 'previous_frame' ? reference.url : null })) : [],
+					canAttachPrevious: card ? Boolean(previousPick(project.production, card.card_id)) : false,
+					onAttachPrevious: () => card && attachPreviousFrame(card.card_id),
+					onRemoveReference: (key: string) => card && setShotReferences(card.card_id, (card.references ?? []).filter((reference) => referenceKey(reference) !== key)),
+					onDropReference: (pageId: string) => card && setShotReferences(card.card_id, [...(card.references ?? []).filter((reference) => reference.kind === 'series'), { kind: 'series', page_id: pageId }, ...(card.references ?? []).filter((reference) => reference.kind !== 'series')]),
 					onHold: (options: { length_s: number; push_in: boolean; fade: boolean }) => card && makeHold(card.card_id, card.title, options),
 					onAnimate: () => card && (animateCardId = card.card_id),
 					onSplit: (takeId: string) => card && void splitTake(takeId),
@@ -573,6 +597,21 @@
 		const pending = { takeId, timer: setTimeout(() => flushPick(cardId, pending), 300) };
 		pendingPicks.set(cardId, pending);
 		adoptProject(withPendingPicks(activeProject));
+	}
+
+	const referenceKey = (reference: ShotReference) => (reference.kind === 'series' ? `series:${reference.page_id}` : 'previous_frame');
+
+	function setShotReferences(cardId: string, references: ShotReference[]) {
+		sendBoardCommand({ command: 'set_shot_references', card_id: cardId, references });
+	}
+
+	/** V1S-328: the last frame of the previous shot's pick, taken from Review Room, as a reference of this shot. */
+	function attachPreviousFrame(cardId: string) {
+		enqueueBoard((project) => fetch(`/api/projects/${project.project_id}/references`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ action: 'previous_frame', card_id: cardId, expected_version: project.version })
+		}));
 	}
 
 	function benchBeat(cardId: string, benched: boolean) {

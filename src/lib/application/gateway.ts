@@ -20,6 +20,7 @@ import {
 	rejectTakeCommandSchema,
 	restoreTakeCommandSchema,
 	benchBeatCommandSchema,
+	setShotReferencesCommandSchema,
 	rewireSpineCommandSchema,
 	addTakeCommandSchema,
 	addBeatCommandSchema,
@@ -31,6 +32,7 @@ import { uuid7ish, randomSeedHex } from '$lib/domain/ids';
 import { DEFAULT_ROSTER_COUNT, selectRoster } from '$lib/domain/roster';
 import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from '$lib/domain/takes';
 import { applyBench } from '$lib/domain/bench';
+import { applySetShotReferences } from '$lib/domain/shot-references';
 import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
@@ -159,6 +161,8 @@ export class ProjectCommandGateway {
 				return this.benchBeat(raw);
 			case 'rewire_spine':
 				return this.rewireSpine(raw);
+			case 'set_shot_references':
+				return this.setShotReferences(raw);
 			case 'add_take':
 				return this.addTake(raw);
 			case 'add_beat':
@@ -305,6 +309,12 @@ export class ProjectCommandGateway {
 			(production) => applyBench(production, parsed.data.card_id, bench),
 			bench ? 'project.beat_benched.v1' : 'project.beat_unbenched.v1'
 		);
+	}
+
+	async setShotReferences(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = setShotReferencesCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateBoard(parsed.data, (production) => applySetShotReferences(production, parsed.data.card_id, parsed.data.references), 'project.shot_references_set.v1');
 	}
 
 	/** Animate (server-internal, after the send gate passed and the provider accepted): note the pending generation. */
@@ -551,7 +561,7 @@ export class ProjectCommandGateway {
 	private async updateBoard(
 		command: { project_id: string; expected_version: number },
 		apply: (production: Project['production']) => TakeResult,
-		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}` | 'project.finalize_sent.v1' | 'project.group_changed.v1'>
+		eventType: Extract<LedgerEventType, `project.take_${string}` | `project.beat_${string}` | 'project.spine_rewired.v1' | `project.generation_${string}` | 'project.finalize_sent.v1' | 'project.group_changed.v1' | 'project.shot_references_set.v1'>
 	): Promise<CommandOutcome<Project>> {
 		let refusal: string | null = null;
 		try {

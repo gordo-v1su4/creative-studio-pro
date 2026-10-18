@@ -23,6 +23,17 @@ export interface CompileResult<R extends HandleReference = HandleReference> {
 	unknown: string[];
 	/** Handles that match more than one reference (also left in place). */
 	ambiguous: string[];
+	/** Images that are not references (the previous shot's last frame), numbered after them. */
+	extras: Array<{ image: number; text: string }>;
+}
+
+export interface CompileOptions<R> {
+	/** The first image number; defaults to one past the highest image the prompt already declares. */
+	firstImage?: number;
+	/** References attached to the shot by hand: declared and attached even when no handle names them. */
+	include?: R[];
+	/** Declarations for images after the references, e.g. "the last frame of the previous shot — continuity reference". */
+	extras?: string[];
 }
 
 /** `@Kai`, `@Old-Man`, never `@Image_1` / `@Image 2`; a trailing `'s` is not part of the handle. */
@@ -44,8 +55,7 @@ export function handlesIn(prompt: string): string[] {
 	return [...prompt.matchAll(HANDLE)].map((m) => `@${m[1]}`);
 }
 
-/** `firstImage` defaults to one past the highest image the prompt already declares. */
-export function compileHandles<R extends HandleReference>(prompt: string, references: R[], target: HandleTarget, options: { firstImage?: number } = {}): CompileResult<R> {
+export function compileHandles<R extends HandleReference>(prompt: string, references: R[], target: HandleTarget, options: CompileOptions<R> = {}): CompileResult<R> {
 	const byHandle = new Map<string, R[]>();
 	for (const reference of references) {
 		for (const handle of reference.handles) {
@@ -66,7 +76,9 @@ export function compileHandles<R extends HandleReference>(prompt: string, refere
 		if (found.length > 1) { if (!ambiguous.includes(handle)) ambiguous.push(handle); continue; }
 		if (!used.includes(found[0])) used.push(found[0]);
 	}
-	if (used.length === 0) return { prompt, images: [], unknown, ambiguous };
+	for (const reference of options.include ?? []) if (!used.includes(reference)) used.push(reference);
+	const extraTexts = options.extras ?? [];
+	if (used.length === 0 && extraTexts.length === 0) return { prompt, images: [], unknown, ambiguous, extras: [] };
 
 	const rank = (reference: R) => KIND_RANK[kindKey(reference.kind)] ?? 3;
 	const ordered = used.map((reference, mention) => ({ reference, mention })).sort((a, b) => rank(a.reference) - rank(b.reference) || a.mention - b.mention);
@@ -75,12 +87,16 @@ export function compileHandles<R extends HandleReference>(prompt: string, refere
 	const first = options.firstImage ?? Math.max(0, ...declared) + 1;
 	const images = ordered.map(({ reference }, i) => ({ image: first + i, reference }));
 	const imageOf = new Map(images.map((entry) => [entry.reference, entry.image]));
+	const extras = extraTexts.map((text, i) => ({ image: first + images.length + i, text }));
 
 	const body = prompt.replace(HANDLE, (whole, name: string) => {
 		const found = byHandle.get(norm(name)) ?? [];
 		if (found.length !== 1) return whole;
 		return `${imageLabel(target, imageOf.get(found[0])!)} (${found[0].name})`;
 	});
-	const declarations = images.map(({ image, reference }) => `${imageLabel(target, image)} = ${reference.name} — ${LOCK[kindKey(reference.kind)] ?? 'exact reference lock'}`);
-	return { prompt: `${declarations.join('\n')}\n\n${body.trimStart()}`, images, unknown, ambiguous };
+	const declarations = [
+		...images.map(({ image, reference }) => `${imageLabel(target, image)} = ${reference.name} — ${LOCK[kindKey(reference.kind)] ?? 'exact reference lock'}`),
+		...extras.map(({ image, text }) => `${imageLabel(target, image)} = ${text}`)
+	];
+	return { prompt: `${declarations.join('\n')}\n\n${body.trimStart()}`, images, unknown, ambiguous, extras };
 }
