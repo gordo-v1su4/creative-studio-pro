@@ -99,3 +99,22 @@ ownership rule is ADR 0002 (`docs/adr/0002-app-writes-codes-into-notion.md`); me
 
 Dialogue length driving scene length; a master-shot pass then coverage angles; a vision check of sheet names; a
 second model checking that a story beat's shots portray it; two-part episodes; more Storyception structures.
+
+## Status (2026-10-18, early)
+
+- **Done and pushed to main:** V1S-327 (handle compile + lint), V1S-328 (previous shot's last frame + chips on shots),
+  V1S-329 (Fit reads Action, Dialogue, story beats and References; dialogue placement check; self-check), V1S-324
+  (skill v3; the Agent panel writes story beats, episode outlines and scenes into Notion, verified live on a throwaway
+  series, now in Notion's Archive), V1S-326 (Review Room `_References` folders, created for Blood Rush; upload from the
+  References drawer; `scripts/stamp_reference_name.py`).
+- **Decision waiting on the operator:** a previous-shot frame under 2048 px blocks the send (refs-min-2K). A 1080p or
+  480p pick's last frame is under that. Exempt it, upscale it, or keep the block?
+- **Holds:** the P01 "2:47 AM" teaser is **on hold** (operator, 2026-10-18). Its shots are fine as a scene but not
+  exciting. A more exciting action teaser exists elsewhere. Leave the scene out of Fit runs.
+- **Priority order (operator, 2026-10-18):** EP101 Act 1 first (shots populating across CSP, Notion and Review Room),
+  then the episode's images, then the trailer. **The season trailer (V1S-297, Video Haven Website) is due today
+  (2026-10-18):** pick the cut at 480p from the existing shots, make it a little longer than the current ending (Kai on
+  the roof doing tricks, almost falling off the side but not), then up-res.
+- **Next for V1S-283:** (1) story pass for EP101 Act 1 (Action and Dialogue) in the Agent panel's Story mode, which now
+  writes to Notion; (2) References: vet super-seed2, add rows to Notion, upload from the drawer; (3) Sync, then Fit
+  Act 1 (skip the teaser); (4) the operator approves the shots; (5) grid stills through the send gate.
