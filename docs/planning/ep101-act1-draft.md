@@ -1,7 +1,6 @@
-# EP101 "The Late Shift" — Act 1 draft (for review, not in Notion yet)
+# EP101 "The Late Shift" — Act 1 (approved, written to Notion 2026-10-18)
 
-Drafted 2026-10-18 for V1S-283. **Nothing is written to Notion** until the operator approves it. Once it's approved, the
-Agent panel's Story mode (or a Notion-connected chat with the story-interview skill) writes it into the three scenes.
+Drafted and approved 2026-10-18 for V1S-283; Action and Dialogue for scenes 020, 030 and 040 are in Notion.
 The P01 "2:47 AM" teaser (scene 010) is **on hold** and is not touched here.
 
 ## Season arc in one pass (from the Story page and the 15 story beats)
@@ -14,9 +13,7 @@ The P01 "2:47 AM" teaser (scene 010) is **on hold** and is not touched here.
 - **BELONG (EP9–12):** not her brother, the Rush can be moved (Break into Three); the tree, Malachi dies, Kai takes the
   Rush (Finale); the store rebuilt, Kai's own black tears (Final Image).
 
-**Data issue to fix in Notion:** all 15 story beats are linked to EP101 only (`Episode` relation). Each one should
-point to the episode where it lands (EP01 holds Opening Image → Catalyst; Midpoint is EP04, and so on). Fit uses
-these links, so EP101's scenes would otherwise pull in season-end beats.
+**Story-beat links:** checked 2026-10-18 and already correct; each beat points to the episode where it lands. An earlier note here was a misreading of the data.
 
 ## Open: Bryce (decide before writing Act 2)
 

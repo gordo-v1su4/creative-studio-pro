@@ -118,3 +118,21 @@ second model checking that a story beat's shots portray it; two-part episodes; m
 - **Next for V1S-283:** (1) story pass for EP101 Act 1 (Action and Dialogue) in the Agent panel's Story mode, which now
   writes to Notion; (2) References: vet super-seed2, add rows to Notion, upload from the drawer; (3) Sync, then Fit
   Act 1 (skip the teaser); (4) the operator approves the shots; (5) grid stills through the send gate.
+
+## Hand-off for the next session (end of 2026-10-18)
+
+- **Act 1 is in Notion.** Action and Dialogue for 020 Morning Quad, 030 The Paper Cut and 040 Video Haven, Day were
+  approved and written (`docs/planning/ep101-act1-draft.md`). Bryce stays out of the pilot (enters EP02/EP03). The
+  story-beat episode links were already correct.
+- **First thing next time, a gap:** an imported episode copies each scene's Action and Dialogue **once, at import**.
+  Sync writes codes and shots but does not pull scene text back in, so the EP101 project still has empty
+  Action/Dialogue and Fit would see nothing. Fix: make Sync (or a "Refresh scenes" action) re-read each imported
+  scene's Action, Dialogue, story-beat and reference links into `project.series.scenes`, deterministically. Then run
+  Fit on Act 1 only (020–040), skipping the teaser.
+- **Then:** the operator reviews Fit's Act 1 shots → References (vet super-seed2, Notion rows, upload from the drawer)
+  → grid stills through the send gate (only after the operator's OK) → Acts 2–3 story pass the same way.
+- **Open decision:** a previous-shot frame under 2K blocks the send (V1S-328). Exempt it, upscale it, or keep the block?
+- **Trailer (V1S-297, other repo/project):** due 2026-10-18; pick at 480p from the existing shots, extend past the
+  rooftop near-fall, then up-res.
+- **Leftovers to delete by hand:** local projects `01a14b46-…` (first test import) and `01a14d3c-…` (throwaway Agent
+  write test); the throwaway Notion page is in Archive.
