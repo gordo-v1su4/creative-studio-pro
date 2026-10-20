@@ -104,7 +104,7 @@ MARA (setting the notebook down): "I want you to read this."
 KAI (smiling, flipping a page): "You draw better than you take notes."
 MARA (steady): "Say it's wrong."
 KAI (after a long beat, quiet): "Go home, Mara."
-MARA (not moving): "Vampire."
+MARA (not moving): "You don't eat. You don't burn. You don't get older."
 ```
 
 ### 100 STF — Step Four
@@ -206,4 +206,5 @@ LUCIAN (in the doorway, looking at Mara's photo): "Who turned her?"
 - Scene 110 replays the teaser from the inside; the P01 teaser itself stays on hold.
 - Open question: in 100, is the turning shown or kept off screen? This draft keeps it off screen (cut to black) so 110
   reveals it.
-- No word the project rules ban appears here.
+- No word the project rules ban appears here. In 090 the underlined word is seen on the page, never spoken: the
+  prompt lint bans it, so Mara names what Kai is instead (changed 2026-10-20 after Fit's check refused it).

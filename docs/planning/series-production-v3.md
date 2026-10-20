@@ -152,3 +152,18 @@ second model checking that a story beat's shots portray it; two-part episodes; m
   image:" for every character until then, so re-run Fit or set references on the shots after linking; (3) lock the
   codes; (4) the previous-shot frame under 2K decision; (5) OK for grid stills through the send gate (spend).
 - Acts 2–3 still need their story pass (Action and Dialogue) before Fit can fill them.
+
+## Paused for the operator (2026-10-20, later)
+
+- **All 92 shots written** (Acts 1–3 + Tag, teaser on hold), synced to Notion with codes (not locked). Acts 2–3
+  draft: `docs/planning/ep101-acts2-3-draft.md` (090: Mara no longer says the banned word).
+- **References and tests ready, nothing sent:** `docs/planning/ep101-references-and-tests.md`. Picks per character in
+  the project's `files/references/characters/`, alternates in `candidates/`, location sources in
+  `locations/sources/`. Tests A (Elias + Rowan arguing), B (Mara close-up), C (close-ups for Rowan, Malik, Malachi),
+  D (new anamorphic base plates per location), then scene 020 both ways. One send at a time, with the operator's OK, through the
+  Higgsfield plugin (plan credits; show before/after and the API-price equivalent).
+- **Also done today:** Sync refreshes scene text (`eefd123`), Fit budget scales (`ce01eba`), previous-shot frames
+  under 2K are upscaled (`01fa58b`), phone access over Tailscale
+  (`https://desktop-q20uuvd.tail7fdbe2.ts.net:8443`, `c4d5f8e`). The Story tab needs a mobile layout pass.
+- **Open:** may a 1672 px image (Mara's clean multi-panel) be an input? Lock the codes after the shot review. A
+  per-episode Save the Cat arc is for the season-rework session.
