@@ -136,3 +136,19 @@ second model checking that a story beat's shots portray it; two-part episodes; m
   rooftop near-fall, then up-res.
 - **Leftovers to delete by hand:** local projects `01a14b46-…` (first test import) and `01a14d3c-…` (throwaway Agent
   write test); the throwaway Notion page is in Archive.
+
+## Status (2026-10-20)
+
+- **Scene-text gap closed** (`eefd123`): Sync now copies each imported scene's Action, Dialogue, Summary, Location,
+  Characters, story-beat and reference links from Notion into the episode (Notion-owned, nothing written back).
+  Live: 3 scenes refreshed (020–040).
+- **Fit budget** (`ce01eba`): 8- and 10-shot scenes timed out at the fixed 180 s on Kimi k3; the answer budget now
+  scales with the shots wanted (45 s and 1200 tokens a shot, capped at 600 s / 16000).
+- **Act 1 fitted at 10 min:** Morning Quad 6 shots (35 s), The Paper Cut 8 (50 s), Video Haven, Day 10 (60 s). That's 24 shots,
+  lint clean, self-check passed (it caught one renamed speaker). The teaser was skipped. Synced: 24 shot pages created in
+  Notion with codes `BLR_EP101_<scene>_<shot>`. The codes are **not locked** yet.
+- **Waiting on the operator:** (1) review and approve Act 1's 24 shots (Story tab or Notion); (2) vet the super-seed2
+  references, add their Notion rows, link them to scenes 020–040 and upload from the drawer. The shots say "No
+  image:" for every character until then, so re-run Fit or set references on the shots after linking; (3) lock the
+  codes; (4) the previous-shot frame under 2K decision; (5) OK for grid stills through the send gate (spend).
+- Acts 2–3 still need their story pass (Action and Dialogue) before Fit can fill them.
