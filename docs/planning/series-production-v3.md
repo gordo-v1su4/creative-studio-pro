@@ -164,6 +164,6 @@ second model checking that a story beat's shots portray it; two-part episodes; m
   Higgsfield plugin (plan credits; show before/after and the API-price equivalent).
 - **Also done today:** Sync refreshes scene text (`eefd123`), Fit budget scales (`ce01eba`), previous-shot frames
   under 2K are upscaled (`01fa58b`), phone access over Tailscale
-  (`https://desktop-q20uuvd.tail7fdbe2.ts.net:8443`, `c4d5f8e`). The Story tab needs a mobile layout pass.
+  (`https://desktop-q20uuvd.tail7fdbe2.ts.net:8443`, `c4d5f8e`); the top bar now works on a phone (tabs, project picker, `117167e`).
 - **Open:** may a 1672 px image (Mara's clean multi-panel) be an input? Lock the codes after the shot review. A
   per-episode Save the Cat arc is for the season-rework session.
