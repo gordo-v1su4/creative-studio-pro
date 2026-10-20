@@ -18,6 +18,9 @@ describe('grid prompt', () => {
 		expect(prompt).toContain('Panel 1 (row 1, column 1): Kai by the car, wide.');
 		expect(prompt).toContain('Panel 2 (row 1, column 2): Close on the keys.');
 		expect(prompt).toContain('Panel 9: plain black, empty.');
+		// No first-name cast list or summary: those are what the linter flags as partial names and pronouns.
+		expect(prompt).not.toContain('Kai waits.');
+		expect(prompt).not.toMatch(/same characters/i);
 		expect(gridChunks(Array.from({ length: 10 }, (_, i) => i)).map((chunk) => chunk.length)).toEqual([9, 1]);
 	});
 });

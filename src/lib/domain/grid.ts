@@ -20,16 +20,16 @@ export function gridChunks<T>(shots: T[]): T[][] {
 const usable = (text: string) => text.trim() && !/^none yet/i.test(text.trim());
 
 /**
- * The grid prompt: a 3×3 cinematic shot grid, each panel one shot, same characters, wardrobe, light and
- * location across panels, no borders or text. Empty cells (fewer than nine shots) are asked to stay black.
+ * The grid prompt: a 3×3 cinematic shot grid, each panel one shot, light and lens consistent across panels,
+ * no borders or text. Empty cells (fewer than nine shots) are asked to stay black. Who is who comes only from
+ * the image declarations and each panel's exact names: no scene summary or first-name cast list, which the
+ * linter refuses (partial names, pronouns) and which pull Nano Banana off the references.
  */
 export function gridPrompt(input: { scene: string; location: string; summary: string; characters: string[]; shots: GridShot[] }): string {
 	const lines = input.shots.map((shot, i) => `Panel ${i + 1} (row ${Math.floor(i / GRID_COLS) + 1}, column ${(i % GRID_COLS) + 1}): ${usable(shot.image_prompt) ? shot.image_prompt.trim() : shot.description.trim()}`);
 	for (let i = input.shots.length; i < GRID_CELLS; i++) lines.push(`Panel ${i + 1}: plain black, empty.`);
 	return [
 		`A 3×3 grid of nine cinematic film stills from one scene, read left to right, top to bottom. Equal 16:9 panels, edge to edge, no borders, no gutters, no text, no captions, no numbers.`,
-		`Scene: ${input.scene}${input.location ? ` — ${input.location}` : ''}. ${input.summary}`.trim(),
-		input.characters.length ? `The same characters in every panel, identical faces, hair and wardrobe: ${input.characters.join(', ')}.` : '',
 		'Consistent lighting, colour grade and lens look across all panels, as frames from the same shoot.',
 		...lines
 	].filter(Boolean).join('\n');
