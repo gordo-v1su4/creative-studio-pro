@@ -56,7 +56,7 @@
 					title={`${ref.name}${ref.handles.length ? ` · ${ref.handles.join(' ')}` : ''} — drag onto a shot`}
 				>
 					{#if file}
-						<img src={`/api/series/${seriesId}/references?page_id=${ref.page_id}`} alt={ref.name} class={['thumb', group.kind === 'Character' && 'headshot']} loading="lazy" />
+						<img src={`/api/series/${seriesId}/references?page_id=${ref.page_id}`} alt={ref.name} class="thumb" style:aspect-ratio={`${file.width} / ${file.height}`} loading="lazy" />
 					{:else}
 						<span class="thumb empty">no image</span>
 					{/if}
@@ -86,11 +86,11 @@
 	.hint { color: var(--color-text-dim); font-size: 11px; line-height: 1.5; }
 	.kind { margin-top: 4px; color: var(--color-text-dim); font: 600 9px var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; }
 	ul { display: grid; gap: 4px; }
-	li { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 1px solid var(--color-border-subtle); padding: 3px; cursor: grab; }
+	/* A card per reference: the whole picture across the panel (no crop), then its name and actions. */
+	li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 8px; align-items: center; border: 1px solid var(--color-border-subtle); padding: 4px; cursor: grab; }
 	li:hover { border-color: var(--color-border-default); }
-	.thumb { width: 40px; height: 40px; object-fit: cover; background: var(--color-surface-base); }
-	.thumb.headshot { object-position: 50% 8%; }
-	.thumb.empty { display: grid; place-items: center; color: var(--color-text-dim); font: 600 7px var(--font-mono); text-transform: uppercase; text-align: center; }
+	.thumb { grid-column: 1 / -1; display: block; width: 100%; max-height: 220px; object-fit: contain; background: var(--color-surface-base); }
+	.thumb.empty { height: 56px; display: grid; place-items: center; color: var(--color-text-dim); font: 600 8px var(--font-mono); text-transform: uppercase; text-align: center; }
 	.info { display: grid; min-width: 0; }
 	.info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; color: var(--color-text-primary); }
 	.sub { color: var(--color-text-dim); font: 10px var(--font-mono); }

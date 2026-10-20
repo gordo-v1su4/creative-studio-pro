@@ -1007,7 +1007,7 @@
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
 		class="work-area relative grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
-		style={`--inspector-width: ${inspectorOpen ? '300px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? '184px' : '0px'}`}
+		style={`--inspector-width: ${inspectorOpen ? '400px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? '184px' : '0px'}`}
 	>
 		<aside class={['rail hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
 			{#if canvasOpen && !railCollapsed}
@@ -1182,14 +1182,14 @@
 			class={[
 				'overflow-hidden bg-surface-raised',
 				inspectorOpen
-					? 'fixed bottom-[42px] right-0 top-[88px] z-30 block w-[min(92vw,360px)] border-l lg:static lg:w-auto'
+					? 'fixed bottom-[42px] right-0 top-[88px] z-30 block w-[min(92vw,420px)] border-l lg:static lg:w-auto'
 					: 'hidden',
 				inspectorOpen && 'border-l border-border-default'
 			]}
 			aria-label="Inspector"
 			aria-hidden={!inspectorOpen}
 		>
-			<div class="h-full w-[300px] overflow-y-auto p-3">
+			<div class="h-full w-[min(92vw,400px)] overflow-y-auto p-3">
 				{#if activeProject?.series}
 					<ReferencesDrawer
 						seriesId={activeProject.series.series_id}
@@ -1359,9 +1359,9 @@
 	.rail-handle-mark { width: 3px; height: 24px; border-radius: 999px; background: #4ee8d2; box-shadow: 0 0 10px rgba(78, 232, 210, 0.55); }
 	.rail-handle-label { writing-mode: vertical-rl; transform: rotate(180deg); font: 700 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
 	.group-row { display: flex; min-width: 0; align-items: stretch; color: #8d9ca1; }
-	.group-row.active { background: linear-gradient(90deg, rgba(78, 232, 210, 0.1), rgba(74, 184, 255, 0.04)); color: #c9f3ee; box-shadow: inset 2px 0 0 #4ee8d2; }
+	.group-row.active { background: linear-gradient(90deg, rgba(78, 232, 210, 0.1), rgba(74, 184, 255, 0.04)); color: #c9f3ee; }
 	.group-row.droppable { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-nr-accent) 25%, transparent); }
-	.group-row.drop { background: color-mix(in srgb, var(--color-nr-accent) 16%, transparent); color: var(--color-nr-ink); box-shadow: inset 0 0 0 1px var(--color-nr-accent), inset 3px 0 0 var(--color-nr-accent); }
+	.group-row.drop { background: color-mix(in srgb, var(--color-nr-accent) 16%, transparent); color: var(--color-nr-ink); box-shadow: inset 0 0 0 1px var(--color-nr-accent); }
 	.group-pick { display: flex; flex: 1; min-width: 0; align-items: center; gap: 6px; border: 0; background: transparent; padding: 5px 7px; color: inherit; text-align: left; }
 	.group-pick:hover { background: #151a1d; }
 	.group-pick b { font-size: 11px; font-weight: 500; }

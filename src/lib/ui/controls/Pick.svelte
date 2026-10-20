@@ -125,7 +125,7 @@
 	.opt { display: flex; align-items: baseline; gap: 10px; padding: 4px 10px; color: var(--color-nr-muted); cursor: default; white-space: nowrap; }
 	.opt small { margin-left: auto; color: var(--color-nr-faint); font: 10px var(--font-mono); }
 	.opt.active { background: var(--color-nr-raised); color: var(--color-nr-ink); }
-	.opt.chosen { color: var(--color-nr-accent); box-shadow: inset 2px 0 0 var(--color-nr-accent); }
+	.opt.chosen { color: var(--color-nr-accent); }
 	.opt.off { opacity: 0.4; }
 	@keyframes pick-in { from { opacity: 0; } }
 	@media (prefers-reduced-motion: reduce) { .pick-list { animation: none; } .caret { transition: none; } }
