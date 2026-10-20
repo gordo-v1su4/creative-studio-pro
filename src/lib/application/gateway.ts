@@ -476,6 +476,23 @@ export class ProjectCommandGateway {
 		}
 	}
 
+	/** Notion sync: a scene's text (Action, Dialogue, Summary, Location, Characters, story-beat and reference links) as Notion has it now. */
+	async refreshSceneText(projectId: string, expectedVersion: number, refreshes: Array<{ page_id: string; text: { summary: string; story_beats: string; dialogue: string; location: string; characters: string[]; reference_ids: string[]; story_beat_ids: string[] } }>): Promise<CommandOutcome<Project>> {
+		try {
+			const byPage = new Map(refreshes.map((refresh) => [refresh.page_id, refresh.text]));
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				if (!current.series) throw new Error('Only an episode imported from a series has scenes to refresh');
+				const scenes = current.series.scenes.map((scene) => { const text = byPage.get(scene.page_id); return text ? { ...scene, ...text } : scene; });
+				return { ...current, series: { ...current.series, scenes } };
+			}, 'project.scene_text_refreshed.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Refreshing the scenes failed';
+			if (/scenes to refresh/.test(message)) return invalid(message);
+			return this.storeError(e);
+		}
+	}
+
 	/** A take now lives in Review Room (V1S-276): note its asset, version and code on the take. */
 	async markTakeStored(projectId: string, expectedVersion: number, takeId: string, ref: { asset_id: string; version_id: string; version: number; code: string }): Promise<CommandOutcome<Project>> {
 		try {

@@ -376,6 +376,23 @@ describe('Notion sync (V1S-325)', () => {
 		expect((await sync()).shots_created).toBe(0);
 	});
 
+	test('a story pass written in Notion after the import reaches the episode on sync, and only once', async () => {
+		const { api, projects, project, sync } = await setup();
+		expect((await sync()).scenes_refreshed).toBe(0);
+		const s2 = api.rows['ds-scenes'].find((row) => row.id === S2)!.properties;
+		s2.Action = rich('Kai films the quad from the fountain rim.') as never;
+		s2.Dialogue = rich('KAI: "Smile, Mara."') as never;
+		api.writes.length = 0;
+		const report = await sync();
+		expect(report.scenes_refreshed).toBe(1);
+		expect(api.writes).toHaveLength(0);
+		const quad = (await projects.readProject(project.project_id))!.series!.scenes.find((scene) => scene.page_id === S2.replace(/-/g, ''))!;
+		expect(quad.story_beats).toBe('Kai films the quad from the fountain rim.');
+		expect(quad.dialogue).toBe('KAI: "Smile, Mara."');
+		expect(quad.code).toBe('QUD');
+		expect((await sync()).scenes_refreshed).toBe(0);
+	});
+
 	test('scene code suggestions skip fragments like "AM" in time titles', async () => {
 		const { suggestCode } = await import('../../src/lib/domain/shot-codes');
 		expect(suggestCode('2:47 AM (From Inside)')).not.toBe('AFI');

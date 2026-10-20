@@ -44,9 +44,9 @@
 	async function sync(id: string) {
 		const done = await call(`/api/series/${id}`, { action: 'sync' }, `sync:${id}`);
 		if (!done) return;
-		const n = done.notion as { episodes: number; scenes: number; shots_updated: number; shots_created: number; pulled: number };
+		const n = done.notion as { episodes: number; scenes: number; shots_updated: number; shots_created: number; pulled: number; scenes_refreshed?: number };
 		const folders = done.folders as { created: number; renamed: number } | null;
-		note = `Synced with Notion: ${n.episodes} episode${n.episodes === 1 ? '' : 's'}, ${n.scenes} scene${n.scenes === 1 ? '' : 's'} and ${n.shots_updated + n.shots_created} shot${n.shots_updated + n.shots_created === 1 ? '' : 's'} written (${n.shots_created} new), ${n.pulled} shot${n.pulled === 1 ? '' : 's'} updated from Notion edits.`
+		note = `Synced with Notion: ${n.episodes} episode${n.episodes === 1 ? '' : 's'}, ${n.scenes} scene${n.scenes === 1 ? '' : 's'} and ${n.shots_updated + n.shots_created} shot${n.shots_updated + n.shots_created === 1 ? '' : 's'} written (${n.shots_created} new), ${n.pulled} shot${n.pulled === 1 ? '' : 's'} updated from Notion edits${n.scenes_refreshed ? `, ${n.scenes_refreshed} scene${n.scenes_refreshed === 1 ? '' : 's'} refreshed from Notion (Action, Dialogue, links)` : ''}.`
 			+ (folders ? ` Review Room: ${folders.created} folder${folders.created === 1 ? '' : 's'} created, ${folders.renamed} renamed.` : '')
 			+ (done.folder_error ? ` Review Room folders failed: ${done.folder_error}` : '');
 	}

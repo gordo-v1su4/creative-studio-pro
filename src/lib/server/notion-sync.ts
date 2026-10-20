@@ -1,4 +1,4 @@
-import { bareId, toEpisode, toScene, toShot, type NotionPage, type SeriesShot } from '$lib/domain/notion-series';
+import { bareId, toEpisode, toScene, toShot, type NotionPage, type SeriesScene, type SeriesShot } from '$lib/domain/notion-series';
 import { episodeCode, formatShotCode, shotNumberText } from '$lib/domain/shot-codes';
 import type { Project, StoryCard } from '$lib/domain/schemas';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
@@ -11,10 +11,15 @@ import type { SeriesRecord } from '$lib/server/series';
  * (so a value typed over in Notion is restored). A shot's plain fields (description, duration, dialogue line,
  * refs) sync both ways against the values of the last sync: changed in Notion since then → Notion wins and
  * the board takes it; otherwise the board's value is written. Shots that exist only on the board (Fit's)
- * are created in Notion. Prompts never leave the app.
+ * are created in Notion. Prompts never leave the app. Scene text (Action, Dialogue, Summary, Location,
+ * Characters, story-beat and reference links) is Notion's alone: every sync copies it into the episode, so a
+ * story pass written after the import reaches Fit.
  */
 
-export interface NotionSyncReport { episodes: number; scenes: number; shots_updated: number; shots_created: number; pulled: number }
+export interface NotionSyncReport { episodes: number; scenes: number; shots_updated: number; shots_created: number; pulled: number; scenes_refreshed: number }
+export interface SceneText { summary: string; story_beats: string; dialogue: string; location: string; characters: string[]; reference_ids: string[]; story_beat_ids: string[] }
+export interface SceneRefresh { page_id: string; text: SceneText }
+type ImportedScene = NonNullable<Project['series']>['scenes'][number];
 export interface PlainFields { description: string; duration_s: number; dialogue: string; refs: string }
 export interface CardSync { card_id: string; notion_page_id: string; scene_page_id: string; synced: PlainFields; pulled: Partial<PlainFields> }
 
@@ -62,9 +67,35 @@ export function mergeFields(board: PlainFields, notion: PlainFields, last: Plain
 	return { pull, push, synced };
 }
 
+/** A scene's text as Notion has it now, cut to the episode's limits. `beatIds` = the story beats linking it. */
+export function sceneText(scene: SeriesScene, beatIds: string[]): SceneText {
+	return {
+		summary: scene.summary.slice(0, 8000), story_beats: scene.story_beats.slice(0, 8000), dialogue: scene.dialogue.slice(0, 8000),
+		location: scene.location.slice(0, 400), characters: scene.characters.slice(0, 40).map((name) => name.slice(0, 100)),
+		reference_ids: scene.reference_ids.slice(0, 40), story_beat_ids: beatIds.slice(0, 40)
+	};
+}
+
+const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((value, i) => value === b[i]);
+
+/** The imported scenes whose text differs from Notion's (deterministic; a scene gone from Notion is left as it is). */
+export function sceneRefreshes(scenes: ImportedScene[], pages: Map<string, SeriesScene>, beats: Array<{ page_id: string; scene_ids: string[] }>): SceneRefresh[] {
+	const out: SceneRefresh[] = [];
+	for (const scene of scenes) {
+		const page = pages.get(bareId(scene.page_id));
+		if (!page) continue;
+		const text = sceneText(page, beats.filter((beat) => beat.scene_ids.map(bareId).includes(page.page_id)).map((beat) => beat.page_id));
+		const unchanged = scene.summary === text.summary && scene.story_beats === text.story_beats && (scene.dialogue ?? '') === text.dialogue
+			&& scene.location === text.location && sameList(scene.characters, text.characters)
+			&& sameList(scene.reference_ids ?? [], text.reference_ids) && sameList(scene.story_beat_ids ?? [], text.story_beat_ids);
+		if (!unchanged) out.push({ page_id: scene.page_id, text });
+	}
+	return out;
+}
+
 /** Sync one series and its imported episodes with Notion. `readProject` / `gateway` reach the episode projects. */
 export async function syncSeriesToNotion(api: NotionApi, record: SeriesRecord, readProject: (id: string) => Promise<Project | null>, gateway: ProjectCommandGateway): Promise<NotionSyncReport> {
-	const report: NotionSyncReport = { episodes: 0, scenes: 0, shots_updated: 0, shots_created: 0, pulled: 0 };
+	const report: NotionSyncReport = { episodes: 0, scenes: 0, shots_updated: 0, shots_created: 0, pulled: 0, scenes_refreshed: 0 };
 	if (!record.sources.episodes || !record.sources.scenes || !record.sources.shots) return report;
 	const locked = Boolean(record.codes_locked_at);
 	const show = record.show_code ?? '';
@@ -85,9 +116,18 @@ export async function syncSeriesToNotion(api: NotionApi, record: SeriesRecord, r
 	const shotPages = new Map((await all(api, record.sources.shots)).map(toShot).map((shot) => [shot.page_id, shot]));
 
 	for (const [episodePageId, projectId] of Object.entries(record.episode_projects)) {
-		const project = await readProject(projectId);
+		let project = await readProject(projectId);
 		if (!project?.series) continue;
-		const series = project.series;
+
+		// Scene text: Notion → the episode, so Fit reads the story pass written since the import.
+		const refreshes = sceneRefreshes(project.series.scenes, scenePages, record.story_beats?.beats ?? []);
+		if (refreshes.length) {
+			const outcome = await gateway.refreshSceneText(project.project_id, project.version, refreshes);
+			if (!outcome.ok) throw new Error(`${project.series.episode_title}: ${outcome.error.message}`);
+			project = outcome.data;
+			report.scenes_refreshed += refreshes.length;
+		}
+		const series = project.series!;
 		const epCode = episodeCode(series.season ?? null, series.episode_number);
 
 		// Scenes: Scene code, Locked.

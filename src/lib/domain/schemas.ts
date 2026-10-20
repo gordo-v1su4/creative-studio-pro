@@ -762,6 +762,8 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.shot_codes_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// V1S-325: shots linked to their Notion pages and edits made in Notion brought onto the board.
 	z.object({ type: z.literal('project.notion_synced.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// Sync: scene text (Action, Dialogue, links) copied from Notion into the episode after the import.
+	z.object({ type: z.literal('project.scene_text_refreshed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.target_length_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_stored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.shot_references_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
