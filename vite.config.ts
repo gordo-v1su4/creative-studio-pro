@@ -17,5 +17,6 @@ export default defineConfig({
 		})
 	],
 	// Agent worktrees and project data change underneath the dev server; never reload for them.
-	server: { watch: { ignored: ['**/.claude/worktrees/**', '**/data/projects/**'] } }
+	// 127.0.0.1 + .ts.net: `tailscale serve` proxies the operator's tailnet (phone) to this machine only.
+	server: { host: '127.0.0.1', allowedHosts: ['.ts.net'], watch: { ignored: ['**/.claude/worktrees/**', '**/data/projects/**'] } }
 });
