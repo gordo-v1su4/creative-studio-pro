@@ -181,7 +181,7 @@
 					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
 					onBench: (benched: boolean) => card && benchBeat(card.card_id, benched),
 					series: Boolean(project.series),
-					references: card ? (card.references ?? []).map((reference) => ({ key: referenceKey(reference), kind: reference.kind, label: reference.kind === 'series' ? (seriesRefs.find((item) => item.page_id === reference.page_id)?.name ?? 'Missing reference') : 'Prev frame', url: reference.kind === 'previous_frame' ? reference.url : null })) : [],
+					references: card ? (card.references ?? []).map((reference) => ({ key: referenceKey(reference), kind: reference.kind, label: reference.kind === 'series' ? (seriesRefs.find((item) => item.page_id === reference.page_id)?.name ?? 'Missing reference') : reference.upscaled_from ? `Prev frame (up from ${Math.max(reference.upscaled_from.width, reference.upscaled_from.height)} px)` : 'Prev frame', url: reference.kind === 'previous_frame' ? reference.url : null })) : [],
 					canAttachPrevious: card ? Boolean(previousPick(project.production, card.card_id)) : false,
 					onAttachPrevious: () => card && attachPreviousFrame(card.card_id),
 					onRemoveReference: (key: string) => card && setShotReferences(card.card_id, (card.references ?? []).filter((reference) => referenceKey(reference) !== key)),

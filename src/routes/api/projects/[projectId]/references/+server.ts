@@ -5,7 +5,7 @@ import { idSchema } from '$lib/domain/schemas';
 import { getGateway, getProjectRoot, getProjectStore, getReviewRoomConfig } from '$lib/server/config';
 import { runFfmpeg } from '$lib/server/ffmpeg';
 import { probeMedia } from '$lib/server/media-probe';
-import { attachPreviousFrame, lastFrameArgs } from '$lib/server/previous-frame';
+import { attachPreviousFrame, lastFrameArgs, upscaleArgs } from '$lib/server/previous-frame';
 import { createReviewRoomClient } from '$lib/server/review-room';
 
 const requestSchema = z.object({ action: z.literal('previous_frame'), card_id: idSchema, expected_version: z.number().int().nonnegative() });
@@ -21,7 +21,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const result = await attachPreviousFrame({
 		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(),
 		client: config ? createReviewRoomClient(config) : null, probe: probeMedia,
-		lastFrame: (source, output) => runFfmpeg(lastFrameArgs(source, output))
+		lastFrame: (source, output) => runFfmpeg(lastFrameArgs(source, output)),
+		upscale: (input, output, longEdge) => runFfmpeg(upscaleArgs(input, output, longEdge))
 	}, { project_id: projectId.data, card_id: parsed.data.card_id, expected_version: parsed.data.expected_version });
 	if (!result.ok) return fail(result.status, result.message);
 	return json({ ok: true, data: result.project });

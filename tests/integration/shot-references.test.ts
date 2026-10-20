@@ -6,7 +6,7 @@ import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { previousShot } from '../../src/lib/domain/shot-references';
 import type { Project, ProductionAsset, StoryCard } from '../../src/lib/domain/schemas';
-import { attachPreviousFrame, lastFrameArgs, type PreviousFrameDeps } from '../../src/lib/server/previous-frame';
+import { attachPreviousFrame, lastFrameArgs, upscaleArgs, type PreviousFrameDeps } from '../../src/lib/server/previous-frame';
 import { shotAttachments } from '../../src/lib/server/references';
 import type { ReviewRoomClient } from '../../src/lib/server/review-room';
 
@@ -39,7 +39,8 @@ async function setup(assets: ProductionAsset[] = [take('t1', 'a')]) {
 	const deps: PreviousFrameDeps = {
 		store, gateway, projectRoot: root, client,
 		probe: async () => ({ width: 2560, height: 1440 }),
-		lastFrame: async (source, output) => { frames.push(source); await writeFile(output, 'jpg'); }
+		lastFrame: async (source, output) => { frames.push(source); await writeFile(output, 'jpg'); },
+		upscale: async (_input, output) => { await writeFile(output, 'jpg-2k'); }
 	};
 	return { root, store, gateway, deps, project: saved.data, asked, frames };
 }
@@ -87,6 +88,19 @@ describe('previous shot as a reference', () => {
 		const benched = await gateway.benchBeat({ command: 'bench_beat', project_id: project.project_id, expected_version: project.version, card_id: 'b' });
 		if (!benched.ok) throw new Error(benched.error.message);
 		expect(previousShot(benched.data.production, 'c')?.card_id).toBe('a');
+	});
+
+	test('a frame under 2K is scaled up to 2048 px and remembers its size before', async () => {
+		const { root, deps, project } = await setup();
+		const sizes = [{ width: 1920, height: 1080 }, { width: 2048, height: 1152 }];
+		const after = ok(await attachPreviousFrame({ ...deps, probe: async () => sizes.shift()! }, { project_id: project.project_id, card_id: 'b', expected_version: project.version })) as Project;
+		const card = after.production.cards.find((entry) => entry.card_id === 'b')!;
+		expect(card.references).toEqual([expect.objectContaining({ kind: 'previous_frame', width: 2048, height: 1152, upscaled_from: { width: 1920, height: 1080 } })]);
+		expect(await readFile(shotAttachments(root, after, card).previousFrame!.file, 'utf8')).toBe('jpg-2k');
+	});
+
+	test('ffmpeg scales the long edge to 2048 with lanczos', () => {
+		expect(upscaleArgs('in.jpg', 'out.jpg', 2048)).toEqual(['-y', '-i', 'in.jpg', '-vf', "scale='if(gte(iw,ih),2048,-2)':'if(gte(iw,ih),-2,2048)':flags=lanczos", '-q:v', '2', 'out.jpg']);
 	});
 
 	test('ffmpeg seeks from the end for the last frame', () => {

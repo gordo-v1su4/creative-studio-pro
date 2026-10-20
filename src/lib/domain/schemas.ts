@@ -237,7 +237,10 @@ export const shotReferenceSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('series'), page_id: z.string().min(1).max(64) }),
 	z.object({
 		kind: z.literal('previous_frame'), from_card_id: idSchema, take_id: idSchema, url: z.string().min(1).max(2000),
-		width: z.number().int().positive().optional(), height: z.number().int().positive().optional(), at: rfc3339Schema
+		width: z.number().int().positive().optional(), height: z.number().int().positive().optional(),
+		/** The frame's size before it was scaled up to 2K (a 1080p or 480p pick). */
+		upscaled_from: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+		at: rfc3339Schema
 	})
 ]);
 export type ShotReference = z.infer<typeof shotReferenceSchema>;
