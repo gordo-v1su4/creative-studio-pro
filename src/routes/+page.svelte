@@ -936,16 +936,16 @@
 <svelte:head><title>{activeProject ? `${activeProject.title} — Creative Studio Pro` : 'Creative Studio Pro'}</title></svelte:head>
 
 <div class="grid h-full min-w-0 overflow-x-hidden" style="grid-template-rows: 48px minmax(0,1fr) 42px">
-	<!-- The one navigation bar: product, project, the flow's tabs, then app-level links (48px). -->
-	<div class="flex min-w-0 items-center gap-2 border-b border-border-default bg-surface-base px-3">
+	<!-- The one navigation bar: product, project, the flow's tabs, then app-level links (48px). On a phone it scrolls sideways. -->
+	<div class="flex min-w-0 items-center gap-2 overflow-x-auto border-b border-border-default bg-surface-base px-3 [scrollbar-width:none]">
 		<span class="flex shrink-0 items-center gap-2" aria-label="Creative Studio Pro">
 			<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
-			<span class="brand">Creative Studio Pro</span>
+			<span class="brand hidden sm:inline">Creative Studio Pro</span>
 		</span>
 		<span class="h-4 w-px shrink-0 bg-border-default"></span>
 		{#if projects.length}
 			<!-- Every project, newest first: the way back to any of them (the trailer, an imported episode…). -->
-			<span class="project-pick min-w-0 max-w-[300px]" title={activeProject?.title}>
+			<span class="project-pick w-[170px] shrink-0 max-w-[300px] sm:w-auto sm:min-w-0 sm:shrink" title={activeProject?.title}>
 				<Pick label="Open a project" value={activeProject?.project_id} options={projectOptions} wide onchange={(id) => void switchProject(id)} />
 			</span>
 		{:else}
@@ -954,7 +954,7 @@
 		{#if activeProject}
 			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
 		{/if}
-		<nav class="ml-2 hidden min-w-0 items-center gap-0.5 overflow-x-auto lg:flex" aria-label="Project">
+		<nav class="ml-2 flex shrink-0 items-center gap-0.5 lg:min-w-0 lg:shrink lg:overflow-x-auto" aria-label="Project">
 			{#each workspaceTabs as item (item.label)}
 				{@const active = item.tab === 'canvas' ? canvasOpen : !canvasOpen && productionTab === item.tab}
 				<button type="button" class={['flow-tab', active && 'active']} aria-current={active ? 'page' : undefined} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
