@@ -59,7 +59,9 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 			await request('PUT', `/api/v1/assets/${encodeURIComponent(assetId)}/current-version`, { versionId }, key);
 		},
 		async putMetadata(versionId: string, metadata: Record<string, unknown>, expectedUpdatedAt: number | null = null): Promise<void> {
-			await request('PUT', `/api/v1/versions/${encodeURIComponent(versionId)}/metadata`, { metadata, expectedUpdatedAt });
+			// Review Room refuses a metadata write without an Idempotency-Key; same version + same body → same key.
+			const body = { metadata, expectedUpdatedAt };
+			await request('PUT', `/api/v1/versions/${encodeURIComponent(versionId)}/metadata`, body, idempotencyKey('metadata', versionId, JSON.stringify(body)));
 		},
 		/** Short-lived signed URLs for one version's original and poster (V1S-284). */
 		async versionMedia(versionId: string) {
@@ -94,6 +96,26 @@ export interface TakeUpload {
 	makeCurrent: boolean;
 }
 
+const CREATIVE_FIELDS = new Set(['model', 'prompt', 'sourceLabel', 'sourceCreatedAt', 'gridImageVersionId', 'referenceImageVersionIds', 'notes', 'releaseDate', 'releasePlatforms', 'customFields']);
+
+/**
+ * Review Room's version metadata has a fixed shape (model, prompt, sourceLabel and referenceImageVersionIds
+ * required). Fill what is missing and carry any other field as a text custom field, so nothing is refused or lost.
+ */
+export function creativeMetadata(input: Record<string, unknown>): Record<string, unknown> {
+	const out: Record<string, unknown> = {
+		model: typeof input.model === 'string' ? input.model : '',
+		prompt: typeof input.prompt === 'string' ? input.prompt : '',
+		sourceLabel: typeof input.sourceLabel === 'string' && input.sourceLabel ? input.sourceLabel : 'Creative Studio Pro',
+		referenceImageVersionIds: Array.isArray(input.referenceImageVersionIds) ? input.referenceImageVersionIds : []
+	};
+	for (const [key, value] of Object.entries(input)) if (CREATIVE_FIELDS.has(key) && !(key in out) && value !== undefined) out[key] = value;
+	const extra = Object.entries(input).filter(([key, value]) => !CREATIVE_FIELDS.has(key) && value !== undefined && value !== null)
+		.map(([key, value]) => ({ id: key, label: key.replace(/_/g, ' '), kind: 'text' as const, value: Array.isArray(value) ? value.join(', ') : String(value) }));
+	if (extra.length) out.customFields = [...(Array.isArray(input.customFields) ? input.customFields : []), ...extra];
+	return out;
+}
+
 /**
  * Upload one take (V1S-276): begin by shot code (an existing shot gets its next version), PUT the original and
  * a JPEG poster to the signed URLs, complete, find the new version in the changes feed, write its metadata,
@@ -106,10 +128,11 @@ export async function uploadTake(client: ReviewRoomClient, take: TakeUpload): Pr
 	await client.putSigned(begun.url, take.bytes, take.type);
 	await client.putSigned(begun.posterUrl, take.poster, 'image/jpeg');
 	const done = await client.completeUpload(begun.sessionId, { posterSizeBytes: take.poster.byteLength, durationSec: take.durationSec, width: take.width, height: take.height });
-	const feed = await client.changes(take.projectId, before);
-	const version = feed.versions.filter((entry) => entry.assetId === done.assetId).toSorted((a, b) => b.version - a.version)[0];
+	const latest = (feed: ChangeFeed) => feed.versions.filter((entry) => entry.assetId === done.assetId).toSorted((a, b) => b.version - a.version)[0];
+	// A retry of the same file (same Idempotency-Key) makes no new version, so fall back to the asset's latest one.
+	const version = latest(await client.changes(take.projectId, before)) ?? latest(await client.changes(take.projectId, 0));
 	if (!version) throw new ReviewRoomError(502, `Uploaded ${take.assetCode}, but its new version is not in the changes feed yet`);
-	await client.putMetadata(version.versionId, take.metadata);
+	await client.putMetadata(version.versionId, creativeMetadata(take.metadata));
 	if (take.makeCurrent && !version.isCurrent) await client.setCurrentVersion(done.assetId, version.versionId, idempotencyKey('current', done.assetId, version.versionId));
 	return { assetId: done.assetId, versionId: version.versionId, version: version.version };
 }

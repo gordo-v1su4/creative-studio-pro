@@ -44,14 +44,16 @@ describe('series tree', () => {
 
 describe('uploadTake against a fake Review Room', () => {
 	function fakeUploads() {
-		const calls: Array<{ method: string; path: string; auth: boolean; body: unknown }> = [];
+		const calls: Array<{ method: string; path: string; auth: boolean; body: unknown; key?: string }> = [];
 		const versions: Array<{ versionId: string; assetId: string; version: number; isCurrent: boolean; processingState: string; mimeType: string; createdAt: number }> = [{ versionId: 'v1', assetId: 'a1', version: 1, isCurrent: true, processingState: 'ready', mimeType: 'video/mp4', createdAt: 1 }];
 		const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
 			const u = String(url); const method = init?.method ?? 'GET';
 			const headers = (init?.headers ?? {}) as Record<string, string>;
 			const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
-			calls.push({ method, path: u.replace(/^https:\/\/[^/]+/, '').split('?')[0], auth: !!headers.authorization, body });
+			calls.push({ method, path: u.replace(/^https:\/\/[^/]+/, '').split('?')[0], auth: !!headers.authorization, body, key: headers['idempotency-key'] });
 			if (u.startsWith('https://storage.test')) return new Response(null, { status: 200 });
+			// Like Review Room: every write except completing an upload needs a valid Idempotency-Key.
+			if (method !== 'GET' && !u.endsWith('/complete') && !/^[a-zA-Z0-9._:-]{8,128}$/.test(headers['idempotency-key'] ?? '')) return new Response(JSON.stringify({ error: 'Invalid idempotency key' }), { status: 400 });
 			if (u.includes('/changes')) return new Response(JSON.stringify({ cursor: '5', assets: [], versions, removedAssets: [] }));
 			if (method === 'POST' && u.endsWith('/api/v1/uploads')) return new Response(JSON.stringify({ sessionId: 's1', url: 'https://storage.test/o', posterUrl: 'https://storage.test/p', assetId: 'a1' }), { status: 201 });
 			if (u.endsWith('/complete')) { versions.push({ versionId: 'v2', assetId: 'a1', version: 2, isCurrent: false, processingState: 'processing', mimeType: 'video/mp4', createdAt: 2 }); return new Response(JSON.stringify({ assetId: 'a1', jobId: 'j1' })); }
@@ -77,6 +79,27 @@ describe('uploadTake against a fake Review Room', () => {
 		await uploadTake(client, { ...take, makeCurrent: false });
 		expect(calls.find((c) => c.path === '/api/v1/uploads')!.body).toMatchObject({ keepCurrentVersion: true });
 		expect(calls.some((c) => c.path.endsWith('/current-version'))).toBeFalse();
+	});
+
+	test('metadata goes out in Review Room\'s shape; extra fields ride as text custom fields', async () => {
+		const { client, calls } = fakeUploads();
+		await uploadTake(client, { ...take, metadata: { reference: 'Mara Voss', kind: 'Character', handles: ['@Mara'] }, makeCurrent: true });
+		const sent = calls.find((c) => c.path === '/api/v1/versions/v2/metadata')!.body as { metadata: Record<string, unknown> };
+		expect(sent.metadata).toMatchObject({ model: '', prompt: '', sourceLabel: 'Creative Studio Pro', referenceImageVersionIds: [] });
+		expect(sent.metadata.customFields).toEqual([
+			{ id: 'reference', label: 'reference', kind: 'text', value: 'Mara Voss' },
+			{ id: 'kind', label: 'kind', kind: 'text', value: 'Character' },
+			{ id: 'handles', label: 'handles', kind: 'text', value: '@Mara' }
+		]);
+		expect(Object.keys(sent.metadata)).not.toContain('reference');
+	});
+
+	test('a retry of the same file (no new version) settles on the asset\'s latest version', async () => {
+		const { client } = fakeUploads();
+		await uploadTake(client, { ...take, makeCurrent: true });
+		// The fake's /complete appends a version each time; a real retry does not, so the feed since "before" is empty.
+		const retried = await uploadTake({ ...client, changes: async (projectId: string, since: number | string) => (since === 0 ? client.changes(projectId, 0) : { cursor: '9', assets: [], versions: [], removedAssets: [] }) }, { ...take, makeCurrent: true });
+		expect(retried.assetId).toBe('a1');
 	});
 });
 
