@@ -144,8 +144,14 @@ ${SELF_CHECK}
 ${problems.length ? `THE APP'S CHECK FOUND THESE PROBLEMS (fix all of them):\n${problems.map((problem) => `- ${problem}`).join('\n')}` : 'The app\'s check found no problems with dialogue or references; still check the action and the story beats.'}
 
 Return the corrected shots (all of them, the same format; unchanged ones as they are). ${ANSWER_FORMAT}`;
-	return generateStructured(client, { system: input.system, prompt: redactAll(ask, bannedIn(ask, input.banned)), maxOutputTokens: 8000, timeoutMs: 180_000 }, (value) => parseFitShots(value, input.scene));
+	return generateStructured(client, { system: input.system, prompt: redactAll(ask, bannedIn(ask, input.banned)), ...sceneBudget(input.scene.shots_wanted) }, (value) => parseFitShots(value, input.scene));
 }
+
+/** The answer budget for writing a scene's shots: a 10-shot scene needs more room and time than a 4-shot one. */
+export const sceneBudget = (shots: number) => ({
+	maxOutputTokens: Math.min(16_000, Math.max(8000, shots * 1200)),
+	timeoutMs: Math.min(600_000, Math.max(180_000, shots * 45_000))
+});
 
 /** A scene whose shots still fail the app's check after the Agent's fixes: nothing is saved for it. */
 export class SceneCheckFailed extends Error {
@@ -162,7 +168,7 @@ export async function fitScene(
 	onCheck: (round: number, problems: string[]) => void | Promise<void> = () => {},
 	maxCheckRounds = 2
 ): Promise<FittedShot[]> {
-	let shots = await generateStructured(client, { system: input.system, prompt: fitAsk(input), maxOutputTokens: 8000, timeoutMs: 180_000 }, (value) => parseFitShots(value, input.scene));
+	let shots = await generateStructured(client, { system: input.system, prompt: fitAsk(input), ...sceneBudget(input.scene.shots_wanted) }, (value) => parseFitShots(value, input.scene));
 	await onShots(shots);
 	// The Agent always checks its own shots once; again only while the app's check still finds problems.
 	let problems = checkFitShots(input, shots);
