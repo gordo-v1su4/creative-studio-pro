@@ -167,3 +167,28 @@ second model checking that a story beat's shots portray it; two-part episodes; m
   (`https://desktop-q20uuvd.tail7fdbe2.ts.net:8443`, `c4d5f8e`); the top bar now works on a phone (tabs, project picker, `117167e`).
 - **Open:** may a 1672 px image (Mara's clean multi-panel) be an input? Lock the codes after the shot review. A
   per-episode Save the Cat arc is for the season-rework session.
+
+## Session 2026-10-20 (evening): references live, free image tests
+
+- **References are wired end to end.** 8 rows in Notion's References (7 crew + College Quad), linked to their
+  scenes, uploaded to Review Room `_References` (needed: Review Room learned reference codes `BLR_REF_CHR_…`,
+  review-room-svelte `5036f26`, Convex deployed; CSP sends metadata in Review Room's shape with an Idempotency-Key
+  and settles retries, `442ac51`). The References drawer shows each picture whole in a 400 px panel (`cc9bd8d`).
+- **Scene 020 re-fit** with the references: its 6 shots now name the images. The other scenes still carry
+  "No image:" — re-fit each (Story tab → open the scene → Take out fitted → Fit this scene) once the character
+  refs are final.
+- **Prompts** (`7630112`, `b4fc508`): grids are square only (2x2 up to 4 shots, else 3x3; spare cells are closer
+  angles, never black), a one-line opener + "Shot N.", no negatives; Nano Banana names read
+  `Kai "Hoodie" Santana from image 1` (the operator's form that bound best).
+- **Testing method:** free runs in the operator's Higgsfield tab (Nano Banana Pro, 2K, Unlimited), 2–3 at a time;
+  never overwrite the operator's prompt box without asking. Results so far: wide/grid shots lose identity; the
+  operator's lean 2x2 came closest (Kai held). Next tests: **one shot per image at 2K, only the refs that shot
+  needs**, night only (no daytime), haze helps.
+- **Character work in progress (Elias):** new sheets in a dark teal plaid button-down (white hoodie retired),
+  saved in `files/references/candidates/Elias/`. Recipe: one big hero headshot (anamorphic ECU, night alley,
+  defocused, haze), rerun until the skin detail lands, then use it as the identity ref. Elias must read different
+  from Bryson (Bryson: lip ring, right-cheek mole, hazel eyes, black hoodie). Still to do: Rowan's sheet without
+  the teeth, hero ECUs for each crew member, Malik in clothes (his only sheet is shirtless).
+- **Open:** the UX pass the operator asked for (live status while Kimi writes, the scattered Fit/Take out/Grid
+  buttons, a Fix button for blocked sends); Fit writes "16:9 cinematic keyframe, fall 2001 film look:" into every
+  shot (say it once).
