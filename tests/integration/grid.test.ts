@@ -13,11 +13,18 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe('grid prompt', () => {
-	test('nine panels in reading order; empty cells stay black; ten shots make two grids', () => {
+	test('square grids (2x2 up to four shots, else 3x3), spare cells are closer angles; ten shots make two grids', () => {
 		const prompt = gridPrompt({ scene: 'P02 — Parking Lot', location: 'campus lot', summary: 'Kai waits.', characters: ['Kai'], shots: [{ card_id: 'a', title: 'A', image_prompt: 'Kai by the car, wide.', description: 'x' }, { card_id: 'b', title: 'B', image_prompt: 'None yet (from Notion).', description: 'Close on the keys.' }] });
-		expect(prompt).toContain('Panel 1 (row 1, column 1): Kai by the car, wide.');
-		expect(prompt).toContain('Panel 2 (row 1, column 2): Close on the keys.');
-		expect(prompt).toContain('Panel 9: plain black, empty.');
+		// Two shots → a 2x2 (square, so 16:9 overall); the spare cells are closer angles, never black.
+		expect(prompt.split('\n')[0]).toBe('Create a 2x2 grid of four cinematic film stills from one scene.');
+		expect(prompt).toContain('Shot 1. Kai by the car, wide.');
+		expect(prompt).toContain('Shot 2. Close on the keys.');
+		expect(prompt).toContain('Shot 3. A closer angle on the moment in shot 1.');
+		expect(prompt).toContain('Shot 4. A closer angle on the moment in shot 2.');
+		expect(prompt).not.toMatch(/black|no borders|left to right/i);
+		const six = gridPrompt({ scene: 's', location: '', summary: '', characters: [], shots: Array.from({ length: 6 }, (_, i) => ({ card_id: String(i), title: 't', image_prompt: `Beat ${i + 1}.`, description: '' })) });
+		expect(six.split('\n')[0]).toBe('Create a 3x3 grid of nine cinematic film stills from one scene.');
+		expect(six).toContain('Shot 9. A closer angle on the moment in shot 3.');
 		// No first-name cast list or summary: those are what the linter flags as partial names and pronouns.
 		expect(prompt).not.toContain('Kai waits.');
 		expect(prompt).not.toMatch(/same characters/i);

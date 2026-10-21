@@ -92,7 +92,9 @@ export function compileHandles<R extends HandleReference>(prompt: string, refere
 	const body = prompt.replace(HANDLE, (whole, name: string) => {
 		const found = byHandle.get(norm(name)) ?? [];
 		if (found.length !== 1) return whole;
-		return `${imageLabel(target, imageOf.get(found[0])!)} (${found[0].name})`;
+		const image = imageOf.get(found[0])!;
+		// Nano Banana binds the picture better with the name first, the way the operator writes it (2026-10-20 tests).
+		return target === 'seedance' ? `${imageLabel(target, image)} (${found[0].name})` : `${found[0].name} from image ${image}`;
 	});
 	const declarations = [
 		...images.map(({ image, reference }) => `${imageLabel(target, image)} = ${reference.name} — ${LOCK[kindKey(reference.kind)] ?? 'exact reference lock'}`),

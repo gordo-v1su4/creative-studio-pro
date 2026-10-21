@@ -54,7 +54,7 @@ describe('handle compile', () => {
 
 	test('Nano Banana gets "Image N" with no @', () => {
 		const out = compileHandles('@Kai inside @VideoHaven.', refs, 'nano_banana');
-		expect(out.prompt).toBe('Image 1 = Kai "Hoodie" Santana — definitive identity and wardrobe lock\nImage 2 = the Video Haven interior — exact location lock\n\nImage 1 (Kai "Hoodie" Santana) inside Image 2 (the Video Haven interior).');
+		expect(out.prompt).toBe('Image 1 = Kai "Hoodie" Santana — definitive identity and wardrobe lock\nImage 2 = the Video Haven interior — exact location lock\n\nKai "Hoodie" Santana from image 1 inside the Video Haven interior from image 2.');
 		expect(lintPrompt(out.prompt, 'nano_banana', [], { references: refs }).issues).toEqual([]);
 	});
 

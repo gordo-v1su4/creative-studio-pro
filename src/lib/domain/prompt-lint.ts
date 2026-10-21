@@ -149,13 +149,15 @@ export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', proj
 	// Everything else runs on the prompt with declarations and declared names masked out.
 	let body = text;
 	for (const [start, end] of spans) body = mask(body, start, end);
-	// A reference's exact name always travels with its image label: "@Image_1 (Kai "Hoodie" Santana)".
+	// A reference's exact name always travels with its image label: "@Image_1 (Kai "Hoodie" Santana)" (Seedance)
+	// or "Kai "Hoodie" Santana from image 1" (Nano Banana).
 	for (const reference of options.references ?? []) {
 		if (!reference.name.trim()) continue;
 		const pattern = new RegExp(reference.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
 		for (const m of body.matchAll(pattern)) {
 			const before = body.slice(Math.max(0, m.index - 16), m.index);
-			if (!/@?Image[ _]?\d+ \($/.test(before)) push('unlabelled-name', 'error', m, `"${reference.name}" without its image label — write its @handle so the compile adds it.`);
+			const after = body.slice(m.index + m[0].length, m.index + m[0].length + 16);
+			if (!/@?Image[ _]?\d+ \($/.test(before) && !/^ from image \d+/i.test(after)) push('unlabelled-name', 'error', m, `"${reference.name}" without its image label — write its @handle so the compile adds it.`);
 		}
 	}
 	const names = declarations.map((d) => d.name).sort((a, b) => b.length - a.length);

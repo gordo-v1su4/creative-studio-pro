@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
-import { GRID_COLS, GRID_ROWS, gridChunks, gridPrompt } from '$lib/domain/grid';
+import { gridChunks, gridPrompt, gridShape } from '$lib/domain/grid';
 import { uuid7ish } from '$lib/domain/ids';
 import { lintPrompt } from '$lib/domain/prompt-lint';
 import { bannedTerms } from '$lib/domain/brief-rules';
@@ -88,7 +88,8 @@ export async function settleGrid(deps: GridDeps, input: { project_id: string; jo
 	const gridFile = join(folder, gridName);
 	await writeFile(gridFile, await deps.download(job.url));
 	const gridUrl = `/api/projects/${input.project_id}/files/grids/${gridName}`;
-	const split = await deps.splitter.splitGrid(gridFile, GRID_ROWS, GRID_COLS);
+	const shape = gridShape(input.card_ids.length);
+	const split = await deps.splitter.splitGrid(gridFile, shape.rows, shape.cols);
 	let project = await deps.store.readProject(input.project_id);
 	if (!project) return fail(404, 'Project not found');
 	let added = 0;
