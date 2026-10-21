@@ -15,19 +15,19 @@ The P01 "2:47 AM" teaser (scene 010) is **on hold** and is not touched here.
 
 **Story-beat links:** checked 2026-10-18 and already correct; each beat points to the episode where it lands. An earlier note here was a misreading of the data.
 
-## Open: Bryce (decide before writing Act 2)
+## Open: Bryson (decide before writing Act 2)
 
-Bryce takes the love-interest role from Elias and may be "another evil entity". Options, with my recommendation first:
+Bryson takes the love-interest role from Elias and may be "another evil entity". Options, with my recommendation first:
 
-1. **Recommended: Bryce enters in EP02 or EP03, not the pilot.** The pilot already introduces seven crew members, Mara,
-   Kai's mother and a customer. Bryce gets a cleaner entrance as the person Kai lets himself want once Mara's Rush
-   starts costing him. If Bryce is evil, the reveal can ride the Midpoint (EP04) or Bad Guys Close In.
-2. **A glance in the pilot.** Bryce is one face in the Morning Quad crowd who doesn't fall for Kai's charm. That costs
+1. **Recommended: Bryson enters in EP02 or EP03, not the pilot.** The pilot already introduces seven crew members, Mara,
+   Kai's mother and a customer. Bryson gets a cleaner entrance as the person Kai lets himself want once Mara's Rush
+   starts costing him. If Bryson is evil, the reveal can ride the Midpoint (EP04) or Bad Guys Close In.
+2. **A glance in the pilot.** Bryson is one face in the Morning Quad crowd who doesn't fall for Kai's charm. That costs
    one shot and plants a question.
-3. **Pilot lead-in.** Bryce is at the party (scene 050). That crowds Act 2, which already carries the exposure.
+3. **Pilot lead-in.** Bryson is at the party (scene 050). That crowds Act 2, which already carries the exposure.
 
 Elias's arc without the romance: keep him as the enforcer who discredits witnesses and is at odds with Rowan, and
-make the EP05 broken arm the moment he starts doubting Kai. Bryce has no reference yet, so add one when the
+make the EP05 broken arm the moment he starts doubting Kai. Bryson has no reference yet, so add one when the
 super-seed2 pictures are vetted.
 
 ## Act 1 — scene by scene

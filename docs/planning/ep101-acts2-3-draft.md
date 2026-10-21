@@ -2,7 +2,7 @@
 
 Drafted 2026-10-20 for V1S-283, in the same form as `ep101-act1-draft.md`. **Not in Notion yet.** Once the operator
 approves (or edits) it, the Action and Dialogue go into the scene pages, Sync refreshes the episode, and Fit fills
-Acts 2–3. Bryce stays out of the pilot, as decided for Act 1.
+Acts 2–3. Bryson stays out of the pilot, as decided for Act 1.
 
 Names are exact reference names. Dialogue is one line each: `SPEAKER (delivery): "line"`. Elias's eyes are never
 described.

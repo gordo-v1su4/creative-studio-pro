@@ -89,10 +89,10 @@ ownership rule is ADR 0002 (`docs/adr/0002-app-writes-codes-into-notion.md`); me
     super-seed2 files) slot in around these; references ideally before Fit.
 - **Open story items for the story session (operator, 2026-10-17):**
   - Walk through the **whole season arc** together before writing EP101's Action and Dialogue.
-  - New character **Bryce**: Kai's love interest, and possibly another evil entity. Not in the Story page,
-    story beats or references yet; decide where Bryce enters and what Bryce really is during the story pass.
-    **Elias** was originally going to be the love interest; that role moves to Bryce, so Elias's arc needs a
-    look too. The operator already has pictures of Bryce (to vet with the other references, V1S-326).
+  - New character **Bryson**: Kai's love interest, and possibly another evil entity. Not in the Story page,
+    story beats or references yet; decide where Bryson enters and what Bryson really is during the story pass.
+    **Elias** was originally going to be the love interest; that role moves to Bryson, so Elias's arc needs a
+    look too. The operator already has pictures of Bryson (to vet with the other references, V1S-326).
 - The operator expects about three more sessions on this; keep each one to a clear step.
 
 ## Parked
@@ -122,7 +122,7 @@ second model checking that a story beat's shots portray it; two-part episodes; m
 ## Hand-off for the next session (end of 2026-10-18)
 
 - **Act 1 is in Notion.** Action and Dialogue for 020 Morning Quad, 030 The Paper Cut and 040 Video Haven, Day were
-  approved and written (`docs/planning/ep101-act1-draft.md`). Bryce stays out of the pilot (enters EP02/EP03). The
+  approved and written (`docs/planning/ep101-act1-draft.md`). Bryson stays out of the pilot (enters EP02/EP03). The
   story-beat episode links were already correct.
 - **First thing next time, a gap:** an imported episode copies each scene's Action and Dialogue **once, at import**.
   Sync writes codes and shots but does not pull scene text back in, so the EP101 project still has empty
