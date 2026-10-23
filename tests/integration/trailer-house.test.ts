@@ -93,10 +93,10 @@ describe('Trailer House: seeds → loglines → three more → develop', () => {
 	test('the Agent fixes every lint finding in rounds; a banned word is never named back to it', async () => {
 		const draft = '@Image_1 = Kai "Hoodie" Santana — definitive identity lock\nKai runs to the building; he bares his fangs. Hard cut.';
 		const clean = '@Image_1 = Kai "Hoodie" Santana — definitive identity lock\nNo image: the Lumen tower — a glass office tower\nKai "Hoodie" Santana runs to the Lumen tower. Hard cut.';
-		expect(lintTeaser(draft, []).map((issue) => issue.rule)).toEqual(expect.arrayContaining(['partial-name', 'place-alias', 'pronoun', 'banned-word']));
+		expect(lintTeaser(draft, ['pack:blood-rush']).map((issue) => issue.rule)).toEqual(expect.arrayContaining(['partial-name', 'place-alias', 'pronoun', 'banned-word']));
 		const agent = scripted([`SEEDANCE PROMPT:\n${clean}`]);
 		const rounds: { round: number; issues: number }[] = [];
-		const fixed = await lintAndFix(agent.client, { system: 'sys', context: 'ctx', prompt: draft, banned: [] }, (round) => { rounds.push({ round: round.round, issues: round.issues.length }); });
+		const fixed = await lintAndFix(agent.client, { system: 'sys', context: 'ctx', prompt: draft, banned: ['pack:blood-rush'] }, (round) => { rounds.push({ round: round.round, issues: round.issues.length }); });
 		expect(fixed.prompt).toBe(clean);
 		expect(rounds.map((r) => r.round)).toEqual([0, 1]);
 		expect(rounds[0].issues).toBeGreaterThan(3);
@@ -108,7 +108,7 @@ describe('Trailer House: seeds → loglines → three more → develop', () => {
 		expect(agent.asked[0].prompt).not.toContain('fangs');
 		// It stops after the round limit even if the Agent never fixes it.
 		const stubborn = scripted([draft, draft, draft, draft]);
-		const stuck = await lintAndFix(stubborn.client, { system: 's', context: 'c', prompt: draft, banned: [] }, () => {}, 2);
+		const stuck = await lintAndFix(stubborn.client, { system: 's', context: 'c', prompt: draft, banned: ['pack:blood-rush'] }, () => {}, 2);
 		expect(stuck.rounds).toHaveLength(3);
 		expect(stubborn.asked).toHaveLength(2);
 	});

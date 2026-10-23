@@ -8,8 +8,8 @@ import { lintPrompt } from '$lib/domain/prompt-lint';
 /** The master prompt lives in the repo (`prompts/trailer-house.md`) so the operator can edit it like a doc. */
 export const MASTER_PROMPT_PATH = join(process.cwd(), 'prompts', 'trailer-house.md');
 
-/** Each Seedance model's prompt format lives in its skill, so the app and the skills never disagree. */
-export const formatPath = (target: TeaserTarget) => join(process.cwd(), '.agents', 'skills', SEEDANCE_TARGETS[target.model].skill, 'format.md');
+/** Each Seedance model's prompt format lives in the Seedance skill, so the app and the skill never disagree. */
+export const formatPath = (target: TeaserTarget) => join(process.cwd(), '.agents', 'skills', SEEDANCE_TARGETS[target.model].skill, SEEDANCE_TARGETS[target.model].format);
 
 export async function masterPrompt(target: TeaserTarget, path = MASTER_PROMPT_PATH): Promise<string> {
 	return fillMasterPrompt(await readFile(path, 'utf8'), target, await readFile(formatPath(target), 'utf8'));

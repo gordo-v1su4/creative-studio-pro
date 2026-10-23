@@ -38,3 +38,6 @@ app-settings.json.*.tmp
 
 # Agent worktrees
 .claude/worktrees/
+
+# Skill upload zips (bun run skills:global --pack)
+/dist/

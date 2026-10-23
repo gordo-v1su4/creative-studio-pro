@@ -4,8 +4,8 @@
  * "No image: …") as a variable, then flags anything later in the prompt that
  * refers to a declared thing by some other name — pronouns, first names only,
  * generic stand-ins ("the store", "the guy"), look/wardrobe re-description —
- * plus target syntax (`@` never on Nano Banana; `@Image_N` on Seedance) and
- * banned words.
+ * plus target syntax (`@` never on Nano Banana; `@Image_N` on Seedance), the
+ * universal operator rejections, and the project's own bans and rule pack.
  */
 
 export type LintTarget = 'nano_banana' | 'seedance';
@@ -33,19 +33,29 @@ export interface LintResult {
 const PRONOUNS = /\b(he|she|they|him|her|hers|his|their|theirs|them|himself|herself|themselves)\b/gi;
 const PERSON_ALIASES = /\b(guy|girl|boy|man|men|woman|women|person|people|figure|dude|customer|kid)\b/gi;
 const PLACE_ALIASES = /\b(store|shop|room|place|building|interior|storefront|location)\b/gi;
-const LOOK_WORDS = /\b(blonde?|platinum|curls?|curly|bob|hoodie|jacket|blazer|choker|shades|sunglasses|necklace|jeans|sneakers|braids?|dreads?|tattoos?|piercings?|lip rings?)\b/gi;
-// Operator bans: never in a prompt unless explicitly requested (a negative like "no fangs" still primes it).
-const BANNED = /\b(neon|fangs?|fanged|vampires?|vampiric|vamp(?:ed)?)\b/gi;
+const LOOK_WORDS = /\b(blonde?|platinum|curls?|curly|bob|hoodie|jacket|blazer|choker|shades|sunglasses|necklace|jeans|sneakers|braids?|dreads|dreadlocks?|tattoos?|piercings?|lip rings?)\b/gi;
 const BLACK_AND_WHITE = /\bblack[- ]and[- ]white\b/gi;
-// Operator rejections from Blood Rush reviews: each one has wrecked a generation before.
+// Operator rejections that hold on every project: each one has wrecked a generation before.
 const REJECTED: Array<[RegExp, string]> = [
 	[/\b(flicker(?:s|ing)?|strobe?s?|strobing|drop(?:ped)? frames?)\b/gi, 'Never prompt flicker — describe the edit pace and the beats instead.'],
-	[/\bblood[- ]moon\b/gi, 'No blood moon.'],
-	[/\b(pink|light[- ]blue|baby[- ]blue)\b[^.\n]{0,40}\b(sign|glow|light|tube)s?\b/gi, 'No pink or light-blue glowing signs.'],
-	[/\b(drinks?|drinking|sips?|sipping|gulps?)\b[^.\n]{0,40}\bvial\b|\bvial\b[^.\n]{0,40}\b(drinks?|drinking)\b/gi, 'No vial drinking.'],
 	[/\b(red|glowing)\s+(arc|line|trajectory|guide)s?\b|\b(trajectory|guide|arc)\s+line\b/gi, 'Never describe a guide line — the model draws it on screen.'],
-	[/\bElias\b[^.\n]{0,80}\b(?:eyes?\b[^.\n]{0,20}\b(?:glow\w*|lit|shining)|(?:glow\w*|lit|shining)\b[^.\n]{0,20}\beyes?)\b|\b(?:glow\w*|lit|shining)\s+(?:blue\s+)?eyes?\b[^.\n]{0,60}\bElias\b/gi, 'Elias\'s eyes never glow.'],
 ];
+
+/**
+ * A project's rule pack: bans that belong to one series, switched on by its rules file
+ * (`bannedTerms` adds `pack:<id>`). A negative like "no fangs" still primes the word, so these are errors too.
+ */
+export const RULE_PACKS: Record<string, { banned: RegExp; rejected: Array<[RegExp, string]> }> = {
+	'blood-rush': {
+		banned: /\b(neon|fangs?|fanged|vampires?|vampiric|vamp(?:ed)?)\b/gi,
+		rejected: [
+			[/\bblood[- ]moon\b/gi, 'No blood moon.'],
+			[/\b(pink|light[- ]blue|baby[- ]blue)\b[^.\n]{0,40}\b(sign|glow|light|tube)s?\b/gi, 'No pink or light-blue glowing signs.'],
+			[/\b(drinks?|drinking|sips?|sipping|gulps?)\b[^.\n]{0,40}\bvial\b|\bvial\b[^.\n]{0,40}\b(drinks?|drinking)\b/gi, 'No vial drinking.'],
+			[/\bElias\b[^.\n]{0,80}\b(?:eyes?\b[^.\n]{0,20}\b(?:glow\w*|lit|shining)|(?:glow\w*|lit|shining)\b[^.\n]{0,20}\beyes?)\b|\b(?:glow\w*|lit|shining)\s+(?:blue\s+)?eyes?\b[^.\n]{0,60}\bElias\b/gi, 'Elias\'s eyes never glow.'],
+		],
+	},
+};
 const VAGUE = /\b(dark store|the dark)\b/gi;
 
 /** Flatten a JSON prompt into plain lines so escaped quotes don't hide names. */
@@ -126,19 +136,24 @@ export function lintPrompt(raw: string, target: LintTarget = 'nano_banana', proj
 	if (target === 'nano_banana') {
 		for (const m of text.matchAll(/@\w*/g)) push('at-sign', 'error', m, 'Nano Banana: never use @ — write "Image 1".');
 	} else {
-		for (const m of text.matchAll(/@Image\s+\d+/g)) push('seedance-underscore', 'error', m, 'Seedance: use @Image_1 (underscore), not "@Image 1".');
-		// Handles are swapped before lint (V1S-327); one still here matched no reference.
-		for (const m of text.matchAll(/@(?!Image[ _]?\d)[A-Za-z][A-Za-z0-9_-]*/g)) push('unknown-handle', 'error', m, `${m[0]} matches no reference.`);
+		for (const m of text.matchAll(/@(?:Image|Audio|Video)\s+\d+/g)) push('seedance-underscore', 'error', m, 'Seedance: use @Image_1 (underscore), not "@Image 1".');
+		// Handles are swapped before lint (V1S-327); one still here matched no reference. Audio and video references keep theirs.
+		for (const m of text.matchAll(/@(?!(?:Image|Audio|Video)[ _]?\d)[A-Za-z][A-Za-z0-9_-]*/g)) push('unknown-handle', 'error', m, `${m[0]} matches no reference.`);
 	}
-	for (const m of text.matchAll(BANNED)) push('banned-word', 'error', m, 'Banned word.');
-	// The project's own bans: words its brief's must-nots quote (rules file, V1S-132).
-	for (const term of projectBanned) {
+	// The project's own bans: its rule pack, and the words its brief's must-nots quote (rules file, V1S-132).
+	const packs = projectBanned.filter((term) => term.startsWith('pack:')).map((term) => RULE_PACKS[term.slice(5)]).filter(Boolean);
+	for (const pack of packs) {
+		for (const m of text.matchAll(pack.banned)) push('banned-word', 'error', m, 'Banned word.');
+		for (const [pattern, message] of pack.rejected) for (const m of text.matchAll(pattern)) push('operator-rejected', 'error', m, message);
+	}
+	for (const term of projectBanned.filter((t) => !t.startsWith('pack:'))) {
 		const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 		for (const m of text.matchAll(new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'giu'))) push('project-rule', 'error', m, `The project's rules ban "${term}".`);
 	}
 	for (const [pattern, message] of REJECTED) for (const m of text.matchAll(pattern)) push('operator-rejected', 'error', m, message);
 	// Seedance: continuity comes from several hard cuts in one generation, never a lone shot.
-	if (target === 'seedance' && !/\bcut\b/i.test(text)) {
+	// 2.5 writes "Hard cut."; 2.0's "Shot 2:" label is the cut.
+	if (target === 'seedance' && !/\bcut\b/i.test(text) && !/^Shot\s+2:/m.test(text)) {
 		issues.push({ rule: 'single-shot', severity: 'warning', match: '(whole prompt)', index: 0, context: contextAt(text, 0, 0), message: 'Seedance: prompt multi-cut shots (hard cuts into the action) in one generation.' });
 	}
 	for (const m of text.matchAll(BLACK_AND_WHITE)) {

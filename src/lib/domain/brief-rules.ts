@@ -34,12 +34,16 @@ export function writeBriefSection(rules: string, brief: { tone: string; mustNots
 /** Words and phrases the brief's must-nots quote ("…" or “…”): banned from prompts. */
 export function bannedTerms(rules: string | null): string[] {
 	if (!rules) return [];
+	// A rules file names its series' rule pack (prompt-lint RULE_PACKS) with "<!-- lint-pack: blood-rush -->";
+	// Blood Rush's own file switches it on by naming the series.
+	const packs = new Set([...rules.matchAll(/<!--\s*lint-pack:\s*([a-z0-9-]+)\s*-->/g)].map((m) => `pack:${m[1]}`));
+	if (/\bblood rush\b/i.test(rules)) packs.add('pack:blood-rush');
 	const start = rules.indexOf(START);
 	const end = rules.indexOf(END);
-	if (start < 0 || end <= start) return [];
+	if (start < 0 || end <= start) return [...packs];
 	const section = rules.slice(start, end);
 	const mustNot = section.slice(section.indexOf('### Must not'));
-	const terms = new Set<string>();
+	const terms = new Set<string>(packs);
 	for (const match of mustNot.matchAll(/["“]([^"”\n]{2,60})["”]/g)) terms.add(match[1].trim().toLowerCase());
 	return [...terms];
 }

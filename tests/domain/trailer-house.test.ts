@@ -14,9 +14,9 @@ describe('Trailer House', () => {
 
 	test('the repo master prompt fills every target field and keeps the parsed headers', () => {
 		const file = readFileSync('prompts/trailer-house.md', 'utf8');
-		const format = (skill: string) => readFileSync(`.agents/skills/${skill}/format.md`, 'utf8');
+		const format = (file: string) => readFileSync(`.agents/skills/seedance-higgsfield/${file}`, 'utf8');
 		// Seedance 2.0: Higgsfield's plain-prose shots with the shot structure up top.
-		const v20 = fillMasterPrompt(file, { model: 'seedance-2.0', seconds: 15, aspect: '9:16' }, format('seedance-2-0-higgsfield'));
+		const v20 = fillMasterPrompt(file, { model: 'seedance-2.0', seconds: 15, aspect: '9:16' }, format('format-2-0.md'));
 		expect(v20).not.toContain('{{');
 		expect(v20).toContain('exactly 15 seconds');
 		expect(v20).toContain('Total: 15s / N shots / 9:16');
@@ -24,7 +24,7 @@ describe('Trailer House', () => {
 		expect(v20.startsWith('MASTER INSTRUCTIONS')).toBeTrue();
 		for (const header of ['TITLE:', 'LOGLINE:', 'HOOK:', 'SEEDANCE PROMPT:']) expect(v20).toContain(header);
 		// Seedance 2.5: the opening line and four sections, with dialogue and sound placed in the timeline.
-		const v25 = fillMasterPrompt(file, { model: 'seedance-2.5', seconds: 20, aspect: '16:9' }, format('seedance-2-5-higgsfield'));
+		const v25 = fillMasterPrompt(file, { model: 'seedance-2.5', seconds: 20, aspect: '16:9' }, format('format-2-5.md'));
 		expect(v25).not.toContain('{{');
 		expect(v25).toContain('Create a 20-second, 16:9');
 		for (const section of ['REFERENCE AND CONTINUITY', 'STORY AND TONE', 'VISUALS AND SOUND', '[00:00–00:04] —']) expect(v25).toContain(section);

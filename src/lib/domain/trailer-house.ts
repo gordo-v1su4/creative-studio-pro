@@ -10,8 +10,9 @@ import type { Project, TrailerHouse, Voice } from '$lib/domain/schemas';
 export const SEEDANCE_TARGETS = {
 	'seedance-2.0': {
 		label: 'Seedance 2.0',
-		/** `.agents/skills/<skill>/format.md` is the prompt format the Agent writes in. */
-		skill: 'seedance-2-0-higgsfield',
+		/** `.agents/skills/<skill>/<format>` is the prompt format the Agent writes in. */
+		skill: 'seedance-higgsfield',
+		format: 'format-2-0.md',
 		min_s: 4,
 		max_s: 15,
 		aspects: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9'],
@@ -19,7 +20,8 @@ export const SEEDANCE_TARGETS = {
 	},
 	'seedance-2.5': {
 		label: 'Seedance 2.5',
-		skill: 'seedance-2-5-higgsfield',
+		skill: 'seedance-higgsfield',
+		format: 'format-2-5.md',
 		min_s: 4,
 		max_s: 30,
 		aspects: ['16:9', '4:3', '1:1', '3:4', '9:16', '21:9', 'adaptive'],
@@ -46,7 +48,7 @@ export function checkTarget(target: TeaserTarget): { ok: true } | { ok: false; m
 
 /**
  * The master prompt's instructions (everything after the first `---` line), with the target filled in
- * and the chosen model's prompt format (its skill's `format.md`) in place of `{{FORMAT}}`.
+ * and the chosen model's prompt format (its file in the Seedance skill) in place of `{{FORMAT}}`.
  */
 export function fillMasterPrompt(file: string, target: TeaserTarget, format = ''): string {
 	const body = file.split(/^---\s*$/m).slice(1).join('---').trim() || file.trim();

@@ -51,7 +51,16 @@ async function main(): Promise<void> {
 		await linkSkill(name);
 	}
 
-	console.log(`Linked ${skillNames.length} skills: .claude/skills → .agents/skills`);
+	// A skill that was renamed or merged away leaves a link to nothing; an old copy is how agents pick up old rules.
+	const pruned: string[] = [];
+	for (const entry of await readdir(claudeSkillsDir)) {
+		if (!skillNames.includes(entry) && (await isExistingLink(join(claudeSkillsDir, entry)))) {
+			await rm(join(claudeSkillsDir, entry), { recursive: true });
+			pruned.push(entry);
+		}
+	}
+
+	console.log(`Linked ${skillNames.length} skills: .claude/skills → .agents/skills${pruned.length ? `; removed stale ${pruned.join(', ')}` : ''}`);
 }
 
 main().catch((error: unknown) => {

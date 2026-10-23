@@ -6,6 +6,8 @@
 	"scripts": {
 		"postinstall": "bun run skills:link",
 		"skills:link": "bun run scripts/link-agent-skills.ts",
+		"skills:sync": "bun run scripts/sync-prompt-skills.ts",
+		"skills:global": "bun run scripts/install-global-skills.ts",
 		"skills:install": "bunx skills@latest experimental_install -y",
 		"skills:update": "bunx skills@latest update -p -y",
 		"dev": "vite dev",

@@ -49,7 +49,13 @@ and what to reject), and a FILENAME (`[NAME]_sheet_v1`).
 ## STEP 3 — THE VIDEO TEST PROMPT (7 seconds)
 
 A short test, so the user checks the character moves right before building a big
-scene. Upload line: `7 s. Upload: image 1 = [NAME] sheet`.
+scene. Upload line: `7 s. Upload: @Image_1 = [NAME] sheet`.
+
+- **Format:** write it in the `seedance-higgsfield` skill's format (Seedance 2.5
+  unless the user names 2.0) and run its linter. Either way: open with
+  `@Image_1 = [FULL NAME] — definitive identity lock`, then use the full name
+  every time, never a pronoun or "the fighter", and never re-describe what the
+  sheet shows.
 
 - **One character, one location, one or two signature moves,** with seconds per
   beat. Simple tests reveal problems; busy tests hide them.

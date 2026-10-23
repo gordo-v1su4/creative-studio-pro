@@ -27,6 +27,13 @@ describe('the brief in the rules file', () => {
 		expect(bannedTerms('no section here "glitter"')).toEqual([]);
 	});
 
+	test('a rules file switches on its series rule pack', () => {
+		expect(bannedTerms(existing)).toEqual(['pack:blood-rush']);
+		expect(bannedTerms('# Other show\n<!-- lint-pack: blood-rush -->\n')).toEqual(['pack:blood-rush']);
+		expect(bannedTerms('# Other show\n')).toEqual([]);
+		expect(lintPrompt('Image_1 is Kai. Kai walks past neon.', 'seedance', bannedTerms(existing)).issues.map((i) => i.rule)).toContain('banned-word');
+	});
+
 	test('the linter enforces the project bans as errors, whole words only', () => {
 		const issues = lintPrompt('Image_1 is Kai. Glitter signs, then a cut to a lens flare. Glittering.', 'seedance', ['glitter', 'lens flare']).issues.filter((i) => i.rule === 'project-rule');
 		expect(issues.map((i) => i.match)).toEqual(['Glitter', 'lens flare']);

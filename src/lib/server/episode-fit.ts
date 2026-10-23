@@ -17,7 +17,7 @@ import { lintAndFix, lintTeaser, redactAll, type LintRound } from '$lib/server/t
  * Fit only writes text: it never sends anything to an image or video model.
  */
 
-const FORMAT_PATH = join(process.cwd(), '.agents', 'skills', 'seedance-2-5-higgsfield', 'format.md');
+const FORMAT_PATH = join(process.cwd(), '.agents', 'skills', 'seedance-higgsfield', 'format-2-5.md');
 
 /** The skill's naming rules (the part of its format the linter checks). */
 async function namingRules(path = FORMAT_PATH): Promise<string> {

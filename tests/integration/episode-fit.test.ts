@@ -58,7 +58,7 @@ describe('Fit to length (server side)', () => {
 		] });
 		const agent = scripted([answer, answer, FIXED]);
 		const rounds: Array<[number, number, number]> = [];
-		const shots = await fitScene(agent.client, { system: await fitSystemPrompt(), story: 'Fall 2001. Kai Santana keeps a hidden crew.', series, outline, target_min: 1, scene: plan, sceneCards: [project.production.cards[1]], nextScene: null, banned: [] }, () => {}, (i, round) => { rounds.push([i, round.round, round.issues.length]); });
+		const shots = await fitScene(agent.client, { system: await fitSystemPrompt(), story: 'Fall 2001. Kai Santana keeps a hidden crew.', series, outline, target_min: 1, scene: plan, sceneCards: [project.production.cards[1]], nextScene: null, banned: ['pack:blood-rush'] }, () => {}, (i, round) => { rounds.push([i, round.round, round.issues.length]); });
 
 		// The ask: the story, the scene and its shots, the job; no banned word anywhere in it.
 		expect(agent.asked[0].prompt).toContain('THE SCENE TO FILL: P02 — Morning Quad');

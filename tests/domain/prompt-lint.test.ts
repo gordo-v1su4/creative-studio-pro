@@ -33,6 +33,8 @@ describe('prompt lint', () => {
 
 	test('flags re-description of a sheet', () => {
 		expect(rules(`${head}\n1. Kai "Hoodie" Santana with platinum curls.`)).toContain('re-description');
+		expect(rules(`${head}\n1. Kai "Hoodie" Santana with dreads.`)).toContain('re-description');
+		expect(rules(`${head}\n1. Dread fills Kai "Hoodie" Santana.`)).not.toContain('re-description');
 	});
 
 	test('target syntax: no @ on Nano Banana, underscore on Seedance', () => {
@@ -41,10 +43,12 @@ describe('prompt lint', () => {
 		expect(rules('@Image_1 defines Kai "Hoodie" Santana’s identity.', 'seedance')).not.toContain('seedance-underscore');
 	});
 
-	test('banned words and black-and-white', () => {
-		expect(rules(`${head}\n1. neon light.`)).toContain('banned-word');
-		expect(rules(`${head}\nNo fangs.`)).toContain('banned-word');
-		expect(rules(`${head}\n1. A vampire crew.`)).toContain('banned-word');
+	test('banned words come from the project rule pack; black-and-white holds everywhere', () => {
+		const blood = (prompt: string) => lintPrompt(prompt, 'nano_banana', ['pack:blood-rush']).issues.map((i) => i.rule);
+		expect(blood(`${head}\n1. neon light.`)).toContain('banned-word');
+		expect(blood(`${head}\nNo fangs.`)).toContain('banned-word');
+		expect(blood(`${head}\n1. A vampire crew.`)).toContain('banned-word');
+		expect(rules(`${head}\n1. neon light.`)).not.toContain('banned-word');
 		expect(rules(`${head}\n1. A black-and-white frame.`)).toContain('black-and-white');
 		expect(rules(`${head}\nNo black-and-white.`)).not.toContain('black-and-white');
 	});
@@ -67,9 +71,13 @@ test('inline "Name from Image N" style declares its own references', () => {
 	expect(lintPrompt('1. Kai "Hoodie" Santana from Image 1 walks; he smiles.').issues.map((i) => i.rule)).toContain('pronoun');
 });
 
-test('operator-rejected beats: flicker, blood moon, pink signs, vial drinking, guide lines, Elias eye glow', () => {
+test('operator-rejected beats: flicker and guide lines everywhere; blood moon, pink signs, vial drinking, Elias eye glow on Blood Rush', () => {
 	const head = '@Image_1 = Kai "Hoodie" Santana\n@Image_2 = Elias Mercer\n';
-	const r = (body: string) => lintPrompt(head + body, 'seedance').issues.map((i) => i.rule);
+	const r = (body: string) => lintPrompt(head + body, 'seedance', ['pack:blood-rush']).issues.map((i) => i.rule);
+	const anywhere = (body: string) => lintPrompt(head + body, 'seedance').issues.map((i) => i.rule);
+	expect(anywhere('The edit flickers to the beat. HARD CUT.')).toContain('operator-rejected');
+	expect(anywhere('Follow the red arc across the street. HARD CUT.')).toContain('operator-rejected');
+	expect(anywhere('A blood moon rises. HARD CUT.')).not.toContain('operator-rejected');
 	for (const body of [
 		'The edit flickers to the beat. HARD CUT.',
 		'A blood moon rises. HARD CUT.',
@@ -81,10 +89,17 @@ test('operator-rejected beats: flicker, blood moon, pink signs, vial drinking, g
 	expect(r('Kai "Hoodie" Santana sprints and leaps. HARD CUT. Elias Mercer watches.')).toEqual([]);
 });
 
+test('Seedance audio and video references keep their handles', () => {
+	const prompt = '@Image_1 = Mara Voss\n@Audio_1 = the master track — keep the original audio from @Audio_1 unchanged\n@Video_1 = the dance pass — motion only\nMara Voss runs.\nHard cut.\nMara Voss stops.';
+	expect(lintPrompt(prompt, 'seedance').issues).toEqual([]);
+	expect(lintPrompt('@Image_1 = Mara Voss\n@Audio 1 = the master track\nMara Voss runs. Hard cut.', 'seedance').issues.map((i) => i.rule)).toContain('seedance-underscore');
+});
+
 test('declared names lose a trailing period', () => {
 	expect(lintPrompt('@Image_1 = Mara Voss.\nMara Voss runs. HARD CUT.', 'seedance').declarations[0].name).toBe('Mara Voss');
 });
 
 test('Seedance prompt with no cuts warns single-shot', () => {
 	expect(lintPrompt('@Image_1 = Mara Voss\nMara Voss runs.', 'seedance').issues.map((i) => i.rule)).toContain('single-shot');
+	expect(lintPrompt('@Image_1 = Mara Voss\nShot 1: Mara Voss runs.\nShot 2: Mara Voss stops.', 'seedance').issues).toEqual([]);
 });
