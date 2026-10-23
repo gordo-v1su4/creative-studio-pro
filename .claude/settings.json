@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun scripts/check-env.ts 1>&2 || exit 2"
+            "command": "bun \"$CLAUDE_PROJECT_DIR/scripts/check-env.ts\" 1>&2 || exit 2"
           }
         ]
       }
