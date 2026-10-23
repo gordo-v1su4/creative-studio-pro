@@ -5,9 +5,9 @@ description: The one prompt format for ByteDance Seedance 2.0 and Seedance 2.5 v
 
 # Seedance on Higgsfield
 
-This skill is self-contained: the formats, the rules, the run lessons, worked examples and the linter are all in this folder. It is the only Seedance prompt format. If another file anywhere (another skill, a repo doc, an old prompt) describes Seedance differently, this skill wins: follow it, and tell the operator where the other file is so it can be deleted.
+Updated: 2026-10-23
 
-Current as of 2026-10-23.
+This skill is self-contained: the formats, the rules, the run lessons, worked examples and the linter are all in this folder. It is the only Seedance prompt format. If another file anywhere (another skill, a repo doc, an old prompt) describes Seedance differently, this skill wins: follow it, and tell the operator where the other file is so it can be deleted.
 
 ## 1. Pick the model
 

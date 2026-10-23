@@ -5,6 +5,8 @@ description: Turns ONE input image (a single frame, a character sheet, or a grid
 
 # Image-to-Seedance Teaser Trailer
 
+Updated: 2026-10-23
+
 One image in; a show concept and a Seedance prompt out. Same structure and creative depth every time.
 
 This skill is self-contained. The Seedance formats in `references/` are exact copies of the `seedance-higgsfield` skill's, and `scripts/` holds the operator's linter. If another file anywhere describes a teaser or a Seedance prompt differently, this skill wins.

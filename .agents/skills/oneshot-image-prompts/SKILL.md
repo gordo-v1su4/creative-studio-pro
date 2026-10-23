@@ -5,6 +5,8 @@ description: Write finished, copy-paste image prompts in the ONE SHOT cinematic 
 
 # ONE SHOT // Image Prompts
 
+Updated: 2026-10-23
+
 > ONE SHOT Community Edition — built by **CodeOneshot / ONE SHOT**. Free to share.
 
 Turn a one-line ask into a finished image prompt in a single consistent

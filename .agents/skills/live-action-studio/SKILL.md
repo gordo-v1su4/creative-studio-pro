@@ -5,6 +5,8 @@ description: LIVE-ACTION STUDIO — give it any character name (game, anime, com
 
 # LIVE-ACTION STUDIO (ONE SHOT Community Edition)
 
+Updated: 2026-10-23
+
 Built by **CodeOneshot / ONE SHOT**. Free to share.
 
 One name in, two prompts out: a live-action character sheet and a short video test.

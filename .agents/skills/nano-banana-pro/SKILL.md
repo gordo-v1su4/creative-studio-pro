@@ -5,9 +5,11 @@ description: The prompt format for Google's Nano Banana Pro (Gemini 3 Pro Image,
 
 # Nano Banana Pro
 
+Updated: 2026-10-23
+
 This skill is self-contained: the format, the reference rules, worked examples and the linter are in this folder. It is the only Nano Banana Pro prompt format. If another file anywhere describes Nano Banana Pro differently (another skill, a repo doc, an old prompt), this skill wins: follow it, and tell the operator where the other file is so it can be deleted.
 
-Current as of 2026-10-23, from the operator's free Higgsfield tests (2026-10-20), the Blood Rush and Drown in This River work in super-seed2, and Google's own guidance.
+Sources: the operator's free Higgsfield tests (2026-10-20), the Blood Rush and Drown in This River work in super-seed2, and Google's own guidance.
 
 ## Why it needs its own skill
 
