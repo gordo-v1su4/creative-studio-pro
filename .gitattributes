@@ -1,0 +1,4 @@
+# The prompt skills and the linter are byte-for-byte copies of the Hermes vault (bun run skills:sync --check),
+# so they keep LF on every OS, including Windows checkouts with core.autocrlf=true.
+.agents/skills/** text eol=lf
+src/lib/domain/prompt-lint.ts text eol=lf
