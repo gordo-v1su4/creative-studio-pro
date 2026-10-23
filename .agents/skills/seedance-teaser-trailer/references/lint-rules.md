@@ -1,6 +1,6 @@
 # The prompt linter's rules
 
-Every prompt goes through the operator's linter (`scripts/prompt-lint.ts`, a byte-identical copy of the app's `src/lib/domain/prompt-lint.ts`). Run it yourself before you hand a prompt over:
+Every prompt goes through the operator's linter (`scripts/prompt-lint.ts`; Creative Studio Pro's app runs the same file, synced from the Hermes vault). Run it yourself before you hand a prompt over:
 
 ```
 bun scripts/lint-prompt.ts <prompt.txt> --target seedance        # or --target nano_banana

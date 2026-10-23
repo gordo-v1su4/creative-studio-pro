@@ -6,6 +6,9 @@
  * generic stand-ins ("the store", "the guy"), look/wardrobe re-description —
  * plus target syntax (`@` never on Nano Banana; `@Image_N` on Seedance), the
  * universal operator rejections, and the project's own bans and rule pack.
+ *
+ * Source of truth: the Hermes vault, `10-Infrastructure/Agent Skills/skills/seedance-higgsfield/scripts/prompt-lint.ts`.
+ * Every other copy (each prompt skill, Creative Studio Pro's `src/lib/domain/prompt-lint.ts`) is synced from it.
  */
 
 export type LintTarget = 'nano_banana' | 'seedance';

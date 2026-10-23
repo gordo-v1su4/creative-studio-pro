@@ -1,6 +1,6 @@
 /**
- * Lint a prompt file with the operator's linter (a byte-identical copy of the app's
- * src/lib/domain/prompt-lint.ts). Runs on bun or node 22.18+, no install.
+ * Lint a prompt file with the operator's linter (./prompt-lint.ts, the same file Creative Studio Pro's
+ * app runs; its source is the Hermes vault). Runs on bun or node 22.18+, no install.
  *   lint-prompt.ts <file> [--target seedance|nano_banana] [--pack blood-rush] [--ban "word"]…
  * A Markdown example file is linted between its two `---` rules. Exit code 1 on any error.
  */

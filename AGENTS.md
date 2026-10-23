@@ -84,7 +84,7 @@ Canonical skills live in `.agents/skills/` (committed). Lockfile: `skills-lock.j
 
 ### Prompt skills (global)
 
-`seedance-higgsfield`, `nano-banana-pro`, `seedance-teaser-trailer`, `oneshot-image-prompts` and `live-action-studio` in `.agents/skills/` are the source of truth for every machine and agent tool, not just this repo. Edit them only here; after changing the linter, the lint rules or a Seedance format, run `bun run skills:sync` (`tests/domain/skills-sync.test.ts` fails on drift). `bun run skills:global` links them into each tool's user-level skills folder; `--pack` writes upload zips. Rollout and cleanup: the Hermes vault note `04-Projects/Creative Studio Pro/Prompt Skills Runbook.md`.
+`seedance-higgsfield`, `nano-banana-pro`, `seedance-teaser-trailer`, `oneshot-image-prompts` and `live-action-studio` come from the Hermes vault (`10-Infrastructure/Agent Skills/skills/`), the source of truth that Syncthing carries to every machine. `.agents/skills/` holds a copy because the app reads the Seedance formats and the linter at runtime. **Never edit the copy, and never edit `src/lib/domain/prompt-lint.ts` here:** edit in the vault, run its `sync-skills.ts`, then `bun run skills:sync` here (`--check` only reports drift; `tests/domain/skills-sync.test.ts` fails on drift when the vault is present). Installing them on a machine, and cleanup: the vault note `10-Infrastructure/Agent Skills/Prompt Skills Runbook.md`.
 
 ### Repo-specific skill
 
