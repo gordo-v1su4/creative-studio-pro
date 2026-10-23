@@ -1,7 +1,8 @@
 name: CSP CI
+# Paused 2026-10-23 at the operator's request: manual runs only (Actions → CSP CI → Run workflow).
+# To turn it back on, restore the `push:` and `pull_request:` triggers.
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 jobs:
   verify:
     strategy:
