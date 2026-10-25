@@ -68,7 +68,7 @@ describe('grid stills against fakes', () => {
 		const quoted = await quoteGrids(deps, project, 'g1');
 		if (!quoted.ok) throw new Error(quoted.message);
 		const approval = quoted.grids[0].approval;
-		expect([approval.model, approval.resolution, approval.aspect_ratio, approval.credits, approval.episode_spent, approval.episode_after]).toEqual(['GPT Image 2.5', '2K', '1:1', 4, 0, 4]);
+		expect([approval.model, approval.resolution, approval.aspect_ratio, approval.credits, approval.episode_spent, approval.episode_after]).toEqual(['GPT Image 2.5', '2K', '16:9', 4, 0, 4]);
 		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4, approval_key: approval.approval_key });
 		if (!sent.ok) throw new Error(sent.message);
 		expect(sent.card_ids).toEqual(['c0', 'c1']);
@@ -93,6 +93,25 @@ describe('grid stills against fakes', () => {
 		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 2, approval_key: quoted.grids[0].approval.approval_key });
 		expect(sent.ok).toBeFalse();
 		if (!sent.ok) expect(sent.reasons?.join(' ')).toContain('above the 2');
+	});
+
+	test('approved Ghost shots become 2×2 keyframes; a wide shot renders alone and is kept whole', async () => {
+		const { deps, project, setStatus } = await setup(['a', 'b', 'c']);
+		const spec = (size: 'MS' | 'WS', action: string) => ({ size, angle: 'eye level', subjects: [], action, dialogue: '', location: 'the store', light: 'night', camera_move: '', duration_s: 6 });
+		const cards = project.production.cards.map((card, i) => ({ ...card, fit: { target_min: 10, at: '2026-10-25T00:00:00.000Z', lint: { rounds: 0, fixed: 0, remaining: 0 }, spec: spec(i === 2 ? 'WS' : 'MS', `Beat ${i + 1}.`), approved_at: '2026-10-25T00:00:00.000Z' } }));
+		const saved = await deps.gateway.saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version, production: { ...project.production, cards } });
+		if (!saved.ok) throw new Error(saved.error.message);
+		const quoted = await quoteGrids(deps, saved.data, 'g1');
+		if (!quoted.ok) throw new Error(quoted.message);
+		expect(quoted.grids.map((g) => g.card_ids)).toEqual([['c0', 'c1'], ['c2']]);
+		expect(quoted.grids[0].prompt.split('\n')[0]).toContain('2x2 grid of four cinematic 16:9 film stills');
+		expect(quoted.grids[1].prompt.split('\n')[0]).toBe('Create one cinematic 16:9 film still from the scene "Scene 010".');
+		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 1, confirmed_credits: 4, approval_key: quoted.grids[1].approval.approval_key });
+		if (!sent.ok) throw new Error(sent.message);
+		setStatus('completed');
+		const settled = await settleGrid(deps, { project_id: project.project_id, job_id: sent.job_id, card_ids: sent.card_ids });
+		if (!settled.ok || settled.pending) throw new Error('not settled');
+		expect(settled.project.production.assets.map((a) => [a.card_id, a.mime_type, a.name])).toEqual([['c2', 'image/png', 'grid-job-grid-1.png']]);
 	});
 
 	test('a prompt changed since the approval is refused before any spend', async () => {

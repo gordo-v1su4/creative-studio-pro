@@ -2,8 +2,9 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
-import type { Project } from '$lib/domain/schemas';
-import { gridChunks, gridPrompt, gridShape } from '$lib/domain/grid';
+import type { Project, StoryCard } from '$lib/domain/schemas';
+import { gridChunks, gridPrompt, gridShape, keyframeChunks, keyframePrompt, keyframeQc, keyframeShape, lookLine, type KeyframeShot } from '$lib/domain/grid';
+import { SeriesStore } from './series';
 import { uuid7ish } from '$lib/domain/ids';
 import { lintPrompt } from '$lib/domain/prompt-lint';
 import { bannedTerms } from '$lib/domain/brief-rules';
@@ -44,14 +45,28 @@ export async function quoteGrids(deps: GridDeps, project: Project, groupId: stri
 	const shots = project.production.cards.filter((card) => card.group_id === groupId && !card.benched && !hasStill(card.card_id)).toSorted((a, b) => a.order - b.order);
 	const banned = bannedTerms(await projectRules(deps.projectRoot, project.project_id));
 	const references = await seriesReferences(deps.projectRoot, project);
+	// V1S-376: shots Ghost proposed become 2×2 keyframes once approved (wide shots alone); older shots keep the grid prompt.
+	const legacy = shots.filter((card) => !card.fit?.spec);
+	const approved = shots.filter((card) => card.fit?.spec && card.fit.approved_at).map((card) => ({ card, card_id: card.card_id, title: card.title, spec: card.fit!.spec! }));
+	const look = project.series ? lookLine((await SeriesStore.beside(deps.projectRoot).read(project.series.series_id).catch(() => null))?.story?.text ?? '') : '';
+	const chunks: Array<{ cards: StoryCard[]; keyframe: boolean; items?: KeyframeShot[] }> = [
+		...gridChunks(legacy).map((cards) => ({ cards, keyframe: false })),
+		...keyframeChunks(approved).map((items) => ({ cards: items.map((item) => item.card), keyframe: true, items }))
+	];
 	const grids: GridQuote[] = [];
-	for (const [chunk, cards] of gridChunks(shots).entries()) {
-		const written = gridPrompt({ scene: scene?.title ?? group.name, location: scene?.location ?? '', summary: scene?.summary ?? '', characters: scene?.characters ?? [], shots: cards.map((card) => ({ card_id: card.card_id, title: card.title, image_prompt: card.image_prompt, description: card.beat })) });
-		// Handles (@Kai) become image labels and exact names before lint, and their sheets are attached.
-		const compiled = await compileForSend(written, references, 'nano_banana', deps.referenceFiles, { series: [...new Set(cards.flatMap((card) => seriesReferenceIds(card)))] });
-		const prompt = compiled.prompt;
+	for (const [chunk, entry] of chunks.entries()) {
+		const { cards } = entry;
+		const written = entry.items
+			? keyframePrompt({ scene: scene?.title ?? group.name, look, shots: entry.items })
+			: gridPrompt({ scene: scene?.title ?? group.name, location: scene?.location ?? '', summary: scene?.summary ?? '', characters: scene?.characters ?? [], shots: cards.map((card) => ({ card_id: card.card_id, title: card.title, image_prompt: card.image_prompt, description: card.beat })) });
+		// Handles (@Kai) become exact names with `image N` tags (keyframes) or image labels (older grids), and their sheets are attached.
+		const compiled = await compileForSend(written, references, entry.keyframe ? 'ghost' : 'nano_banana', deps.referenceFiles, { series: [...new Set(cards.flatMap((card) => seriesReferenceIds(card)))] });
+		const prompt = entry.keyframe ? compiled.prompt.replace(/^Upload:/m, 'References:') : compiled.prompt;
 		const counts = new Map<string, number>();
-		for (const issue of lintPrompt(prompt, 'nano_banana', banned, { references }).issues) if (issue.severity === 'error') { const key = `Prompt rule ${issue.rule}: ${issue.message}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
+		const findings = entry.keyframe
+			? keyframeQc(prompt, compiled.attached.map((a) => a.name), banned).map((message) => `Keyframe QC: ${message}`)
+			: lintPrompt(prompt, 'nano_banana', banned, { references }).issues.filter((issue) => issue.severity === 'error').map((issue) => `Prompt rule ${issue.rule}: ${issue.message}`);
+		for (const key of findings) counts.set(key, (counts.get(key) ?? 0) + 1);
 		const blocked = [...[...counts].map(([reason, n]) => (n > 1 ? `${reason} (×${n})` : reason)), ...compiled.blocked];
 		const attached = compiled.attached.map((entry) => ({ ...entry, ...(entry.page_id && project.series ? { url: `/api/series/${project.series.series_id}/references?page_id=${entry.page_id}` } : {}) }));
 		const approval = await quoteStill(deps, project, { prompt, attached, aspect_ratio: GRID_ASPECT, blocked });
@@ -60,8 +75,8 @@ export async function quoteGrids(deps: GridDeps, project: Project, groupId: stri
 	return { ok: true, grids };
 }
 
-/** Grids are square: 2×2 or 3×3. */
-const GRID_ASPECT = '1:1';
+/** A square grid of 16:9 panels (2×2, 3×3) is itself a 16:9 frame, and so is a shot that renders alone. */
+const GRID_ASPECT = '16:9';
 
 /** Send one grid after its approval; refused before any spend when blocked, pricier than approved, or changed since. */
 export async function sendGrid(deps: GridDeps, input: { project_id: string; group_id: string; chunk: number; confirmed_credits: number; approval_key: string }): Promise<{ ok: true; job_id: string; card_ids: string[]; credits: number } | Failure> {
@@ -90,21 +105,24 @@ export async function settleGrid(deps: GridDeps, input: { project_id: string; jo
 	const gridFile = join(folder, gridName);
 	await writeFile(gridFile, await deps.download(job.url));
 	const gridUrl = `/api/projects/${input.project_id}/files/grids/${gridName}`;
-	const shape = gridShape(input.card_ids.length);
-	const split = await deps.splitter.splitGrid(gridFile, shape.rows, shape.cols);
 	let project = await deps.store.readProject(input.project_id);
 	if (!project) return fail(404, 'Project not found');
+	// Keyframes (V1S-376) are 2×2, or 1×1 for a shot that renders alone (kept whole, no split).
+	const keyframe = input.card_ids.every((id) => project!.production.cards.find((card) => card.card_id === id)?.fit?.spec);
+	const shape = keyframe ? keyframeShape(input.card_ids.length) : gridShape(input.card_ids.length);
+	const whole = shape.rows * shape.cols === 1;
+	const split = whole ? null : await deps.splitter.splitGrid(gridFile, shape.rows, shape.cols);
 	let added = 0;
 	for (const [i, cardId] of input.card_ids.entries()) {
-		const panel = split.panels[i];
-		if (!panel || !project.production.cards.some((card) => card.card_id === cardId)) continue;
-		const name = `grid-${input.job_id.slice(0, 12)}-${String(i + 1).padStart(2, '0')}.jpg`;
+		const panel = split?.panels[i];
+		if ((!whole && !panel) || !project.production.cards.some((card) => card.card_id === cardId)) continue;
+		const name = whole ? gridName : `grid-${input.job_id.slice(0, 12)}-${String(i + 1).padStart(2, '0')}.jpg`;
 		const file = join(folder, name);
-		await writeFile(file, await split.download(panel.index));
+		if (split && panel) await writeFile(file, await split.download(panel.index));
 		const probed = await deps.probe(file);
 		const outcome = await deps.gateway.addTake({
 			command: 'add_take', project_id: input.project_id, expected_version: project.version, card_id: cardId,
-			take: { asset_id: uuid7ish(), kind: 'image', name, mime_type: 'image/jpeg', url: `/api/projects/${input.project_id}/files/grids/${name}`, ...(probed.width ? { width: probed.width, height: probed.height } : {}), created_at: new Date().toISOString(), grid: { url: gridUrl, panel: i } }
+			take: { asset_id: uuid7ish(), kind: 'image', name, mime_type: whole ? 'image/png' : 'image/jpeg', url: `/api/projects/${input.project_id}/files/grids/${name}`, ...(probed.width ? { width: probed.width, height: probed.height } : {}), created_at: new Date().toISOString(), grid: { url: gridUrl, panel: i } }
 		});
 		if (!outcome.ok) return fail(409, outcome.error.message);
 		project = outcome.data; added += 1;

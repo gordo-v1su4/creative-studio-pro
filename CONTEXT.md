@@ -189,7 +189,7 @@ Media in a series tree whose name or folder does not match any shot; it stays vi
 _Avoid_: Rejected, invalid, orphan
 
 **Grid**:
-One square image holding a scene's stills, 2×2 for up to four shots, else 3×3, generated together for continuity and then split into still takes; spare cells hold closer angles, wide shots render alone instead, and the grid stays attached to its takes as a reference.
+One 16:9 image holding a scene's stills in a square layout of 16:9 panels (2×2 keyframes for up to four approved shots; older grids 3×3), generated together for continuity and then split into still takes; spare panels hold closer angles, wide shots render alone instead, and the grid stays attached to its takes as a reference.
 _Avoid_: Contact sheet, storyboard, collage
 
 ### Finishing
