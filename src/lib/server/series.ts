@@ -57,6 +57,8 @@ export const seriesRecordSchema = z.object({
 	show_code: z.string().regex(/^[A-Z]{3}$/).optional(),
 	/** When the show and scene codes were locked (on the first take sent to Review Room, or by hand); null = still editable. */
 	codes_locked_at: z.string().nullable().optional(),
+	/** V1S-371: Notion shot pages whose shots were taken off the board, still to move to Notion's Trash (drained by take-out and Sync). */
+	notion_trash: z.array(z.string().min(1).max(64)).optional(),
 	checked_at: z.string(),
 	created_at: z.string()
 });

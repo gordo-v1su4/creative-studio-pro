@@ -104,10 +104,11 @@
 		error = null; note = null; saving = true;
 		try {
 			const response = await fetch(`/api/projects/${project.project_id}/fit`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'unfit', expected_version: project.version, ...(only ? { scene_ids: [only] } : {}) }) });
-			const body = (await response.json()) as { ok: true; data: Project; removed: number } | { ok: false; error: { message: string } };
+			const body = (await response.json()) as { ok: true; data: Project; removed: number; shots_trashed: number; trash_error: string | null } | { ok: false; error: { message: string } };
 			if (!body.ok) throw new Error(body.error.message);
 			onUpdated(body.data);
-			note = `Took out ${body.removed} fitted shot${body.removed === 1 ? '' : 's'}.`;
+			const trashed = body.shots_trashed ? ` ${body.shots_trashed} Notion shot page${body.shots_trashed === 1 ? '' : 's'} moved to Trash.` : '';
+			note = `Took out ${body.removed} fitted shot${body.removed === 1 ? '' : 's'}.${trashed}${body.trash_error ? ` Notion: ${body.trash_error}` : ''}`;
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Undo failed'; }
 		finally { saving = false; }
 	}

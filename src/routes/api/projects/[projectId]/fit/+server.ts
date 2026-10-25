@@ -6,7 +6,9 @@ import { uuid7ish } from '$lib/domain/ids';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import { episodeOutline } from '$lib/domain/episode-outline';
 import { fitPlan, fittedCards } from '$lib/domain/episode-fit';
-import { getGateway, getProjectRoot, getProjectStore, getSeriesStore, resolveProjectModel } from '$lib/server/config';
+import { getGateway, getNotionToken, getProjectRoot, getProjectStore, getSeriesStore, resolveProjectModel } from '$lib/server/config';
+import { createNotionApi } from '$lib/server/notion';
+import { drainNotionTrash, removedShotPages } from '$lib/server/notion-sync';
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { projectRules } from '$lib/server/animate';
@@ -52,9 +54,19 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	if (body.data.action === 'unfit') {
 		const outcome = await getGateway().unfitEpisode(projectId.data, body.data.expected_version, groupsOf(body.data.scene_ids));
-		return outcome.ok
-			? json({ ...outcome, removed: project.production.cards.length - outcome.data.production.cards.length })
-			: json(outcome, { status: commandStatus(outcome.error) });
+		if (!outcome.ok) return json(outcome, { status: commandStatus(outcome.error) });
+		const removed = project.production.cards.length - outcome.data.production.cards.length;
+		// V1S-371: their Notion shot pages go to Notion's Trash; what fails stays queued for the next Sync.
+		const pages = removedShotPages(project.production.cards, outcome.data.production.cards);
+		const store = getSeriesStore();
+		const record = pages.length ? await store.read(series.series_id) : null;
+		if (!record) return json({ ...outcome, removed, shots_trashed: 0, trash_error: null });
+		const queued = await store.write({ ...record, notion_trash: [...new Set([...(record.notion_trash ?? []), ...pages])] });
+		const token = getNotionToken();
+		if (!token) return json({ ...outcome, removed, shots_trashed: 0, trash_error: 'NOTION_TOKEN is not set; the shot pages go to Trash on the next Sync' });
+		const trash = await drainNotionTrash(createNotionApi(token), queued);
+		await store.write(trash.record);
+		return json({ ...outcome, removed, shots_trashed: trash.trashed, trash_error: trash.error });
 	}
 
 	if (body.data.action === 'target') {

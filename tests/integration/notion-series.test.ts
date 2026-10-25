@@ -86,6 +86,13 @@ function fakeNotion(v2 = false): NotionApi & { reads: string[]; writes: Array<{ 
 			(rows[source] ??= []).push(row);
 			return { id };
 		},
+		async trashPage(id) {
+			writes.push({ op: 'trash', id, properties: {} });
+			for (const list of Object.values(rows)) {
+				const at = list.findIndex((row) => row.id.replace(/-/g, '') === id.replace(/-/g, ''));
+				if (at >= 0) list.splice(at, 1);
+			}
+		},
 		async children(id) { reads.push(`children ${id}`); return page((children[id] ?? []) as never[]); },
 		async database(id) { reads.push(`database ${id}`); return { data_sources: [{ id: id.replace('db-', 'ds-') }] }; },
 		async dataSource(id) { reads.push(`source ${id}`); return { id, title: t(sources[id].title), properties: sources[id].properties }; },
@@ -374,6 +381,51 @@ describe('Notion sync (V1S-325)', () => {
 		expect(card.source?.notion_page_id).toBe('newshot1');
 		expect(card.fit?.dialogue).toBe('MALIK: "Later."');
 		expect((await sync()).shots_created).toBe(0);
+	});
+
+	test('taking fitted shots out trashes their Notion pages, and a refit numbers from 0010 again', async () => {
+		const { api, projects, project, sync, gateway, store } = await setup();
+		const { drainNotionTrash, removedShotPages } = await import('../../src/lib/server/notion-sync');
+		const teaser = project.series!.scenes[0].group_id;
+		const fitted = (id: string, group: string) => ({ card_id: id, order: 0, title: 'Fit shot', beat: 'Kai looks up.', purpose: 'Coverage.', duration_ms: 4000, image_prompt: 'x', video_prompt: 'y', status: 'draft' as const, group_id: group, fit: { target_min: 10, at: '2026-10-25T00:00:00.000Z', lint: { rounds: 0, fixed: 0, remaining: 0 } } });
+		// Clear the teaser's imported shot so the scene holds only fitted ones, as EP101's scenes do.
+		let current = (await projects.readProject(project.project_id))!;
+		const bare = await gateway.saveProduction({ command: 'save_production', project_id: current.project_id, expected_version: current.version, production: { ...current.production, cards: current.production.cards.filter((c) => c.group_id !== teaser) } });
+		expect(bare.ok).toBeTrue();
+		current = bare.ok ? bare.data : current;
+		const fit = await gateway.fitScene(current.project_id, current.version, teaser, [fitted('fit-a', teaser), fitted('fit-b', teaser)]);
+		expect(fit.ok).toBeTrue();
+		await sync();
+		const before = (await projects.readProject(project.project_id))!;
+		expect(before.production.cards.filter((c) => c.group_id === teaser).map((c) => c.shot_number)).toEqual([10, 20]);
+		const shotRows = api.rows['ds-shots'].length;
+
+		const out = await gateway.unfitEpisode(before.project_id, before.version, [teaser]);
+		expect(out.ok).toBeTrue();
+		const pages = removedShotPages(before.production.cards, out.ok ? out.data.production.cards : []);
+		expect(pages).toHaveLength(2);
+		const record = (await store.read(project.series!.series_id))!;
+		const drained = await drainNotionTrash(api, { ...record, notion_trash: [...pages, 'gone-already'] });
+		expect(drained.trashed).toBe(3);
+		expect(drained.record.notion_trash).toEqual([]);
+		expect(api.rows['ds-shots']).toHaveLength(shotRows - 2);
+		await store.write(drained.record);
+
+		// The scene is empty again, so the next fitted shot is numbered from the start.
+		const after = (await projects.readProject(project.project_id))!;
+		const refit = await gateway.fitScene(after.project_id, after.version, teaser, [fitted('fit-c', teaser)]);
+		expect(refit.ok && refit.data.production.cards.find((c) => c.card_id === 'fit-c')!.shot_number).toBe(10);
+		expect((await sync()).shots_created).toBe(1);
+	});
+
+	test('a page Notion refuses to trash stays queued', async () => {
+		const { store, project } = await setup();
+		const { drainNotionTrash } = await import('../../src/lib/server/notion-sync');
+		const record = (await store.read(project.series!.series_id))!;
+		const refusing = { trashPage: async () => { throw Object.assign(new Error('rate limited'), { code: 'rate_limited' }); } } as unknown as NotionApi;
+		const drained = await drainNotionTrash(refusing, { ...record, notion_trash: ['p1'] });
+		expect(drained).toMatchObject({ trashed: 0, error: 'rate limited' });
+		expect(drained.record.notion_trash).toEqual(['p1']);
 	});
 
 	test('a story pass written in Notion after the import reaches the episode on sync, and only once', async () => {

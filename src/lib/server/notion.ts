@@ -24,6 +24,8 @@ export interface NotionApi {
 	/** Writes (ADR 0002): only the sync calls these, and only for codes, Locked and shots' plain fields. */
 	updatePage(pageId: string, properties: Record<string, unknown>): Promise<void>;
 	createPage(dataSourceId: string, properties: Record<string, unknown>): Promise<{ id: string }>;
+	/** V1S-371: moves a shot page taken off the board to Notion's Trash (restorable there for 30 days). */
+	trashPage(pageId: string): Promise<void>;
 }
 
 export function createNotionApi(token: string): NotionApi {
@@ -37,7 +39,8 @@ export function createNotionApi(token: string): NotionApi {
 		createPage: async (dataSourceId, properties) => {
 			const page = (await client.pages.create({ parent: { type: 'data_source_id', data_source_id: dataSourceId }, properties } as never)) as unknown as { id: string };
 			return { id: page.id };
-		}
+		},
+		trashPage: async (pageId) => { await client.pages.update({ page_id: pageId, in_trash: true } as never); }
 	};
 }
 

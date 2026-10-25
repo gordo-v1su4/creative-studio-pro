@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { getGateway, getNotionToken, getProjectStore, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries, importEpisode, treeEpisodes } from '$lib/server/series';
-import { syncSeriesToNotion } from '$lib/server/notion-sync';
+import { drainNotionTrash, syncSeriesToNotion } from '$lib/server/notion-sync';
 import { createReviewRoomClient, ReviewRoomError, syncSeriesTree } from '$lib/server/review-room';
 import { seriesTree } from '$lib/domain/series-tree';
 import { notionFailure } from '../notion-errors';
@@ -78,9 +78,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			return json({ ok: true, data: await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title)) });
 		}
 		if (body.data.action === 'sync') {
-			const fresh = await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title));
+			let fresh = await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title));
 			const readProject = (id: string) => getProjectStore().readProject(id);
-			const notion = await syncSeriesToNotion(api, fresh, readProject, getGateway());
+			// V1S-371: shot pages left over from a take-out go to Notion's Trash first.
+			const trash = fresh.notion_trash?.length ? await drainNotionTrash(api, fresh) : null;
+			if (trash) fresh = await store.write(trash.record);
+			const notion = { ...(await syncSeriesToNotion(api, fresh, readProject, getGateway())), shots_trashed: trash?.trashed ?? 0, trash_error: trash?.error ?? null };
 			let saved = fresh, folders: { created: number; renamed: number } | null = null, folderError: string | null = null;
 			const config = getReviewRoomConfig();
 			if (config && fresh.review_room?.project_id) {

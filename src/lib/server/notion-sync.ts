@@ -93,6 +93,33 @@ export function sceneRefreshes(scenes: ImportedScene[], pages: Map<string, Serie
 	return out;
 }
 
+/** V1S-371: the Notion shot pages of the cards a take-out removed (cards in `before` but not in `after`). */
+export function removedShotPages(before: StoryCard[], after: StoryCard[]): string[] {
+	const kept = new Set(after.map((card) => card.card_id));
+	return before.filter((card) => !kept.has(card.card_id) && card.source?.notion_page_id).map((card) => bareId(card.source!.notion_page_id!));
+}
+
+/**
+ * Moves the record's pending shot pages to Notion's Trash. A page already gone (trashed, or deleted by hand)
+ * counts as done; any other failure stays pending for the next take-out or Sync. Returns the record with
+ * what is still pending; the caller saves it.
+ */
+export async function drainNotionTrash(api: NotionApi, record: SeriesRecord): Promise<{ record: SeriesRecord; trashed: number; error: string | null }> {
+	const pending = [...new Set(record.notion_trash ?? [])];
+	const left: string[] = [];
+	let trashed = 0, error: string | null = null;
+	for (const pageId of pending) {
+		try { await api.trashPage(pageId); trashed++; }
+		catch (cause) {
+			const { code, message } = cause as { code?: string; message?: string };
+			if (code === 'object_not_found' || /archived|in trash/i.test(message ?? '')) continue;
+			left.push(pageId);
+			error ??= message ?? 'Notion refused to trash a shot page';
+		}
+	}
+	return { record: { ...record, notion_trash: left }, trashed, error };
+}
+
 /** Sync one series and its imported episodes with Notion. `readProject` / `gateway` reach the episode projects. */
 export async function syncSeriesToNotion(api: NotionApi, record: SeriesRecord, readProject: (id: string) => Promise<Project | null>, gateway: ProjectCommandGateway): Promise<NotionSyncReport> {
 	const report: NotionSyncReport = { episodes: 0, scenes: 0, shots_updated: 0, shots_created: 0, pulled: 0, scenes_refreshed: 0 };
