@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import type { Project } from '$lib/domain/schemas';
 import {
@@ -97,6 +97,15 @@ export async function addSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: 
 		spec: null, spec_approved_at: null, prompt: null, prompt_edited: false
 	}));
 	return { ok: true, prep };
+}
+
+/** Take one source image off an entry (its copy under files/prep/sources goes too); the spec is redrafted. */
+export async function removeSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, key: string, url: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const prep = await readPrep(deps.projectRoot, projectId);
+	const source = prep.entries[key]?.sources.find((entry) => entry.url === url);
+	if (!source) return fail(404, 'That source image is not on this entry');
+	await rm(source.file, { force: true });
+	return { ok: true, prep: await update(deps.projectRoot, projectId, key, (state) => ({ ...state, sources: state.sources.filter((entry) => entry.url !== url), spec: null, spec_approved_at: null, prompt: null, prompt_edited: false })) };
 }
 
 /** The current reference image (an old sheet) as a source image, so ONE SHOT remakes it to the standard. */

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -7,7 +8,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus } from '../../src/lib/server/higgsfield';
-import { addSource, aspectOf, draftSpec, prepQc, prepView, quotePrep, saveSpec, sendPrep, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
+import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -118,6 +119,12 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(view?.template).toBe('T5a');
 		expect(prepQc(PROMPT, view!).join(' ')).toContain('never names "image 1"');
 		expect(prepQc(PROMPT.replace('Mara Voss', 'Mara'), view!).join(' ')).toContain('exact name');
+		// Removing the source takes it (and its copy) off the entry and back to T1, spec cleared.
+		const removed = await removeSource(deps, projectId, 'r-mara', added.prep.entries['r-mara'].sources[0].url);
+		if (!removed.ok) throw new Error(removed.message);
+		expect(removed.prep.entries['r-mara'].sources).toEqual([]);
+		expect(existsSync(added.prep.entries['r-mara'].sources[0].file)).toBeFalse();
+		expect((await removeSource(deps, projectId, 'r-mara', 'nope')).ok).toBeFalse();
 		expect(prepQc(`${PROMPT} image 1 neon glow`, view!).join(' ')).toContain('"neon"');
 		// The skill's SETTINGS line names the canvas; without one the kind's default applies.
 		// Character sheets are always 16:9 (the drawer's headshot frame); other kinds take the skill's SETTINGS aspect.

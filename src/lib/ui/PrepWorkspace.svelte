@@ -148,7 +148,7 @@
 						<div class="node-cap">Source images · what you feed in</div>
 						<div class="thumbs">
 							{#each item.state.sources as source, i (source.url)}
-								<figure><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={source.url} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
+								<figure><button type="button" class="remove" disabled={!!busy[key]} onclick={() => void call(key, 'Removing…', { action: 'remove_source', key, url: source.url })} title={`Remove ${source.name} (the spec is redrafted without it)`} aria-label={`Remove ${source.name}`}>×</button><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={source.url} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
 							{:else}
 								<p class="muted">None yet: {item.template === 'T1' || item.template === 'W3' ? 'made from the spec alone' : ''}</p>
 							{/each}
@@ -254,9 +254,13 @@
 	.node-cap { color: var(--color-nr-dim); font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
 	.node-cap.sub { margin-top: 6px; }
 	.thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
-	.thumbs figure { margin: 0; display: grid; gap: 2px; }
+	.thumbs figure { position: relative; margin: 0; display: grid; gap: 2px; }
 	.thumbs img { width: 72px; height: 54px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: cover; }
 	.thumbs figcaption { color: #4ab8ff; font: 600 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
+	/* A small x on the picture's top-right corner. */
+	.remove { z-index: 1; position: absolute; top: 3px; right: 3px; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: rgb(5 7 10 / 0.8); padding: 0; color: var(--color-nr-ink); font: 600 11px/1 var(--font-sans); cursor: pointer; }
+	.remove:hover:not(:disabled) { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
+	.remove:disabled { opacity: 0.4; cursor: default; }
 	.sheet { width: 100%; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: contain; background: #000; }
 	.sheet.old { opacity: 0.55; }
 	.pic { display: block; border: 0; background: transparent; padding: 0; cursor: zoom-in; }
