@@ -162,6 +162,7 @@
 					<!-- 2. reference spec -->
 					<div class="node wide">
 						<div class="node-cap">Reference spec{item.state.spec_approved_at ? ' · approved' : ''}</div>
+						{#if busy[key]}<p class="working"><span class="pulse" aria-hidden="true"></span>{busy[key]}{busy[key].startsWith('The Agent') ? ' This takes about a minute.' : ''}</p>{/if}
 						{#if drafts[key]}
 							<label class="field"><span>Description</span><textarea rows="4" bind:value={drafts[key].description}></textarea></label>
 							<label class="field"><span>Must hold (one per line)</span><textarea rows="3" bind:value={drafts[key].must_hold}></textarea></label>
@@ -264,6 +265,7 @@
 	.zoom img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border: 1px solid var(--color-nr-line); border-radius: 2px; }
 	.zoom-cap { color: var(--color-nr-muted); font: 11px var(--font-mono); }
 	.note { color: #a99ff2; font-size: 11px; }
+	.working { display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, #4ab8ff 40%, transparent); border-radius: 2px; padding: 6px 8px; color: #4ab8ff; font-size: 12px; }
 	.row { display: flex; flex-wrap: wrap; gap: 6px; }
 	.field { display: grid; gap: 3px; }
 	.field span { color: var(--color-nr-dim); font-size: 10.5px; }

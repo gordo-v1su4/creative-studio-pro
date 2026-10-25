@@ -13,7 +13,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 const SPEC = { name: 'x', kind: 'character', template: 'T1', description: 'A broad-shouldered freshman in a teal plaid button-down.', must_hold: ['teal plaid button-down', 'blue eyes'], from_sources: '' };
-const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens.';
+const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens.';
 
 async function setup() {
 	const root = await mkdtemp(join(tmpdir(), 'csp-prep-')); roots.push(root);
@@ -120,7 +120,9 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(prepQc(PROMPT.replace('Mara Voss', 'Mara'), view!).join(' ')).toContain('exact name');
 		expect(prepQc(`${PROMPT} image 1 neon glow`, view!).join(' ')).toContain('"neon"');
 		// The skill's SETTINGS line names the canvas; without one the kind's default applies.
-		expect(aspectOf(`${PROMPT}\nSETTINGS: GPT Image 2.5, 3:2 landscape, high quality.`, 'character')).toBe('3:2');
+		// Character sheets are always 16:9 (the drawer's headshot frame); other kinds take the skill's SETTINGS aspect.
+		expect(aspectOf(`${PROMPT}\nSETTINGS: GPT Image 2.5, 3:2 landscape, high quality.`, 'character')).toBe('16:9');
+		expect(aspectOf('SETTINGS: GPT Image 2.5, 3:2 landscape.', 'location')).toBe('3:2');
 		expect(aspectOf(PROMPT, 'character')).toBe('16:9');
 	});
 });

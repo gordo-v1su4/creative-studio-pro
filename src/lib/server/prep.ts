@@ -188,6 +188,7 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 	if (/\bneon\b/i.test(prompt)) out.push('The prompt uses the word "neon"; describe the light another way');
 	if (view.entry.kind === 'character' && !/straight-on|face square to the camera/i.test(prompt)) out.push('The first panel must be a straight-on, forward-facing face close-up (the T1 wording)');
 	if (view.entry.kind === 'character' && /three-quarter[^.]*first panel|first panel[^.]*three-quarter/i.test(prompt)) out.push('The first panel is three-quarter; it must face the camera');
+	if (view.entry.kind === 'character' && !/(near-)?white seamless|white cyclorama|white studio backdrop/i.test(prompt)) out.push('A character sheet sits on the near-white seamless studio backdrop, the same for the whole cast');
 	for (const [i, source] of view.state.sources.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`, 'i').test(prompt) && view.state.sources.length) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
 	return out;
 }
@@ -200,10 +201,11 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	if (!view.state.spec || !view.state.spec_approved_at) return fail(400, 'Approve the reference spec first');
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter.' : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets).' : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
-		const text = String((value as { prompt?: unknown })?.prompt ?? '').trim();
+		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
+		const text = String((value as { prompt?: unknown })?.prompt ?? '').replace(/^\s*```[\w-]*\s*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 		if (text.length < 80) throw new Error('prompt: too short');
 		return { prompt: text };
 	};
@@ -226,6 +228,8 @@ export async function editPrompt(deps: Pick<PrepDeps, 'projectRoot'>, projectId:
 const ASPECTS = new Set(['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9', '4:5', '5:4']);
 /** The skill's output ends with a SETTINGS line naming the aspect ("GPT Image 2.5, 3:2 landscape"); else the kind's default. */
 export function aspectOf(prompt: string | null, kind: PrepView['entry']['kind']): string {
+	// Every character sheet is 16:9, so the drawer's headshot (the left third) is the same frame for everyone.
+	if (kind === 'character') return '16:9';
 	const named = prompt?.match(/^SETTINGS:[^\n]*?\b(\d{1,2}:\d{1,2})\b/m)?.[1];
 	return named && ASPECTS.has(named) ? named : prepAspect(kind);
 }

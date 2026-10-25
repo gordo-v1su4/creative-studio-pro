@@ -106,12 +106,12 @@
 	li { display: grid; gap: 4px; align-content: start; min-width: 0; border: 1px solid var(--color-border-subtle); padding: 4px; cursor: grab; }
 	li:hover { border-color: var(--color-border-default); }
 	.thumb { display: block; width: 100%; overflow: hidden; border: 0; padding: 0; background: var(--color-surface-base); cursor: zoom-in; }
-	/* The headshot: the sheet's left third (the face close-up) scaled to the card's width, top of the panel, same frame for everyone. */
-	.thumb.head { aspect-ratio: 4 / 5; }
+	/* The headshot: the whole left panel of the sheet (its left third, top to bottom), same frame for everyone. */
+	.thumb.head { aspect-ratio: 9 / 16; }
 	.thumb.head img { display: block; width: 300%; max-width: none; height: auto; }
 	.thumb.wide { aspect-ratio: 16 / 9; }
 	.thumb.wide img { display: block; width: 100%; height: 100%; object-fit: cover; }
-	.thumb.empty { aspect-ratio: 4 / 5; display: grid; place-items: center; color: var(--color-text-dim); font: 600 8px var(--font-mono); text-transform: uppercase; text-align: center; cursor: grab; }
+	.thumb.empty { aspect-ratio: 9 / 16; display: grid; place-items: center; color: var(--color-text-dim); font: 600 8px var(--font-mono); text-transform: uppercase; text-align: center; cursor: grab; }
 	.info { display: grid; min-width: 0; }
 	.info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--color-text-primary); }
 	.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 8px; border: 0; background: rgb(5 7 10 / 0.92); padding: 24px; cursor: zoom-out; }
