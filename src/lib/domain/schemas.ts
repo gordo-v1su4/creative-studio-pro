@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { shotSpecSchema } from './shot-spec';
 import { modelChoiceSchema, projectAgentModelSchema } from '$lib/domain/model-provider';
 
 /**
@@ -280,7 +281,14 @@ export const storyCardSchema = z.object({
 		at: rfc3339Schema,
 		lint: z.object({ rounds: z.number().int().nonnegative(), fixed: z.number().int().nonnegative(), remaining: z.number().int().nonnegative() }),
 		dialogue: z.string().max(4000).optional(), audio: z.string().max(4000).optional(), refs: z.string().max(4000).optional(),
-		characters: z.array(z.string().max(100)).max(40).optional()
+		characters: z.array(z.string().max(100)).max(40).optional(),
+		/** V1S-375: the shot as Ghost proposed it; the prompts are written only after it is approved. */
+		spec: shotSpecSchema.optional(),
+		approved_at: rfc3339Schema.optional(),
+		/** The video prompt was edited by hand after it was written; a rewrite keeps it. */
+		prompt_edited: z.boolean().optional(),
+		/** What the Ghost QC still finds in the video prompt (empty = clean). */
+		qc: z.array(z.string().max(500)).max(40).optional()
 	}).optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;

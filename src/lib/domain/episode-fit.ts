@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ProductionState, StoryCard } from '$lib/domain/schemas';
 import type { EpisodeOutline, OutlineSceneRow } from '$lib/domain/episode-outline';
 import { defaultLinks, type SpineLink } from '$lib/domain/spine';
+import { keyframeOf, PROMPT_PENDING, specLine, specText, type ShotSpec } from '$lib/domain/shot-spec';
 
 /**
  * "Fit to length": an imported episode is shorter than its target (EP01 is about 6 min of shots against
@@ -128,6 +129,17 @@ export function removeFitted(production: ProductionState, groupIds?: string[]): 
 	const target = production.cards.filter((card) => card.fit && (!groupIds || (card.group_id && groupIds.includes(card.group_id))));
 	const drop = new Set(target.filter((card) => !withTakes.has(card.card_id)).map((card) => card.card_id));
 	if (drop.size === 0) return { production, removed: 0, kept: target.length };
+	return { production: dropCards(production, drop), removed: drop.size, kept: target.length - drop.size };
+}
+
+/** V1S-375: take single proposed shots out (only ones with no takes); the spine closes over the gap. */
+export function removeShots(production: ProductionState, cardIds: string[]): { production: ProductionState; removed: number } {
+	const withTakes = new Set(production.assets.map((asset) => asset.card_id));
+	const drop = new Set(cardIds.filter((id) => !withTakes.has(id) && production.cards.some((card) => card.card_id === id)));
+	return drop.size ? { production: dropCards(production, drop), removed: drop.size } : { production, removed: 0 };
+}
+
+function dropCards(production: ProductionState, drop: Set<string>): ProductionState {
 	const cards = production.cards.filter((card) => !drop.has(card.card_id)).toSorted((a, b) => a.order - b.order).map((card, order) => ({ ...card, order }));
 	let links = production.links;
 	if (links) {
@@ -135,8 +147,23 @@ export function removeFitted(production: ProductionState, groupIds?: string[]): 
 		const skip = (id: string | undefined): string | undefined => { let at = id; while (at && drop.has(at)) at = next.get(at); return at; };
 		links = links.filter((link) => !drop.has(link.from)).map((link) => ({ ...link, to: skip(link.to) })).filter((link): link is SpineLink => !!link.to);
 	}
-	return { production: { ...production, cards, ...(links ? { links } : {}) }, removed: drop.size, kept: target.length - drop.size };
+	return { ...production, cards, ...(links ? { links } : {}) };
 }
 
 /** For tests and callers that need the effective links either way. */
 export const effectiveLinks = (production: ProductionState): SpineLink[] => production.links ?? defaultLinks(production.cards);
+
+/**
+ * V1S-375: the cards for a scene's proposed shot specs. Titles continue the scene's numbering; each card keeps
+ * its spec (and its own duration) and waits for approval, with no prompt written yet.
+ */
+export function proposedCards(scene: FitScene & { title: string }, groupCards: StoryCard[], specs: ShotSpec[], input: { newId: () => string; now: string; target_min: number; summary: string }): StoryCard[] {
+	const shots: FittedShot[] = specs.map((spec) => ({
+		description: specLine(spec), duration_s: spec.duration_s, video_prompt: PROMPT_PENDING, image_prompt: keyframeOf(spec), dialogue: spec.dialogue, audio: '',
+		refs: [...new Set(specText(spec).match(/@[A-Za-z][\w-]*/g) ?? [])].join(' '), characters: spec.subjects.map((name) => name.replace(/^@/, '')), lint: { rounds: 0, fixed: 0, remaining: 0 }
+	}));
+	return fittedCards(scene, groupCards, shots, input).map((card, i) => ({ ...card, duration_ms: specs[i].duration_s * 1000, fit: { ...card.fit!, spec: specs[i] } }));
+}
+
+/** The scene's proposed shots still waiting for approval. */
+export const awaitingApproval = (cards: StoryCard[], groupId: string) => cards.filter((card) => card.group_id === groupId && card.fit?.spec && !card.fit.approved_at);

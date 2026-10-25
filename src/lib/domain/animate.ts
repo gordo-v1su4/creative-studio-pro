@@ -72,13 +72,16 @@ export interface GateInput {
 	banned?: string[];
 	/** The series' references (V1S-327): their exact names must carry an image label. */
 	references?: Array<{ name: string }>;
+	/** V1S-375: a Ghost-written prompt's QC findings; when given, they replace the Seedance linter. */
+	qc?: string[];
 }
 
 /** Reasons a send is blocked; empty means it may go. Nothing is spent until this is empty. */
 export function animateGate(input: GateInput): string[] {
 	const reasons: string[] = [];
 	if (!input.prompt.trim()) reasons.push('The prompt is empty');
-	for (const issue of lintPrompt(input.prompt, 'seedance', input.banned ?? [], { references: input.references }).issues) {
+	if (input.qc) reasons.push(...input.qc.map((issue) => `Ghost QC: ${issue}`));
+	else for (const issue of lintPrompt(input.prompt, 'seedance', input.banned ?? [], { references: input.references }).issues) {
 		if (issue.severity === 'error') reasons.push(`Prompt rule ${issue.rule}: ${issue.message}`);
 	}
 	if (input.still.kind !== 'image') reasons.push('Animate starts from a still');

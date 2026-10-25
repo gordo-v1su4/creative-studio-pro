@@ -8,7 +8,8 @@
 
 import { extractDeclarations, promptToText } from './prompt-lint';
 
-export type HandleTarget = 'seedance' | 'nano_banana';
+/** `ghost` (V1S-375): Ghost's tags, `Kai "Hoodie" Santana (image 1)` in the text and one `N s. Upload: image 1 = <exact name>, …` header line. */
+export type HandleTarget = 'seedance' | 'nano_banana' | 'ghost';
 
 /** A reference as the compile needs it (a SeriesReference fits). */
 export interface HandleReference { name: string; kind: string; handles: string[] }
@@ -48,7 +49,7 @@ const LOCK: Record<string, string> = {
 };
 const norm = (handle: string) => handle.replace(/^@/, '').toLowerCase();
 
-export const imageLabel = (target: HandleTarget, image: number) => (target === 'seedance' ? `@Image_${image}` : `Image ${image}`);
+export const imageLabel = (target: HandleTarget, image: number) => (target === 'seedance' ? `@Image_${image}` : target === 'ghost' ? `image ${image}` : `Image ${image}`);
 
 /** Every `@Handle` in a prompt, in order (repeats included). */
 export function handlesIn(prompt: string): string[] {
@@ -94,11 +95,22 @@ export function compileHandles<R extends HandleReference>(prompt: string, refere
 		if (found.length !== 1) return whole;
 		const image = imageOf.get(found[0])!;
 		// Nano Banana binds the picture better with the name first, the way the operator writes it (2026-10-20 tests).
+		if (target === 'ghost') return `${found[0].name} (image ${image})`;
 		return target === 'seedance' ? `${imageLabel(target, image)} (${found[0].name})` : `${found[0].name} from image ${image}`;
 	});
+	if (target === 'ghost') return { prompt: ghostUpload(body, [...images.map(({ image, reference }) => ({ image, text: reference.name })), ...extras]), images, unknown, ambiguous, extras };
 	const declarations = [
 		...images.map(({ image, reference }) => `${imageLabel(target, image)} = ${reference.name} — ${LOCK[kindKey(reference.kind)] ?? 'exact reference lock'}`),
 		...extras.map(({ image, text }) => `${imageLabel(target, image)} = ${text}`)
 	];
 	return { prompt: `${declarations.join('\n')}\n\n${body.trimStart()}`, images, unknown, ambiguous, extras };
+}
+
+
+/** Ghost's header line: `6 s. Upload: image 1 = Kai "Hoodie" Santana, image 2 = Video Haven`. Replaces the one the prompt has (keeping its seconds), else goes on top. */
+export const UPLOAD_LINE = /^(\d+(?:\.\d+)?) ?s\. Upload:.*$/m;
+export function ghostUpload(prompt: string, images: Array<{ image: number; text: string }>): string {
+	const list = images.length ? images.map(({ image, text }) => `image ${image} = ${text}`).join(', ') : 'none';
+	const found = prompt.match(UPLOAD_LINE);
+	return found ? prompt.replace(UPLOAD_LINE, `${found[1]} s. Upload: ${list}`) : `Upload: ${list}\n\n${prompt.trimStart()}`;
 }

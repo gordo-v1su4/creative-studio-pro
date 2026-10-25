@@ -14,7 +14,11 @@ import { generateStructured, type AgentModelClient } from './model-provider';
 import { lintPrompt } from '$lib/domain/prompt-lint';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import type { MediaProbe } from './media-probe';
-import { compileForSend, seriesReferences, shotAttachments, type ReferenceFiles } from './references';
+import { compileForSend, PREVIOUS_FRAME, seriesReferences, shotAttachments, type CompiledForSend, type ReferenceFiles } from './references';
+import { ghostQc } from '$lib/domain/ghost-qc';
+
+/** The Ghost QC on a compiled shot prompt: the attached references by exact name (the previous frame aside). */
+const ghostQcFor = (compiled: CompiledForSend, duration_s: number, banned: string[]) => ghostQc(compiled.prompt, { duration_s, references: compiled.attached.filter((entry) => entry.name !== PREVIOUS_FRAME).map((entry) => entry.name), banned });
 
 /**
  * Animate flow (V1S-120): prepare (Agent-drafted prompt, gate preview, price),
@@ -127,7 +131,9 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 	if (!found.ok) return found;
 	// Handles (@Kai) become image labels and exact names before the gate, and their sheets are attached (V1S-327).
 	const references = await seriesReferences(deps.projectRoot, project);
-	const compiled = await compileForSend(input.settings.prompt, references, 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, found.card));
+	// A shot Ghost wrote (V1S-375) compiles with Ghost's tags and is checked by the Ghost QC, not the Seedance linter.
+	const ghost = Boolean(found.card.fit?.spec);
+	const compiled = await compileForSend(input.settings.prompt, references, ghost ? 'ghost' : 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, found.card));
 	const settings = { ...input.settings, prompt: compiled.prompt };
 	const priced = await estimateAnimate(deps, settings);
 	if (!priced.ok) return priced;
@@ -135,7 +141,8 @@ export async function sendAnimate(deps: AnimateDeps, input: SendInput): Promise<
 		? input.mode
 		: { kind: 'yolo', cap_credits: input.mode.cap_credits, spent_credits: spentThisSession(input.mode.session_id) };
 	const banned = bannedTerms(await projectRules(deps.projectRoot, input.project_id));
-	const reasons = [...animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode, banned, references }), ...compiled.blocked];
+	const qc = ghost ? ghostQcFor(compiled, settings.duration_s, banned) : undefined;
+	const reasons = [...animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: priced.estimate.credits, mode, banned, references, qc }), ...compiled.blocked];
 	if (reasons.length) return failure(422, 'GATE_BLOCKED', 'Blocked before any spend', reasons);
 
 	// Gate passed: from here on money can move.
@@ -195,12 +202,15 @@ export async function quoteSceneBatch(deps: AnimateDeps, project: Project, group
 		if (hasVideo(card.card_id)) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'already has a video take' }); continue; }
 		const found = stillOf(deps, project, card.card_id);
 		if (!found.ok) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'no still pick yet' }); continue; }
-		const compiled = await compileForSend(card.video_prompt, references, 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, card));
+		if (card.fit?.spec && !card.fit.approved_at) { skipped.push({ card_id: card.card_id, title: card.title, reason: 'its shot spec is not approved yet' }); continue; }
+		const ghost = Boolean(card.fit?.spec);
+		const compiled = await compileForSend(card.video_prompt, references, ghost ? 'ghost' : 'seedance', deps.referenceFiles, shotAttachments(deps.projectRoot, project, card));
 		const settings = { ...draftSettings(card), prompt: compiled.prompt };
 		const priced = await estimateAnimate(deps, settings);
 		const credits = priced.ok ? priced.estimate.credits : null;
+		const qc = ghost ? ghostQcFor(compiled, settings.duration_s, banned) : undefined;
 		const blocked = priced.ok
-			? [...animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: credits!, mode: { kind: 'confirm', confirmed_credits: credits! }, banned, references }), ...compiled.blocked]
+			? [...animateGate({ prompt: settings.prompt, still: found.still, estimate_credits: credits!, mode: { kind: 'confirm', confirmed_credits: credits! }, banned, references, qc }), ...compiled.blocked]
 			: [priced.message];
 		items.push({ card_id: card.card_id, title: card.title, prompt: settings.prompt, settings, credits, blocked });
 	}

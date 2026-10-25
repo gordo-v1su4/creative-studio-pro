@@ -5,6 +5,7 @@
 	import { SAVE_THE_CAT, sectionRank, storyBeatColor } from '$lib/domain/structures';
 	import type { StillApproval } from '$lib/domain/stills';
 	import StillApprovalCard from './StillApprovalCard.svelte';
+	import ShotSpecReview from './ShotSpecReview.svelte';
 
 	/**
 	 * The Episode outline, at the top of the Story tab for an episode imported from Notion: the act timeline
@@ -97,7 +98,7 @@
 					else if (event.type === 'error') throw new Error(String(event.message));
 				}
 			}
-			note = `Fit added ${added} shot${added === 1 ? '' : 's'}${failed ? `; ${failed} scene${failed === 1 ? '' : 's'} failed (try those again)` : ''}${remaining ? `; ${remaining} lint finding${remaining === 1 ? '' : 's'} left after three fixes (open the shots to check)` : ''}.`;
+			note = `Ghost proposed ${added} shot${added === 1 ? '' : 's'}${failed ? `; ${failed} scene${failed === 1 ? '' : 's'} failed (try those again)` : ''}${remaining ? `; ${remaining} finding${remaining === 1 ? '' : 's'} left` : ''}. Open each scene to review the shot specs and approve them; Ghost writes the prompts after that.`;
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Fit failed'; }
 		finally { fitting = null; }
 	}
@@ -279,6 +280,7 @@
 									{#if scene.timecode}<p class="text-[11px] text-nr-dim">Planned in Notion: {scene.timecode}</p>{/if}
 									{#if scene.summary}<p>{scene.summary}</p>{/if}
 									{#if scene.story_beats}<p class="beats">{scene.story_beats}</p>{/if}
+									<ShotSpecReview {project} groupId={scene.group_id} pageId={scene.page_id} targetMin={minutes} {onUpdated} />
 									{#if !fitting && (own || fittedIn(scene.group_id))}
 										<div class="flex flex-wrap gap-2">
 											{#if own}<button type="button" class="key on" onclick={() => (confirming = { scenes: [own], only: own.page_id })} disabled={saving}>Fit this scene ({own.shots_wanted} shot{own.shots_wanted === 1 ? '' : 's'})…</button>{/if}

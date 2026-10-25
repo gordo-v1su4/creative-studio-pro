@@ -84,7 +84,7 @@ Canonical skills live in `.agents/skills/` (committed). Lockfile: `skills-lock.j
 
 ### The app's Agent skills (ONE SHOT, app-owned)
 
-`agent-skills/` holds the five ONE SHOT Community Edition skills (`live-action-studio`, `oneshot-image-prompts`, `ghost`, `fresh-idea-community`, `ghostsuno`). They are the in-app Agent's logic for references, image prompts, keyframes, video prompts, fresh ideas and score prompts (ADRs 0003, 0004), read through `src/lib/server/agent-skills.ts`. **This copy is the app's own:** edit it here when the app needs a change; it is not synced from the vault and changes are not pushed back. Inside the app, Ghost replaces `seedance-higgsfield` for video prompts (Fit and teasers move over in V1S-375).
+`agent-skills/` holds the five ONE SHOT Community Edition skills (`live-action-studio`, `oneshot-image-prompts`, `ghost`, `fresh-idea-community`, `ghostsuno`). They are the in-app Agent's logic for references, image prompts, keyframes, video prompts, fresh ideas and score prompts (ADRs 0003, 0004), read through `src/lib/server/agent-skills.ts`. **This copy is the app's own:** edit it here when the app needs a change; it is not synced from the vault and changes are not pushed back. Inside the app, Ghost replaces `seedance-higgsfield` for video prompts: Fit proposes shot specs and writes prompts with Ghost, checked by the Ghost QC (`src/lib/domain/ghost-qc.ts`) instead of the Seedance linter (V1S-375). The Teaser panel still reads the Seedance format and linter until it moves too.
 
 ### Prompt skills (global)
 
