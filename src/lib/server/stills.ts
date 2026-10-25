@@ -47,6 +47,10 @@ export async function quoteStill(deps: Pick<StillDeps, 'images'>, project: Proje
 export async function sendStill(deps: StillDeps, input: StillInput & { project_id: string; purpose: StillSend['purpose']; approval_key: string; confirmed_credits: number }): Promise<{ ok: true; job_id: string; credits: number; project: Project } | Failure> {
 	const project = await deps.store.readProject(input.project_id);
 	if (!project) return fail(404, 'Project not found');
+	// The same approved still (same prompt, references, model, aspect) is never sent twice within 30 min:
+	// a second press, a retry after an unclear answer, or two tabs would each spend credits.
+	const recent = (project.production.still_sends ?? []).find((send) => send.approval_key === input.approval_key && Date.now() - Date.parse(send.sent_at) < 30 * 60_000);
+	if (recent) return fail(409, `Already sent ${Math.max(1, Math.round((Date.now() - Date.parse(recent.sent_at)) / 60_000))} min ago (Higgsfield job ${recent.job_id}); wait for it to land, or change the prompt to make another`);
 	const now = await quoteStill(deps, project, input);
 	const problems = approvalProblems(now, input);
 	if (problems.length) return fail(422, 'Blocked before any spend', problems);
@@ -55,7 +59,7 @@ export async function sendStill(deps: StillDeps, input: StillInput & { project_i
 	catch (cause) { return fail(502, cause instanceof Error ? cause.message : 'Send failed'); }
 	const recorded = await deps.gateway.recordStillSend(project.project_id, project.version, {
 		job_id: jobId, purpose: input.purpose, model: STILL_MODEL.job_type, resolution: STILL_MODEL.resolution, credits: now.credits ?? 0,
-		prompt: now.prompt.slice(0, 20_000), references: now.references.map((ref) => ref.name.slice(0, 300)).slice(0, 16), sent_at: new Date().toISOString()
+		prompt: now.prompt.slice(0, 20_000), references: now.references.map((ref) => ref.name.slice(0, 300)).slice(0, 16), approval_key: now.approval_key, sent_at: new Date().toISOString()
 	});
 	if (!recorded.ok) return fail(409, `Sent as ${jobId}, but noting the spend failed: ${recorded.error.message}`);
 	return { ok: true, job_id: jobId, credits: now.credits ?? 0, project: recorded.data };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { approvalProblems, episodeSpend, stillApproval } from '../../src/lib/domain/stills';
-import { stillArgs, STILL_MODEL } from '../../src/lib/server/higgsfield';
+import { jobIdOf, stillArgs, STILL_MODEL } from '../../src/lib/server/higgsfield';
 
 const base = { prompt: 'Kai from image 1 on the roof.', attached: [{ name: 'Kai "Hoodie" Santana', file: 'C:/refs/kai.png', url: '/r/kai' }, { name: 'Video Haven', file: 'C:/refs/vh.png' }], model: 'GPT Image 2.5', resolution: '2K', aspect_ratio: '16:9', credits: 2.75, spent: 10, blocked: [] };
 
@@ -25,6 +25,13 @@ describe('the still approval step (V1S-373)', () => {
 	test('the episode total counts renders and stills', () => {
 		expect(episodeSpend({ generations: [{ estimate_credits: 15 } as never], still_sends: [{ credits: 2.75 } as never, { credits: 2.75 } as never] })).toBe(20.5);
 		expect(episodeSpend({})).toBe(0);
+	});
+
+	test('a job id comes back whatever shape the CLI prints (GPT Image 2.5 prints a plain list of ids)', () => {
+		expect(jobIdOf(['1dd55c04-3b6a-4013-bb58-3e6c27c02b13'])).toBe('1dd55c04-3b6a-4013-bb58-3e6c27c02b13');
+		expect(jobIdOf({ id: 'a' })).toBe('a');
+		expect(jobIdOf({ jobs: [{ job_id: 'b' }] })).toBe('b');
+		expect(jobIdOf([])).toBeNull();
 	});
 
 	test('stills go to GPT Image 2.5 at 2K, high quality, references in order', () => {

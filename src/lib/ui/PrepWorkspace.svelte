@@ -23,6 +23,8 @@
 	let drafts = $state<Record<string, { description: string; must_hold: string; from_sources: string }>>({});
 	let promptDrafts = $state<Record<string, string>>({});
 	let newProp = $state('');
+	/** The picture shown big (click any picture; Esc or a click closes it). */
+	let zoom = $state<{ src: string; alt: string } | null>(null);
 
 	const base = $derived(`/api/projects/${project.project_id}/prep`);
 	const sections = $derived([
@@ -51,7 +53,7 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Prep could not load'; }
 		finally { loading = false; }
 	}
-	$effect(() => { void project.project_id; void load(); });
+	$effect(() => { void project.project_id; void load().then(() => { for (const item of items) if (item.state.job && !item.state.result) void watch(item.entry.key); }); });
 
 	async function call(key: string, label: string, payload: Record<string, unknown> | FormData) {
 		busy[key] = label; error = null;
@@ -82,14 +84,19 @@
 		if (body?.approval) approvals[key] = body.approval as StillApproval;
 	}
 	async function make(key: string, approval: StillApproval) {
-		const sent = await call(key, 'Making… (checks every 5 s)', { action: 'send', key, approval_key: approval.approval_key, confirmed_credits: approval.credits ?? 0 });
-		if (!sent) return;
+		// The card goes away at once so a second press can never send twice; a failed send asks for a fresh price.
 		delete approvals[key];
-		busy[key] = 'Making… (checks every 5 s)';
+		const sent = await call(key, 'Sending to Higgsfield…', { action: 'send', key, approval_key: approval.approval_key, confirmed_credits: approval.credits ?? 0 });
+		if (sent) await watch(key);
+	}
+	/** Check a sent sheet every 10 s until it lands (also picks up a job still making after a reload). */
+	async function watch(key: string) {
+		if (busy[key]) return;
+		busy[key] = 'Making… (checks every 10 s)';
 		try {
-			for (let tries = 0; tries < 120; tries++) {
-				await new Promise((done) => setTimeout(done, 5000));
-				const settled = await call(key, 'Making… (checks every 5 s)', { action: 'settle', key });
+			for (let tries = 0; tries < 90; tries++) {
+				await new Promise((done) => setTimeout(done, 10_000));
+				const settled = await call(key, 'Making… (checks every 10 s)', { action: 'settle', key });
 				if (!settled || !settled.pending) break;
 			}
 		} finally { delete busy[key]; }
@@ -97,6 +104,13 @@
 	const stageLabel: Record<ReturnType<typeof prepStage>, string> = { sources: 'Needs a spec', spec: 'Spec to approve', approved: 'Write the prompt', prompt: 'Ready to make', sent: 'Making', made: 'Made' };
 </script>
 
+<svelte:window onkeydown={(event) => { if (event.key === 'Escape') zoom = null; }} />
+{#if zoom}
+	<button type="button" class="zoom" onclick={() => (zoom = null)} aria-label="Close the big picture">
+		<img src={zoom.src} alt={zoom.alt} />
+		<span class="zoom-cap">{zoom.alt} · click or Esc to close</span>
+	</button>
+{/if}
 <section class="prep" aria-label="Prep">
 	<header class="top">
 		<div>
@@ -131,10 +145,10 @@
 				<div class="graph">
 					<!-- 1. source images -->
 					<div class="node">
-						<div class="node-cap">Source images</div>
+						<div class="node-cap">Source images · what you feed in</div>
 						<div class="thumbs">
 							{#each item.state.sources as source, i (source.url)}
-								<figure><img src={source.url} alt={source.name} loading="lazy" /><figcaption>image {i + 1}</figcaption></figure>
+								<figure><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={source.url} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
 							{:else}
 								<p class="muted">None yet: {item.template === 'T1' || item.template === 'W3' ? 'made from the spec alone' : ''}</p>
 							{/each}
@@ -180,13 +194,13 @@
 					<span class="edge" aria-hidden="true"></span>
 					<!-- 3. the reference -->
 					<div class="node">
-						<div class="node-cap">Reference</div>
+						<div class="node-cap">Reference · what comes back</div>
 						{#if item.state.result}
-							<img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" />
+							<button type="button" class="pic" onclick={() => (zoom = { src: item.state.result!.url, alt: `${item.entry.name} reference` })} aria-label={`Show ${item.entry.name}'s reference big`}><img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" /></button>
 							<p class="muted">{item.state.result.uploaded ? 'In the References drawer' : 'Made'}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
 						{:else if item.current}
-							<img class="sheet old" src={item.current.url} alt={`${item.entry.name}, current sheet`} loading="lazy" />
+							<button type="button" class="pic" onclick={() => (zoom = { src: item.current!.url, alt: `${item.entry.name}, current sheet` })} aria-label={`Show ${item.entry.name}'s current sheet big`}><img class="sheet old" src={item.current.url} alt={`${item.entry.name}, current sheet`} loading="lazy" /></button>
 							<p class="muted">Current sheet (not yet ONE SHOT)</p>
 						{:else}
 							<p class="muted">Not made yet</p>
@@ -244,6 +258,11 @@
 	.thumbs figcaption { color: #4ab8ff; font: 600 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
 	.sheet { width: 100%; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: contain; background: #000; }
 	.sheet.old { opacity: 0.55; }
+	.pic { display: block; border: 0; background: transparent; padding: 0; cursor: zoom-in; }
+	.pic:hover img { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); }
+	.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 8px; border: 0; background: rgb(5 7 10 / 0.92); padding: 24px; cursor: zoom-out; }
+	.zoom img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border: 1px solid var(--color-nr-line); border-radius: 2px; }
+	.zoom-cap { color: var(--color-nr-muted); font: 11px var(--font-mono); }
 	.note { color: #a99ff2; font-size: 11px; }
 	.row { display: flex; flex-wrap: wrap; gap: 6px; }
 	.field { display: grid; gap: 3px; }

@@ -85,8 +85,10 @@ const STATUS: Record<string, GenerationStatus> = {
 };
 
 /** The job id in whatever shape `generate create` printed (an object, a list, or {jobs:[…]}). */
-function jobIdOf(value: unknown): string | null {
+export function jobIdOf(value: unknown): string | null {
 	const first = Array.isArray(value) ? value[0] : (value as { jobs?: unknown[] })?.jobs?.[0] ?? value;
+	// GPT Image 2.5 answers with a plain list of job ids (2026-10-25).
+	if (typeof first === 'string') return first.trim() || null;
 	const id = (first as { id?: unknown; job_id?: unknown })?.id ?? (first as { job_id?: unknown })?.job_id;
 	return typeof id === 'string' && id ? id : null;
 }

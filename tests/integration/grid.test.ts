@@ -114,6 +114,18 @@ describe('grid stills against fakes', () => {
 		expect(settled.project.production.assets.map((a) => [a.card_id, a.mime_type, a.name])).toEqual([['c2', 'image/png', 'grid-job-grid-1.png']]);
 	});
 
+	test('the same approved grid is never sent twice: a second press is refused, with the first job named', async () => {
+		const { deps, project, calls } = await setup(['Kai by the car, wide.']);
+		const quoted = await quoteGrids(deps, project, 'g1');
+		if (!quoted.ok) throw new Error(quoted.message);
+		const input = { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4, approval_key: quoted.grids[0].approval.approval_key };
+		expect((await sendGrid(deps, input)).ok).toBeTrue();
+		const again = await sendGrid(deps, input);
+		expect(again.ok).toBeFalse();
+		if (!again.ok) expect(again.message).toContain('Already sent');
+		expect(calls).toEqual(['submit']);
+	});
+
 	test('a prompt changed since the approval is refused before any spend', async () => {
 		const { deps, project, calls } = await setup(['Kai by the car, wide.']);
 		const quoted = await quoteGrids(deps, project, 'g1');

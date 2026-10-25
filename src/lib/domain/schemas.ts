@@ -468,6 +468,8 @@ export const stillSendSchema = z.object({
 	prompt: z.string().min(1).max(20_000),
 	/** Exact names of the attached references, in image order. */
 	references: z.array(z.string().max(300)).max(16).default([]),
+	/** The approval's fingerprint, so the same approved still is never sent twice by accident. */
+	approval_key: z.string().max(64).optional(),
 	sent_at: rfc3339Schema
 });
 export type StillSend = z.infer<typeof stillSendSchema>;

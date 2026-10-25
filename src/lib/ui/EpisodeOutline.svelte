@@ -159,7 +159,7 @@
 			const sent = (await animateCall({ action: 'grid_send', group_id: grids.group_id, chunk: item.chunk, confirmed_credits: item.approval.credits ?? 0, approval_key: item.approval.approval_key })).data as { job_id: string; card_ids: string[] };
 			grids.waiting[item.chunk] = sent.job_id;
 			for (let tries = 0; tries < 120 && grids; tries++) {
-				await new Promise((done) => setTimeout(done, 5000));
+				await new Promise((done) => setTimeout(done, 10_000));
 				const settled = await animateCall({ action: 'grid_settle', job_id: sent.job_id, card_ids: sent.card_ids });
 				if (!settled.pending) { onUpdated(settled.data as Project); note = `Grid ${item.chunk + 1}: ${settled.added} still${settled.added === 1 ? '' : 's'} added.`; break; }
 			}
@@ -297,7 +297,7 @@
 										<div class="batch" aria-label="Grid stills">
 											{#each grids.items as item (item.chunk)}
 												<StillApprovalCard title={`Grid ${item.chunk + 1} · ${item.titles.length} shot${item.titles.length === 1 ? '' : 's'}: ${item.titles.join(', ')}`} approval={item.approval}
-													busy={!!batching} busyLabel={grids.waiting[item.chunk] ? 'Drawing… (checks every 5 s)' : 'Wait…'} onapprove={() => void sendGridStills(item)} />
+													busy={!!batching} busyLabel={grids.waiting[item.chunk] ? 'Drawing… (checks every 10 s)' : 'Wait…'} onapprove={() => void sendGridStills(item)} />
 											{:else}
 												<p class="text-[11.5px] text-nr-muted">Every shot in this scene already has a still.</p>
 											{/each}
