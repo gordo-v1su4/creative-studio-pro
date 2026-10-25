@@ -188,7 +188,7 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 	if (/\bneon\b/i.test(prompt)) out.push('The prompt uses the word "neon"; describe the light another way');
 	if (view.entry.kind === 'character' && !/straight-on|face square to the camera/i.test(prompt)) out.push('The first panel must be a straight-on, forward-facing face close-up (the T1 wording)');
 	if (view.entry.kind === 'character' && /three-quarter[^.]*first panel|first panel[^.]*three-quarter/i.test(prompt)) out.push('The first panel is three-quarter; it must face the camera');
-	for (const [i, source] of view.state.sources.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`).test(prompt) && view.state.sources.length) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
+	for (const [i, source] of view.state.sources.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`, 'i').test(prompt) && view.state.sources.length) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
 	return out;
 }
 
@@ -200,7 +200,7 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	if (!view.state.spec || !view.state.spec_approved_at) return fail(400, 'Approve the reference spec first');
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter.' : ''} Never use the word "neon". Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter.' : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const { prompt } = await generateStructured(client, { system: await skillSystem(), prompt: ask, maxOutputTokens: 3000, timeoutMs: 180_000 }, (value) => {
 		const text = String((value as { prompt?: unknown })?.prompt ?? '').trim();
 		if (text.length < 80) throw new Error('prompt: too short');
