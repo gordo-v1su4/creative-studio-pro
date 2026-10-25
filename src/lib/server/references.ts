@@ -29,7 +29,8 @@ export async function seriesReferences(projectRoot: string, project: Project): P
 const squash = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 export const fileNameHasName = (fileName: string, name: string) => Boolean(squash(name)) && squash(fileName).includes(squash(name));
 
-export interface CompiledForSend { prompt: string; files: string[]; blocked: string[]; references: SeriesReferenceItem[] }
+/** `attached`: what goes with the send, in image order, each with the exact name the prompt calls it (V1S-373). */
+export interface CompiledForSend { prompt: string; files: string[]; attached: Array<{ name: string; file: string; page_id?: string }>; blocked: string[]; references: SeriesReferenceItem[] }
 
 /** What one shot (or a grid's shots) attached by hand: series references by page id, the previous shot's last frame. */
 export interface ShotAttachments { series?: string[]; previousFrame?: { file: string; width?: number; height?: number } | null }
@@ -41,21 +42,21 @@ export async function compileForSend(prompt: string, references: SeriesReference
 	const compiled = compileHandles(prompt, references, target, { include, extras: previous ? [PREVIOUS_FRAME] : [] });
 	const blocked: string[] = [];
 	for (const handle of compiled.ambiguous) blocked.push(`${handle} points at more than one reference; give each reference its own handle`);
-	const attach: string[] = [];
+	const attached: Array<{ name: string; file: string; page_id?: string }> = [];
 	for (const { reference } of compiled.images) {
 		if (!reference.name_on_sheet) blocked.push(`Reference "${reference.name}": its name is not printed on the sheet yet (Name on sheet is off)`);
 		if (!fileNameHasName(reference.file_name, reference.name)) blocked.push(`Reference "${reference.name}": the file name "${reference.file_name || '(none)'}" does not contain its name`);
 		const file = await files(reference);
-		if (file) attach.push(file);
+		if (file) attached.push({ name: reference.name, file, page_id: reference.page_id });
 		else blocked.push(`Reference "${reference.name}" has no file to attach yet (upload it to the series' _References in Review Room)`);
 	}
 	for (const id of shot.series ?? []) if (!include.some((reference) => reference.page_id === id)) blocked.push('A reference attached to the shot is no longer in the series (re-sync, or remove its chip)');
 	if (previous) {
-		attach.push(previous.file);
+		attached.push({ name: PREVIOUS_FRAME, file: previous.file });
 		if (!previous.width || !previous.height) blocked.push("The previous shot's frame has no known size; it must be checked against 2K first");
 		else if (Math.max(previous.width, previous.height) < MIN_LONG_EDGE) blocked.push(`The previous shot's frame is ${previous.width}×${previous.height}, under ${MIN_LONG_EDGE} px on the long edge`);
 	}
-	return { prompt: compiled.prompt, files: attach, blocked, references };
+	return { prompt: compiled.prompt, files: attached.map((entry) => entry.file), attached, blocked, references };
 }
 
 /** A shot's hand-attached references as the compile needs them; the previous frame's project URL becomes its path. */

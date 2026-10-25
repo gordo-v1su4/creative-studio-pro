@@ -33,7 +33,7 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('scene_quote'), group_id: idSchema }),
 	// Grid stills (V1S-278): quote a scene's grids, send one after approval, settle it into still takes.
 	z.object({ action: z.literal('grid_quote'), group_id: idSchema }),
-	z.object({ action: z.literal('grid_send'), group_id: idSchema, chunk: z.number().int().nonnegative(), confirmed_credits: z.number().nonnegative() }),
+	z.object({ action: z.literal('grid_send'), group_id: idSchema, chunk: z.number().int().nonnegative(), confirmed_credits: z.number().nonnegative(), approval_key: z.string().min(1).max(64) }),
 	z.object({ action: z.literal('grid_settle'), job_id: z.string().min(1).max(200), card_ids: z.array(idSchema).min(1).max(9) }),
 	z.object({ action: z.literal('scene_send'), group_id: idSchema, expected_version: z.number().int().nonnegative(), confirmed_credits: z.number().nonnegative() })
 ]);
@@ -87,7 +87,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			return quoted.ok ? json({ ok: true, data: quoted.grids }) : fail(quoted.status, 'INVALID_COMMAND', quoted.message);
 		}
 		if (body.action === 'grid_send') {
-			const sent = await sendGrid(grid, { project_id: projectId.data, group_id: body.group_id, chunk: body.chunk, confirmed_credits: body.confirmed_credits });
+			const sent = await sendGrid(grid, { project_id: projectId.data, group_id: body.group_id, chunk: body.chunk, confirmed_credits: body.confirmed_credits, approval_key: body.approval_key });
 			return sent.ok ? json({ ok: true, data: sent }) : fail(sent.status, sent.status === 422 ? 'GATE_BLOCKED' : 'INVALID_COMMAND', sent.message, { reasons: sent.reasons ?? [] });
 		}
 		const settled = await settleGrid(grid, { project_id: projectId.data, job_id: body.job_id, card_ids: body.card_ids });

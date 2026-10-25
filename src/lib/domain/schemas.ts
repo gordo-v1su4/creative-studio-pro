@@ -448,6 +448,20 @@ export const generationSchema = z.object({
 });
 export type Generation = z.infer<typeof generationSchema>;
 
+/** A still sent after the operator's approval (V1S-373): what it cost, for the episode's running total. */
+export const stillSendSchema = z.object({
+	job_id: z.string().min(1).max(200),
+	purpose: z.enum(['grid', 'reference', 'keyframe']),
+	model: z.string().min(1).max(100),
+	resolution: z.string().max(20),
+	credits: z.number().nonnegative(),
+	prompt: z.string().min(1).max(20_000),
+	/** Exact names of the attached references, in image order. */
+	references: z.array(z.string().max(300)).max(16).default([]),
+	sent_at: rfc3339Schema
+});
+export type StillSend = z.infer<typeof stillSendSchema>;
+
 export const productionStateSchema = z.object({
 	status: z.enum(['empty', 'draft', 'approved']).default('empty'),
 	title: z.string().max(200).default(''),
@@ -462,6 +476,8 @@ export const productionStateSchema = z.object({
 	cuts: z.array(cutSchema).max(100).optional(),
 	/** Generations sent from beats; a completed one points at the take it became. */
 	generations: z.array(generationSchema).max(1000).optional(),
+	/** Stills sent after approval (V1S-373), newest last. */
+	still_sends: z.array(stillSendSchema).max(2000).optional(),
 	/** Board groups (V1S-131) besides Main, in creation order. */
 	groups: z.array(z.object({ group_id: idSchema, name: nonBlank(120), created_at: rfc3339Schema })).max(100).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)

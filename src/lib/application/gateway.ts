@@ -37,7 +37,7 @@ import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
-import type { Generation, ProductionAsset, StoryCard, TrailerHouse } from '$lib/domain/schemas';
+import type { Generation, ProductionAsset, StillSend, StoryCard, TrailerHouse } from '$lib/domain/schemas';
 import { storyCardSchema, trailerHouseSchema } from '$lib/domain/schemas';
 import { FIT_MAX_SHOTS, insertIntoGroup, removeFitted } from '$lib/domain/episode-fit';
 import { CODE_PATTERN, fillEpisodeCodes } from '$lib/domain/shot-codes';
@@ -339,6 +339,11 @@ export class ProjectCommandGateway {
 
 	async recordGeneration(projectId: string, expectedVersion: number, generation: Generation): Promise<CommandOutcome<Project>> {
 		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => applyRecordGeneration(production, generation), 'project.generation_sent.v1');
+	}
+
+	/** V1S-373: an approved still was sent; it counts toward the episode's running total. */
+	async recordStillSend(projectId: string, expectedVersion: number, send: StillSend): Promise<CommandOutcome<Project>> {
+		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => ({ ok: true, production: { ...production, still_sends: [...(production.still_sends ?? []), send].slice(-2000) } }), 'project.generation_sent.v1');
 	}
 
 	/** Animate: a generation's latest status; a completed one lands its video as a take. */

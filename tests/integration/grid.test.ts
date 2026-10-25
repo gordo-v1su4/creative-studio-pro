@@ -58,16 +58,23 @@ describe('grid stills against fakes', () => {
 		const { deps, project, calls } = await setup(['Cut to @Image 1 on the roof']);
 		const quoted = await quoteGrids(deps, project, 'g1');
 		if (!quoted.ok) throw new Error(quoted.message);
-		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4 });
+		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4, approval_key: quoted.grids[0].approval.approval_key });
 		expect(quoted.grids[0].blocked.length > 0 === !sent.ok).toBeTrue();
 		if (!sent.ok) expect(calls).toEqual([]);
 	});
 
 	test('send after approval, wait while pending, then one still per shot remembering its grid panel', async () => {
 		const { deps, project, setStatus } = await setup(['Kai by the car, wide.', 'Close on the keys.']);
-		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4 });
+		const quoted = await quoteGrids(deps, project, 'g1');
+		if (!quoted.ok) throw new Error(quoted.message);
+		const approval = quoted.grids[0].approval;
+		expect([approval.model, approval.resolution, approval.aspect_ratio, approval.credits, approval.episode_spent, approval.episode_after]).toEqual(['GPT Image 2.5', '2K', '1:1', 4, 0, 4]);
+		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4, approval_key: approval.approval_key });
 		if (!sent.ok) throw new Error(sent.message);
 		expect(sent.card_ids).toEqual(['c0', 'c1']);
+		// The spend is logged on the project, so the next approval shows the episode's running total.
+		const logged = (await deps.store.readProject(project.project_id))!;
+		expect(logged.production.still_sends?.map((send) => [send.job_id, send.purpose, send.model, send.credits])).toEqual([['job-grid-1', 'grid', 'gpt_image_2_5', 4]]);
 		expect((await settleGrid(deps, { project_id: project.project_id, job_id: sent.job_id, card_ids: sent.card_ids }))).toEqual({ ok: true, pending: true });
 		setStatus('completed');
 		const settled = await settleGrid(deps, { project_id: project.project_id, job_id: sent.job_id, card_ids: sent.card_ids });
@@ -81,8 +88,23 @@ describe('grid stills against fakes', () => {
 
 	test('a price above the confirmed one is refused', async () => {
 		const { deps, project } = await setup(['Kai by the car, wide.']);
-		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 2 });
+		const quoted = await quoteGrids(deps, project, 'g1');
+		if (!quoted.ok) throw new Error(quoted.message);
+		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 2, approval_key: quoted.grids[0].approval.approval_key });
 		expect(sent.ok).toBeFalse();
 		if (!sent.ok) expect(sent.reasons?.join(' ')).toContain('above the 2');
+	});
+
+	test('a prompt changed since the approval is refused before any spend', async () => {
+		const { deps, project, calls } = await setup(['Kai by the car, wide.']);
+		const quoted = await quoteGrids(deps, project, 'g1');
+		if (!quoted.ok) throw new Error(quoted.message);
+		const edited = project.production.cards.map((card) => ({ ...card, image_prompt: 'Kai on the roof, wide.' }));
+		const saved = await deps.gateway.saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version, production: { ...project.production, cards: edited } });
+		expect(saved.ok).toBeTrue();
+		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4, approval_key: quoted.grids[0].approval.approval_key });
+		expect(sent.ok).toBeFalse();
+		if (!sent.ok) expect(sent.reasons?.join(' ')).toContain('changed since you approved');
+		expect(calls).toEqual([]);
 	});
 });

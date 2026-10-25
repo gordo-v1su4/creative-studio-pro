@@ -133,29 +133,38 @@ export function createHiggsfieldSfx(run: CliRunner): SoundEffectGenerator {
 	};
 }
 
-/** Grid stills (V1S-278): Nano Banana Pro, 16:9 at 4K, so a 3×3 grid gives ~1280-px cells. */
-export const GRID_JOB_TYPE = 'nano_banana_pro';
-export interface GridRequest { prompt: string; references: string[] }
+/**
+ * Every still (V1S-373, ADR 0003): references, keyframes and grids are GPT Image 2.5 at 2K, high quality, on
+ * the operator's account. References attach in the order given (image 1, image 2…).
+ */
+export const STILL_MODEL = { job_type: 'gpt_image_2_5', label: 'GPT Image 2.5', quality: 'high', resolution: '2k' } as const;
+/** Grids are square (2×2 or 3×3); other stills say their own aspect. */
+export interface StillRequest { prompt: string; references: string[]; aspect_ratio?: string }
 export interface ImageGenerator {
-	estimate(request: GridRequest): Promise<{ credits: number }>;
-	submit(request: GridRequest): Promise<{ job_id: string }>;
+	estimate(request: StillRequest): Promise<{ credits: number }>;
+	submit(request: StillRequest): Promise<{ job_id: string }>;
 	status(jobId: string): Promise<{ status: GenerationStatus; url?: string; error?: string }>;
 }
 
-export function gridArgs(request: GridRequest, promptFile: string): string[] {
-	return [GRID_JOB_TYPE, '--prompt', `@${promptFile}`, '--aspect_ratio', '16:9', '--resolution', '4k', ...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])];
+export function stillArgs(request: StillRequest, promptFile: string): string[] {
+	return [
+		STILL_MODEL.job_type, '--prompt', `@${promptFile}`, '--aspect_ratio', request.aspect_ratio ?? '1:1',
+		'--quality', STILL_MODEL.quality, '--resolution', STILL_MODEL.resolution,
+		...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])
+	];
 }
 
 export function createHiggsfieldImages(run: CliRunner): ImageGenerator {
 	return {
 		async estimate(request) {
-			const result = (await withPrompt(request.prompt, (file) => run(['generate', 'cost', ...gridArgs({ prompt: request.prompt, references: [] }, file)]))) as { credits?: unknown };
+			// Priced without the references: the CLI would upload each file just to quote.
+			const result = (await withPrompt(request.prompt, (file) => run(['generate', 'cost', ...stillArgs({ ...request, references: [] }, file)]))) as { credits?: unknown };
 			const credits = Number(result?.credits);
 			if (!Number.isFinite(credits)) throw new GeneratorError('Higgsfield CLI gave no credit estimate');
 			return { credits };
 		},
 		async submit(request) {
-			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...gridArgs(request, file)]));
+			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...stillArgs(request, file)]));
 			const jobId = jobIdOf(result);
 			if (!jobId) throw new GeneratorError(`Higgsfield CLI created no job id: ${JSON.stringify(result).slice(0, 200)}`);
 			return { job_id: jobId };

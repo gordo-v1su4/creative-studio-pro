@@ -201,3 +201,10 @@ Tracked in Linear under V1S-283, in this order: V1S-370 skills in, V1S-371 clean
 V1S-372 setting fix (Willamette Valley, not California), V1S-373 GPT Image 2.5 at 2K through the operator's
 Higgsfield account with an approval step and credit prediction, V1S-374 Prep (references), V1S-375 shots from Ghost,
 V1S-376 2x2 keyframes, V1S-377 Fresh idea. V1S-378 (GhostSuno score prompt) is on hold.
+
+**Stills route (V1S-373, 2026-10-25).** The app already sends through the Higgsfield CLI (`@higgsfield/cli`,
+`hf.exe` under the npm global folder, or `HIGGSFIELD_CLI`), logged in to the operator's account (`higgsfield auth
+login`; Creator plan, plan credits). Every still is `gpt_image_2_5`, quality high, resolution 2k: 2.75 credits each
+at any aspect. Quote → approval card (prompt, references in attach order with exact names, model, credits, episode
+running total) → send re-quotes and refuses if the prompt, the reference order or the price changed → spend logged
+in `production.still_sends`. Code: `src/lib/server/stills.ts`, `src/lib/domain/stills.ts`, `StillApprovalCard.svelte`.

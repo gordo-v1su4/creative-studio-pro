@@ -3,6 +3,8 @@
 	import { clockOf, episodeOutline, type OutlineCard } from '$lib/domain/episode-outline';
 	import { fitPlan, type FitScene } from '$lib/domain/episode-fit';
 	import { SAVE_THE_CAT, sectionRank, storyBeatColor } from '$lib/domain/structures';
+	import type { StillApproval } from '$lib/domain/stills';
+	import StillApprovalCard from './StillApprovalCard.svelte';
 
 	/**
 	 * The Episode outline, at the top of the Story tab for an episode imported from Notion: the act timeline
@@ -140,8 +142,8 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Sending the scene failed'; }
 		finally { batching = null; }
 	}
-	// ---- Grid stills (V1S-278): a scene's shots without a still, nine per 4K grid, each grid approved on its own ----
-	type GridQuote = { chunk: number; card_ids: string[]; titles: string[]; credits: number | null; blocked: string[] };
+	// ---- Grid stills (V1S-278): a scene's shots without a still, up to nine per square 2K grid, each approved on its own (V1S-373) ----
+	type GridQuote = { chunk: number; card_ids: string[]; titles: string[]; credits: number | null; blocked: string[]; approval: StillApproval };
 	let grids = $state<{ group_id: string; items: GridQuote[]; waiting: Record<number, string> } | null>(null);
 	async function quoteGridStills(groupId: string) {
 		batching = 'grid'; error = null; note = null;
@@ -153,7 +155,7 @@
 		if (!grids) return;
 		batching = `grid:${item.chunk}`; error = null;
 		try {
-			const sent = (await animateCall({ action: 'grid_send', group_id: grids.group_id, chunk: item.chunk, confirmed_credits: item.credits ?? 0 })).data as { job_id: string; card_ids: string[] };
+			const sent = (await animateCall({ action: 'grid_send', group_id: grids.group_id, chunk: item.chunk, confirmed_credits: item.approval.credits ?? 0, approval_key: item.approval.approval_key })).data as { job_id: string; card_ids: string[] };
 			grids.waiting[item.chunk] = sent.job_id;
 			for (let tries = 0; tries < 120 && grids; tries++) {
 				await new Promise((done) => setTimeout(done, 5000));
@@ -285,24 +287,15 @@
 									{/if}
 									{#if !fitting}
 										<div class="flex flex-wrap gap-2">
-											<button type="button" class="key" onclick={() => void quoteGridStills(scene.group_id)} disabled={!!batching} title="Stills first: this scene's shots without a still, nine per 4K grid, then split into one still per shot">{batching === 'grid' ? 'Checking…' : 'Grid stills…'}</button>
+											<button type="button" class="key" onclick={() => void quoteGridStills(scene.group_id)} disabled={!!batching} title="Stills first: this scene's shots without a still, up to nine per square 2K grid (GPT Image 2.5), then split into one still per shot">{batching === 'grid' ? 'Checking…' : 'Grid stills…'}</button>
 											<button type="button" class="key" onclick={() => void quoteScene(scene.group_id)} disabled={!!batching} title="Price and check this scene's shots as one batch of 480p drafts">{batching === 'quote' ? 'Checking…' : 'Animate scene (480p drafts)…'}</button>
 										</div>
 									{/if}
 									{#if grids && grids.group_id === scene.group_id}
 										<div class="batch" aria-label="Grid stills">
 											{#each grids.items as item (item.chunk)}
-												<div class={['batch-row', item.blocked.length && 'bad']}>
-													<b>Grid {item.chunk + 1}</b>
-													<span class="prompt" title={item.titles.join(', ')}>{item.titles.length} shot{item.titles.length === 1 ? '' : 's'}: {item.titles.join(', ')}</span>
-													<span class="mono">{item.credits ?? '—'} cr</span>
-													{#each item.blocked as reason, r (r)}<span class="reason">{reason}</span>{/each}
-												</div>
-												<div class="flex flex-wrap gap-2">
-													<button type="button" class="key on" onclick={() => void sendGridStills(item)} disabled={!!batching || item.blocked.length > 0 || item.credits === null}>
-														{grids.waiting[item.chunk] ? 'Drawing… (checks every 5 s)' : item.blocked.length ? 'Blocked' : `Draw grid ${item.chunk + 1} · ${item.credits} cr`}
-													</button>
-												</div>
+												<StillApprovalCard title={`Grid ${item.chunk + 1} · ${item.titles.length} shot${item.titles.length === 1 ? '' : 's'}: ${item.titles.join(', ')}`} approval={item.approval}
+													busy={!!batching} busyLabel={grids.waiting[item.chunk] ? 'Drawing… (checks every 5 s)' : 'Wait…'} onapprove={() => void sendGridStills(item)} />
 											{:else}
 												<p class="text-[11.5px] text-nr-muted">Every shot in this scene already has a still.</p>
 											{/each}

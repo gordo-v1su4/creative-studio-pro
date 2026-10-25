@@ -9,16 +9,19 @@ import { lintPrompt } from '$lib/domain/prompt-lint';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import { projectRules } from './animate';
 import type { ImageGenerator } from './higgsfield';
+import { quoteStill, sendStill, NO_CLI } from './stills';
+import type { StillApproval } from '$lib/domain/stills';
 import type { Splitter } from './splitter';
 import type { MediaProbe } from './media-probe';
 import { compileForSend, seriesReferences, type ReferenceFiles } from './references';
 import { seriesReferenceIds } from '$lib/domain/shot-references';
 
 /**
- * Grid stills (V1S-278): a scene's shots without a still, nine per grid, each grid one Nano Banana Pro 4K
- * image. Quote prices and lints every grid; send goes through the same gate (nothing is spent while a prompt
- * is blocked or the price rose); settle downloads the grid, splits it with the splitter service and adds one
- * still take per shot, each remembering its grid and panel.
+ * Grid stills (V1S-278): a scene's shots without a still, up to nine per grid, each grid one square still
+ * (GPT Image 2.5 at 2K since V1S-373). Quote lints every grid and builds its approval (prompt, references in
+ * attach order, credits, the episode's running total); send goes through the approval step (nothing is spent
+ * while a prompt is blocked, the price rose, or the prompt changed since the approval); settle downloads the
+ * grid, splits it with the splitter service and adds one still take per shot, each remembering its grid and panel.
  */
 export interface GridDeps {
 	store: ProjectStore; gateway: ProjectCommandGateway; projectRoot: string;
@@ -30,10 +33,10 @@ export interface GridDeps {
 type Failure = { ok: false; status: number; message: string; reasons?: string[] };
 const fail = (status: number, message: string, reasons?: string[]): Failure => ({ ok: false, status, message, ...(reasons ? { reasons } : {}) });
 
-export interface GridQuote { chunk: number; card_ids: string[]; titles: string[]; prompt: string; credits: number | null; blocked: string[]; /** Reference files attached, in image order (V1S-327). */ references: string[] }
+export interface GridQuote { chunk: number; card_ids: string[]; titles: string[]; prompt: string; credits: number | null; blocked: string[]; /** Reference files attached, in image order (V1S-327). */ references: string[]; /** What the operator approves (V1S-373). */ approval: StillApproval }
 
 export async function quoteGrids(deps: GridDeps, project: Project, groupId: string): Promise<{ ok: true; grids: GridQuote[] } | Failure> {
-	if (!deps.images) return fail(503, 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)');
+	if (!deps.images) return fail(503, NO_CLI);
 	const scene = project.series?.scenes.find((entry) => entry.group_id === groupId);
 	const group = project.production.groups?.find((entry) => entry.group_id === groupId);
 	if (!group) return fail(404, 'That scene is not on the board');
@@ -50,30 +53,29 @@ export async function quoteGrids(deps: GridDeps, project: Project, groupId: stri
 		const counts = new Map<string, number>();
 		for (const issue of lintPrompt(prompt, 'nano_banana', banned, { references }).issues) if (issue.severity === 'error') { const key = `Prompt rule ${issue.rule}: ${issue.message}`; counts.set(key, (counts.get(key) ?? 0) + 1); }
 		const blocked = [...[...counts].map(([reason, n]) => (n > 1 ? `${reason} (×${n})` : reason)), ...compiled.blocked];
-		let credits: number | null = null;
-		try { credits = (await deps.images.estimate({ prompt, references: compiled.files })).credits; } catch (cause) { blocked.push(cause instanceof Error ? cause.message : 'Price check failed'); }
-		grids.push({ chunk, card_ids: cards.map((card) => card.card_id), titles: cards.map((card) => card.title), prompt, credits, blocked, references: compiled.files });
+		const attached = compiled.attached.map((entry) => ({ ...entry, ...(entry.page_id && project.series ? { url: `/api/series/${project.series.series_id}/references?page_id=${entry.page_id}` } : {}) }));
+		const approval = await quoteStill(deps, project, { prompt, attached, aspect_ratio: GRID_ASPECT, blocked });
+		grids.push({ chunk, card_ids: cards.map((card) => card.card_id), titles: cards.map((card) => card.title), prompt, credits: approval.credits, blocked: approval.blocked, references: compiled.files, approval });
 	}
 	return { ok: true, grids };
 }
 
-/** Send one grid after its approval; refused before any spend when blocked or pricier than confirmed. */
-export async function sendGrid(deps: GridDeps, input: { project_id: string; group_id: string; chunk: number; confirmed_credits: number }): Promise<{ ok: true; job_id: string; card_ids: string[]; credits: number } | Failure> {
+/** Grids are square: 2×2 or 3×3. */
+const GRID_ASPECT = '1:1';
+
+/** Send one grid after its approval; refused before any spend when blocked, pricier than approved, or changed since. */
+export async function sendGrid(deps: GridDeps, input: { project_id: string; group_id: string; chunk: number; confirmed_credits: number; approval_key: string }): Promise<{ ok: true; job_id: string; card_ids: string[]; credits: number } | Failure> {
 	const project = await deps.store.readProject(input.project_id);
 	if (!project) return fail(404, 'Project not found');
 	const quoted = await quoteGrids(deps, project, input.group_id);
 	if (!quoted.ok) return quoted;
 	const grid = quoted.grids.find((entry) => entry.chunk === input.chunk);
 	if (!grid) return fail(400, 'That grid has nothing left to draw');
-	const reasons = [...grid.blocked];
-	if (grid.credits !== null && grid.credits > input.confirmed_credits + 1e-6) reasons.push(`The grid now costs ${grid.credits} credits, above the ${input.confirmed_credits} you confirmed`);
-	if (reasons.length) return fail(422, 'Blocked before any spend', reasons);
-	try {
-		const { job_id } = await deps.images!.submit({ prompt: grid.prompt, references: grid.references });
-		return { ok: true, job_id, card_ids: grid.card_ids, credits: grid.credits ?? 0 };
-	} catch (cause) {
-		return fail(502, cause instanceof Error ? cause.message : 'Send failed');
-	}
+	const sent = await sendStill(deps, {
+		project_id: input.project_id, purpose: 'grid', prompt: grid.prompt, attached: grid.approval.references, aspect_ratio: GRID_ASPECT,
+		blocked: grid.blocked, approval_key: input.approval_key, confirmed_credits: input.confirmed_credits
+	});
+	return sent.ok ? { ok: true, job_id: sent.job_id, card_ids: grid.card_ids, credits: sent.credits } : sent;
 }
 
 /** Check a sent grid; when it is done, keep it, split it 3×3 and add a still take to each shot it was for. */
