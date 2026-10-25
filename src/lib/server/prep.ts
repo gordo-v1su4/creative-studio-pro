@@ -201,11 +201,18 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
 	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter.' : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
-	const { prompt } = await generateStructured(client, { system: await skillSystem(), prompt: ask, maxOutputTokens: 3000, timeoutMs: 180_000 }, (value) => {
+	const system = await skillSystem();
+	const parse = (value: unknown) => {
 		const text = String((value as { prompt?: unknown })?.prompt ?? '').trim();
 		if (text.length < 80) throw new Error('prompt: too short');
 		return { prompt: text };
-	});
+	};
+	let { prompt } = await generateStructured(client, { system, prompt: ask, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse);
+	// The QC runs before the operator sees the card; the Agent fixes what it finds itself (up to two rounds).
+	for (let round = 0, issues = prepQc(prompt, view); issues.length && round < 2; round++, issues = prepQc(prompt, view)) {
+		const repair = `${ask}\n\nYOUR PROMPT:\n${prompt}\n\nTHE QC FOUND (fix every one, change nothing else):\n${issues.map((issue) => `- ${issue}`).join('\n')}\n\nReturn only JSON: {"prompt": "the whole corrected prompt"}`;
+		({ prompt } = await generateStructured(client, { system, prompt: repair, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse));
+	}
 	const prep = await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, prompt, prompt_edited: false }));
 	return { ok: true, prep };
 }

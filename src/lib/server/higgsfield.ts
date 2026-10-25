@@ -154,6 +154,30 @@ export function stillArgs(request: StillRequest, promptFile: string): string[] {
 	];
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Local reference files are uploaded first (`upload create`, one retry) and passed to the job by upload id:
+ * the CLI's own upload inside `generate create` once failed with a storage signature error (2026-10-25) while
+ * a plain upload of the same file worked. Ids already given pass through.
+ */
+export async function uploadReferences(run: CliRunner, files: string[]): Promise<string[]> {
+	const ids: string[] = [];
+	for (const file of files) {
+		if (UUID.test(file)) { ids.push(file); continue; }
+		let last: unknown;
+		for (let attempt = 0; attempt < 2; attempt++) {
+			try {
+				const result = (await run(['upload', 'create', file])) as { id?: unknown };
+				if (typeof result?.id === 'string' && UUID.test(result.id)) { ids.push(result.id); last = null; break; }
+				last = new GeneratorError(`Higgsfield CLI gave no upload id for ${file}`);
+			} catch (cause) { last = cause; }
+		}
+		if (last) throw last instanceof Error ? new GeneratorError(`Uploading a reference failed: ${last.message}`) : last;
+	}
+	return ids;
+}
+
 export function createHiggsfieldImages(run: CliRunner): ImageGenerator {
 	return {
 		async estimate(request) {
@@ -164,7 +188,8 @@ export function createHiggsfieldImages(run: CliRunner): ImageGenerator {
 			return { credits };
 		},
 		async submit(request) {
-			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...stillArgs(request, file)]));
+			const references = await uploadReferences(run, request.references);
+			const result = await withPrompt(request.prompt, (file) => run(['generate', 'create', ...stillArgs({ ...request, references }, file)]));
 			const jobId = jobIdOf(result);
 			if (!jobId) throw new GeneratorError(`Higgsfield CLI created no job id: ${JSON.stringify(result).slice(0, 200)}`);
 			return { job_id: jobId };

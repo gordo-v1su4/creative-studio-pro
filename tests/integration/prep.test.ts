@@ -6,7 +6,7 @@ import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
-import type { GenerationStatus } from '../../src/lib/server/higgsfield';
+import { uploadReferences, type GenerationStatus } from '../../src/lib/server/higgsfield';
 import { addSource, aspectOf, draftSpec, prepQc, prepView, quotePrep, saveSpec, sendPrep, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
@@ -47,6 +47,26 @@ async function setup() {
 	};
 	return { deps, projectId: created.data.project_id, asks, submitted, setStatus: (next: GenerationStatus) => { status = next; } };
 }
+
+describe('references go up before the job (CLI upload fix)', () => {
+	test('local files are uploaded with one retry and passed by id; ids pass through', async () => {
+		const calls: string[][] = [];
+		let failures = 1;
+		const run = async (args: string[]) => {
+			calls.push(args);
+			if (args[0] === 'upload') {
+				if (failures-- > 0) throw new Error('SignatureDoesNotMatch');
+				return { id: '471f5554-ee1b-4573-ac3e-19157f6c7e3a' };
+			}
+			return {};
+		};
+		const ids = await uploadReferences(run, ['C:/refs/kai.png', '11111111-2222-3333-4444-555555555555']);
+		expect(ids).toEqual(['471f5554-ee1b-4573-ac3e-19157f6c7e3a', '11111111-2222-3333-4444-555555555555']);
+		expect(calls).toEqual([['upload', 'create', 'C:/refs/kai.png'], ['upload', 'create', 'C:/refs/kai.png']]);
+		const dead = async () => { throw new Error('SignatureDoesNotMatch'); };
+		expect(uploadReferences(dead, ['C:/refs/kai.png'])).rejects.toThrow('Uploading a reference failed');
+	});
+});
 
 describe('Prep end to end against fakes (V1S-374)', () => {
 	test('spec → approve → prompt → approval card → make → stamped sheet', async () => {
