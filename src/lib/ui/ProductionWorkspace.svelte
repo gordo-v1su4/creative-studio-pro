@@ -12,6 +12,7 @@
 	import TrailerHousePanel from '$lib/ui/TrailerHousePanel.svelte';
 	import EpisodeOutline from '$lib/ui/EpisodeOutline.svelte';
 	import PrepWorkspace from '$lib/ui/PrepWorkspace.svelte';
+	import ScorePromptPanel from '$lib/ui/ScorePromptPanel.svelte';
 	import SeasonStructure from '$lib/ui/SeasonStructure.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
@@ -23,6 +24,8 @@
 	} = $props();
 
 	let busy = $state(false);
+	/** V1S-378: the cut whose Score prompt panel is open. */
+	let scoring = $state<{ cutId: string; name: string } | null>(null);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 	let draft = $state<ProductionState>({ status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null });
@@ -259,11 +262,13 @@
 								<button type="button" class="agent-mini" onclick={() => (versionsOpen = versionsOpen === cut.cut_id ? null : cut.cut_id)} aria-expanded={versionsOpen === cut.cut_id}>versions</button>
 							{/if}
 							<button type="button" class="btn" onclick={() => void setLocked(cut.cut_id, !cut.locked)} disabled={locking === cut.cut_id} title={cut.locked ? `Unlock: start v${cut.version + 1} as a copy of v${cut.version}; v${cut.version} stays as it is` : `Lock v${cut.version}: freeze its picture (no trims, ramps, reorders, swaps or drops) so sound can be laid against it`}>{cut.locked ? `Unlock to v${cut.version + 1}` : 'Lock'}</button>
+							<button type="button" class="agent-mini" onclick={() => (scoring = scoring?.cutId === cut.cut_id ? null : { cutId: cut.cut_id, name: cut.name })} title="GhostSuno: Suno's three fields for this cut (nothing is sent; mainly for trailers)">score prompt</button>
 							<button type="button" class="btn btn-accent" onclick={() => (openCut = { cutId: cut.cut_id, version: null })}>Open</button>
 						</li>
 					{/each}
 				</ul>
 			{/if}
+			{#if scoring}<ScorePromptPanel projectId={project.project_id} cutId={scoring.cutId} cutName={scoring.name} onclose={() => (scoring = null)} />{/if}
 			{#if notice}<p class="mb-4 border border-[#29434a] bg-[#0d1418] px-3 py-2 text-[12px] text-[#9fc9cf]" role="status">{notice}</p>{/if}
 			{#if finalizing}<FinalizePanel {project} takeIds={finalizing.takeIds} title={finalizing.title} {onUpdated} onclose={() => (finalizing = null)} onsent={(message) => (notice = message)} />{/if}
 			{#if versionsOpen}
