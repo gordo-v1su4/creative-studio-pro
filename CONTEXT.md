@@ -56,6 +56,10 @@ _Avoid_: Auto-fill, generate shots
 One continuous piece of picture, shown as a card on the board; the smallest unit the story is built from.
 _Avoid_: Beat, card (in prose), slot, clip
 
+**Shot spec**:
+The fields a shot is written as (size, angle, who is in frame, action, dialogue, place, light, camera move, duration); once approved, its image and video prompts are written from it to the ONE SHOT standard, and a prompt edited by hand afterwards is kept.
+_Avoid_: Shot fields, shot recipe, shot sheet
+
 **Take**:
 One generated clip or still attached to a shot; a shot can hold several.
 _Avoid_: Asset, alternate, version
@@ -153,8 +157,24 @@ A three-letter mnemonic for a scene, unique within its episode, such as `PAR` fo
 _Avoid_: Sequence code, scene number (for the letters)
 
 **Reference**:
-A named image that locks how a character, location or prop looks in every shot that uses it; its exact name is printed on the image and written the same way in every prompt. A location's reference also carries the look and grade.
+A named image, made to the ONE SHOT standard, that locks how a character, location or prop looks in every shot that uses it; its exact name is printed on the image and written the same way in every prompt. A location's reference also carries the look and grade.
 _Avoid_: Ref (in prose), sheet (alone), asset, look reference
+
+**Prep**:
+The step before shots where the references an episode needs are listed, given source images and made, each from an approved reference spec.
+_Avoid_: Setup, pre-production, asset prep
+
+**Reference spec**:
+The fields a reference is made from (who or what, its exact name, its source images, the details that must hold); once approved, the reference is made from it to the ONE SHOT standard.
+_Avoid_: Sheet spec, character brief
+
+**Source image**:
+A picture a reference was made from (an earlier sheet, a photo, a test still); it is kept with the reference but never attached to a shot, and source images can look very different from each other.
+_Avoid_: Original, input image, candidate
+
+**ONE SHOT standard**:
+The one way every reference, image prompt and video prompt is made, in every project, as the ONE SHOT skills define it: the same panels, positions and style.
+_Avoid_: House style, template (alone), preset
 
 **Handle**:
 A short `@` name for a reference (such as `@Kai`) that is swapped for the reference's exact name, its image number and its attachment before a prompt is checked or sent.
@@ -169,7 +189,7 @@ Media in a series tree whose name or folder does not match any shot; it stays vi
 _Avoid_: Rejected, invalid, orphan
 
 **Grid**:
-One 4K image holding a scene's stills as a 3×3 sheet, generated together for continuity and then split into still takes; it stays attached to them as a reference.
+One square image holding a scene's stills, 2×2 for up to four shots, else 3×3, generated together for continuity and then split into still takes; spare cells hold closer angles, wide shots render alone instead, and the grid stays attached to its takes as a reference.
 _Avoid_: Contact sheet, storyboard, collage
 
 ### Finishing

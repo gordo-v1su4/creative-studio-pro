@@ -192,3 +192,12 @@ second model checking that a story beat's shots portray it; two-part episodes; m
 - **Open:** the UX pass the operator asked for (live status while Kimi writes, the scattered Fit/Take out/Grid
   buttons, a Fix button for blocked sends); Fit writes "16:9 cinematic keyframe, fall 2001 film look:" into every
   shot (say it once).
+
+## ONE SHOT rebuild (grilled 2026-10-25)
+
+The old prompts didn't work, so EP101 starts over on the five ONE SHOT skills, copied into the app as its own logic
+(ADRs 0003, 0004; terms in `CONTEXT.md`: Prep, Reference spec, Source image, ONE SHOT standard, Shot spec).
+Tracked in Linear under V1S-283, in this order: V1S-370 skills in, V1S-371 clean slate (trash the 92 shots),
+V1S-372 setting fix (Willamette Valley, not California), V1S-373 GPT Image 2.5 at 2K through the operator's
+Higgsfield account with an approval step and credit prediction, V1S-374 Prep (references), V1S-375 shots from Ghost,
+V1S-376 2x2 keyframes, V1S-377 Fresh idea. V1S-378 (GhostSuno score prompt) is on hold.
