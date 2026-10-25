@@ -14,7 +14,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 const SPEC = { name: 'x', kind: 'character', template: 'T1', description: 'A broad-shouldered freshman in a teal plaid button-down.', must_hold: ['teal plaid button-down', 'blue eyes'], from_sources: '' };
-const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens.';
+const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens.\nGRADE: desaturated, one amber accent.\nCAMERA: 100mm, chest height, straight on.\nREALISM: real skin pores, real fabric.\nLOCKS: same person in all three panels.\nAVOID: text, watermark.';
 
 async function setup() {
 	const root = await mkdtemp(join(tmpdir(), 'csp-prep-')); roots.push(root);
@@ -107,18 +107,22 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(await readFile(result.file)).toEqual(Buffer.from([137, 80, 78, 71]));
 	});
 
-	test('a source image switches the template to T5a, clears the spec, and must be named in the prompt', async () => {
+	test('a source image switches the template to T5a, keeps the spec, and must be named in the prompt', async () => {
 		const { deps, projectId } = await setup();
 		const project = async () => (await deps.store.readProject(projectId))!;
 		await draftSpec(deps, await project(), 'r-mara');
 		const added = await addSource(deps, projectId, 'r-mara', { file_name: 'old-sheet.png', bytes: new Uint8Array([1, 2, 3]) });
 		if (!added.ok) throw new Error(added.message);
-		expect(added.prep.entries['r-mara'].spec).toBeNull();
+		// The spec stays when images change (Redraft gives a fresh one); only the prompt is rewritten.
+		expect(added.prep.entries['r-mara'].spec).not.toBeNull();
+		expect(added.prep.entries['r-mara'].prompt).toBeNull();
 		const listed = await prepView(deps, await project());
 		const view = listed.ok ? listed.items[0] : null;
 		expect(view?.template).toBe('T5a');
 		expect(prepQc(PROMPT, view!).join(' ')).toContain('never names "image 1"');
 		expect(prepQc(PROMPT.replace('Mara Voss', 'Mara'), view!).join(' ')).toContain('exact name');
+		expect(prepQc(PROMPT.replace(/\nAVOID:.*$/, ''), view!).join(' ')).toContain('The AVOID section is missing');
+		expect(prepQc(PROMPT.replace('near-white seamless studio backdrop', 'rainy street at night'), view!).join(' ')).toContain('near-white seamless studio backdrop');
 		// Removing the source takes it (and its copy) off the entry and back to T1, spec cleared.
 		const removed = await removeSource(deps, projectId, 'r-mara', added.prep.entries['r-mara'].sources[0].url);
 		if (!removed.ok) throw new Error(removed.message);

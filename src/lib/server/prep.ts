@@ -93,19 +93,19 @@ export async function addSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: 
 	const url = `/api/projects/${projectId}/files/prep/sources/${safe(key)}/${name}`;
 	const prep = await update(deps.projectRoot, projectId, key, (state) => ({
 		...state, sources: [...state.sources, { name: input.file_name.slice(0, 300), file: join(folder, name), url, added_at: new Date().toISOString() }].slice(-12),
-		// New sources change the spec's template (T1 → T5a): the spec and prompt are redrafted.
-		spec: null, spec_approved_at: null, prompt: null, prompt_edited: false
+		// The spec stays (Redraft is there for a fresh one); only the prompt goes, since it numbers the images.
+		prompt: null, prompt_edited: false
 	}));
 	return { ok: true, prep };
 }
 
-/** Take one source image off an entry (its copy under files/prep/sources goes too); the spec is redrafted. */
+/** Take one source image off an entry (its copy under files/prep/sources goes too); the spec stays, the prompt is rewritten. */
 export async function removeSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, key: string, url: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
 	const prep = await readPrep(deps.projectRoot, projectId);
 	const source = prep.entries[key]?.sources.find((entry) => entry.url === url);
 	if (!source) return fail(404, 'That source image is not on this entry');
 	await rm(source.file, { force: true });
-	return { ok: true, prep: await update(deps.projectRoot, projectId, key, (state) => ({ ...state, sources: state.sources.filter((entry) => entry.url !== url), spec: null, spec_approved_at: null, prompt: null, prompt_edited: false })) };
+	return { ok: true, prep: await update(deps.projectRoot, projectId, key, (state) => ({ ...state, sources: state.sources.filter((entry) => entry.url !== url), prompt: null, prompt_edited: false })) };
 }
 
 /** The current reference image (an old sheet) as a source image, so ONE SHOT remakes it to the standard. */
@@ -190,6 +190,9 @@ export async function saveSpec(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, p
 	return { ok: true, prep };
 }
 
+/** The look sections every character sheet prompt carries (oneshot-image-prompts output format). */
+export const SHEET_SECTIONS = ['GRADE', 'CAMERA', 'REALISM', 'LOCKS', 'AVOID'] as const;
+
 /** QC on a reference prompt before the approval card (V1S-374). */
 export function prepQc(prompt: string, view: PrepView): string[] {
 	const out: string[] = [];
@@ -198,6 +201,8 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 	if (view.entry.kind === 'character' && !/straight-on|face square to the camera/i.test(prompt)) out.push('The first panel must be a straight-on, forward-facing face close-up (the T1 wording)');
 	if (view.entry.kind === 'character' && /three-quarter[^.]*first panel|first panel[^.]*three-quarter/i.test(prompt)) out.push('The first panel is three-quarter; it must face the camera');
 	if (view.entry.kind === 'character' && !/(near-)?white seamless|white cyclorama|white studio backdrop/i.test(prompt)) out.push('A character sheet sits on the near-white seamless studio backdrop, the same for the whole cast');
+	// The skill's look blocks, each as its own labelled section, so every sheet says how it should look.
+	if (view.entry.kind === 'character') for (const section of SHEET_SECTIONS) if (!new RegExp(`^\\s*\\**${section}\\**\\s*:`, 'mi').test(prompt)) out.push(`The ${section} section is missing ("${section}: …" on its own line)`);
 	for (const [i, source] of view.state.sources.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`, 'i').test(prompt) && view.state.sources.length) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
 	return out;
 }
@@ -210,7 +215,7 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	if (!view.state.spec || !view.state.spec_approved_at) return fail(400, 'Approve the reference spec first');
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets).' : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.` : 'No images are attached.'}${view.entry.kind === 'character' ? ' The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:.' : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
 		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
