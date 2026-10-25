@@ -14,7 +14,7 @@ const vault = process.env.CSP_VAULT_DIR ?? resolve(root, '..', 'hermes-notebook-
 const from = join(vault, '10-Infrastructure', 'Agent Skills', 'skills');
 const to = join(root, '.agents', 'skills');
 const linter = { vault: join(from, 'seedance-higgsfield', 'scripts', 'prompt-lint.ts'), app: join(root, 'src', 'lib', 'domain', 'prompt-lint.ts') };
-export const PROMPT_SKILLS = ['seedance-higgsfield', 'nano-banana-pro', 'seedance-teaser-trailer', 'oneshot-image-prompts', 'live-action-studio'];
+export const PROMPT_SKILLS = ['seedance-higgsfield', 'nano-banana-pro', 'seedance-teaser-trailer'];
 
 const files = (dir: string): string[] =>
 	existsSync(dir) ? readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? files(join(dir, name)).map((f) => join(name, f)) : [name])) : [];

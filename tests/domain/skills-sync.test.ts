@@ -69,7 +69,7 @@ test.skipIf(!existsSync(join(vault, '10-Infrastructure', 'Agent Skills')))('this
 });
 
 test('every prompt skill says when it was last updated (YYYY-MM-DD)', () => {
-	for (const skill of ['seedance-higgsfield', 'nano-banana-pro', 'seedance-teaser-trailer', 'oneshot-image-prompts', 'live-action-studio']) {
+	for (const skill of ['seedance-higgsfield', 'nano-banana-pro', 'seedance-teaser-trailer']) {
 		expect(readFileSync(join(skills, skill, 'SKILL.md'), 'utf8'), skill).toMatch(/^Updated: \d{4}-\d{2}-\d{2}$/m);
 	}
 });

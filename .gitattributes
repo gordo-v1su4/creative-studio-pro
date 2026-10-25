@@ -2,3 +2,4 @@
 # so they keep LF on every OS, including Windows checkouts with core.autocrlf=true.
 .agents/skills/** text eol=lf
 src/lib/domain/prompt-lint.ts text eol=lf
+agent-skills/** text eol=lf

@@ -82,9 +82,13 @@ Canonical skills live in `.agents/skills/` (committed). Lockfile: `skills-lock.j
 
 **bun** / **bunx** for JS/TS; **uv** for Python. Never npm, npx, pip.
 
+### The app's Agent skills (ONE SHOT, app-owned)
+
+`agent-skills/` holds the five ONE SHOT Community Edition skills (`live-action-studio`, `oneshot-image-prompts`, `ghost`, `fresh-idea-community`, `ghostsuno`). They are the in-app Agent's logic for references, image prompts, keyframes, video prompts, fresh ideas and score prompts (ADRs 0003, 0004), read through `src/lib/server/agent-skills.ts`. **This copy is the app's own:** edit it here when the app needs a change; it is not synced from the vault and changes are not pushed back. Inside the app, Ghost replaces `seedance-higgsfield` for video prompts (Fit and teasers move over in V1S-375).
+
 ### Prompt skills (global)
 
-`seedance-higgsfield`, `nano-banana-pro`, `seedance-teaser-trailer`, `oneshot-image-prompts` and `live-action-studio` come from the Hermes vault (`10-Infrastructure/Agent Skills/skills/`), the source of truth that Syncthing carries to every machine. `.agents/skills/` holds a copy because the app reads the Seedance formats and the linter at runtime. **Never edit the copy, and never edit `src/lib/domain/prompt-lint.ts` here:** edit in the vault, run its `sync-skills.ts`, then `bun run skills:sync` here (`--check` only reports drift; `tests/domain/skills-sync.test.ts` fails on drift when the vault is present). Installing them on a machine, and cleanup: the vault note `10-Infrastructure/Agent Skills/Prompt Skills Runbook.md`.
+`seedance-higgsfield`, `nano-banana-pro` and `seedance-teaser-trailer` come from the Hermes vault (`10-Infrastructure/Agent Skills/skills/`), the source of truth that Syncthing carries to every machine. `.agents/skills/` holds a copy because the app reads the Seedance formats and the linter at runtime. **Never edit the copy, and never edit `src/lib/domain/prompt-lint.ts` here:** edit in the vault, run its `sync-skills.ts`, then `bun run skills:sync` here (`--check` only reports drift; `tests/domain/skills-sync.test.ts` fails on drift when the vault is present). Installing them on a machine, and cleanup: the vault note `10-Infrastructure/Agent Skills/Prompt Skills Runbook.md`.
 
 ### Repo-specific skill
 
