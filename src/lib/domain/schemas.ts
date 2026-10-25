@@ -288,7 +288,9 @@ export const storyCardSchema = z.object({
 		/** The video prompt was edited by hand after it was written; a rewrite keeps it. */
 		prompt_edited: z.boolean().optional(),
 		/** What the Ghost QC still finds in the video prompt (empty = clean). */
-		qc: z.array(z.string().max(500)).max(40).optional()
+		qc: z.array(z.string().max(500)).max(40).optional(),
+		/** V1S-377: titles of the fresh ideas already used for this shot, so a new pitch never repeats one. */
+		ideas_used: z.array(z.string().max(120)).max(20).optional()
 	}).optional()
 });
 export type StoryCard = z.infer<typeof storyCardSchema>;

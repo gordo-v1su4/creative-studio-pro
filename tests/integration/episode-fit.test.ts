@@ -10,7 +10,7 @@ import { compileHandles } from '../../src/lib/domain/handles';
 import { ghostQc, GHOST_SECTIONS, MUSIC_CLOSER, MUSIC_OPENER } from '../../src/lib/domain/ghost-qc';
 import { PROMPT_PENDING, type ShotSpec } from '../../src/lib/domain/shot-spec';
 import { liveSpine } from '../../src/lib/domain/spine';
-import { ghostSystem, proposeShots, SpecCheckFailed, writeShotPrompt } from '../../src/lib/server/ghost-shots';
+import { freshIdeas, ghostSystem, proposeShots, SpecCheckFailed, writeShotPrompt } from '../../src/lib/server/ghost-shots';
 import { fitContext } from '../../src/lib/server/episode-fit';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import type { Project, StoryCard } from '../../src/lib/domain/schemas';
@@ -131,6 +131,20 @@ describe('Shots from Ghost (V1S-375)', () => {
 		expect(written.compiled.split('\n')[0]).toBe('6 s. Upload: image 1 = Kai "Hoodie" Santana, image 2 = College Quad');
 		expect(written.compiled).toContain('Kai "Hoodie" Santana (image 1) crosses College Quad (image 2)');
 		expect(written.compiled).not.toMatch(/@[A-Za-z]/);
+	});
+
+	test('fresh idea (V1S-377): two concepts as shot specs; the scripted lines and the clip length are kept', async () => {
+		const original = spec({ dialogue: 'KAI: "Keep it."', duration_s: 7 });
+		const answer = JSON.stringify({ ideas: [
+			{ title: 'From the clock tower', pitch: 'Overhead crane, Kai a small figure crossing the wet lawn.', spec: spec({ size: 'WS', angle: 'overhead', dialogue: 'KAI: "Keep it, okay?"', duration_s: 12 }) },
+			{ title: 'Through the table', pitch: 'Low ground-skim past the signup table legs.', spec: spec({ size: 'MCU', angle: 'low', camera_move: 'ground-skim dolly', duration_s: 7 }) }
+		], pick: 1, why: 'It keeps the faces readable.' });
+		const agent = scripted([answer]);
+		const ideas = await freshIdeas(agent.client, { context: 'ctx', title: 'P02.03', spec: original, earlier: ['Rooftop reveal'] });
+		expect(agent.asked[0].system).toContain('FRESH IDEA (ONE SHOT Community Edition)');
+		expect(agent.asked[0].prompt).toContain('CONCEPTS ALREADY USED (never bring one back):\n- Rooftop reveal');
+		expect(ideas.ideas.map((idea) => [idea.title, idea.spec.dialogue, idea.spec.duration_s])).toEqual([['From the clock tower', 'KAI: "Keep it."', 7], ['Through the table', 'KAI: "Keep it."', 7]]);
+		expect(ideas.pick).toBe(1);
 	});
 
 	test('the Ghost QC: sections in order, header, music lines, references, timeline, banned words', () => {

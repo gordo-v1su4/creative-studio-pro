@@ -111,3 +111,34 @@ Write this shot's FINAL VIDEO PROMPT the Ghost way: the first line "${input.spec
 	}
 	return { video_prompt: prompt, compiled: result.compiled, qc: result.qc, rounds };
 }
+
+// ---- Fresh idea (V1S-377): two completely different concepts for the same beat, as shot specs ----
+
+export interface FreshIdea { title: string; pitch: string; spec: ShotSpec }
+export interface FreshIdeas { ideas: FreshIdea[]; pick: number; why: string }
+
+const freshAnswer = z.object({
+	ideas: z.array(z.object({ title: z.string().trim().min(1).max(120), pitch: z.string().trim().min(1).max(400), spec: shotSpecSchema })).min(2).max(4),
+	pick: z.number().int().min(0),
+	why: z.string().trim().max(400).default('')
+});
+
+/**
+ * The app's copy of `fresh-idea-community`: the beat, cast, references, length and scripted dialogue stay;
+ * staging, camera, location use, entrance, point of view (at least three axes) change. Each concept comes back as a
+ * full shot spec; the scripted lines are restored verbatim and the clip length kept, whatever the Agent wrote.
+ */
+export async function freshIdeas(client: AgentModelClient, input: { context: string; title: string; spec: ShotSpec; earlier: string[] }): Promise<FreshIdeas> {
+	const system = [await readAgentSkill('fresh-idea-community'), '', '# Inside the app', '- Answer with shot specs, not prompts: the app writes the prompt from the chosen spec with Ghost.', '- Referenced people, places and props by @handle. Never the word "neon". Night unless the scene says otherwise.'].join('\n');
+	const ask = `${input.context}
+
+THE SHOT THAT FEELS STALE: ${input.title}
+${JSON.stringify(input.spec, null, 2)}
+${input.earlier.length ? `\nCONCEPTS ALREADY USED (never bring one back):\n${input.earlier.map((e) => `- ${e}`).join('\n')}` : ''}
+
+"Fresh idea": TWO completely different concepts for this same beat, each different from the shot above and from each other on at least 3 real axes. Keep the beat, the cast, the references, ${input.spec.duration_s} s, and the dialogue lines word for word. Answer with only JSON:
+{"ideas":[{"title":"short title","pitch":"one line: what makes it different","spec":{"size":"ECU|CU|MCU|MS|WS","angle":"…","subjects":["@Kai"],"action":"…","dialogue":"the same lines","location":"…","light":"…","camera_move":"…","duration_s":${input.spec.duration_s}}}],"pick":0,"why":"one sentence"}`;
+	const answer = await generateStructured(client, { system, prompt: ask, maxOutputTokens: 3000, timeoutMs: 180_000 }, (value) => freshAnswer.parse(value));
+	const ideas = answer.ideas.slice(0, 2).map((idea) => ({ ...idea, spec: { ...idea.spec, dialogue: input.spec.dialogue, duration_s: input.spec.duration_s } }));
+	return { ideas, pick: Math.min(answer.pick, ideas.length - 1), why: answer.why };
+}

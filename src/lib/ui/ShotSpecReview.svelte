@@ -16,6 +16,22 @@
 	let status = $state<string | null>(null);
 	let error = $state<string | null>(null);
 	let openPrompt = $state<string | null>(null);
+	type Ideas = { ideas: Array<{ title: string; pitch: string; spec: ShotSpec }>; pick: number; why: string };
+	let fresh = $state<Record<string, Ideas>>({});
+
+	async function pitch(card: StoryCard) {
+		busy = `fresh:${card.card_id}`; error = null;
+		try {
+			const body = await (await post({ action: 'fresh_idea', target_min: targetMin, card_id: card.card_id })).json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'The Agent could not pitch');
+			fresh[card.card_id] = body.data as Ideas;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'The Agent could not pitch'; }
+		finally { busy = null; }
+	}
+	async function useIdea(card: StoryCard, idea: Ideas['ideas'][number]) {
+		await simple('use', { action: 'use_idea', card_id: card.card_id, title: idea.title, spec: idea.spec });
+		delete fresh[card.card_id]; delete edits[card.card_id];
+	}
 
 	const edit = (card: StoryCard) => (edits[card.card_id] ??= structuredClone($state.snapshot(card.fit!.spec!)));
 	const changed = (card: StoryCard) => !!edits[card.card_id] && JSON.stringify(edits[card.card_id]) !== JSON.stringify(card.fit!.spec);
@@ -60,6 +76,25 @@
 	}
 </script>
 
+{#snippet ideasFor(card: StoryCard)}
+	{#if fresh[card.card_id]}
+		{@const set = fresh[card.card_id]}
+		<div class="ideas" aria-label={`Fresh ideas for ${card.title}`}>
+			{#each set.ideas as idea, i (idea.title)}
+				<div class={['idea', i === set.pick && 'pick']}>
+					<div class="shot-head"><b>{idea.title}</b>{#if i === set.pick}<span class="chip ok">The Agent's pick</span>{/if}</div>
+					<p class="pitch">{idea.pitch}</p>
+					<p class="mono">{idea.spec.size}, {idea.spec.angle} · {idea.spec.camera_move || 'locked off'} · {idea.spec.duration_s} s</p>
+					<p class="action">{idea.spec.action}</p>
+					<button type="button" class="key on" disabled={!!busy} onclick={() => void useIdea(card, idea)}>Use this</button>
+				</div>
+			{/each}
+			{#if set.why}<p class="mono">Why the pick: {set.why}</p>{/if}
+			<div class="row"><button type="button" class="key" disabled={!!busy} onclick={() => void pitch(card)}>Pitch again</button><button type="button" class="key" onclick={() => delete fresh[card.card_id]}>Keep the shot</button></div>
+		</div>
+	{/if}
+{/snippet}
+
 {#if shots.length}
 	<div class="review" aria-label="Shots from Ghost">
 		{#if waiting.length}
@@ -81,7 +116,9 @@
 					<div class="row">
 						{#if changed(card)}<button type="button" class="key" disabled={!!busy} onclick={() => void simple('edit', { action: 'edit_spec', card_id: card.card_id, spec: edits[card.card_id] }).then(() => delete edits[card.card_id])}>Save change</button>{/if}
 						<button type="button" class="key" disabled={!!busy} onclick={() => void simple('reject', { action: 'reject', card_id: card.card_id })}>Reject</button>
+						<button type="button" class="key" disabled={!!busy} onclick={() => void pitch(card)}>{busy === `fresh:${card.card_id}` ? 'Pitching…' : 'Fresh idea'}</button>
 					</div>
+					{@render ideasFor(card)}
 				</div>
 			{/each}
 			<div class="row">
@@ -98,7 +135,9 @@
 					<button type="button" class="link" aria-expanded={openPrompt === card.card_id} onclick={() => (openPrompt = openPrompt === card.card_id ? null : card.card_id)}>{card.title} · {card.beat}</button>
 					<span class={['chip', card.fit!.qc?.length ? 'bad' : 'ok']}>{card.fit!.qc?.length ? `QC ${card.fit!.qc.length}` : 'QC clean'}</span>
 					{#each card.fit!.qc ?? [] as issue, i (i)}<p class="reason">{issue}</p>{/each}
+					{#if !project.production.assets.some((asset) => asset.card_id === card.card_id && !asset.rejected)}<button type="button" class="key" disabled={!!busy} onclick={() => void pitch(card)}>{busy === `fresh:${card.card_id}` ? 'Pitching…' : 'Fresh idea'}</button>{/if}
 					{#if openPrompt === card.card_id}<pre class="prompt">{card.video_prompt}</pre>{/if}
+					{@render ideasFor(card)}
 				</div>
 			{/each}
 		{/if}
@@ -126,6 +165,11 @@
 	.chip { border: 1px solid var(--color-nr-line); border-radius: 2px; padding: 0 6px; font: 10px/16px var(--font-mono); }
 	.chip.ok { border-color: color-mix(in srgb, var(--color-nr-accent) 40%, transparent); color: var(--color-nr-accent); }
 	.chip.bad { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
+	.ideas { width: 100%; display: grid; gap: 6px; }
+	.idea { display: grid; gap: 3px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 6px 8px; }
+	.idea.pick { border-color: color-mix(in srgb, var(--color-nr-accent) 40%, transparent); background: color-mix(in srgb, var(--color-nr-accent) 5%, transparent); }
+	.pitch { color: var(--color-nr-ink); font-size: 12px; }
+	.action { color: var(--color-nr-text); font-size: 11.5px; line-height: 1.5; }
 	.reason { width: 100%; color: var(--color-nr-danger-text); font-size: 11px; }
 	.prompt { width: 100%; max-height: 260px; overflow: auto; margin: 0; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: #0b0d11; padding: 8px; color: var(--color-nr-text); font: 11px/1.55 var(--font-mono); white-space: pre-wrap; }
 	.key { display: inline-flex; align-items: center; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 10px; color: var(--color-nr-muted); font: 600 9px/24px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }

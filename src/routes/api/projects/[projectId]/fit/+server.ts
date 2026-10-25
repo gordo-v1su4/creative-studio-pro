@@ -6,7 +6,7 @@ import { uuid7ish } from '$lib/domain/ids';
 import { bannedTerms } from '$lib/domain/brief-rules';
 import { episodeOutline } from '$lib/domain/episode-outline';
 import { awaitingApproval, fitPlan, proposedCards, removeShots } from '$lib/domain/episode-fit';
-import { keyframeOf, shotSpecSchema, specLine } from '$lib/domain/shot-spec';
+import { keyframeOf, PROMPT_PENDING, shotSpecSchema, specLine } from '$lib/domain/shot-spec';
 import { getGateway, getNotionToken, getProjectRoot, getProjectStore, getSeriesStore, resolveProjectModel } from '$lib/server/config';
 import { createNotionApi } from '$lib/server/notion';
 import { drainNotionTrash, removedShotPages } from '$lib/server/notion-sync';
@@ -14,7 +14,7 @@ import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { projectRules } from '$lib/server/animate';
 import { fitContext, type FitContext } from '$lib/server/episode-fit';
-import { ghostSystem, proposeShots, SpecCheckFailed, writeShotPrompt } from '$lib/server/ghost-shots';
+import { freshIdeas, ghostSystem, proposeShots, SpecCheckFailed, writeShotPrompt } from '$lib/server/ghost-shots';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'VERSION_CONFLICT' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'fit' } }, { status });
 
@@ -27,6 +27,9 @@ const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('approve'), expected_version: version, target_min: z.number().int().min(1).max(120), scene_ids: z.array(z.string().max(64)).min(1).max(100) }),
 	// Change one proposed shot's spec before approval.
 	z.object({ action: z.literal('edit_spec'), expected_version: version, card_id: idSchema, spec: shotSpecSchema }),
+	// V1S-377: two fresh concepts for one Ghost shot (shot specs; nothing saved), and using one of them.
+	z.object({ action: z.literal('fresh_idea'), expected_version: version, target_min: z.number().int().min(1).max(120), card_id: idSchema }),
+	z.object({ action: z.literal('use_idea'), expected_version: version, card_id: idSchema, title: z.string().trim().min(1).max(120), spec: shotSpecSchema }),
 	// Take one proposed shot out (no takes yet).
 	z.object({ action: z.literal('reject'), expected_version: version, card_id: idSchema }),
 	// Take fitted beats out again (all, or these scenes'); beats with takes stay.
@@ -109,6 +112,19 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return outcome.ok ? json(outcome) : json(outcome, { status: commandStatus(outcome.error) });
 	}
 
+	if (b.action === 'use_idea') {
+		const card = project.production.cards.find((entry) => entry.card_id === b.card_id);
+		if (!card?.fit?.spec) return fail(400, 'That card has no shot spec');
+		if (project.production.assets.some((asset) => asset.card_id === b.card_id && !asset.rejected)) return fail(400, 'That shot already has takes; a fresh idea replaces a shot before it is made');
+		// The new spec waits for approval like any proposed shot; Ghost writes its prompt after that.
+		const cards = project.production.cards.map((entry) => entry.card_id !== b.card_id ? entry : {
+			...entry, beat: specLine(b.spec).slice(0, 4000), duration_ms: b.spec.duration_s * 1000, image_prompt: keyframeOf(b.spec).slice(0, 5000), video_prompt: PROMPT_PENDING,
+			fit: { ...entry.fit!, spec: b.spec, approved_at: undefined, qc: undefined, prompt_edited: undefined, ideas_used: [...(entry.fit!.ideas_used ?? []), b.title].slice(-20) }
+		});
+		const outcome = await saveCards(project, cards);
+		return outcome.ok ? json(outcome) : json(outcome, { status: commandStatus(outcome.error) });
+	}
+
 	const resolved = await resolveProjectModel(project);
 	if (!resolved.ok) return fail(503, `No Agent model: ${resolved.message}`);
 	const client = createOpenAICompatibleClient(resolved.connection);
@@ -131,6 +147,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const sceneCards = current.production.cards.filter((card) => card.group_id === scene.group_id).toSorted((x, y) => x.order - y.order);
 		return { story, series, outline, target_min, scene, sceneCards, banned, storyBeats, references, allReferences, nextScene: next ? { title: next.title, summary: next.summary } : null };
 	};
+
+	if (b.action === 'fresh_idea') {
+		const card = project.production.cards.find((entry) => entry.card_id === b.card_id);
+		const scene = series.scenes.find((entry) => entry.group_id === card?.group_id);
+		if (!card?.fit?.spec || !scene) return fail(400, 'A fresh idea is for a shot Ghost proposed');
+		const context = fitContext(contextFor(project, { page_id: scene.page_id, group_id: scene.group_id, title: scene.title, gap_s: 0, shots_wanted: 1 }));
+		try {
+			const ideas = await freshIdeas(client, { context, title: card.title, spec: card.fit.spec, earlier: card.fit.ideas_used ?? [] });
+			return json({ ok: true, data: ideas });
+		} catch (cause) { return fail(502, cause instanceof Error ? cause.message : 'The Agent could not pitch'); }
+	}
 
 	if (b.action === 'approve') {
 		const scenes = series.scenes.filter((scene) => b.scene_ids.includes(scene.page_id));
