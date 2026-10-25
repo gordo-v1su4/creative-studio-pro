@@ -11,12 +11,13 @@
 	import BriefPanel from '$lib/ui/BriefPanel.svelte';
 	import TrailerHousePanel from '$lib/ui/TrailerHousePanel.svelte';
 	import EpisodeOutline from '$lib/ui/EpisodeOutline.svelte';
+	import PrepWorkspace from '$lib/ui/PrepWorkspace.svelte';
 	import SeasonStructure from '$lib/ui/SeasonStructure.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 
-	export type ProductionTab = 'story' | 'beats' | 'cuts' | 'sound' | 'export';
+	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
 	let { project, onUpdated, tab = $bindable('story') }: {
 		project: Project; onUpdated: (project: Project) => void; tab?: ProductionTab
 	} = $props();
@@ -190,6 +191,8 @@
 				<label class="workspace-field"><span>Theme / dramatic question</span><textarea bind:value={draft.theme} rows="9" placeholder="What the story is really testing…"></textarea></label>
 			</div>
 		</div>
+	{:else if tab === 'prep'}
+		{#if project.series}<PrepWorkspace {project} {onUpdated} />{:else}<p class="p-5 text-[12.5px] text-nr-muted">Prep is for an episode imported from a series.</p>{/if}
 	{:else if tab === 'beats'}
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
 			{#each draft.cards as card (card.card_id)}

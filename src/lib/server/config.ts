@@ -24,6 +24,8 @@ import type { GridDeps } from '$lib/server/grid';
 import { reviewRoomReferenceFiles, type ReferenceFileDeps } from '$lib/server/reference-files';
 import { dirname, join as joinPath } from 'node:path';
 import { createSplitter } from '$lib/server/splitter';
+import { uvStamper, type PrepDeps } from '$lib/server/prep';
+import { createNotionApi } from '$lib/server/notion';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -142,7 +144,20 @@ export function getNotionToken(): string | null {
 	return env.NOTION_TOKEN?.trim() || null;
 }
 
-/** Grid stills (V1S-278): Nano Banana Pro through the Higgsfield CLI, split by the splitter service. */
+/** Prep (V1S-374): references made from approved specs with the app's ONE SHOT skill, through the still path. */
+export async function getPrepDeps(): Promise<PrepDeps> {
+	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
+	const animate = await getAnimateDeps();
+	const token = getNotionToken();
+	return {
+		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(), series: getSeriesStore(),
+		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null, download: animate.download,
+		agent: async (project) => { const resolved = await resolveProjectModel(project); return resolved.ok ? createOpenAICompatibleClient(resolved.connection) : null; },
+		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd())
+	};
+}
+
+/** Grid stills (V1S-278): GPT Image 2.5 through the Higgsfield CLI (V1S-373), split by the splitter service. */
 export async function getGridDeps(): Promise<GridDeps> {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	const animate = await getAnimateDeps();

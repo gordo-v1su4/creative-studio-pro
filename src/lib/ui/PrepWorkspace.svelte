@@ -1,0 +1,265 @@
+<script lang="ts">
+	import type { Project } from '$lib/domain/schemas';
+	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
+	import { prepStage } from '$lib/domain/prep';
+	import type { StillApproval } from '$lib/domain/stills';
+	import StillApprovalCard from './StillApprovalCard.svelte';
+
+	/**
+	 * Prep (V1S-374): the references an episode needs, as a dependency graph per entry — source images →
+	 * reference spec → prompt and approval → reference → the scenes that use it. Characters first, then
+	 * locations, then props added by name. Every sheet goes through the approval card; a finished one lands in
+	 * the series' References drawer.
+	 */
+	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
+
+	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null };
+	let items = $state<View[]>([]);
+	let spent = $state(0);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+	let busy = $state<Record<string, string>>({});
+	let approvals = $state<Record<string, StillApproval>>({});
+	let drafts = $state<Record<string, { description: string; must_hold: string; from_sources: string }>>({});
+	let promptDrafts = $state<Record<string, string>>({});
+	let newProp = $state('');
+
+	const base = $derived(`/api/projects/${project.project_id}/prep`);
+	const sections = $derived([
+		{ kind: 'character', label: 'Characters', list: items.filter((item) => item.entry.kind === 'character') },
+		{ kind: 'location', label: 'Locations', list: items.filter((item) => item.entry.kind === 'location') },
+		{ kind: 'prop', label: 'Props', list: items.filter((item) => item.entry.kind === 'prop') }
+	]);
+
+	function take(body: { data?: { items: View[]; episode_spent: number } | null; project?: Project }) {
+		if (body.data) { items = body.data.items; spent = body.data.episode_spent; }
+		if (body.project) onUpdated(body.project);
+		for (const item of items) {
+			if (item.state.spec && !drafts[item.entry.key]) drafts[item.entry.key] = { description: item.state.spec.description, must_hold: item.state.spec.must_hold.join('\n'), from_sources: item.state.spec.from_sources };
+			if (!item.state.spec) delete drafts[item.entry.key];
+			if (item.state.prompt !== null && promptDrafts[item.entry.key] === undefined) promptDrafts[item.entry.key] = item.state.prompt;
+			if (item.state.prompt === null) delete promptDrafts[item.entry.key];
+		}
+	}
+
+	async function load() {
+		loading = true; error = null;
+		try {
+			const body = await (await fetch(base)).json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Prep could not load');
+			take(body);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Prep could not load'; }
+		finally { loading = false; }
+	}
+	$effect(() => { void project.project_id; void load(); });
+
+	async function call(key: string, label: string, payload: Record<string, unknown> | FormData) {
+		busy[key] = label; error = null;
+		try {
+			const init: RequestInit = payload instanceof FormData ? { method: 'POST', body: payload } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) };
+			const body = await (await fetch(base, init)).json();
+			if (!body.ok) throw new Error([body.error?.message, ...(body.error?.reasons ?? [])].filter(Boolean).join(' — '));
+			take(body);
+			return body;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'That did not work'; return null; }
+		finally { delete busy[key]; }
+	}
+
+	const upload = (key: string, action: 'source' | 'attach', files: FileList | null) => {
+		const file = files?.[0];
+		if (!file) return;
+		const form = new FormData();
+		form.set('action', action); form.set('key', key); form.set('file', file);
+		void call(key, action === 'source' ? 'Adding…' : 'Attaching…', form);
+	};
+	const specOf = (item: View): ReferenceSpec => {
+		const d = drafts[item.entry.key];
+		return { name: item.entry.name, kind: item.entry.kind, template: item.template as ReferenceSpec['template'], description: d.description, must_hold: d.must_hold.split('\n').map((line) => line.trim()).filter(Boolean), from_sources: d.from_sources };
+	};
+	async function quote(key: string) {
+		delete approvals[key];
+		const body = await call(key, 'Pricing…', { action: 'quote', key });
+		if (body?.approval) approvals[key] = body.approval as StillApproval;
+	}
+	async function make(key: string, approval: StillApproval) {
+		const sent = await call(key, 'Making… (checks every 5 s)', { action: 'send', key, approval_key: approval.approval_key, confirmed_credits: approval.credits ?? 0 });
+		if (!sent) return;
+		delete approvals[key];
+		busy[key] = 'Making… (checks every 5 s)';
+		try {
+			for (let tries = 0; tries < 120; tries++) {
+				await new Promise((done) => setTimeout(done, 5000));
+				const settled = await call(key, 'Making… (checks every 5 s)', { action: 'settle', key });
+				if (!settled || !settled.pending) break;
+			}
+		} finally { delete busy[key]; }
+	}
+	const stageLabel: Record<ReturnType<typeof prepStage>, string> = { sources: 'Needs a spec', spec: 'Spec to approve', approved: 'Write the prompt', prompt: 'Ready to make', sent: 'Making', made: 'Made' };
+</script>
+
+<section class="prep" aria-label="Prep">
+	<header class="top">
+		<div>
+			<div class="cap accent">PREP · REFERENCES</div>
+			<h2 class="title">What {project.series?.episode_title ?? 'this episode'} needs</h2>
+			<p class="lede">Each reference is made to the ONE SHOT standard from a spec you approve, then lands in the References drawer. Characters first, then locations.</p>
+		</div>
+		<span class="mono">episode spend {spent} cr</span>
+	</header>
+	{#if error}<p class="error" role="alert">{error}</p>{/if}
+	{#if loading}<p class="muted">Reading the episode…</p>{/if}
+
+	{#each sections as section (section.kind)}
+		<div class="section-head"><span class="cap">{section.label}</span><span class="line"></span><span class="mono">{section.list.length}</span></div>
+		{#if section.kind === 'prop'}
+			<form class="add" onsubmit={(event) => { event.preventDefault(); if (newProp.trim()) { void call('prop', 'Adding…', { action: 'add_prop', name: newProp }); newProp = ''; } }}>
+				<input bind:value={newProp} placeholder="A prop a scene needs, e.g. Red vial" aria-label="New prop name" />
+				<button type="submit" class="key" disabled={!newProp.trim()}>Add prop</button>
+			</form>
+		{/if}
+		{#each section.list as item (item.entry.key)}
+			{@const key = item.entry.key}
+			{@const stage = prepStage(item.state)}
+			<article class={['entry', stage === 'made' && 'made']} aria-label={item.entry.name}>
+				<div class="entry-head">
+					<b class="name">{item.entry.name}</b>
+					{#if item.entry.role}<span class="role">{item.entry.role}</span>{/if}
+					<span class={['chip', stage]}>{stageLabel[stage]}</span>
+					<span class="mono">{item.template}</span>
+					{#if busy[key]}<span class="pulse" aria-hidden="true"></span><span class="mono">{busy[key]}</span>{/if}
+				</div>
+				<div class="graph">
+					<!-- 1. source images -->
+					<div class="node">
+						<div class="node-cap">Source images</div>
+						<div class="thumbs">
+							{#each item.state.sources as source, i (source.url)}
+								<figure><img src={source.url} alt={source.name} loading="lazy" /><figcaption>image {i + 1}</figcaption></figure>
+							{:else}
+								<p class="muted">None yet: {item.template === 'T1' || item.template === 'W3' ? 'made from the spec alone' : ''}</p>
+							{/each}
+						</div>
+						<div class="row">
+							<label class="key">Add image<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'source', event.currentTarget.files)} /></label>
+							{#if item.current}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Adding…', { action: 'use_current', key })}>Use current sheet</button>{/if}
+						</div>
+					</div>
+					<span class="edge" aria-hidden="true"></span>
+					<!-- 2. reference spec -->
+					<div class="node wide">
+						<div class="node-cap">Reference spec{item.state.spec_approved_at ? ' · approved' : ''}</div>
+						{#if drafts[key]}
+							<label class="field"><span>Description</span><textarea rows="4" bind:value={drafts[key].description}></textarea></label>
+							<label class="field"><span>Must hold (one per line)</span><textarea rows="3" bind:value={drafts[key].must_hold}></textarea></label>
+							{#if item.state.sources.length}<label class="field"><span>From the source images</span><textarea rows="2" bind:value={drafts[key].from_sources}></textarea></label>{/if}
+							<div class="row">
+								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false })}>Save</button>
+								<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'Approving…', { action: 'save_spec', key, spec: specOf(item), approve: true })}>{item.state.spec_approved_at ? 'Approve again' : 'Approve spec'}</button>
+								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting…', { action: 'draft_spec', key })}>Redraft</button>
+							</div>
+						{:else}
+							<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting…', { action: 'draft_spec', key })}>Draft spec</button>
+						{/if}
+						{#if item.state.spec_approved_at}
+							<div class="node-cap sub">Prompt{item.state.prompt_edited ? ' · edited by hand' : ''}</div>
+							{#if promptDrafts[key] !== undefined}
+								<textarea class="prompt" rows="6" bind:value={promptDrafts[key]} aria-label="Prompt"></textarea>
+								<div class="row">
+									{#if promptDrafts[key] !== item.state.prompt}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'edit_prompt', key, prompt: promptDrafts[key] })}>Keep my edit</button>{/if}
+									<button type="button" class="key" disabled={!!busy[key]} onclick={() => { delete promptDrafts[key]; void call(key, 'The Agent is writing…', { action: 'write_prompt', key }); }}>Rewrite</button>
+									<button type="button" class="key on" disabled={!!busy[key] || promptDrafts[key] !== item.state.prompt} onclick={() => void quote(key)}>Check and price</button>
+								</div>
+							{:else}
+								<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is writing…', { action: 'write_prompt', key })}>Write prompt</button>
+							{/if}
+							{#if approvals[key]}
+								<StillApprovalCard title={`${item.entry.name} · ${item.template}`} approval={approvals[key]} busy={!!busy[key]} busyLabel={busy[key] ?? ''} onapprove={(approval) => void make(key, approval)} />
+							{/if}
+						{/if}
+					</div>
+					<span class="edge" aria-hidden="true"></span>
+					<!-- 3. the reference -->
+					<div class="node">
+						<div class="node-cap">Reference</div>
+						{#if item.state.result}
+							<img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" />
+							<p class="muted">{item.state.result.uploaded ? 'In the References drawer' : 'Made'}{item.state.result.outside ? ' · made outside' : ''}</p>
+							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
+						{:else if item.current}
+							<img class="sheet old" src={item.current.url} alt={`${item.entry.name}, current sheet`} loading="lazy" />
+							<p class="muted">Current sheet (not yet ONE SHOT)</p>
+						{:else}
+							<p class="muted">Not made yet</p>
+						{/if}
+						<label class="key">Attach a sheet made outside<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'attach', event.currentTarget.files)} /></label>
+					</div>
+					<span class="edge" aria-hidden="true"></span>
+					<!-- 4. scenes -->
+					<div class="node narrow">
+						<div class="node-cap">Used in</div>
+						<div class="scenes">
+							{#each item.entry.scenes as scene (scene.page_id)}<span class="scene-chip">{scene.title}</span>{:else}<span class="muted">No scene yet</span>{/each}
+						</div>
+					</div>
+				</div>
+			</article>
+		{:else}
+			{#if section.kind !== 'prop'}<p class="muted">Nothing listed.</p>{/if}
+		{/each}
+	{/each}
+</section>
+
+<style>
+	.prep { margin: 0 auto; max-width: 1280px; padding: 20px; display: grid; gap: 12px; }
+	.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+	.cap { color: var(--color-nr-dim); font: 600 10px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
+	.cap.accent { color: var(--color-nr-accent); }
+	.title { margin-top: 4px; color: var(--color-nr-mark); font-size: 18px; font-weight: 600; }
+	.lede { margin-top: 4px; max-width: 720px; color: var(--color-nr-muted); font-size: 12.5px; line-height: 1.6; }
+	.mono { color: var(--color-nr-muted); font: 11px var(--font-mono); white-space: nowrap; }
+	.muted { color: var(--color-nr-muted); font-size: 11.5px; }
+	.error { border: 1px solid var(--color-nr-danger-line); border-radius: 2px; padding: 8px 10px; color: var(--color-nr-danger-text); font-size: 12px; }
+	.section-head { margin-top: 10px; display: flex; align-items: center; gap: 10px; }
+	.section-head .line { flex: 1; height: 1px; background: var(--color-nr-line-soft); }
+	.add { display: flex; gap: 8px; }
+	.add input { width: 280px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 4px 8px; color: var(--color-nr-ink); font-size: 12px; outline: none; }
+	.add input:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
+	.entry { display: grid; gap: 8px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 10px; }
+	.entry.made { background: color-mix(in srgb, var(--color-nr-accent) 4%, transparent); }
+	.entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+	.name { color: var(--color-nr-ink); font-size: 13.5px; font-weight: 600; }
+	.role { color: var(--color-nr-muted); font-size: 12px; }
+	.chip { border: 1px solid var(--color-nr-line); border-radius: 2px; padding: 0 6px; color: var(--color-nr-dim); font: 10px/16px var(--font-mono); }
+	.chip.spec, .chip.approved, .chip.prompt { border-color: color-mix(in srgb, #4ab8ff 45%, transparent); color: #4ab8ff; }
+	.chip.sent { border-color: color-mix(in srgb, #8174e8 50%, transparent); color: #a99ff2; }
+	.chip.made { border-color: color-mix(in srgb, var(--color-nr-accent) 40%, transparent); color: var(--color-nr-accent); }
+	.graph { display: grid; grid-template-columns: minmax(180px, 1fr) 18px minmax(280px, 2fr) 18px minmax(180px, 1fr) 18px minmax(120px, 0.7fr); align-items: start; }
+	.edge { align-self: center; height: 2px; background: linear-gradient(90deg, #4ee8d2, #4ab8ff 60%, #8174e8); opacity: 0.6; }
+	.node { display: grid; gap: 6px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: var(--color-nr-deep); padding: 8px; min-width: 0; }
+	.node-cap { color: var(--color-nr-dim); font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; }
+	.node-cap.sub { margin-top: 6px; }
+	.thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+	.thumbs figure { margin: 0; display: grid; gap: 2px; }
+	.thumbs img { width: 72px; height: 54px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: cover; }
+	.thumbs figcaption { color: #4ab8ff; font: 600 9px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
+	.sheet { width: 100%; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: contain; background: #000; }
+	.sheet.old { opacity: 0.55; }
+	.note { color: #a99ff2; font-size: 11px; }
+	.row { display: flex; flex-wrap: wrap; gap: 6px; }
+	.field { display: grid; gap: 3px; }
+	.field span { color: var(--color-nr-dim); font-size: 10.5px; }
+	textarea { width: 100%; resize: vertical; border: 1px solid var(--color-nr-line); border-radius: 2px; background: #0b0d11; padding: 6px 8px; color: var(--color-nr-ink); font: 12px/1.5 var(--font-sans); outline: none; }
+	textarea:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
+	textarea.prompt { font: 11px/1.55 var(--font-mono); }
+	.scenes { display: flex; flex-wrap: wrap; gap: 4px; }
+	.scene-chip { border: 1px solid var(--color-nr-line); border-radius: 2px; padding: 0 6px; color: var(--color-nr-text); font: 10.5px/18px var(--font-sans); }
+	.key { position: relative; display: inline-flex; align-items: center; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 10px; color: var(--color-nr-muted); font: 600 9px/24px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; transition: border-color 140ms ease, color 140ms ease; }
+	.key:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
+	.key.on { border-color: color-mix(in srgb, var(--color-nr-accent) 45%, transparent); color: var(--color-nr-accent); }
+	.key:disabled { opacity: 0.5; cursor: default; }
+	.hidden-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+	.pulse { width: 6px; height: 6px; border-radius: 50%; background: #4ab8ff; animation: pulse 1.2s ease-in-out infinite; }
+	@keyframes pulse { 50% { opacity: 0.25; } }
+	@media (max-width: 900px) { .graph { grid-template-columns: 1fr; gap: 8px; } .edge { display: none; } }
+	@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+</style>

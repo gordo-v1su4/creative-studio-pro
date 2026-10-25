@@ -1,0 +1,106 @@
+import { afterEach, describe, expect, test } from 'bun:test';
+import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ProjectStore } from '../../src/lib/adapters/project-store';
+import { ProjectCommandGateway } from '../../src/lib/application/gateway';
+import { SeriesStore } from '../../src/lib/server/series';
+import type { AgentModelClient } from '../../src/lib/server/model-provider';
+import type { GenerationStatus } from '../../src/lib/server/higgsfield';
+import { addSource, aspectOf, draftSpec, prepQc, prepView, quotePrep, saveSpec, sendPrep, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
+
+const roots: string[] = [];
+afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
+
+const SPEC = { name: 'x', kind: 'character', template: 'T1', description: 'A broad-shouldered freshman in a teal plaid button-down.', must_hold: ['teal plaid button-down', 'blue eyes'], from_sources: '' };
+const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens.';
+
+async function setup() {
+	const root = await mkdtemp(join(tmpdir(), 'csp-prep-')); roots.push(root);
+	const projectRoot = join(root, 'projects');
+	const store = new ProjectStore({ root: projectRoot });
+	const gateway = new ProjectCommandGateway(store);
+	const series = new SeriesStore(join(root, 'series'));
+	const created = await gateway.createProject({ command: 'create_project', title: 'Prep', brief: '', creative_focus: 'full room', created_by: 'gordo' });
+	if (!created.ok) throw new Error(created.error.message);
+	const seriesId = 'ser1';
+	const imported = await gateway.importEpisode(created.data.project_id, created.data.version, {
+		series: { series_id: seriesId, episode_page_id: 'ep1', episode_number: 1, season: 1, episode_title: 'Pilot', summary: '', twist: '', cliffhanger: '', imported_at: '2026-10-25T00:00:00.000Z', outline: '',
+			scenes: [{ page_id: 's1', number: 10, title: 'Dorm', act: 'Act 1', summary: 'Mara writes in her notebook.', story_beats: 'Mara writes.', dialogue: '', timecode: '', location: "Mara's dorm room", characters: ['Mara'], group_id: 'g1', reference_ids: [], story_beat_ids: [], seconds: 0, shot_count: 0 }] },
+		groups: [{ group_id: 'g1', name: 'Dorm', created_at: '2026-10-25T00:00:00.000Z' }], cards: [], title: 'Pilot', logline: ''
+	});
+	if (!imported.ok) throw new Error(imported.error.message);
+	await series.write({ schema_version: 1, series_id: seriesId, title: 'Blood Rush', notion_root_id: 'root', sources: { episodes: null, scenes: null, shots: null },
+		checks: { episodes: { ok: true, missing: [], wrongType: [], optionalMissing: [] }, scenes: { ok: true, missing: [], wrongType: [], optionalMissing: [] }, shots: { ok: true, missing: [], wrongType: [], optionalMissing: [] } },
+		story: { page_id: 'story', title: 'Story', text: 'Look: anamorphic lens, light haze.' }, episodes: [], runtime_min: 10, episode_projects: { ep1: created.data.project_id },
+		references: { database: null, source: null, check: null, items: [{ page_id: 'r-mara', name: 'Mara Voss', kind: 'Character', role: 'a freshman', handles: ['@Mara'], file_name: 'Mara_Voss.png', name_on_sheet: true, scene_ids: ['s1'] }] },
+		checked_at: '2026-10-25T00:00:00.000Z', created_at: '2026-10-25T00:00:00.000Z' } as never);
+	const asks: string[] = [];
+	let status: GenerationStatus = 'queued';
+	const submitted: Array<{ prompt: string; references: string[]; aspect_ratio?: string }> = [];
+	const agent: AgentModelClient = { choice: { provider: 'kimi', model: 'k3' } as never, generate: async ({ prompt }) => { asks.push(prompt); return prompt.includes('REFERENCE SPEC (write from this') ? JSON.stringify({ prompt: PROMPT }) : JSON.stringify(SPEC); } };
+	const deps: PrepDeps = {
+		store, gateway, projectRoot, series, references: null, notion: null,
+		images: { estimate: async () => ({ credits: 2.75 }), submit: async (request) => { submitted.push(request); return { job_id: 'job-ref-1' }; }, status: async () => ({ status, url: status === 'completed' ? 'https://files.test/ref.png' : undefined }) },
+		download: async () => new Uint8Array([137, 80, 78, 71]), agent: async () => agent,
+		stamp: async (file, _name, out) => { await copyFile(file, out).catch(async () => { const { mkdir } = await import('node:fs/promises'); await mkdir(join(out, '..'), { recursive: true }); await copyFile(file, out); }); return out; }
+	};
+	return { deps, projectId: created.data.project_id, asks, submitted, setStatus: (next: GenerationStatus) => { status = next; } };
+}
+
+describe('Prep end to end against fakes (V1S-374)', () => {
+	test('spec → approve → prompt → approval card → make → stamped sheet', async () => {
+		const { deps, projectId, asks, submitted, setStatus } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		const listed = await prepView(deps, await project());
+		if (!listed.ok) throw new Error(listed.message);
+		expect(listed.items.map((item) => [item.entry.name, item.entry.reference_page_id, item.template])).toEqual([['Mara Voss', 'r-mara', 'T1'], ["Mara's dorm room", null, 'W3']]);
+
+		// The Agent drafts fields only; the exact name and template are the app's.
+		const drafted = await draftSpec(deps, await project(), 'r-mara');
+		if (!drafted.ok) throw new Error(drafted.message);
+		expect([drafted.spec.name, drafted.spec.kind, drafted.spec.template]).toEqual(['Mara Voss', 'character', 'T1']);
+		expect(asks[0]).toContain('Draft the REFERENCE SPEC');
+		// No prompt before the spec is approved.
+		expect((await writePrompt(deps, await project(), 'r-mara')).ok).toBeFalse();
+		await saveSpec(deps, await project(), 'r-mara', { spec: drafted.spec, approve: true });
+		const written = await writePrompt(deps, await project(), 'r-mara');
+		if (!written.ok) throw new Error(written.message);
+		expect(asks.at(-1)).toContain('straight-on face close-up');
+
+		const quoted = await quotePrep(deps, await project(), 'r-mara');
+		if (!quoted.ok) throw new Error(quoted.message);
+		expect([quoted.approval.blocked, quoted.approval.credits, quoted.approval.aspect_ratio]).toEqual([[], 2.75, '16:9']);
+		const sent = await sendPrep(deps, await project(), 'r-mara', { approval_key: quoted.approval.approval_key, confirmed_credits: 2.75 });
+		if (!sent.ok) throw new Error(sent.message);
+		expect(submitted[0]).toEqual({ prompt: PROMPT, references: [], aspect_ratio: '16:9' });
+		expect((await project()).production.still_sends?.map((s) => [s.purpose, s.credits])).toEqual([['reference', 2.75]]);
+
+		expect(await settlePrep(deps, await project(), 'r-mara')).toEqual({ ok: true, pending: true });
+		setStatus('completed');
+		const settled = await settlePrep(deps, await project(), 'r-mara');
+		if (!settled.ok || settled.pending) throw new Error('not settled');
+		const result = settled.prep.entries['r-mara'].result!;
+		expect(result.url).toBe(`/api/projects/${projectId}/files/prep/references/Mara_Voss_sheet.png`);
+		expect(result.note).toContain('Review Room is not configured');
+		expect(await readFile(result.file)).toEqual(Buffer.from([137, 80, 78, 71]));
+	});
+
+	test('a source image switches the template to T5a, clears the spec, and must be named in the prompt', async () => {
+		const { deps, projectId } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		await draftSpec(deps, await project(), 'r-mara');
+		const added = await addSource(deps, projectId, 'r-mara', { file_name: 'old-sheet.png', bytes: new Uint8Array([1, 2, 3]) });
+		if (!added.ok) throw new Error(added.message);
+		expect(added.prep.entries['r-mara'].spec).toBeNull();
+		const listed = await prepView(deps, await project());
+		const view = listed.ok ? listed.items[0] : null;
+		expect(view?.template).toBe('T5a');
+		expect(prepQc(PROMPT, view!).join(' ')).toContain('never names "image 1"');
+		expect(prepQc(PROMPT.replace('Mara Voss', 'Mara'), view!).join(' ')).toContain('exact name');
+		expect(prepQc(`${PROMPT} image 1 neon glow`, view!).join(' ')).toContain('"neon"');
+		// The skill's SETTINGS line names the canvas; without one the kind's default applies.
+		expect(aspectOf(`${PROMPT}\nSETTINGS: GPT Image 2.5, 3:2 landscape, high quality.`, 'character')).toBe('3:2');
+		expect(aspectOf(PROMPT, 'character')).toBe('16:9');
+	});
+});

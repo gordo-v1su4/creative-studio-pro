@@ -109,9 +109,9 @@
 	let selectedVoice = $derived(
 		activeProject?.voices.find((voice) => voice.voice_id === selectedNodeId) ?? null
 	);
-	// Tabs follow the flow: write the story, review on the board, work the shots, cut, sound, finish.
+	// Tabs follow the flow: write the story, prep the references, review on the board, work the shots, cut, sound, finish.
 	const workspaceTabs: Array<{ label: string; tab: 'canvas' | ProductionTab }> = [
-		{ label: 'Story', tab: 'story' }, { label: 'Board', tab: 'canvas' }, { label: 'Shots', tab: 'beats' },
+		{ label: 'Story', tab: 'story' }, { label: 'Prep', tab: 'prep' }, { label: 'Board', tab: 'canvas' }, { label: 'Shots', tab: 'beats' },
 		{ label: 'Cuts', tab: 'cuts' }, { label: 'Sound', tab: 'sound' }, { label: 'Export', tab: 'export' }
 	];
 	// Tabs saved before the Narrate flow land on their nearest successor.
