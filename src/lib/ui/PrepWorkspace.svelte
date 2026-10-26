@@ -21,6 +21,7 @@
 	let error = $state<string | null>(null);
 	let busy = $state<Record<string, string>>({});
 	let approvals = $state<Record<string, StillApproval>>({});
+	let comparisonErrors = $state<Record<string, string>>({});
 	type Identity = NonNullable<ReferenceSpec['identity']>;
 	type Draft = { from: string; notes: string; identity: Identity; owned_element: string; colour_name: string; colour_hex: string; powers: string; ownership_lock: string };
 	let drafts = $state<Record<string, Draft>>({});
@@ -99,6 +100,17 @@
 	async function changeModel(key: string, model: ImageModelId) {
 		delete approvals[key];
 		await call(key, 'Saving model…', { action: 'set_image_model', key, model });
+	}
+	async function compare(item: View, sourceUrl: string) {
+		const key = item.entry.key;
+		delete comparisonErrors[key];
+		const body = await call(key, 'Preparing original comparison…', { action: 'scale_check', key, source_url: sourceUrl });
+		if (!body) {
+			comparisonErrors[key] = error ?? 'The comparison could not be prepared. Try a front full-body source on a plain background.';
+			return;
+		}
+		const scale = items.find((entry) => entry.entry.key === key)?.state.result?.scale;
+		if (scale?.method === 'original-front-v1') zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% opacity. Same body width; feet aligned; uniform scaling only.` };
 	}
 	/** One sheet's trip to Higgsfield, shown until it comes back (the busy label only covers a single request). */
 	type JobStatus = { phase: 'sending' | 'making' | 'returned' | 'failed'; job_id?: string; since: number; checked?: number; message?: string };
@@ -283,6 +295,8 @@
 							{#if item.entry.kind === 'character'}
 								{@const scale = item.state.result.scale}
 								<div class="node-cap sub">Proportions · original vs generated front</div>
+								{#if busy[key] === 'Preparing original comparison…'}<p class="working" role="status">Preparing original comparison…</p>{/if}
+								{#if comparisonErrors[key]}<p class="error" role="alert">{comparisonErrors[key]}</p>{/if}
 								{#if scale?.method === 'original-front-v1'}
 									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% opacity over generated. Opacity means transparency, not enlargement. Same body width; feet aligned; uniform scaling only.` })} aria-label={`Show ${item.entry.name}'s original comparison big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name}: original and generated front comparison`} loading="lazy" /></button>
 									<p class="muted">{scale.verdict}</p>
@@ -292,7 +306,7 @@
 								{/if}
 								<div class="row">
 									{#each item.state.sources as source, i (source.url)}
-										<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Preparing original comparison…', { action: 'scale_check', key, source_url: source.url })} title={`Compare the front full-body view in ${source.name} with the generated front. Uniform scaling; matched body width and aligned feet.`}>Compare original image {i + 1}</button>
+										<button type="button" class="key" disabled={!!busy[key]} onclick={() => void compare(item, source.url)} title={`Compare the front full-body view in ${source.name} with the generated front. Uniform scaling; matched body width and aligned feet.`}>Compare original image {i + 1}</button>
 									{/each}
 									{#if !item.state.sources.length}<p class="muted">Add an original full-body source to compare.</p>{/if}
 								</div>
