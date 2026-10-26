@@ -131,8 +131,6 @@ export const referenceSpecSchema = z.object({
 export type ReferenceSpec = z.infer<typeof referenceSpecSchema>;
 
 const cm = (value: number) => `${value} cm`;
-/** Feet and inches for a height in cm, e.g. 168 → 5'6". */
-export const feetOf = (heightCm: number) => { const inches = Math.round(heightCm / 2.54); return `${Math.floor(inches / 12)}'${inches % 12}"`; };
 
 /** What a character spec still needs before its sheet can be made (age and height above all). */
 export function identityGaps(spec: ReferenceSpec): string[] {
@@ -165,7 +163,23 @@ export function handOffLine(spec: ReferenceSpec): string {
 	return `${parts.join('; ')}.${spec.ownership_lock ? ` ${spec.ownership_lock}` : ''}`;
 }
 
-export const prepSourceSchema = z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
+/**
+ * A character sheet's scale check: the rear body (or a full-body source, scaled to the rear body's height) laid
+ * over the headless front panel, feet on one floor line. Front wider than the rear by more than 5% = not equal.
+ */
+export const scaleCheckSchema = z.object({
+	ok: z.boolean(),
+	width_ratio: z.number(),
+	feet_offset: z.number(),
+	verdict: z.string().max(400),
+	/** The overlay picture: the correct body in red over the front panel, the front's overhang in yellow. */
+	overlay_url: z.string().max(1000),
+	against: z.enum(['rear', 'source']).default('rear'),
+	checked_at: z.string()
+});
+export type ScaleCheck = z.infer<typeof scaleCheckSchema>;
+
+export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
 export const prepStateSchema = z.object({
 	sources: z.array(prepSourceSchema).max(12).default([]),
 	spec: referenceSpecSchema.nullable().default(null),
@@ -174,7 +188,7 @@ export const prepStateSchema = z.object({
 	prompt: z.string().max(20_000).nullable().default(null),
 	prompt_edited: z.boolean().default(false),
 	job: z.object({ job_id: z.string().min(1).max(200), sent_at: z.string() }).nullable().default(null),
-	result: z.object({ file: z.string(), url: z.string(), made_at: z.string(), outside: z.boolean().default(false), uploaded: z.boolean().default(false), note: z.string().max(500).default('') }).nullable().default(null)
+	result: z.object({ file: z.string(), url: z.string(), made_at: z.string(), outside: z.boolean().default(false), uploaded: z.boolean().default(false), note: z.string().max(500).default(''), scale: scaleCheckSchema.optional() }).nullable().default(null)
 });
 export type PrepState = z.infer<typeof prepStateSchema>;
 export const prepFileSchema = z.object({ schema_version: z.literal(1), props: z.array(z.string().max(200)).max(50).default([]), entries: z.record(z.string(), prepStateSchema).default({}) });

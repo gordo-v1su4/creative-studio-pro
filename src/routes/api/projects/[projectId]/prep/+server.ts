@@ -7,7 +7,7 @@ import { episodeSpend } from '$lib/domain/stills';
 import { getPrepDeps } from '$lib/server/config';
 import { AgentRuleBreakError } from '$lib/server/model-provider';
 import {
-	addProp, addSource, attachOutside, draftSpec, editPrompt, fillIdentity, prepView, quotePrep, removeSource, saveSpec, sendPrep, settlePrep, useCurrentAsSource, writePrompt
+	addProp, addSource, attachOutside, draftSpec, editPrompt, fillIdentity, prepView, quotePrep, removeSource, rerunScaleCheck, saveSpec, sendPrep, settlePrep, useCurrentAsSource, writePrompt
 } from '$lib/server/prep';
 
 const fail = (status: number, message: string, reasons: string[] = []) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 422 ? 'GATE_BLOCKED' : 'INVALID_COMMAND', message, reasons, retryable: status >= 500, source: 'prep' } }, { status });
@@ -23,7 +23,8 @@ const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('edit_prompt'), key, prompt: z.string().min(1).max(20_000) }),
 	z.object({ action: z.literal('quote'), key }),
 	z.object({ action: z.literal('send'), key, approval_key: z.string().min(1).max(64), confirmed_credits: z.number().nonnegative() }),
-	z.object({ action: z.literal('settle'), key })
+	z.object({ action: z.literal('settle'), key }),
+	z.object({ action: z.literal('scale_check'), key, source_url: z.string().min(1).max(1000).optional() })
 ]);
 
 /** Prep (V1S-374): GET the list; POST json actions; POST multipart (action=source|attach, key, file) for images. */
@@ -71,6 +72,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			case 'edit_prompt': await editPrompt(deps, projectId.data, b.key, b.prompt); return done({ ok: true });
 			case 'quote': { const quoted = await quotePrep(deps, project, b.key); return quoted.ok ? done({ ok: true }, { approval: quoted.approval }) : done(quoted); }
 			case 'send': { const sent = await sendPrep(deps, project, b.key, { approval_key: b.approval_key, confirmed_credits: b.confirmed_credits }); return sent.ok ? done({ ok: true }, { job_id: sent.job_id }) : done(sent); }
+			case 'scale_check': return done(await rerunScaleCheck(deps, project, b.key, b.source_url));
 			case 'settle': { const settled = await settlePrep(deps, project, b.key); return settled.ok ? done({ ok: true }, { pending: settled.pending }) : done(settled); }
 		}
 	} catch (cause) {

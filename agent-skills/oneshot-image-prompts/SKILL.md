@@ -62,9 +62,13 @@ Output this wording:
 > PANEL CENTRE: full body, front, framed from the collarbones DOWN — the head is
 > cropped out of this panel entirely, no face, no chin, no neck above the
 > collarbones. Body otherwise complete to the feet, feet in frame, standing at
-> rest, arms relaxed, weight even.
+> rest, arms relaxed, weight even. Same camera distance and scale as the rear
+> panel: the feet stand on the same floor line, the collarbones sit at the same
+> height as in the rear panel, and the space above them is plain backdrop. The
+> body is never enlarged to fill the panel.
 
-Repeat it inside LOCKS. Rear and three-quarter panels keep their heads. Drop the
+Repeat it inside LOCKS. Without the scale clause the model stretches the
+headless body to the panel's full height, so it reads bigger than the rear view. Rear and three-quarter panels keep their heads. Drop the
 rule only if the user asks for the head kept.
 
 ## Two look blocks, never mixed

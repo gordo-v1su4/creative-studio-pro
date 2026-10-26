@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Project } from '$lib/domain/schemas';
 	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
-	import { feetOf, handOffLine, identityGaps, prepStage } from '$lib/domain/prep';
+	import { handOffLine, identityGaps, prepStage } from '$lib/domain/prep';
 	import type { StillApproval } from '$lib/domain/stills';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 
@@ -175,7 +175,7 @@
 								<div class="identity" aria-label="Identity">
 									<label><span>Sex</span><input bind:value={id.sex} placeholder="female" /></label>
 									<label><span>Age</span><input type="number" min="1" max="120" bind:value={id.age} placeholder="19" /></label>
-									<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="168" />{#if id.height_cm}<em>{feetOf(id.height_cm)}</em>{/if}</label>
+									<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="168" /></label>
 									<label class="wide"><span>Build</span><input bind:value={id.build} placeholder="slim, lightly athletic" /></label>
 									<label class="wide"><span>Face</span><input bind:value={id.face} placeholder="pale, watchful, straight dark brows" /></label>
 									<label><span>Eyes</span><input bind:value={id.eyes} placeholder="amber-gold eyes" /></label>
@@ -226,6 +226,20 @@
 							<button type="button" class="pic" onclick={() => (zoom = { src: item.state.result!.url, alt: `${item.entry.name} reference` })} aria-label={`Show ${item.entry.name}'s reference big`}><img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" /></button>
 							<p class="muted">{item.state.result.uploaded ? 'In the References drawer' : 'Made'}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
+							{#if item.entry.kind === 'character'}
+								{@const scale = item.state.result.scale}
+								<div class="node-cap sub">Scale check · front vs {scale?.against === 'source' ? 'source body' : 'rear panel'}</div>
+								{#if scale}
+									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name} scale check: the correct body in red over the front panel, overhang in yellow` })} aria-label={`Show ${item.entry.name}'s scale check big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name} scale check`} loading="lazy" /></button>
+									<p class={scale.ok ? 'scale ok' : 'scale off'}>{scale.verdict}</p>
+								{/if}
+								<div class="row">
+									<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Checking the scale…', { action: 'scale_check', key })}>Check vs rear</button>
+									{#each item.state.sources as source, i (source.url)}
+										<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Checking the scale…', { action: 'scale_check', key, source_url: source.url })} title={`Lay ${source.name} over the front panel, scaled to the rear body's height`}>vs image {i + 1}</button>
+									{/each}
+								</div>
+							{/if}
 						{:else if item.current}
 							<button type="button" class="pic" onclick={() => (zoom = { src: item.current!.url, alt: `${item.entry.name}, current sheet` })} aria-label={`Show ${item.entry.name}'s current sheet big`}><img class="sheet old" src={item.current.url} alt={`${item.entry.name}, current sheet`} loading="lazy" /></button>
 							<p class="muted">Current sheet (not yet ONE SHOT)</p>
@@ -295,6 +309,10 @@
 	.zoom img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border: 1px solid var(--color-nr-line); border-radius: 2px; }
 	.zoom-cap { color: var(--color-nr-muted); font: 11px var(--font-mono); }
 	.note { color: #a99ff2; font-size: 11px; }
+	.overlay { width: 100%; max-height: 220px; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: contain; background: #fff; }
+	.scale { font-size: 11px; }
+	.scale.ok { color: #4ee8d2; }
+	.scale.off { color: var(--color-nr-danger-text); }
 	.identity { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 	.identity label { display: grid; gap: 2px; min-width: 0; }
 	.identity label.wide { grid-column: span 2; }

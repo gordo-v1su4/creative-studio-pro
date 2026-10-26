@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { emptyState, feetOf, handOffLine, identityGaps, placeName, prepEntries, prepStage, referenceSpecSchema, sheetFileName, templateFor } from '../../src/lib/domain/prep';
+import { emptyState, handOffLine, identityGaps, placeName, prepEntries, prepStage, referenceSpecSchema, sheetFileName, templateFor } from '../../src/lib/domain/prep';
 
 const scenes = [
 	{ page_id: 's10', title: '2:47 AM', number: 10, location: 'Video Haven — back room / counter', characters: ['Kai', 'Mara', 'Malachi', 'Customer'] },
@@ -59,7 +59,6 @@ describe('the Prep list (V1S-374)', () => {
 		expect(identityGaps({ ...kai, identity: { ...kai.identity!, age: null, height_cm: null } })).toEqual(['age', 'height (cm)']);
 		// Specs drafted before identity fields still parse; they just have gaps.
 		expect(identityGaps(referenceSpecSchema.parse({ name: 'Mara Voss', kind: 'character', template: 'T1', description: 'x', must_hold: ['y'] }))).toEqual(['age', 'height (cm)', 'sex', 'build']);
-		expect(feetOf(168)).toBe('5\'6"');
 	});
 
 	test('templates follow the ONE SHOT skill: T1/T5a characters, W3/W8 locations, W6 props', () => {

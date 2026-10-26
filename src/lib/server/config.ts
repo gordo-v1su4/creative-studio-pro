@@ -24,7 +24,7 @@ import type { GridDeps } from '$lib/server/grid';
 import { reviewRoomReferenceFiles, type ReferenceFileDeps } from '$lib/server/reference-files';
 import { dirname, join as joinPath } from 'node:path';
 import { createSplitter } from '$lib/server/splitter';
-import { uvStamper, type PrepDeps } from '$lib/server/prep';
+import { uvScaleCheck, uvStamper, type PrepDeps } from '$lib/server/prep';
 import { createNotionApi } from '$lib/server/notion';
 
 /**
@@ -153,7 +153,7 @@ export async function getPrepDeps(): Promise<PrepDeps> {
 		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(), series: getSeriesStore(),
 		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null, download: animate.download,
 		agent: async (project) => { const resolved = await resolveProjectModel(project); return resolved.ok ? createOpenAICompatibleClient(resolved.connection) : null; },
-		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd())
+		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd()), scaleCheck: uvScaleCheck(process.cwd())
 	};
 }
 

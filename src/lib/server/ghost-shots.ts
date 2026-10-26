@@ -6,7 +6,7 @@ import { checkDialogue, sceneProblems, strayHandles, type ShotForCheck } from '$
 import { shotSpecSchema, SPEC_MAX_S, SPEC_MIN_S, specText, type ShotSpec } from '$lib/domain/shot-spec';
 import { ghostQc, GHOST_SECTIONS, MUSIC_CLOSER, MUSIC_OPENER } from '$lib/domain/ghost-qc';
 import { generateStructured, type AgentModelClient } from './model-provider';
-import { readAgentSkill } from './agent-skills';
+import { readAgentSkill, readPromptingGuide } from './agent-skills';
 import { fitContext, sceneBudget, type FitContext } from './episode-fit';
 
 /**
@@ -22,6 +22,8 @@ export async function ghostSystem(): Promise<string> {
 		'You are Ghost, the shot writer inside Creative Studio Pro, for a live-action web series. Follow this skill exactly.',
 		'',
 		await readAgentSkill('ghost'),
+		'',
+		await readPromptingGuide(),
 		'',
 		'# Inside the app (these override the skill where they differ)',
 		'- People, places and props that have a reference (the scene lists them with @handles): write the @handle every time, e.g. "@Kai turns to @Mara". Never write their full name or an image number yourself: the app swaps each handle for the exact name and its image tag, and writes the upload list.',

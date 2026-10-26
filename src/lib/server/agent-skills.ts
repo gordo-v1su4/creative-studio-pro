@@ -12,6 +12,9 @@ export type AgentSkill = (typeof AGENT_SKILLS)[number];
 
 export const agentSkillPath = (skill: AgentSkill, file = 'SKILL.md') => join(process.cwd(), 'agent-skills', skill, file);
 
+/** The prompting guide condensed from the CodeOneshot blog: the reasoning behind the skills, read with them. */
+export const readPromptingGuide = async () => (await readFile(join(process.cwd(), 'agent-skills', 'PROMPTING-GUIDE.md'), 'utf8')).replace(/\r\n/g, '\n');
+
 /** A skill file without its YAML front matter (the Agent reads the body). */
 export async function readAgentSkill(skill: AgentSkill, file = 'SKILL.md'): Promise<string> {
 	const text = (await readFile(agentSkillPath(skill, file), 'utf8')).replace(/\r\n/g, '\n');
