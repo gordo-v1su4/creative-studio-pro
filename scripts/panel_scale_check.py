@@ -52,7 +52,7 @@ def cutout(image: Image.Image) -> Image.Image:
 
 
 def original_cutout(image: Image.Image) -> tuple[Image.Image, str]:
-    """A bordered reference grid uses its first full-body panel, never the entire collage."""
+    """Front-first grids and borderless triptychs use their first panel, never the entire collage."""
     rgb = np.array(image.convert('RGB'))
     h, w = rgb.shape[:2]
     dark = rgb.mean(axis=2) < 100
@@ -70,6 +70,13 @@ def original_cutout(image: Image.Image) -> tuple[Image.Image, str]:
         margin = max(4, round(w * .003))
         image = image.crop((left + margin, top + margin, int(right[0]) - margin, int(bottom[0]) - margin))
         note = 'Original: first full-body panel of source sheet'
+    elif w / h >= 1.5:
+        # Front/rear/portrait source plates also arrive without dark rules or
+        # bright gutters. Their first third is the front, unlike our generated
+        # face/front/rear sheets. Validate that crop below rather than measuring
+        # the width of all three people as one silhouette.
+        image = image.crop((0, 0, round(w / 3), h))
+        note = 'Original: first panel of front/rear/portrait source sheet'
     result = cutout(image)
     if result.height / result.width < 1.8:
         raise ValueError('This source is not an isolated full-body view. Use a front full-body crop, not a portrait or collage.')

@@ -14,6 +14,17 @@ spec.loader.exec_module(comparison)
 
 
 class OriginalComparisonTest(unittest.TestCase):
+    def test_borderless_three_panel_source_uses_front_not_whole_sheet(self):
+        image = Image.new('RGB', (900, 600), '#d0c6c4')
+        draw = ImageDraw.Draw(image)
+        # Front, rear, close-up: the source layout used by Malik.
+        draw.rectangle((100, 90, 200, 560), fill='#252025')
+        draw.rectangle((400, 20, 500, 560), fill='#252025')
+        draw.rectangle((630, 15, 880, 595), fill='#92705f')
+        body, note = comparison.original_cutout(image)
+        self.assertEqual(body.size, (101, 471))
+        self.assertIn('first', note)
+
     def test_generated_panel_border_does_not_count_as_body_width(self):
         image = Image.new('RGB', (400, 700), '#f5f5f5')
         draw = ImageDraw.Draw(image)
@@ -43,6 +54,17 @@ class OriginalComparisonTest(unittest.TestCase):
         image = Image.new("RGBA", (100, 400), (20, 30, 40, 255))
         aligned = comparison.match_width(image, 200)
         self.assertEqual(aligned.size, (200, 800))
+
+    def test_portrait_is_not_accepted_as_a_body_and_single_body_stays_whole(self):
+        portrait = Image.new('RGB', (300, 400), 'white')
+        ImageDraw.Draw(portrait).ellipse((30, 20, 270, 380), fill='#92705f')
+        with self.assertRaises(ValueError):
+            comparison.original_cutout(portrait)
+        full_body = Image.new('RGB', (300, 700), 'white')
+        ImageDraw.Draw(full_body).rectangle((100, 30, 200, 660), fill='#252025')
+        body, note = comparison.original_cutout(full_body)
+        self.assertEqual(body.size, (101, 631))
+        self.assertEqual(note, 'Original full-body image')
 
 
 if __name__ == "__main__":
