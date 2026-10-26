@@ -14,6 +14,14 @@ spec.loader.exec_module(comparison)
 
 
 class OriginalComparisonTest(unittest.TestCase):
+    def test_generated_panel_border_does_not_count_as_body_width(self):
+        image = Image.new('RGB', (400, 700), '#f5f5f5')
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((3, 3, 396, 696), outline='black', width=2)
+        draw.rectangle((140, 140, 260, 680), fill='#182030')
+        body = comparison.cutout(image)
+        self.assertEqual(body.size, (121, 541))
+
     def test_bordered_reference_uses_only_first_full_body_panel(self):
         image = Image.new("RGB", (900, 600), "white")
         draw = ImageDraw.Draw(image)

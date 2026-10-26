@@ -18,6 +18,22 @@ def cutout(image: Image.Image) -> Image.Image:
     """Keep original RGB pixels; remove a plain studio backdrop, with no synthesis."""
     rgb = np.array(image.convert('RGB'))
     h, w = rgb.shape[:2]
+    # Generated sheets sometimes include thin frames despite the prompt. Remove
+    # near-edge rules before segmentation: a closed frame otherwise encloses the
+    # entire white panel and gets filled as though it were white clothing.
+    dark = rgb.mean(axis=2) < 100
+    vertical = np.flatnonzero(dark.mean(axis=0) > .9)
+    horizontal = np.flatnonzero(dark.mean(axis=1) > .9)
+    left = vertical[vertical < w * .05]
+    right = vertical[vertical > w * .95]
+    top = horizontal[horizontal < h * .05]
+    bottom = horizontal[horizontal > h * .95]
+    x0 = int(left[-1]) + 2 if len(left) else 0
+    x1 = int(right[0]) - 1 if len(right) else w
+    y0 = int(top[-1]) + 2 if len(top) else 0
+    y1 = int(bottom[0]) - 1 if len(bottom) else h
+    rgb = rgb[y0:y1, x0:x1]
+    h, w = rgb.shape[:2]
     corners = np.concatenate([rgb[:max(1, h // 30), :max(1, w // 20)].reshape(-1, 3), rgb[:max(1, h // 30), -max(1, w // 20):].reshape(-1, 3)])
     backdrop = np.median(corners, axis=0)
     mask = np.abs(rgb.astype(float) - backdrop).max(axis=2) > 42
