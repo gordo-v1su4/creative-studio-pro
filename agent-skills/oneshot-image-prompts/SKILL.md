@@ -58,17 +58,24 @@ write "Match the body shape and proportions exactly like image N." Omit height,
 weight, build and figure descriptions everywhere, including SUBJECT and the
 CHARACTER hand-off. Do not repeat physique labels printed on the source sheet.
 If no body reference is selected (including headshots only), create a detailed
-body from the facts. A portrait is not a body reference. Headless framing uses
-uniform enlargement and cropping; it never authorizes changing anatomy.
+body from the facts. A portrait is not a body reference.
 
-In every character sheet, the full-body **frontal** panel is framed from the
-collarbones down with **no head in it**. The close-up panel owns the face.
+**Headless means omit the head, not zoom to fill.** Keep the front figure at
+full-person scale and its original vertical placement. Omit everything above
+the collarbones, leaving empty background above the shoulders. Do not enlarge
+the body or move it upward to make the collarbones touch the panel's top edge.
+Front and rear share a full-person scale and foot baseline for layout only;
+the original body reference, when present, still controls anatomy. This rule
+overrides any template wording that suggests filling the panel vertically.
+
+In every character sheet, the **frontal** panel shows the collarbones down with
+**no head in it**, keeping the full-person scale and placement. The close-up panel owns the face.
 Output this wording:
 
-> PANEL CENTRE: full body, front, framed from the collarbones DOWN — the head is
-> cropped out of this panel entirely, no face, no chin, no neck above the
-> collarbones. Body otherwise complete to the feet, feet in frame, standing at
-> rest, arms relaxed, weight even.
+> PANEL CENTRE: front view at full-person scale and its original vertical
+> placement. Omit the head above the collarbones without enlarging or shifting
+> the body. Leave plain background above the shoulders. Feet visible, standing
+> at rest, arms relaxed, weight even.
 
 Repeat it inside LOCKS. Rear and three-quarter panels keep their heads. Drop the
 rule only if the user asks for the head kept.

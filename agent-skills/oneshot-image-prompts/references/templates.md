@@ -5,12 +5,15 @@ HOUSE RULE #1 — THE HEADLESS FRONTAL  ****THE ONE THING THAT MAKES THIS OURS**
 In every sheet, the FULL-BODY FRONTAL panel is framed from the collarbones down:
 NO HEAD IN THAT PANEL. The face is owned by the close-up panel, which is where
 the model spends its detail. The frontal panel exists to show costume, build and
-proportion. Exact wording to output, every time:
+proportion. Keep the full-person scale and vertical placement: omit the head
+without zooming or shifting the body up. Empty background above the shoulders
+is intentional. The collarbones do not have to meet the top edge. Exact wording
+to output, every time:
 
-  "PANEL CENTRE: full body, front, framed from the collarbones DOWN — the head is
-   cropped out of this panel entirely, no face, no chin, no neck above the
-   collarbones. Body head-to-feet otherwise, feet in frame, standing at rest,
-   arms relaxed, weight even."
+  "PANEL CENTRE: front at full-person scale and original vertical placement.
+   Omit the head above the collarbones without enlarging or moving the body.
+   Leave plain background above the shoulders. Feet visible, arms relaxed,
+   weight even."
 
 Repeat it inside LOCKS as: "the frontal full-body panel has no head — cropped at
 the collarbones; the close-up panel is the only panel showing the face."
@@ -52,10 +55,10 @@ PANEL LEFT: tight close-up of the head and upper shoulders, filling the panel,
 straight-on, face square to the camera, head level with no tilt, looking directly
 into the lens; both eyes, both ears and the full jawline visible, even light on
 both sides of the face.
-PANEL CENTRE: full body, front, framed from the collarbones DOWN — the head is
-cropped out of this panel entirely, no face, no chin, no neck above the
-collarbones. Body otherwise complete to the feet, feet in frame, standing at
-rest, arms relaxed, weight even.
+PANEL CENTRE: front at full-person scale and original vertical placement.
+Omit the head above the collarbones without enlarging or moving the body.
+Leave plain background above the shoulders. Feet visible, arms relaxed,
+weight even.
 PANEL RIGHT: full body from behind, head to feet, same pose, showing the back of
 the costume.
 SUBJECT: [sex, age, build, height; face structure, skin, eyes, hair; wear]
