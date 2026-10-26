@@ -40,4 +40,9 @@ describe('the still approval step (V1S-373)', () => {
 			'gpt_image_2_5', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--variant', 'sunburst', '--quality', 'high', '--resolution', '2k', '--image-references', 'a.png', '--image-references', 'b.png'
 		]);
 	});
+	test('Nano Banana Pro uses its own flags without GPT quality or variant', () => {
+		expect(stillArgs({ prompt: 'x', references: ['a.png'], aspect_ratio: '16:9', model: 'nano_banana_pro' }, 'p.json')).toEqual([
+			'nano_banana_pro', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--resolution', '2k', '--image-references', 'a.png'
+		]);
+	});
 });

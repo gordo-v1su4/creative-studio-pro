@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SeedanceRequest } from '$lib/domain/animate';
+import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 
 /**
  * Video generator seam (Animate, Finalize) and its Higgsfield implementation
@@ -140,9 +141,9 @@ export function createHiggsfieldSfx(run: CliRunner): SoundEffectGenerator {
  * at 2K, high quality, on
  * the operator's account. References attach in the order given (image 1, image 2…).
  */
-export const STILL_MODEL = { job_type: 'gpt_image_2_5', label: 'GPT Image 2.5 Sunburst', variant: 'sunburst', quality: 'high', resolution: '2k' } as const;
+export const STILL_MODEL = IMAGE_MODELS.gpt_image_2_5;
 /** Grids are square (2×2 or 3×3); other stills say their own aspect. */
-export interface StillRequest { prompt: string; references: string[]; aspect_ratio?: string }
+export interface StillRequest { prompt: string; references: string[]; aspect_ratio?: string; model?: ImageModelId }
 export interface ImageGenerator {
 	estimate(request: StillRequest): Promise<{ credits: number }>;
 	submit(request: StillRequest): Promise<{ job_id: string }>;
@@ -150,9 +151,10 @@ export interface ImageGenerator {
 }
 
 export function stillArgs(request: StillRequest, promptFile: string): string[] {
+	const model = IMAGE_MODELS[request.model ?? 'gpt_image_2_5'];
 	return [
-		STILL_MODEL.job_type, '--prompt', `@${promptFile}`, '--aspect_ratio', request.aspect_ratio ?? '1:1',
-		'--variant', STILL_MODEL.variant, '--quality', STILL_MODEL.quality, '--resolution', STILL_MODEL.resolution,
+		model.job_type, '--prompt', `@${promptFile}`, '--aspect_ratio', request.aspect_ratio ?? '1:1',
+		...('variant' in model ? ['--variant', model.variant, '--quality', model.quality] : []), '--resolution', model.resolution,
 		...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])
 	];
 }

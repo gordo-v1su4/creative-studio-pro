@@ -3,6 +3,7 @@
 	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
 	import { factsGaps, handOffLine, identityGaps, notesOf, prepStage } from '$lib/domain/prep';
 	import type { StillApproval } from '$lib/domain/stills';
+	import { IMAGE_MODEL_IDS, IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 
 	/**
@@ -94,6 +95,10 @@
 		delete approvals[key];
 		const body = await call(key, 'Pricing…', { action: 'quote', key });
 		if (body?.approval) approvals[key] = body.approval as StillApproval;
+	}
+	async function changeModel(key: string, model: ImageModelId) {
+		delete approvals[key];
+		await call(key, 'Saving model…', { action: 'set_image_model', key, model });
 	}
 	/** One sheet's trip to Higgsfield, shown until it comes back (the busy label only covers a single request). */
 	type JobStatus = { phase: 'sending' | 'making' | 'returned' | 'failed'; job_id?: string; since: number; checked?: number; message?: string };
@@ -198,6 +203,10 @@
 					<!-- 2. the facts, then the prompt (one pass: the skill, the images, the facts), then the price card -->
 					<div class="node wide">
 						<div class="node-cap">Facts · what the pictures can't say</div>
+						<label class="field"><span>Image model</span><select class="key" aria-label={`Image model for ${item.entry.name}`} value={item.state.image_model} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void changeModel(key, event.currentTarget.value as ImageModelId)}>
+							{#each IMAGE_MODEL_IDS as model (model)}<option value={model}>{IMAGE_MODELS[model].label} · 2K{model === 'gpt_image_2_5' ? ' · High' : ''}</option>{/each}
+						</select></label>
+						{#if item.entry.kind === 'character'}<p class="muted">16:9 landscape sheet · both models</p>{/if}
 						{#if jobs[key]}
 							{@const job = jobs[key]}
 							<div class={['job', job.phase]} role="status">
@@ -378,7 +387,10 @@
 	.job.failed { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
 	.working { display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, #4ab8ff 40%, transparent); border-radius: 2px; padding: 6px 8px; color: #4ab8ff; font-size: 12px; }
 	.row { display: flex; flex-wrap: wrap; gap: 6px; }
-	.field { display: grid; gap: 3px; }
+	.field { display: grid; gap: 3px; min-width: 0; }
+	.field select { width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; height: 28px; background: var(--color-nr-deep); }
+	.field select option { background: var(--color-nr-deep); color: var(--color-nr-ink); }
+	.node p { overflow-wrap: anywhere; }
 	.field span { color: var(--color-nr-dim); font-size: 10.5px; }
 	textarea { width: 100%; resize: vertical; border: 1px solid var(--color-nr-line); border-radius: 2px; background: #0b0d11; padding: 6px 8px; color: var(--color-nr-ink); font: 12px/1.5 var(--font-sans); outline: none; }
 	textarea:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }

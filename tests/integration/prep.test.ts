@@ -8,8 +8,8 @@ import { ProjectStore } from '../../src/lib/adapters/project-store';
 import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
-import { uploadReferences, type GenerationStatus } from '../../src/lib/server/higgsfield';
-import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
+import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
+import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -41,15 +41,16 @@ async function setup() {
 		checked_at: '2026-10-25T00:00:00.000Z', created_at: '2026-10-25T00:00:00.000Z' } as never);
 	const asks: string[] = [];
 	let status: GenerationStatus = 'queued';
-	const submitted: Array<{ prompt: string; references: string[]; aspect_ratio?: string }> = [];
+	const submitted: StillRequest[] = [];
+	const estimated: StillRequest[] = [];
 	const agent: AgentModelClient = { choice: { provider: 'kimi', model: 'k3' } as never, generate: async ({ prompt }) => { asks.push(prompt); return prompt.includes('THE FACTS (what the pictures cannot say)') ? JSON.stringify({ prompt: PROMPT }) : JSON.stringify(SPEC); } };
 	const deps: PrepDeps = {
 		store, gateway, projectRoot, series, references: null, notion: null,
-		images: { estimate: async () => ({ credits: 2.75 }), submit: async (request) => { submitted.push(request); return { job_id: 'job-ref-1' }; }, status: async () => ({ status, url: status === 'completed' ? 'https://files.test/ref.png' : undefined }) },
+		images: { estimate: async (request) => { estimated.push(request); return { credits: 2.75 }; }, submit: async (request) => { submitted.push(request); return { job_id: 'job-ref-1' }; }, status: async () => ({ status, url: status === 'completed' ? 'https://files.test/ref.png' : undefined }) },
 		download: async () => new Uint8Array([137, 80, 78, 71]), agent: async () => agent,
 		stamp: async (file, _name, out) => { await copyFile(file, out).catch(async () => { const { mkdir } = await import('node:fs/promises'); await mkdir(join(out, '..'), { recursive: true }); await copyFile(file, out); }); return out; }
 	};
-	return { deps, projectId: created.data.project_id, asks, submitted, setStatus: (next: GenerationStatus) => { status = next; } };
+	return { deps, projectId: created.data.project_id, asks, submitted, estimated, setStatus: (next: GenerationStatus) => { status = next; } };
 }
 
 describe('references go up before the job (CLI upload fix)', () => {
@@ -73,6 +74,35 @@ describe('references go up before the job (CLI upload fix)', () => {
 });
 
 describe('Prep end to end against fakes (V1S-374)', () => {
+	test('model selection persists, prices and sends the selected model, and rejects a stale approval', async () => {
+		const { deps, projectId, submitted, estimated } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		await draftSpec(deps, await project(), 'r-mara');
+		await writePrompt(deps, await project(), 'r-mara');
+		const before = await quotePrep(deps, await project(), 'r-mara');
+		if (!before.ok) throw new Error(before.message);
+		const changed = await setImageModel(deps, await project(), 'r-mara', 'nano_banana_pro');
+		if (!changed.ok) throw new Error(changed.message);
+		expect(changed.prep.entries['r-mara'].prompt).toBe(PROMPT);
+		const view = await prepView(deps, await project());
+		if (!view.ok) throw new Error(view.message);
+		expect(view.items[0].state.image_model).toBe('nano_banana_pro');
+		const stale = await sendPrep(deps, await project(), 'r-mara', { approval_key: before.approval.approval_key, confirmed_credits: 2.75 });
+		expect(stale.ok).toBeFalse();
+		expect(submitted).toHaveLength(0);
+		const after = await quotePrep(deps, await project(), 'r-mara');
+		if (!after.ok) throw new Error(after.message);
+		expect(after.approval.model).toBe('Nano Banana Pro');
+		expect(after.approval.aspect_ratio).toBe('16:9');
+		expect(estimated.at(-1)?.model).toBe('nano_banana_pro');
+		expect(estimated.at(-1)?.aspect_ratio).toBe('16:9');
+		const sent = await sendPrep(deps, await project(), 'r-mara', { approval_key: after.approval.approval_key, confirmed_credits: 2.75 });
+		expect(sent.ok).toBeTrue();
+		expect(submitted[0].model).toBe('nano_banana_pro');
+		expect(submitted[0].aspect_ratio).toBe('16:9');
+		expect((await project()).production.still_sends?.[0].model).toBe('nano_banana_pro');
+		expect((await setImageModel(deps, await project(), 'r-mara', 'gpt_image_2_5')).ok).toBeFalse();
+	});
 	test('an explicit original body omits physique facts and blocks their reintroduction, while portraits keep the design path', async () => {
 		const { deps, projectId, asks } = await setup();
 		const project = async () => (await deps.store.readProject(projectId))!;
@@ -138,7 +168,7 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect([quoted.approval.blocked, quoted.approval.credits, quoted.approval.aspect_ratio]).toEqual([[], 2.75, '16:9']);
 		const sent = await sendPrep(deps, await project(), 'r-mara', { approval_key: quoted.approval.approval_key, confirmed_credits: 2.75 });
 		if (!sent.ok) throw new Error(sent.message);
-		expect(submitted[0]).toEqual({ prompt: PROMPT, references: [], aspect_ratio: '16:9' });
+		expect(submitted[0]).toEqual({ prompt: PROMPT, references: [], aspect_ratio: '16:9', model: 'gpt_image_2_5' });
 		expect((await project()).production.still_sends?.map((s) => [s.purpose, s.credits])).toEqual([['reference', 2.75]]);
 
 		expect(await settlePrep(deps, await project(), 'r-mara')).toEqual({ ok: true, pending: true });

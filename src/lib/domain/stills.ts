@@ -59,7 +59,7 @@ export function stillApproval(input: { prompt: string; attached: Array<{ name: s
 /** Why a send is refused against what the operator approved; empty = send. */
 export function approvalProblems(now: StillApproval, approved: { approval_key: string; confirmed_credits: number }): string[] {
 	const problems = [...now.blocked];
-	if (now.approval_key !== approved.approval_key) problems.push('The prompt or its references changed since you approved; look again and approve the new version');
+	if (now.approval_key !== approved.approval_key) problems.push('The prompt, references or model changed since you approved; look again and approve the new version');
 	if (now.credits !== null && now.credits > approved.confirmed_credits + 1e-6) problems.push(`It now costs ${now.credits} credits, above the ${approved.confirmed_credits} you approved`);
 	return problems;
 }

@@ -7,6 +7,7 @@ import {
 	type PrepEntry, type PrepFile, type PrepState, type ReferenceSpec, type ScaleCheck
 } from '$lib/domain/prep';
 import type { StillApproval } from '$lib/domain/stills';
+import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 import { generateStructured, type AgentModelClient, type ModelImage } from './model-provider';
 import { readAgentSkill, readPromptingGuide } from './agent-skills';
 import { quoteStill, sendStill, settleStill, type StillDeps } from './stills';
@@ -83,6 +84,14 @@ export async function addProp(deps: Pick<PrepDeps, 'projectRoot'>, projectId: st
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const safe = (text: string) => text.replace(/[^\w.-]+/g, '_').slice(0, 80);
+
+/** Keep the prompt and references while choosing a different renderer. */
+export async function setImageModel(deps: PrepDeps, project: Project, key: string, model: ImageModelId): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const found = await findEntry(deps, project, key);
+	if (!found.ok) return found;
+	if (found.view.state.job) return fail(409, 'Wait for the current generation before changing its model');
+	return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, image_model: model })) };
+}
 
 /** Choose an existing source as the body baseline, or explicitly design a body from facts. */
 export async function setBodySource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, key: string, url: string | null): Promise<{ ok: true; prep: PrepFile } | Failure> {
@@ -301,7 +310,7 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 		: 'NO BODY REFERENCE: the attached images, if any, control the face or wardrobe only. Create a detailed coherent body from the facts: height in centimetres, build and natural proportions. Use the same full-person scale and foot baseline for front and rear; omit the front head above the collarbones without enlarging or moving the body upward, leaving empty background above the shoulders. Do not pretend an unseen body is being preserved.';
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec, preserveBody)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. ${bodyInstructions} Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age from the facts and its looks from the images. When a body reference is selected, omit all body descriptions and measurements. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec, preserveBody)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec, preserveBody)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for ${IMAGE_MODELS[view.state.image_model].label} at 2K${view.state.image_model === 'gpt_image_2_5' ? ', high quality' : ''}. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. ${bodyInstructions} Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age from the facts and its looks from the images. When a body reference is selected, omit all body descriptions and measurements. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec, preserveBody)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
 		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
@@ -336,6 +345,7 @@ export function aspectOf(prompt: string | null, kind: PrepView['entry']['kind'])
 	return named && ASPECTS.has(named) ? named : prepAspect(kind);
 }
 const stillInput = (view: PrepView) => ({
+	model: view.state.image_model,
 	prompt: view.state.prompt ?? '',
 	attached: view.state.sources.map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
 	aspect_ratio: aspectOf(view.state.prompt, view.entry.kind),

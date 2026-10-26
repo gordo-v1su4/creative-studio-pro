@@ -201,6 +201,7 @@ export type ScaleCheck = z.infer<typeof scaleCheckSchema>;
 
 export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
 export const prepStateSchema = z.object({
+	image_model: z.enum(['gpt_image_2_5', 'nano_banana_pro']).default('gpt_image_2_5'),
 	sources: z.array(prepSourceSchema).max(12).default([]),
 	/** Explicit source role: portraits must not silently become body references. */
 	body_source_url: z.string().max(1000).nullable().default(null),

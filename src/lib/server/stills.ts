@@ -4,7 +4,8 @@ import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project, StillSend } from '$lib/domain/schemas';
 import { approvalProblems, episodeSpend, stillApproval, type StillApproval } from '$lib/domain/stills';
-import { STILL_MODEL, type ImageGenerator } from './higgsfield';
+import { type ImageGenerator } from './higgsfield';
+import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 
 /**
  * One still through the approval step (V1S-373): quote shows the operator the prompt, the references in attach
@@ -18,6 +19,7 @@ export interface StillDeps {
 	download: (url: string) => Promise<Uint8Array>;
 }
 export interface StillInput {
+	model?: ImageModelId;
 	prompt: string;
 	/** In image order; each with the exact name the prompt calls it, and a thumbnail URL when there is one. */
 	attached: Array<{ name: string; file: string; url?: string }>;
@@ -30,15 +32,16 @@ const fail = (status: number, message: string, reasons?: string[]): Failure => (
 export const NO_CLI = 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)';
 
 export async function quoteStill(deps: Pick<StillDeps, 'images'>, project: Project, input: StillInput): Promise<StillApproval> {
+	const model = IMAGE_MODELS[input.model ?? 'gpt_image_2_5'];
 	const blocked = [...(input.blocked ?? [])];
 	let credits: number | null = null;
 	if (!deps.images) blocked.push(NO_CLI);
 	else {
-		try { credits = (await deps.images.estimate({ prompt: input.prompt, references: [], aspect_ratio: input.aspect_ratio })).credits; }
+		try { credits = (await deps.images.estimate({ prompt: input.prompt, references: [], aspect_ratio: input.aspect_ratio, ...(input.model ? { model: input.model } : {}) })).credits; }
 		catch (cause) { blocked.push(cause instanceof Error ? cause.message : 'Price check failed'); }
 	}
 	return stillApproval({
-		prompt: input.prompt, attached: input.attached, model: STILL_MODEL.label, resolution: STILL_MODEL.resolution.toUpperCase(),
+		prompt: input.prompt, attached: input.attached, model: model.label, resolution: model.resolution.toUpperCase(),
 		aspect_ratio: input.aspect_ratio, credits, spent: episodeSpend(project.production), blocked
 	});
 }
@@ -55,10 +58,11 @@ export async function sendStill(deps: StillDeps, input: StillInput & { project_i
 	const problems = approvalProblems(now, input);
 	if (problems.length) return fail(422, 'Blocked before any spend', problems);
 	let jobId: string;
-	try { ({ job_id: jobId } = await deps.images!.submit({ prompt: now.prompt, references: now.references.map((ref) => ref.file), aspect_ratio: input.aspect_ratio })); }
+	try { ({ job_id: jobId } = await deps.images!.submit({ prompt: now.prompt, references: now.references.map((ref) => ref.file), aspect_ratio: input.aspect_ratio, ...(input.model ? { model: input.model } : {}) })); }
 	catch (cause) { return fail(502, cause instanceof Error ? cause.message : 'Send failed'); }
+	const model = IMAGE_MODELS[input.model ?? 'gpt_image_2_5'];
 	const recorded = await deps.gateway.recordStillSend(project.project_id, project.version, {
-		job_id: jobId, purpose: input.purpose, model: STILL_MODEL.job_type, resolution: STILL_MODEL.resolution, credits: now.credits ?? 0,
+		job_id: jobId, purpose: input.purpose, model: model.job_type, resolution: model.resolution, credits: now.credits ?? 0,
 		prompt: now.prompt.slice(0, 20_000), references: now.references.map((ref) => ref.name.slice(0, 300)).slice(0, 16), approval_key: now.approval_key, sent_at: new Date().toISOString()
 	});
 	if (!recorded.ok) return fail(409, `Sent as ${jobId}, but noting the spend failed: ${recorded.error.message}`);
