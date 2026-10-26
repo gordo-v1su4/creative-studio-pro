@@ -53,6 +53,10 @@ flows into the video pipeline without the character being re-described. Output i
 in its own small code block, after the settings line.
 
 CHARACTER HAND-OFF FORMAT
+With an explicitly selected body reference, replace build and height with
+"body shape and proportions exactly as reference". Do not repeat physique
+descriptors from the source's text labels. Without a body reference, describe
+the created body; heights use centimetres only.
 CHARACTER [NAME] — identity: [sex, age, build, height, face in one clause];
 costume as sheet; owned element: [element]; owned colour: [accent name] [#HEX];
 powers: [power, power, power]. [One ownership lock sentence: what this element

@@ -97,6 +97,11 @@ proportions; frontal panel headless, cropped at the collarbones; feet visible in
 both full-body panels; identical backdrop and light; sharp realistic photo.
 
 T5a — IMAGE-FED, GPT IMAGE EDIT MODE
+If a body reference is selected, omit all height, build and figure descriptions
+from SUBJECT and the hand-off. Say "Match the body shape and proportions exactly
+like image N." If sources show only a face, describe the body to create in detail;
+any stated height is in centimetres. The selected body-reference rule takes
+precedence over the generic SUBJECT placeholder in T1.
 Using Image 1 as the identity and costume reference, create a three-panel plate
 of the SAME person [panels per T1].
 PRESERVE EXACTLY from Image 1: facial structure, skin tone and texture, eye shape

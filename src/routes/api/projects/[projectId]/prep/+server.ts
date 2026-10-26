@@ -7,12 +7,13 @@ import { episodeSpend } from '$lib/domain/stills';
 import { getPrepDeps } from '$lib/server/config';
 import { AgentRuleBreakError } from '$lib/server/model-provider';
 import {
-	addProp, addSource, attachOutside, draftSpec, editPrompt, fillIdentity, prepView, quotePrep, removeSource, rerunScaleCheck, saveSpec, sendPrep, settlePrep, useCurrentAsSource, writePrompt
+	addProp, addSource, attachOutside, draftSpec, editPrompt, fillIdentity, prepView, quotePrep, removeSource, rerunScaleCheck, saveSpec, sendPrep, setBodySource, settlePrep, useCurrentAsSource, writePrompt
 } from '$lib/server/prep';
 
 const fail = (status: number, message: string, reasons: string[] = []) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 422 ? 'GATE_BLOCKED' : 'INVALID_COMMAND', message, reasons, retryable: status >= 500, source: 'prep' } }, { status });
 const key = z.string().min(1).max(300);
 const bodySchema = z.discriminatedUnion('action', [
+	z.object({ action: z.literal('set_body_source'), key, url: z.string().min(1).max(1000).nullable() }),
 	z.object({ action: z.literal('add_prop'), name: z.string().trim().min(1).max(200) }),
 	z.object({ action: z.literal('use_current'), key }),
 	z.object({ action: z.literal('remove_source'), key, url: z.string().min(1).max(1000) }),
@@ -62,6 +63,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!body.success) return fail(400, body.error.issues[0]?.message ?? 'Invalid Prep request');
 		const b = body.data;
 		switch (b.action) {
+			case 'set_body_source': return done(await setBodySource(deps, projectId.data, b.key, b.url));
 			case 'add_prop': await addProp(deps, projectId.data, b.name); return done({ ok: true });
 			case 'use_current': return done(await useCurrentAsSource(deps, project, b.key));
 			case 'remove_source': return done(await removeSource(deps, projectId.data, b.key, b.url));

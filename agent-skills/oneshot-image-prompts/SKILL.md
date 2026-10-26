@@ -53,6 +53,14 @@ Take the closest camera treatment and apply the spine below.
 
 ## House Rule #1 — the headless frontal panel
 
+**Body reference first.** If a source is explicitly selected as the body reference,
+write "Match the body shape and proportions exactly like image N." Omit height,
+weight, build and figure descriptions everywhere, including SUBJECT and the
+CHARACTER hand-off. Do not repeat physique labels printed on the source sheet.
+If no body reference is selected (including headshots only), create a detailed
+body from the facts. A portrait is not a body reference. Headless framing uses
+uniform enlargement and cropping; it never authorizes changing anatomy.
+
 In every character sheet, the full-body **frontal** panel is framed from the
 collarbones down with **no head in it**. The close-up panel owns the face.
 Output this wording:

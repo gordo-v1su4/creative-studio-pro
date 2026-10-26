@@ -84,6 +84,16 @@ export async function addProp(deps: Pick<PrepDeps, 'projectRoot'>, projectId: st
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const safe = (text: string) => text.replace(/[^\w.-]+/g, '_').slice(0, 80);
 
+/** Choose an existing source as the body baseline, or explicitly design a body from facts. */
+export async function setBodySource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, key: string, url: string | null): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const prep = await readPrep(deps.projectRoot, projectId);
+	const state = prep.entries[key];
+	if (!state) return fail(404, 'That Prep entry has no facts or sources yet');
+	if (url && !state.sources.some((source) => source.url === url)) return fail(404, 'Choose a source image attached to this character');
+	if (state.job) return fail(409, 'Wait for the current generation before changing its body reference');
+	return { ok: true, prep: await update(deps.projectRoot, projectId, key, (current) => ({ ...current, body_source_url: url, prompt: null, prompt_edited: false })) };
+}
+
 /** A source image dropped onto an entry; kept under files/prep/sources, never attached to shots. */
 export async function addSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, key: string, input: { file_name: string; bytes: Uint8Array }): Promise<{ ok: true; prep: PrepFile } | Failure> {
 	const ext = extname(input.file_name).toLowerCase();
@@ -95,6 +105,7 @@ export async function addSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: 
 	const url = `/api/projects/${projectId}/files/prep/sources/${safe(key)}/${name}`;
 	const prep = await update(deps.projectRoot, projectId, key, (state) => ({
 		...state, sources: [...state.sources, { name: input.file_name.slice(0, 300), file: join(folder, name), url, added_at: new Date().toISOString() }].slice(-12),
+		body_source_url: state.sources.slice(-11).some((source) => source.url === state.body_source_url) ? state.body_source_url : null,
 		// The spec stays (Redraft is there for a fresh one); only the prompt goes, since it numbers the images.
 		prompt: null, prompt_edited: false
 	}));
@@ -107,7 +118,7 @@ export async function removeSource(deps: Pick<PrepDeps, 'projectRoot'>, projectI
 	const source = prep.entries[key]?.sources.find((entry) => entry.url === url);
 	if (!source) return fail(404, 'That source image is not on this entry');
 	await rm(source.file, { force: true });
-	return { ok: true, prep: await update(deps.projectRoot, projectId, key, (state) => ({ ...state, sources: state.sources.filter((entry) => entry.url !== url), prompt: null, prompt_edited: false })) };
+	return { ok: true, prep: await update(deps.projectRoot, projectId, key, (state) => ({ ...state, sources: state.sources.filter((entry) => entry.url !== url), body_source_url: state.body_source_url === url ? null : state.body_source_url, prompt: null, prompt_edited: false })) };
 }
 
 /** The current reference image (an old sheet) as a source image, so ONE SHOT remakes it to the standard. */
@@ -226,15 +237,16 @@ export const SHEET_SECTIONS = ['GRADE', 'CAMERA', 'REALISM', 'LOCKS', 'AVOID'] a
 /** QC on a reference prompt before the approval card (V1S-374). */
 export function prepQc(prompt: string, view: PrepView): string[] {
 	const out: string[] = [];
+	const preserveBody = !!view.state.body_source_url;
 	if (!prompt.includes(view.entry.name)) out.push(`The prompt must call it by its exact name, "${view.entry.name}"`);
 	if (/\bneon\b/i.test(prompt)) out.push('The prompt uses the word "neon"; describe the light another way');
 	if (view.entry.kind === 'character' && !/straight-on|face square to the camera/i.test(prompt)) out.push('The first panel must be a straight-on, forward-facing face close-up (the T1 wording)');
 	if (view.entry.kind === 'character' && /three-quarter[^.]*first panel|first panel[^.]*three-quarter/i.test(prompt)) out.push('The first panel is three-quarter; it must face the camera');
 	if (view.entry.kind === 'character' && !/(near-)?white seamless|white cyclorama|white studio backdrop/i.test(prompt)) out.push('A character sheet sits on the near-white seamless studio backdrop, the same for the whole cast');
 	if (view.entry.kind === 'character' && view.state.spec) {
-		const gaps = identityGaps(view.state.spec);
+		const gaps = identityGaps(view.state.spec, preserveBody);
 		if (gaps.length) out.push(`Fill in the character's ${gaps.join(', ')} in the spec first (Fill identity, or type them in)`);
-		const line = handOffLine(view.state.spec);
+		const line = handOffLine(view.state.spec, preserveBody);
 		if (!gaps.length && !prompt.includes(line)) out.push('The prompt must end with the CHARACTER hand-off line exactly as the spec builds it');
 	}
 	if (view.entry.kind === 'character') {
@@ -242,8 +254,11 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 		const said = prompt.split('\n').filter((line) => !/^\s*\**AVOID\**\s*:/i.test(line)).join('\n');
 		if (/black[- ]and[- ]white|monochrome|greyscale|grayscale|desaturat|faded|washed[- ]out/i.test(said)) out.push('The sheet must be in full natural colour like the rest of the cast; take out "monochrome", "desaturated", "faded" or "black and white" (they may only appear under AVOID)');
 		if (!/^\s*\**AVOID\**\s*:.*\bfangs?\b/im.test(prompt)) out.push('Fangs must be listed under AVOID: no vampire teeth on any sheet');
-		if (!/\b\d{2,3}\s?cm\b/i.test(prompt)) out.push('State the character\'s true height in cm so the full-body panels keep natural proportions');
-		if (/\b\d['’]\s?\d{1,2}(["”]|''|\s?in\b)|\b\d+\s?(feet|foot|ft|inch(es)?)\b/i.test(prompt)) out.push('Sizes are in cm or m only: take out feet and inches');
+		if (preserveBody) {
+			if (/\b\d+(?:\.\d+)?\s*(?:cm|m|metres?|meters?)\b|\b(?:tall|skinny|slim|slender|petite|lean|athletic|muscular|curvy|voluptuous|long-legged)\b/i.test(said)) out.push('A body reference is selected: remove height, build and figure descriptions; match its body shape and proportions exactly');
+			if (!/match[^.\n]*body[^.\n]*proportions[^.\n]*exactly|body shape and proportions exactly as reference/i.test(prompt)) out.push('Tell the model to match the original body shape and proportions exactly');
+		} else if (!/\b\d{2,3}\s?cm\b/i.test(prompt)) out.push('State the character\'s true height in cm so the full-body panels keep natural proportions');
+		if (/\b\d['’]\s?\d{1,2}(["”]|''|\s?in\b)|\b\d+\s?(feet|foot|ft|inch(es)?)\b|\b\d+(?:\.\d+)?\s*(?:m|metres?|meters?)\b/i.test(prompt)) out.push('Height must be in cm only: take out metres, feet and inches');
 		if (!/collarbones?/i.test(prompt)) out.push('The frontal full-body panel is cropped at the collarbones (House Rule #1)');
 	}
 	// The skill's look blocks, each as its own labelled section, so every sheet says how it should look.
@@ -254,11 +269,11 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 }
 
 /** The facts the writer gets: identity and hand-off fields for a character, notes for a place or prop. */
-function factsText(spec: ReferenceSpec): string {
+function factsText(spec: ReferenceSpec, preserveBody = false): string {
 	if (spec.kind !== 'character') return `NOTES: ${notesOf(spec)}`;
 	const id = spec.identity;
 	return [
-		`IDENTITY: ${[id?.sex, id?.age ? `${id.age}` : '', id?.height_cm ? `${id.height_cm} cm` : '', id?.build].filter(Boolean).join(', ')}`,
+		`IDENTITY: ${[id?.sex, id?.age ? `${id.age}` : '', !preserveBody && id?.height_cm ? `${id.height_cm} cm` : '', preserveBody ? '' : id?.build].filter(Boolean).join(', ')}`,
 		id?.face || id?.eyes || id?.hair || id?.marks ? `FACE, EYES, HAIR, MARKS (as the story has them; the pictures win on looks): ${[id?.face, id?.eyes, id?.hair, id?.marks].filter(Boolean).join('; ')}` : '',
 		spec.owned_element ? `OWNED ELEMENT: ${spec.owned_element}` : '',
 		spec.owned_colour?.hex ? `OWNED COLOUR: ${spec.owned_colour.name} ${spec.owned_colour.hex}` : '',
@@ -276,11 +291,17 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
 	const { view } = found;
-	const gaps = factsGaps(view.state.spec, view.entry.kind);
+	const preserveBody = view.entry.kind === 'character' && !!view.state.body_source_url;
+	const bodyIndex = view.state.sources.findIndex((source) => source.url === view.state.body_source_url) + 1;
+	if (preserveBody && !bodyIndex) return fail(400, 'The selected body reference is no longer attached');
+	const gaps = factsGaps(view.state.spec, view.entry.kind, preserveBody);
 	if (!view.state.spec || gaps.length) return fail(400, `Fill in ${gaps.join(', ')} first`);
+	const bodyInstructions = preserveBody
+		? `BODY REFERENCE: image ${bodyIndex} is the sole body baseline. Match the body shape and proportions exactly like image ${bodyIndex}. Do not describe height, weight, build, figure, muscle, limb lengths or body ratios anywhere in the prompt, including SUBJECT and the CHARACTER hand-off. Do not read or repeat physique labels from text printed on the reference. Keep the headless centre layout by uniform enlargement and cropping at the collarbones, with feet visible. The generated rear is never the baseline. This rule overrides any body descriptions in the skill, story, notes or other images.`
+		: 'NO BODY REFERENCE: the attached images, if any, control the face or wardrobe only. Create a detailed coherent body from the facts: height in centimetres, build and natural proportions. Frame the centre panel from the collarbones down with feet visible, using uniform enlargement and cropping. Do not pretend an unseen body is being preserved.';
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. Frame the frontal full-body panel from the collarbones down, exactly as House Rule #1 words it: preserve the ORIGINAL body reference, enlarged uniformly until the collarbones reach the top edge and the feet stay in frame. Use one scale factor for both axes; crop the head rather than elongating the body to fill the panel. The source image controls the leg-to-torso ratio, shoulder width, waist, hip width and limb lengths. A generated rear view is never the proportion baseline. Do not invent numeric ratios from an unmeasured image. State the true height in centimetres only (from the facts): never feet or inches, never a comparison. Match the body image's proportions one-to-one: leg length against torso (the inseam exactly), build and shoulder width, neck length. Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age and height from the facts (${view.state.spec.identity?.age ?? '?'}, ${view.state.spec.identity?.height_cm ?? '?'} cm) and its looks from the images. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec, preserveBody)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. ${bodyInstructions} Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age from the facts and its looks from the images. When a body reference is selected, omit all body descriptions and measurements. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec, preserveBody)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
 		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
@@ -361,7 +382,8 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 			}
 		}
 	}
-	const scale = view.entry.kind === 'character' && view.state.sources.length === 1 ? await checkScale(deps, project, view, stamped, view.state.sources[0].file) : undefined;
+	const bodySource = view.state.sources.find((source) => source.url === view.state.body_source_url);
+	const scale = view.entry.kind === 'character' && bodySource ? await checkScale(deps, project, view, stamped, bodySource.file) : undefined;
 	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, result: { file: stamped, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
 }
 

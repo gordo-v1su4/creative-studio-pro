@@ -9,7 +9,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus } from '../../src/lib/server/higgsfield';
-import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
+import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -73,6 +73,39 @@ describe('references go up before the job (CLI upload fix)', () => {
 });
 
 describe('Prep end to end against fakes (V1S-374)', () => {
+	test('an explicit original body omits physique facts and blocks their reintroduction, while portraits keep the design path', async () => {
+		const { deps, projectId, asks } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		await draftSpec(deps, await project(), 'r-mara');
+		const added = await addSource(deps, projectId, 'r-mara', { file_name: 'original.png', bytes: new Uint8Array([1, 2, 3]) });
+		if (!added.ok) throw new Error(added.message);
+		const url = added.prep.entries['r-mara'].sources[0].url;
+		// Attaching an image does not claim that a portrait supplies a body.
+		expect(added.prep.entries['r-mara'].body_source_url).toBeNull();
+		expect((await setBodySource(deps, projectId, 'r-mara', '/some-other-source')).ok).toBeFalse();
+		await setBodySource(deps, projectId, 'r-mara', url);
+		const spec = referenceSpecSchema.parse({ ...SPEC, name: 'Mara Voss' });
+		const handoff = handOffLine(spec, true);
+		const corrected = PROMPT.replace(' She is 168 cm tall.', '').replace(HAND_OFF, handoff) + '\nImage 1 controls the body. Match the body shape and proportions exactly like image 1.';
+		deps.agent = async () => ({ choice: { provider: 'kimi', model: 'k3' } as never, generate: async ({ prompt }) => { asks.push(prompt); return JSON.stringify({ prompt: corrected }); } });
+		await saveSpec(deps, await project(), 'r-mara', { spec: { ...spec, identity: { ...spec.identity!, height_cm: null, build: '' } }, approve: false });
+		const written = await writePrompt(deps, await project(), 'r-mara');
+		expect(written.ok).toBeTrue();
+		expect(asks.at(-1)).not.toContain('168 cm');
+		expect(asks.at(-1)).not.toContain('slim');
+		expect(asks.at(-1)).toContain('image 1 is the sole body baseline');
+		const view = await prepView(deps, await project());
+		if (!view.ok) throw new Error(view.message);
+		expect(prepQc(corrected, view.items[0])).toEqual([]);
+		for (const description of ['168 cm', 'slim', 'tall', 'skinny', 'athletic']) expect(prepQc(corrected + '\nSUBJECT: ' + description, view.items[0]).join(' ')).toContain('remove height, build and figure');
+		const quoted = await quotePrep(deps, await project(), 'r-mara');
+		expect(quoted.ok && quoted.approval.blocked).toEqual([]);
+		await removeSource(deps, projectId, 'r-mara', url);
+		const removed = await prepView(deps, await project());
+		expect(removed.ok && removed.items[0].state.body_source_url).toBeNull();
+		expect(removed.ok && removed.items[0].state.prompt).toBeNull();
+	});
+
 	test('facts → prompt in one pass → approval card → make → stamped sheet', async () => {
 		const { deps, projectId, asks, submitted, setStatus } = await setup();
 		const project = async () => (await deps.store.readProject(projectId))!;
@@ -134,7 +167,8 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(prepQc(PROMPT.replace('full natural colour', 'desaturated near-monochrome'), view!).join(' ')).toContain('full natural colour');
 		expect(prepQc(PROMPT.replace('fangs, ', ''), view!).join(' ')).toContain('Fangs must be listed under AVOID');
 		expect(prepQc(PROMPT.replace(' She is 168 cm tall.', '').replace(HAND_OFF, ''), view!).join(' ')).toContain('true height');
-		expect(prepQc(PROMPT.replace('168 cm tall', '168 cm (5\'6") tall'), view!).join(' ')).toContain('cm or m only');
+		expect(prepQc(PROMPT.replace('168 cm tall', '168 cm (5\'6") tall'), view!).join(' ')).toContain('cm only');
+		expect(prepQc(PROMPT.replace('168 cm tall', '1.68 m tall'), view!).join(' ')).toContain('cm only');
 		expect(prepQc(PROMPT.replace('collarbones', 'chin'), view!).join(' ')).toContain('collarbones');
 		expect(prepQc(PROMPT.replace(HAND_OFF, ''), view!).join(' ')).toContain('CHARACTER hand-off line');
 		expect(prepQc(PROMPT.replace('near-white seamless studio backdrop', 'rainy street at night'), view!).join(' ')).toContain('near-white seamless studio backdrop');

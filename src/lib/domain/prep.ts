@@ -140,21 +140,21 @@ const cm = (value: number) => `${value} cm`;
 export const notesOf = (spec: ReferenceSpec) => spec.notes || (spec.kind === 'character' ? '' : spec.description);
 
 /** Whether the facts are complete enough to write the prompt from. */
-export function factsGaps(spec: ReferenceSpec | null, kind: PrepKind): string[] {
+export function factsGaps(spec: ReferenceSpec | null, kind: PrepKind, preserveBody = false): string[] {
 	if (!spec) return ['the facts (Draft facts)'];
-	if (kind === 'character') return identityGaps(spec);
+	if (kind === 'character') return identityGaps(spec, preserveBody);
 	return notesOf(spec) ? [] : ['notes: what it is'];
 }
 
 /** What a character spec still needs before its sheet can be made (age and height above all). */
-export function identityGaps(spec: ReferenceSpec): string[] {
+export function identityGaps(spec: ReferenceSpec, preserveBody = false): string[] {
 	if (spec.kind !== 'character') return [];
 	const id = spec.identity;
 	const gaps: string[] = [];
 	if (!id?.age) gaps.push('age');
-	if (!id?.height_cm) gaps.push('height (cm)');
+	if (!preserveBody && !id?.height_cm) gaps.push('height (cm)');
 	if (!id?.sex) gaps.push('sex');
-	if (!id?.build) gaps.push('build');
+	if (!preserveBody && !id?.build) gaps.push('build');
 	return gaps;
 }
 
@@ -164,11 +164,11 @@ export function identityGaps(spec: ReferenceSpec): string[] {
  * costume as sheet; owned element: …; owned colour: amber #D98A2B; powers: …. <ownership lock>
  * Locations: LOCATION [NAME] — the description's first sentence.
  */
-export function handOffLine(spec: ReferenceSpec): string {
+export function handOffLine(spec: ReferenceSpec, preserveBody = false): string {
 	if (spec.kind !== 'character') return `${spec.kind === 'location' ? 'LOCATION' : 'PROP'} ${spec.name.toUpperCase()} — ${notesOf(spec).split(/(?<=\.)\s/)[0]}`;
 	const id = spec.identity;
 	const first = spec.name.replace(/"[^"]*"\s*/g, '').split(/\s+/)[0].toUpperCase();
-	const identity = [id?.sex, id?.age ? String(id.age) : '', id?.build, id?.height_cm ? cm(id.height_cm) : '', id?.face, id?.eyes, id?.hair, id?.marks].map((part) => (part ?? '').trim()).filter(Boolean).join(', ');
+	const identity = [id?.sex, id?.age ? String(id.age) : '', preserveBody ? 'body shape and proportions exactly as reference' : id?.build, !preserveBody && id?.height_cm ? cm(id.height_cm) : '', id?.face, id?.eyes, id?.hair, id?.marks].map((part) => (part ?? '').trim()).filter(Boolean).join(', ');
 	const colour = spec.owned_colour?.name || spec.owned_colour?.hex ? `${spec.owned_colour?.name ?? ''} ${spec.owned_colour?.hex ?? ''}`.trim() : '';
 	const parts = [`CHARACTER ${first} — identity: ${identity || 'to fill'}`, 'costume as sheet'];
 	if (spec.owned_element) parts.push(`owned element: ${spec.owned_element}`);
@@ -202,6 +202,8 @@ export type ScaleCheck = z.infer<typeof scaleCheckSchema>;
 export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
 export const prepStateSchema = z.object({
 	sources: z.array(prepSourceSchema).max(12).default([]),
+	/** Explicit source role: portraits must not silently become body references. */
+	body_source_url: z.string().max(1000).nullable().default(null),
 	spec: referenceSpecSchema.nullable().default(null),
 	/** Older Prep only: specs used to be approved before the prompt; the price card is the one approval now. */
 	spec_approved_at: z.string().nullable().default(null),

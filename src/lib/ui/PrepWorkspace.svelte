@@ -186,6 +186,13 @@
 							<label class="key">Add image<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'source', event.currentTarget.files)} /></label>
 							{#if item.current}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Adding…', { action: 'use_current', key })}>Use current sheet</button>{/if}
 						</div>
+						{#if item.entry.kind === 'character'}
+							<label class="field"><span>Body reference</span><select class="key" aria-label={`Body reference for ${item.entry.name}`} value={item.state.body_source_url ?? ''} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void call(key, 'Saving body reference…', { action: 'set_body_source', key, url: event.currentTarget.value || null })}>
+								<option value="">No body reference · create from facts</option>
+								{#each item.state.sources as source, i (source.url)}<option value={source.url}>Image {i + 1} · {source.name}</option>{/each}
+							</select></label>
+							<p class="muted">{item.state.body_source_url ? 'Match this original body exactly. Height and build are omitted from the prompt.' : 'Only a face or partial reference? Describe the body in the facts below.'}</p>
+						{/if}
 					</div>
 					<span class="edge" aria-hidden="true"></span>
 					<!-- 2. the facts, then the prompt (one pass: the skill, the images, the facts), then the price card -->
@@ -212,8 +219,10 @@
 								<div class="identity" aria-label="Identity">
 									<label><span>Sex</span><input bind:value={id.sex} placeholder="female" /></label>
 									<label><span>Age</span><input type="number" min="1" max="120" bind:value={id.age} placeholder="19" /></label>
-									<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="168" /></label>
-									<label class="wide"><span>Build</span><input bind:value={id.build} placeholder="slim, lightly athletic" /></label>
+									{#if !item.state.body_source_url}
+										<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="168" /></label>
+										<label class="wide"><span>Build</span><input bind:value={id.build} placeholder="slim, lightly athletic" /></label>
+									{/if}
 									<label class="wide"><span>Face</span><input bind:value={id.face} placeholder="pale, watchful, straight dark brows" /></label>
 									<label><span>Eyes</span><input bind:value={id.eyes} placeholder="amber-gold eyes" /></label>
 									<label class="wide"><span>Hair</span><input bind:value={id.hair} placeholder="dark chin-length bob, centre part" /></label>
@@ -224,8 +233,8 @@
 									<label class="wide"><span>Powers (comma)</span><input bind:value={drafts[key].powers} placeholder="wall-run, blur-step" /></label>
 									<label class="full"><span>Ownership lock</span><input bind:value={drafts[key].ownership_lock} placeholder="How it shows physically, never as…" /></label>
 								</div>
-								<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item))}</p>
-								{#if identityGaps(specOf(item)).length}<p class="note">Still needs: {identityGaps(specOf(item)).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}
+								<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item), !!item.state.body_source_url)}</p>
+								{#if identityGaps(specOf(item), !!item.state.body_source_url).length}<p class="note">Still needs: {identityGaps(specOf(item), !!item.state.body_source_url).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}
 							{/if}
 							<label class="field"><span>{item.entry.kind === 'character' ? 'Notes · only changes from the pictures (e.g. dry hair, teal plaid instead of the hoodie)' : 'Notes · what it is, its era, sizes in metres'}</span><textarea rows="3" bind:value={drafts[key].notes}></textarea></label>
 							<div class="row">
@@ -245,7 +254,7 @@
 									<button type="button" class="key on" disabled={!!busy[key] || promptDrafts[key] !== item.state.prompt} onclick={() => void quote(key)}>Check and price</button>
 								</div>
 							{:else}
-								{@const gaps = factsGaps(specOf(item), item.entry.kind)}
+								{@const gaps = factsGaps(specOf(item), item.entry.kind, !!item.state.body_source_url)}
 								<button type="button" class="key on" disabled={!!busy[key] || gaps.length > 0} title={gaps.length ? `Fill in ${gaps.join(', ')} first` : 'The Agent looks at the images, gives each one its job and writes the prompt'} onclick={() => void writePrompt(item)}>Write prompt</button>
 							{/if}
 							{#if approvals[key]}

@@ -139,7 +139,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const system = await ghostSystem();
 	// The ONE SHOT hand-off lines made in Prep (CHARACTER … / LOCATION …): Ghost uses them instead of re-describing anyone.
 	const prep = await readPrep(getProjectRoot(), projectId.data);
-	const handOffs = Object.fromEntries(Object.values(prep.entries).flatMap((state) => (state.spec && !identityGaps(state.spec).length ? [[state.spec.name, handOffLine(state.spec)]] : [])));
+	const handOffs = Object.fromEntries(Object.values(prep.entries).flatMap((state) => (state.spec && !identityGaps(state.spec, !!state.body_source_url).length ? [[state.spec.name, handOffLine(state.spec, !!state.body_source_url)]] : [])));
 	const target_min = b.target_min;
 	/** What Ghost reads for one scene (its action, dialogue, story beats, references, the shots so far). */
 	const contextFor = (current: Project, scene: FitContext['scene']): FitContext => {
