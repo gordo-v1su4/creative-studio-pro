@@ -136,10 +136,11 @@ export function createHiggsfieldSfx(run: CliRunner): SoundEffectGenerator {
 }
 
 /**
- * Every still (V1S-373, ADR 0003): references, keyframes and grids are GPT Image 2.5 at 2K, high quality, on
+ * Every still (V1S-373, ADR 0003): references, keyframes and grids are GPT Image 2.5 Sunburst (not the default Flare)
+ * at 2K, high quality, on
  * the operator's account. References attach in the order given (image 1, image 2…).
  */
-export const STILL_MODEL = { job_type: 'gpt_image_2_5', label: 'GPT Image 2.5', quality: 'high', resolution: '2k' } as const;
+export const STILL_MODEL = { job_type: 'gpt_image_2_5', label: 'GPT Image 2.5 Sunburst', variant: 'sunburst', quality: 'high', resolution: '2k' } as const;
 /** Grids are square (2×2 or 3×3); other stills say their own aspect. */
 export interface StillRequest { prompt: string; references: string[]; aspect_ratio?: string }
 export interface ImageGenerator {
@@ -151,7 +152,7 @@ export interface ImageGenerator {
 export function stillArgs(request: StillRequest, promptFile: string): string[] {
 	return [
 		STILL_MODEL.job_type, '--prompt', `@${promptFile}`, '--aspect_ratio', request.aspect_ratio ?? '1:1',
-		'--quality', STILL_MODEL.quality, '--resolution', STILL_MODEL.resolution,
+		'--variant', STILL_MODEL.variant, '--quality', STILL_MODEL.quality, '--resolution', STILL_MODEL.resolution,
 		...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])
 	];
 }

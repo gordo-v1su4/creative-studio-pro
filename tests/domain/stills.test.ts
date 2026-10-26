@@ -35,9 +35,9 @@ describe('the still approval step (V1S-373)', () => {
 	});
 
 	test('stills go to GPT Image 2.5 at 2K, high quality, references in order', () => {
-		expect(STILL_MODEL).toMatchObject({ job_type: 'gpt_image_2_5', quality: 'high', resolution: '2k' });
+		expect(STILL_MODEL).toMatchObject({ job_type: 'gpt_image_2_5', variant: 'sunburst', quality: 'high', resolution: '2k' });
 		expect(stillArgs({ prompt: 'x', references: ['a.png', 'b.png'], aspect_ratio: '16:9' }, 'p.json')).toEqual([
-			'gpt_image_2_5', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--quality', 'high', '--resolution', '2k', '--image-references', 'a.png', '--image-references', 'b.png'
+			'gpt_image_2_5', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--variant', 'sunburst', '--quality', 'high', '--resolution', '2k', '--image-references', 'a.png', '--image-references', 'b.png'
 		]);
 	});
 });
