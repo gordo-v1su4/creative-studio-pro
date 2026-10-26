@@ -14,7 +14,7 @@
 	 */
 	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
 
-	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null };
+	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: Array<{ id: string; url: string; made_at: string; outside: boolean; current: boolean }> };
 	let items = $state<View[]>([]);
 	let spent = $state(0);
 	let loading = $state(true);
@@ -60,7 +60,7 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Prep could not load'; }
 		finally { loading = false; }
 	}
-	$effect(() => { void project.project_id; void load().then(() => { for (const item of items) if (item.state.job && !item.state.result) void watch(item.entry.key); }); });
+	$effect(() => { void project.project_id; void load().then(() => { for (const item of items) if (item.state.job) void watch(item.entry.key); }); });
 
 	async function call(key: string, label: string, payload: Record<string, unknown> | FormData) {
 		busy[key] = label; error = null;
@@ -292,6 +292,19 @@
 							{@const madeAt = Date.parse(item.state.result.made_at)}
 							<p class="muted">{#if now - madeAt < 15 * 60_000}<span class="new">New</span> {/if}Made {clock(madeAt)}{item.state.result.uploaded ? ' · in the References drawer' : ''}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
+							{#if item.versions.length}
+								<details class="versions">
+									<summary>Saved versions ({item.versions.length})</summary>
+									<p class="muted">Preview an earlier image or use it as the current reference.</p>
+									{#each item.versions as version (version.id)}
+										<div class="version">
+											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={version.url} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
+											<p class="muted">{new Date(version.made_at).toLocaleString()}{version.outside ? ' · uploaded' : ' · generated'}{version.current ? ' · current' : ''}</p>
+											<button type="button" class="key" disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current version' : 'Use this version'}</button>
+										</div>
+									{/each}
+									</details>
+							{/if}
 							{#if item.entry.kind === 'character'}
 								{@const scale = item.state.result.scale}
 								<div class="node-cap sub">Proportions · original vs generated front</div>
@@ -374,6 +387,9 @@
 	.remove:disabled { opacity: 0.4; cursor: default; }
 	.sheet { width: 100%; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; object-fit: contain; background: #000; }
 	.sheet.old { opacity: 0.55; }
+	.versions { min-width: 0; border-top: 1px solid var(--color-nr-line-soft); padding-top: 6px; }
+	.versions summary { cursor: pointer; color: var(--color-nr-accent); font-size: 11px; }
+	.version { display: grid; gap: 4px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--color-nr-line-soft); }
 	.pic { display: block; border: 0; background: transparent; padding: 0; cursor: zoom-in; }
 	.pic:hover img { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); }
 	.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 8px; border: 0; background: rgb(5 7 10 / 0.92); padding: 24px; cursor: zoom-out; }

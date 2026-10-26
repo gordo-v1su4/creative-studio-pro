@@ -1,7 +1,7 @@
 import { handOffLine, referenceSpecSchema } from '../../src/lib/domain/prep';
 import { existsSync } from 'node:fs';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
@@ -9,7 +9,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
-import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
+import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -74,6 +74,29 @@ describe('references go up before the job (CLI upload fix)', () => {
 });
 
 describe('Prep end to end against fakes (V1S-374)', () => {
+	test('saved alternatives remain available and switching versions refreshes the displayed URL', async () => {
+		const { deps, projectId } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		const attached = await attachOutside(deps, await project(), 'r-mara', { file_name: 'mara.png', bytes: new Uint8Array([1, 2, 3]) });
+		if (!attached.ok) throw new Error(attached.message);
+		const original = attached.prep.entries['r-mara'].result!;
+		await writeFile(join(deps.projectRoot, projectId, 'files/prep/made/Mara_Voss_sheet-previous.png'), new Uint8Array([4, 5, 6]));
+		const before = await prepView(deps, await project());
+		if (!before.ok) throw new Error(before.message);
+		expect(before.items[0].versions).toHaveLength(2);
+		expect(before.items[0].state.result?.url).toContain('?v=');
+		expect(before.items[0].versions.filter((version) => version.current)).toHaveLength(1);
+		expect((await usePrepVersion(deps, await project(), 'r-mara', '../prep.json')).ok).toBeFalse();
+		expect((await usePrepVersion(deps, await project(), 'r-mara', 'Another_sheet-previous.png')).ok).toBeFalse();
+		const restored = await usePrepVersion(deps, await project(), 'r-mara', 'Mara_Voss_sheet-previous.png');
+		if (!restored.ok) throw new Error(restored.message);
+		const after = await prepView(deps, await project());
+		if (!after.ok) throw new Error(after.message);
+		expect(after.items[0].state.result?.url).not.toBe(before.items[0].state.result?.url);
+		expect(await readFile(restored.prep.entries['r-mara'].result!.file)).toEqual(Buffer.from([4, 5, 6]));
+		expect(await readFile(original.source_file!)).toEqual(Buffer.from([1, 2, 3]));
+		expect(after.items[0].versions.find((version) => version.current)?.id).toBe('Mara_Voss_sheet-previous.png');
+	});
 	test('model selection persists, prices and sends the selected model, and rejects a stale approval', async () => {
 		const { deps, projectId, submitted, estimated } = await setup();
 		const project = async () => (await deps.store.readProject(projectId))!;

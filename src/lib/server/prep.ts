@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, extname, join } from 'node:path';
+import { mkdir, readFile, readdir, stat, rm, writeFile } from 'node:fs/promises';
+import { basename, dirname, extname, join } from 'node:path';
 import type { Project } from '$lib/domain/schemas';
 import {
 	emptyPrep, emptyState, factsGaps, handOffLine, identityGaps, notesOf, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
@@ -53,17 +53,33 @@ async function update(root: string, projectId: string, key: string, change: (sta
 }
 
 // ---- the list ----
-export interface PrepView { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null }
+export interface PrepVersion { id: string; url: string; made_at: string; outside: boolean; current: boolean }
+export interface PrepView { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: PrepVersion[] }
 
 export async function prepView(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, project: Project): Promise<{ ok: true; items: PrepView[]; props: string[] } | Failure> {
 	if (!project.series) return fail(400, 'Prep is for an episode imported from a series');
 	const record = await deps.series.read(project.series.series_id);
 	const prep = await readPrep(deps.projectRoot, project.project_id);
 	const entries = prepEntries(project.series.scenes, record?.references?.items ?? [], prep.props);
+	const folder = join(deps.projectRoot, project.project_id, 'files', 'prep', 'made');
+	const names = await readdir(folder).catch((cause: NodeJS.ErrnoException) => { if (cause.code === 'ENOENT') return []; throw cause; });
+	const saved = await Promise.all(names.filter((name) => IMAGE_EXT.has(extname(name).toLowerCase())).map(async (id) => ({ id, made_at: (await stat(join(folder, id))).mtime.toISOString() })));
 	const items = entries.map((entry) => {
 		const state = prep.entries[entry.key] ?? emptyState();
 		const file = entry.reference_page_id ? record?.reference_files?.[entry.reference_page_id] : undefined;
-		return { entry, state, template: templateFor(entry.kind, state.sources.length > 0), current: file && record ? { url: `/api/series/${record.series_id}/references?page_id=${entry.reference_page_id}` } : null };
+		const versions = saved.filter(({ id }) => id.startsWith(`${sheetFileName(entry.name)}-`)).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
+		// Before version selection existed, landing always used the newest output.
+		// Identify those legacy current files only when their save time is close
+		// to (and before) the recorded landing time; otherwise leave it unknown.
+		if (state.result && !state.result.source_file) {
+			const landed = Date.parse(state.result.made_at);
+			const legacy = versions.find((version) => { const delta = landed - Date.parse(version.made_at); return delta >= 0 && delta < 60_000; });
+			if (legacy) legacy.current = true;
+		}
+		// The stamped filename stays stable for downstream references; the browser
+		// must request fresh pixels whenever a different result lands there.
+		const visible = state.result ? { ...state, result: { ...state.result, url: `${state.result.url.split('?')[0]}?v=${encodeURIComponent(state.result.made_at)}` } } : state;
+		return { entry, state: visible, versions, template: templateFor(entry.kind, state.sources.length > 0), current: file && record ? { url: `/api/series/${record.series_id}/references?page_id=${entry.reference_page_id}` } : null };
 	});
 	return { ok: true, items, props: prep.props };
 }
@@ -394,7 +410,18 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 	}
 	const bodySource = view.state.sources.find((source) => source.url === view.state.body_source_url);
 	const scale = view.entry.kind === 'character' && bodySource ? await checkScale(deps, project, view, stamped, bodySource.file) : undefined;
-	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, result: { file: stamped, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
+	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, result: { file: stamped, source_file: file, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
+}
+
+/** Reuse an existing saved output without generating or deleting anything. */
+export async function usePrepVersion(deps: PrepDeps, project: Project, key: string, versionId: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const found = await findEntry(deps, project, key);
+	if (!found.ok) return found;
+	if (found.view.state.job) return fail(409, 'Wait for the current generation before choosing a saved version');
+	const version = found.view.versions.find((entry) => entry.id === versionId);
+	if (!version) return fail(404, 'That saved version does not belong to this Prep entry');
+	const file = join(deps.projectRoot, project.project_id, 'files', 'prep', 'made', version.id);
+	return { ok: true, prep: await land(deps, project, found.view, file, version.outside) };
 }
 
 /** The scale check on a character sheet; a failure to run it never stops a sheet from landing. */
