@@ -94,7 +94,6 @@
 	let jobs = $state<Record<string, JobStatus>>({});
 	let now = $state(Date.now());
 	$effect(() => { const tick = setInterval(() => (now = Date.now()), 1000); return () => clearInterval(tick); });
-	const ago = (at: number) => { const s = Math.max(0, Math.round((now - at) / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
 	const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 	async function make(key: string, approval: StillApproval) {
@@ -190,7 +189,7 @@
 							{@const job = jobs[key]}
 							<div class={['job', job.phase]} role="status">
 								{#if job.phase === 'sending'}<span class="pulse" aria-hidden="true"></span>Sending to Higgsfield…
-								{:else if job.phase === 'making'}<span class="pulse" aria-hidden="true"></span>Making on Higgsfield{job.job_id ? ` · job ${job.job_id.slice(0, 8)}` : ''} · sent {ago(job.since)} ago{job.checked ? ` · last checked ${ago(job.checked)} ago` : ''} · checks every 10 s
+								{:else if job.phase === 'making'}<span class="pulse" aria-hidden="true"></span>Making on Higgsfield · sent {clock(job.since)}
 								{:else if job.phase === 'returned'}Returned at {clock(job.since)}: the new sheet replaced the one in the References drawer (every render is kept under prep/made).
 									<button type="button" class="key" onclick={() => delete jobs[key]}>OK</button>
 								{:else}Not made: {job.message} <button type="button" class="key" onclick={() => delete jobs[key]}>OK</button>{/if}
@@ -257,7 +256,7 @@
 						{#if item.state.result}
 							<button type="button" class="pic" onclick={() => (zoom = { src: item.state.result!.url, alt: `${item.entry.name} reference` })} aria-label={`Show ${item.entry.name}'s reference big`}><img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" /></button>
 							{@const madeAt = Date.parse(item.state.result.made_at)}
-							<p class="muted">{#if now - madeAt < 15 * 60_000}<span class="new">New</span> {/if}Made {clock(madeAt)} · {ago(madeAt)} ago{item.state.result.uploaded ? ' · in the References drawer' : ''}{item.state.result.outside ? ' · made outside' : ''}</p>
+							<p class="muted">{#if now - madeAt < 15 * 60_000}<span class="new">New</span> {/if}Made {clock(madeAt)}{item.state.result.uploaded ? ' · in the References drawer' : ''}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
 							{#if item.entry.kind === 'character'}
 								{@const scale = item.state.result.scale}
