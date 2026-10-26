@@ -1,3 +1,4 @@
+import { handOffLine, referenceSpecSchema } from '../../src/lib/domain/prep';
 import { existsSync } from 'node:fs';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { copyFile, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -13,8 +14,10 @@ import { addSource, aspectOf, draftSpec, removeSource, prepQc, prepView, quotePr
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
-const SPEC = { name: 'x', kind: 'character', template: 'T1', description: 'A broad-shouldered freshman in a teal plaid button-down.', must_hold: ['teal plaid button-down', 'blue eyes'], from_sources: '' };
-const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens. She is 5\'6" (168 cm).\nGRADE: full natural colour, gently muted, one amber accent.\nCAMERA: 100mm, chest height, straight on.\nREALISM: real skin pores, real fabric.\nLOCKS: same person in all three panels.\nAVOID: fangs, leg lengthening, text, watermark.';
+const SPEC = { name: 'x', kind: 'character', template: 'T1', description: 'A broad-shouldered freshman in a teal plaid button-down.', must_hold: ['teal plaid button-down', 'blue eyes'], from_sources: '', identity: { sex: 'female', age: 19, height_cm: 168, build: 'slim', face: 'pale, watchful', eyes: 'amber-gold eyes', hair: 'dark bob', marks: 'cross choker' } };
+/** The hand-off line the app builds for that spec (the prompt must end with it). */
+const HAND_OFF = handOffLine(referenceSpecSchema.parse({ ...SPEC, name: 'Mara Voss' }));
+const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens. She is 5\'6" (168 cm).\nGRADE: full natural colour, gently muted, one amber accent.\nCAMERA: 100mm, chest height, straight on.\nREALISM: real skin pores, real fabric.\nLOCKS: same person in all three panels.\nAVOID: fangs, leg lengthening, text, watermark.\n' + HAND_OFF;
 
 async function setup() {
 	const root = await mkdtemp(join(tmpdir(), 'csp-prep-')); roots.push(root);
@@ -121,10 +124,11 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(view?.template).toBe('T5a');
 		expect(prepQc(PROMPT, view!).join(' ')).toContain('never names "image 1"');
 		expect(prepQc(PROMPT.replace('Mara Voss', 'Mara'), view!).join(' ')).toContain('exact name');
-		expect(prepQc(PROMPT.replace(/\nAVOID:.*$/, ''), view!).join(' ')).toContain('The AVOID section is missing');
+		expect(prepQc(PROMPT.replace(/\nAVOID:[^\n]*/, ''), view!).join(' ')).toContain('The AVOID section is missing');
 		expect(prepQc(PROMPT.replace('full natural colour', 'desaturated near-monochrome'), view!).join(' ')).toContain('full natural colour');
 		expect(prepQc(PROMPT.replace('fangs, ', ''), view!).join(' ')).toContain('Fangs must be listed under AVOID');
-		expect(prepQc(PROMPT.replace(" She is 5'6\" (168 cm).", ''), view!).join(' ')).toContain('true height');
+		expect(prepQc(PROMPT.replace(" She is 5'6\" (168 cm).", '').replace(HAND_OFF, ''), view!).join(' ')).toContain('true height');
+		expect(prepQc(PROMPT.replace(HAND_OFF, ''), view!).join(' ')).toContain('CHARACTER hand-off line');
 		expect(prepQc(PROMPT.replace('near-white seamless studio backdrop', 'rainy street at night'), view!).join(' ')).toContain('near-white seamless studio backdrop');
 		// Removing the source takes it (and its copy) off the entry and back to T1, spec cleared.
 		const removed = await removeSource(deps, projectId, 'r-mara', added.prep.entries['r-mara'].sources[0].url);

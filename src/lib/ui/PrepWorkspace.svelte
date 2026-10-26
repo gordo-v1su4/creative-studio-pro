@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Project } from '$lib/domain/schemas';
 	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
-	import { prepStage } from '$lib/domain/prep';
+	import { feetOf, handOffLine, identityGaps, prepStage } from '$lib/domain/prep';
 	import type { StillApproval } from '$lib/domain/stills';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 
@@ -20,7 +20,10 @@
 	let error = $state<string | null>(null);
 	let busy = $state<Record<string, string>>({});
 	let approvals = $state<Record<string, StillApproval>>({});
-	let drafts = $state<Record<string, { description: string; must_hold: string; from_sources: string }>>({});
+	type Identity = NonNullable<ReferenceSpec['identity']>;
+	type Draft = { from: string; description: string; must_hold: string; from_sources: string; identity: Identity; owned_element: string; colour_name: string; colour_hex: string; powers: string; ownership_lock: string };
+	let drafts = $state<Record<string, Draft>>({});
+	const emptyIdentity = (): Identity => ({ sex: '', age: null, height_cm: null, build: '', face: '', eyes: '', hair: '', marks: '' });
 	let promptDrafts = $state<Record<string, string>>({});
 	let newProp = $state('');
 	/** The picture shown big (click any picture; Esc or a click closes it). */
@@ -37,7 +40,9 @@
 		if (body.data) { items = body.data.items; spent = body.data.episode_spent; }
 		if (body.project) onUpdated(body.project);
 		for (const item of items) {
-			if (item.state.spec && !drafts[item.entry.key]) drafts[item.entry.key] = { description: item.state.spec.description, must_hold: item.state.spec.must_hold.join('\n'), from_sources: item.state.spec.from_sources };
+			const s = item.state.spec;
+			// A spec that changed on the server (drafted, filled, saved) replaces the local draft.
+			if (s && drafts[item.entry.key]?.from !== JSON.stringify(s)) drafts[item.entry.key] = { from: JSON.stringify(s), description: s.description, must_hold: s.must_hold.join('\n'), from_sources: s.from_sources, identity: { ...emptyIdentity(), ...(s.identity ?? {}) }, owned_element: s.owned_element ?? '', colour_name: s.owned_colour?.name ?? '', colour_hex: s.owned_colour?.hex ?? '', powers: (s.powers ?? []).join(', '), ownership_lock: s.ownership_lock ?? '' };
 			if (!item.state.spec) delete drafts[item.entry.key];
 			if (item.state.prompt !== null && promptDrafts[item.entry.key] === undefined) promptDrafts[item.entry.key] = item.state.prompt;
 			if (item.state.prompt === null) delete promptDrafts[item.entry.key];
@@ -76,7 +81,8 @@
 	};
 	const specOf = (item: View): ReferenceSpec => {
 		const d = drafts[item.entry.key];
-		return { name: item.entry.name, kind: item.entry.kind, template: item.template as ReferenceSpec['template'], description: d.description, must_hold: d.must_hold.split('\n').map((line) => line.trim()).filter(Boolean), from_sources: d.from_sources };
+		const base = { name: item.entry.name, kind: item.entry.kind, template: item.template as ReferenceSpec['template'], description: d.description, must_hold: d.must_hold.split('\n').map((line) => line.trim()).filter(Boolean), from_sources: d.from_sources, owned_element: d.owned_element, powers: d.powers.split(',').map((p) => p.trim()).filter(Boolean), ownership_lock: d.ownership_lock };
+		return item.entry.kind === 'character' ? { ...base, identity: d.identity, owned_colour: { name: d.colour_name, hex: d.colour_hex } } : base;
 	};
 	async function quote(key: string) {
 		delete approvals[key];
@@ -164,6 +170,26 @@
 						<div class="node-cap">Reference spec{item.state.spec_approved_at ? ' · approved' : ''}</div>
 						{#if busy[key]}<p class="working"><span class="pulse" aria-hidden="true"></span>{busy[key]}{busy[key].startsWith('The Agent') ? ' This takes about a minute.' : ''}</p>{/if}
 						{#if drafts[key]}
+							{#if item.entry.kind === 'character'}
+								{@const id = drafts[key].identity}
+								<div class="identity" aria-label="Identity">
+									<label><span>Sex</span><input bind:value={id.sex} placeholder="female" /></label>
+									<label><span>Age</span><input type="number" min="1" max="120" bind:value={id.age} placeholder="19" /></label>
+									<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="168" />{#if id.height_cm}<em>{feetOf(id.height_cm)}</em>{/if}</label>
+									<label class="wide"><span>Build</span><input bind:value={id.build} placeholder="slim, lightly athletic" /></label>
+									<label class="wide"><span>Face</span><input bind:value={id.face} placeholder="pale, watchful, straight dark brows" /></label>
+									<label><span>Eyes</span><input bind:value={id.eyes} placeholder="amber-gold eyes" /></label>
+									<label class="wide"><span>Hair</span><input bind:value={id.hair} placeholder="dark chin-length bob, centre part" /></label>
+									<label class="wide"><span>Marks</span><input bind:value={id.marks} placeholder="cross choker" /></label>
+									<label class="wide"><span>Owned element</span><input bind:value={drafts[key].owned_element} placeholder="night-blood vampirism" /></label>
+									<label><span>Owned colour</span><input bind:value={drafts[key].colour_name} placeholder="amber" /></label>
+									<label><span>Hex</span><input bind:value={drafts[key].colour_hex} placeholder="#D98A2B" /></label>
+									<label class="wide"><span>Powers (comma)</span><input bind:value={drafts[key].powers} placeholder="wall-run, blur-step" /></label>
+									<label class="full"><span>Ownership lock</span><input bind:value={drafts[key].ownership_lock} placeholder="How it shows physically, never as…" /></label>
+								</div>
+								<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item))}</p>
+								{#if identityGaps(specOf(item)).length}<p class="note">Still needs: {identityGaps(specOf(item)).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}
+							{/if}
 							<label class="field"><span>Description</span><textarea rows="4" bind:value={drafts[key].description}></textarea></label>
 							<label class="field"><span>Must hold (one per line)</span><textarea rows="3" bind:value={drafts[key].must_hold}></textarea></label>
 							{#if item.state.sources.length}<label class="field"><span>From the source images</span><textarea rows="2" bind:value={drafts[key].from_sources}></textarea></label>{/if}
@@ -269,6 +295,15 @@
 	.zoom img { max-width: 100%; max-height: calc(100vh - 80px); object-fit: contain; border: 1px solid var(--color-nr-line); border-radius: 2px; }
 	.zoom-cap { color: var(--color-nr-muted); font: 11px var(--font-mono); }
 	.note { color: #a99ff2; font-size: 11px; }
+	.identity { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+	.identity label { display: grid; gap: 2px; min-width: 0; }
+	.identity label.wide { grid-column: span 2; }
+	.identity label.full { grid-column: 1 / -1; }
+	.identity span { color: var(--color-nr-dim); font-size: 10.5px; }
+	.identity em { color: var(--color-nr-muted); font: normal 10px var(--font-mono); }
+	.identity input { min-width: 0; border: 1px solid var(--color-nr-line); border-radius: 2px; background: #0b0d11; padding: 3px 6px; color: var(--color-nr-ink); font: 12px var(--font-sans); outline: none; }
+	.identity input:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
+	.handoff { border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: #0b0d11; padding: 6px 8px; color: var(--color-nr-text); font: 11px/1.5 var(--font-mono); }
 	.working { display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, #4ab8ff 40%, transparent); border-radius: 2px; padding: 6px 8px; color: #4ab8ff; font-size: 12px; }
 	.row { display: flex; flex-wrap: wrap; gap: 6px; }
 	.field { display: grid; gap: 3px; }

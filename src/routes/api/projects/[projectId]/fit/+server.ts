@@ -15,6 +15,8 @@ import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { projectRules } from '$lib/server/animate';
 import { fitContext, type FitContext } from '$lib/server/episode-fit';
 import { freshIdeas, ghostSystem, proposeShots, SpecCheckFailed, writeShotPrompt } from '$lib/server/ghost-shots';
+import { readPrep } from '$lib/server/prep';
+import { handOffLine, identityGaps } from '$lib/domain/prep';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'VERSION_CONFLICT' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'fit' } }, { status });
 
@@ -135,6 +137,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const beats = record?.story_beats?.beats ?? [];
 	const banned = bannedTerms((await projectRules(getProjectRoot(), projectId.data)) ?? '');
 	const system = await ghostSystem();
+	// The ONE SHOT hand-off lines made in Prep (CHARACTER … / LOCATION …): Ghost uses them instead of re-describing anyone.
+	const prep = await readPrep(getProjectRoot(), projectId.data);
+	const handOffs = Object.fromEntries(Object.values(prep.entries).flatMap((state) => (state.spec && !identityGaps(state.spec).length ? [[state.spec.name, handOffLine(state.spec)]] : [])));
 	const target_min = b.target_min;
 	/** What Ghost reads for one scene (its action, dialogue, story beats, references, the shots so far). */
 	const contextFor = (current: Project, scene: FitContext['scene']): FitContext => {
@@ -145,7 +150,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const storyBeats = beats.filter((beat) => imported?.story_beat_ids?.includes(beat.page_id) || beat.scene_ids.includes(scene.page_id)).toSorted((x, y) => (x.order ?? 0) - (y.order ?? 0)).map((beat) => ({ title: beat.title, section: beat.section, summary: beat.summary }));
 		const references = allReferences.filter((ref) => imported?.reference_ids?.includes(ref.page_id) || ref.scene_ids.includes(scene.page_id));
 		const sceneCards = current.production.cards.filter((card) => card.group_id === scene.group_id).toSorted((x, y) => x.order - y.order);
-		return { story, series, outline, target_min, scene, sceneCards, banned, storyBeats, references, allReferences, nextScene: next ? { title: next.title, summary: next.summary } : null };
+		return { story, series, outline, target_min, scene, sceneCards, banned, storyBeats, references, allReferences, handOffs, nextScene: next ? { title: next.title, summary: next.summary } : null };
 	};
 
 	if (b.action === 'fresh_idea') {

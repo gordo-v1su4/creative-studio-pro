@@ -109,9 +109,61 @@ export const referenceSpecSchema = z.object({
 	/** The details that must hold in every shot (wardrobe, marks, eye colour, signage…). */
 	must_hold: z.array(z.string().trim().min(1).max(300)).min(1).max(12),
 	/** Which source images to lean on and how (empty without sources). */
-	from_sources: z.string().trim().max(1000).default('')
+	from_sources: z.string().trim().max(1000).default(''),
+	/** Characters: who they are, field by field (every character has an age and a height). */
+	identity: z.object({
+		sex: z.string().trim().max(40).default(''),
+		age: z.number().int().min(1).max(120).nullable().default(null),
+		height_cm: z.number().int().min(50).max(250).nullable().default(null),
+		build: z.string().trim().max(120).default(''),
+		face: z.string().trim().max(240).default(''),
+		eyes: z.string().trim().max(120).default(''),
+		hair: z.string().trim().max(160).default(''),
+		marks: z.string().trim().max(240).default('')
+	}).optional(),
+	/** The ONE SHOT hand-off parts (settings-and-qc.md, File 11): what the character owns across every shot. */
+	owned_element: z.string().trim().max(160).default(''),
+	owned_colour: z.object({ name: z.string().trim().max(60).default(''), hex: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).or(z.literal('')).default('') }).optional(),
+	powers: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
+	/** One sentence: what the owned element always looks like and what it is never mistaken for. */
+	ownership_lock: z.string().trim().max(400).default('')
 });
 export type ReferenceSpec = z.infer<typeof referenceSpecSchema>;
+
+const cm = (value: number) => `${value} cm`;
+/** Feet and inches for a height in cm, e.g. 168 → 5'6". */
+export const feetOf = (heightCm: number) => { const inches = Math.round(heightCm / 2.54); return `${Math.floor(inches / 12)}'${inches % 12}"`; };
+
+/** What a character spec still needs before its sheet can be made (age and height above all). */
+export function identityGaps(spec: ReferenceSpec): string[] {
+	if (spec.kind !== 'character') return [];
+	const id = spec.identity;
+	const gaps: string[] = [];
+	if (!id?.age) gaps.push('age');
+	if (!id?.height_cm) gaps.push('height (cm)');
+	if (!id?.sex) gaps.push('sex');
+	if (!id?.build) gaps.push('build');
+	return gaps;
+}
+
+/**
+ * The CHARACTER hand-off line in the ONE SHOT format, built from the fields so it reads the same for everyone:
+ * CHARACTER KAI — identity: male, 18, lean wiry free-runner, 178 cm, baby-faced with freckles, amber eyes, …;
+ * costume as sheet; owned element: …; owned colour: amber #D98A2B; powers: …. <ownership lock>
+ * Locations: LOCATION [NAME] — the description's first sentence.
+ */
+export function handOffLine(spec: ReferenceSpec): string {
+	if (spec.kind !== 'character') return `${spec.kind === 'location' ? 'LOCATION' : 'PROP'} ${spec.name.toUpperCase()} — ${spec.description.split(/(?<=\.)\s/)[0]}`;
+	const id = spec.identity;
+	const first = spec.name.replace(/"[^"]*"\s*/g, '').split(/\s+/)[0].toUpperCase();
+	const identity = [id?.sex, id?.age ? String(id.age) : '', id?.build, id?.height_cm ? cm(id.height_cm) : '', id?.face, id?.eyes, id?.hair, id?.marks].map((part) => (part ?? '').trim()).filter(Boolean).join(', ');
+	const colour = spec.owned_colour?.name || spec.owned_colour?.hex ? `${spec.owned_colour?.name ?? ''} ${spec.owned_colour?.hex ?? ''}`.trim() : '';
+	const parts = [`CHARACTER ${first} — identity: ${identity || 'to fill'}`, 'costume as sheet'];
+	if (spec.owned_element) parts.push(`owned element: ${spec.owned_element}`);
+	if (colour) parts.push(`owned colour: ${colour}`);
+	if (spec.powers.length) parts.push(`powers: ${spec.powers.join(', ')}`);
+	return `${parts.join('; ')}.${spec.ownership_lock ? ` ${spec.ownership_lock}` : ''}`;
+}
 
 export const prepSourceSchema = z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
 export const prepStateSchema = z.object({

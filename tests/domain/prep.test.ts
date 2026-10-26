@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { placeName, prepEntries, prepStage, sheetFileName, templateFor, emptyState } from '../../src/lib/domain/prep';
+import { emptyState, feetOf, handOffLine, identityGaps, placeName, prepEntries, prepStage, referenceSpecSchema, sheetFileName, templateFor } from '../../src/lib/domain/prep';
 
 const scenes = [
 	{ page_id: 's10', title: '2:47 AM', number: 10, location: 'Video Haven — back room / counter', characters: ['Kai', 'Mara', 'Malachi', 'Customer'] },
@@ -45,6 +45,21 @@ describe('the Prep list (V1S-374)', () => {
 		expect(entries.map((e) => e.name)).not.toContain('Lucian Vale');
 		// Video Haven's rear exit is still Video Haven.
 		expect(entries.find((e) => e.name === 'Video Haven')!.scenes.map((s) => s.title)).toEqual(['2:47 AM', 'Video Haven, Day', 'The Escape']);
+	});
+
+	test('the CHARACTER hand-off line is built from the fields in the ONE SHOT format; age and height are required', () => {
+		const kai = referenceSpecSchema.parse({
+			name: 'Kai "Hoodie" Santana', kind: 'character', template: 'T5a', description: 'x', must_hold: ['y'],
+			identity: { sex: 'male', age: 18, height_cm: 178, build: 'lean wiry free-runner', face: 'baby-faced with freckles', eyes: 'amber eyes', hair: 'bleached platinum curls', marks: 'two silver lower-lip rings' },
+			owned_element: 'night-blood vampirism', owned_colour: { name: 'amber', hex: '#D98A2B' }, powers: ['wall-run', 'impossible-angle flip', 'blur-step'],
+			ownership_lock: 'His vampirism shows only as slit amber pupils and short canines on physical, rain-soaked skin, never as glow, smoke, bats or a cape.'
+		});
+		expect(handOffLine(kai)).toBe('CHARACTER KAI — identity: male, 18, lean wiry free-runner, 178 cm, baby-faced with freckles, amber eyes, bleached platinum curls, two silver lower-lip rings; costume as sheet; owned element: night-blood vampirism; owned colour: amber #D98A2B; powers: wall-run, impossible-angle flip, blur-step. His vampirism shows only as slit amber pupils and short canines on physical, rain-soaked skin, never as glow, smoke, bats or a cape.');
+		expect(identityGaps(kai)).toEqual([]);
+		expect(identityGaps({ ...kai, identity: { ...kai.identity!, age: null, height_cm: null } })).toEqual(['age', 'height (cm)']);
+		// Specs drafted before identity fields still parse; they just have gaps.
+		expect(identityGaps(referenceSpecSchema.parse({ name: 'Mara Voss', kind: 'character', template: 'T1', description: 'x', must_hold: ['y'] }))).toEqual(['age', 'height (cm)', 'sex', 'build']);
+		expect(feetOf(168)).toBe('5\'6"');
 	});
 
 	test('templates follow the ONE SHOT skill: T1/T5a characters, W3/W8 locations, W6 props', () => {

@@ -29,6 +29,8 @@ export interface FitContext {
 	storyBeats?: Array<{ title: string; section: string; summary: string }>;
 	/** V1S-329: the scene's references (exact names, handles, kinds). */
 	references?: Array<HandleReference & { role: string }>;
+	/** Exact reference name → its ONE SHOT hand-off line (CHARACTER … / LOCATION …), from Prep. */
+	handOffs?: Record<string, string>;
 	/** Every reference in the series, for compiling handles (defaults to the scene's). */
 	allReferences?: HandleReference[];
 }
@@ -53,7 +55,7 @@ export function fitContext(input: FitContext): string {
 		].filter(Boolean).join('\n');
 	};
 	const beats = (input.storyBeats ?? []).map((beat) => `- ${beat.title}${beat.section ? ` (${beat.section})` : ''}: ${beat.summary || '—'}`).join('\n');
-	const refs = (input.references ?? []).map((ref) => `- ${ref.handles.join(' ') || '(no handle)'} → ${ref.name} (${ref.kind || 'reference'})${ref.role ? ` — ${ref.role}` : ''}`).join('\n');
+	const refs = (input.references ?? []).map((ref) => `- ${ref.handles.join(' ') || '(no handle)'} → ${ref.name} (${ref.kind || 'reference'})${ref.role ? ` — ${ref.role}` : ''}${input.handOffs?.[ref.name] ? `\n  ${input.handOffs[ref.name]}` : ''}`).join('\n');
 	const text = [
 		input.story ? `THE SEASON STORY (the bible: never contradict it, never reveal its secrets early):\n${input.story}` : '',
 		`THIS EPISODE: ${input.series.episode_title}\n${input.series.summary}${input.series.twist ? `\nMid-episode twist: ${input.series.twist}` : ''}${input.series.cliffhanger ? `\nCliffhanger: ${input.series.cliffhanger}` : ''}`,
@@ -62,7 +64,7 @@ export function fitContext(input: FitContext): string {
 		`ACTION (what happens, in order; cover all of it):\n${scene.story_beats || '—'}`,
 		`DIALOGUE (the script: every line goes in exactly one shot, verbatim, in this order):\n${scene.dialogue?.trim() || '(none: no one speaks in this scene)'}`,
 		`SEASON STORY BEATS THIS SCENE CARRIES (show each one on screen):\n${beats || '(none linked)'}`,
-		`REFERENCES (use only these, by @handle; the app writes the exact name and attaches the image):\n${refs || '(none: give everyone an exact, fixed name)'}`,
+		`REFERENCES (use only these, by @handle; the app writes the exact name and attaches the image; a CHARACTER / LOCATION line under one is how that reference is described, use it as given and never re-describe it):\n${refs || '(none: give everyone an exact, fixed name)'}`,
 		`ITS SHOTS SO FAR, IN ORDER (they stay; yours play after the last one):\n${input.sceneCards.map(detail).join('\n') || '(none yet)'}`,
 		input.nextScene ? `THE NEXT SCENE (your last shot leads into it): ${input.nextScene.title}: ${input.nextScene.summary}` : 'This is the episode\'s last scene.'
 	].filter(Boolean).join('\n\n');
