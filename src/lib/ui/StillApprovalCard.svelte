@@ -11,6 +11,14 @@
 	} = $props();
 	let showPrompt = $state(false);
 	const blocked = $derived(approval.blocked.length > 0 || approval.credits === null);
+	// Approve arms 1.5 s after a new price appears, so the click that asked for the price can never also spend.
+	let armed = $state(false);
+	$effect(() => {
+		void approval.approval_key;
+		armed = false;
+		const timer = setTimeout(() => (armed = true), 1500);
+		return () => clearTimeout(timer);
+	});
 </script>
 
 <div class={['approval', blocked && 'bad']} aria-label={`Approve ${title}`}>
@@ -36,8 +44,8 @@
 	{#if showPrompt}<pre class="prompt">{approval.prompt}</pre>{/if}
 	{#each approval.blocked as reason, r (r)}<p class="reason">{reason}</p>{/each}
 	<div>
-		<button type="button" class="key on" disabled={busy || blocked} onclick={() => onapprove(approval)}>
-			{busy ? busyLabel : blocked ? 'Blocked' : `Approve · ${approval.credits} cr`}
+		<button type="button" class="key on" disabled={busy || blocked || !armed} onclick={() => { if (armed) onapprove(approval); }}>
+			{busy ? busyLabel : blocked ? 'Blocked' : armed ? `Approve · ${approval.credits} cr` : 'Read the card…'}
 		</button>
 	</div>
 </div>

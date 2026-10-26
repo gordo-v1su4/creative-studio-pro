@@ -89,23 +89,41 @@
 		const body = await call(key, 'Pricing…', { action: 'quote', key });
 		if (body?.approval) approvals[key] = body.approval as StillApproval;
 	}
+	/** One sheet's trip to Higgsfield, shown until it comes back (the busy label only covers a single request). */
+	type JobStatus = { phase: 'sending' | 'making' | 'returned' | 'failed'; job_id?: string; since: number; checked?: number; message?: string };
+	let jobs = $state<Record<string, JobStatus>>({});
+	let now = $state(Date.now());
+	$effect(() => { const tick = setInterval(() => (now = Date.now()), 1000); return () => clearInterval(tick); });
+	const ago = (at: number) => { const s = Math.max(0, Math.round((now - at) / 1000)); return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min ${s % 60} s`; };
+	const clock = (at: number) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
 	async function make(key: string, approval: StillApproval) {
 		// The card goes away at once so a second press can never send twice; a failed send asks for a fresh price.
 		delete approvals[key];
+		jobs[key] = { phase: 'sending', since: Date.now() };
 		const sent = await call(key, 'Sending to Higgsfield…', { action: 'send', key, approval_key: approval.approval_key, confirmed_credits: approval.credits ?? 0 });
-		if (sent) await watch(key);
+		if (!sent) { jobs[key] = { phase: 'failed', since: Date.now(), message: error ?? 'The send did not go through' }; return; }
+		jobs[key] = { phase: 'making', job_id: sent.job_id, since: Date.now() };
+		await watch(key);
 	}
 	/** Check a sent sheet every 10 s until it lands (also picks up a job still making after a reload). */
+	const watching = new Set<string>();
 	async function watch(key: string) {
-		if (busy[key]) return;
-		busy[key] = 'Making… (checks every 10 s)';
-		try {
-			for (let tries = 0; tries < 90; tries++) {
-				await new Promise((done) => setTimeout(done, 10_000));
-				const settled = await call(key, 'Making… (checks every 10 s)', { action: 'settle', key });
-				if (!settled || !settled.pending) break;
-			}
-		} finally { delete busy[key]; }
+		if (watching.has(key)) return;
+		watching.add(key);
+		try { await poll(key); } finally { watching.delete(key); }
+	}
+	async function poll(key: string) {
+		const item = items.find((entry) => entry.entry.key === key);
+		if (!jobs[key] || jobs[key].phase !== 'making') jobs[key] = { phase: 'making', job_id: item?.state.job?.job_id, since: item?.state.job ? Date.parse(item.state.job.sent_at) : Date.now() };
+		for (let tries = 0; tries < 90; tries++) {
+			await new Promise((done) => setTimeout(done, 10_000));
+			const settled = await call(key, 'Checking Higgsfield…', { action: 'settle', key });
+			if (!settled) { jobs[key] = { ...jobs[key], phase: 'failed', message: error ?? 'Higgsfield did not return the sheet' }; return; }
+			if (!settled.pending) { jobs[key] = { ...jobs[key], phase: 'returned', since: Date.now() }; return; }
+			jobs[key] = { ...jobs[key], checked: Date.now() };
+		}
+		jobs[key] = { ...jobs[key], phase: 'failed', message: 'Still not back after 15 minutes; reload the page to keep checking' };
 	}
 	const stageLabel: Record<ReturnType<typeof prepStage>, string> = { sources: 'Needs a spec', spec: 'Spec to approve', approved: 'Write the prompt', prompt: 'Ready to make', sent: 'Making', made: 'Made' };
 </script>
@@ -168,7 +186,21 @@
 					<!-- 2. reference spec -->
 					<div class="node wide">
 						<div class="node-cap">Reference spec{item.state.spec_approved_at ? ' · approved' : ''}</div>
-						{#if busy[key]}<p class="working"><span class="pulse" aria-hidden="true"></span>{busy[key]}{busy[key].startsWith('The Agent') ? ' This takes about a minute.' : ''}</p>{/if}
+						{#if jobs[key]}
+							{@const job = jobs[key]}
+							<div class={['job', job.phase]} role="status">
+								{#if job.phase === 'sending'}<span class="pulse" aria-hidden="true"></span>Sending to Higgsfield…
+								{:else if job.phase === 'making'}<span class="pulse" aria-hidden="true"></span>Making on Higgsfield{job.job_id ? ` · job ${job.job_id.slice(0, 8)}` : ''} · sent {ago(job.since)} ago{job.checked ? ` · last checked ${ago(job.checked)} ago` : ''} · checks every 10 s
+								{:else if job.phase === 'returned'}Returned at {clock(job.since)}: the new sheet replaced the one in the References drawer (every render is kept under prep/made).
+									<button type="button" class="key" onclick={() => delete jobs[key]}>OK</button>
+								{:else}Not made: {job.message} <button type="button" class="key" onclick={() => delete jobs[key]}>OK</button>{/if}
+								{#if job.phase !== 'failed'}
+									<!-- A sheet usually takes 1–2 minutes: the bar creeps to 95% while making and fills when it is back. -->
+									<span class="bar" aria-hidden="true"><span style:width={job.phase === 'returned' ? '100%' : job.phase === 'sending' ? '4%' : `${Math.min(95, 5 + ((now - job.since) / 120_000) * 90)}%`}></span></span>
+								{/if}
+							</div>
+						{/if}
+						{#if busy[key] && !(jobs[key] && (jobs[key].phase === 'making' || jobs[key].phase === 'sending'))}<p class="working"><span class="pulse" aria-hidden="true"></span>{busy[key]}{busy[key].startsWith('The Agent') ? ' This takes about a minute.' : ''}</p>{/if}
 						{#if drafts[key]}
 							{#if item.entry.kind === 'character'}
 								{@const id = drafts[key].identity}
@@ -224,7 +256,8 @@
 						<div class="node-cap">Reference · what comes back</div>
 						{#if item.state.result}
 							<button type="button" class="pic" onclick={() => (zoom = { src: item.state.result!.url, alt: `${item.entry.name} reference` })} aria-label={`Show ${item.entry.name}'s reference big`}><img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" /></button>
-							<p class="muted">{item.state.result.uploaded ? 'In the References drawer' : 'Made'}{item.state.result.outside ? ' · made outside' : ''}</p>
+							{@const madeAt = Date.parse(item.state.result.made_at)}
+							<p class="muted">{#if now - madeAt < 15 * 60_000}<span class="new">New</span> {/if}Made {clock(madeAt)} · {ago(madeAt)} ago{item.state.result.uploaded ? ' · in the References drawer' : ''}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
 							{#if item.entry.kind === 'character'}
 								{@const scale = item.state.result.scale}
@@ -322,6 +355,12 @@
 	.identity input { min-width: 0; border: 1px solid var(--color-nr-line); border-radius: 2px; background: #0b0d11; padding: 3px 6px; color: var(--color-nr-ink); font: 12px var(--font-sans); outline: none; }
 	.identity input:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
 	.handoff { border: 1px solid var(--color-nr-line-soft); border-radius: 2px; background: #0b0d11; padding: 6px 8px; color: var(--color-nr-text); font: 11px/1.5 var(--font-mono); }
+	.job { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, #8174e8 50%, transparent); border-radius: 2px; padding: 6px 8px; color: #a99ff2; font-size: 12px; }
+	.job.returned { border-color: color-mix(in srgb, #4ee8d2 45%, transparent); color: #4ee8d2; }
+	.bar { flex-basis: 100%; height: 3px; border-radius: 2px; background: var(--color-nr-line-soft); overflow: hidden; }
+	.bar span { display: block; height: 100%; background: linear-gradient(90deg, #4ee8d2, #4ab8ff 60%, #8174e8); transition: width 900ms linear; }
+	.new { border: 1px solid color-mix(in srgb, #4ee8d2 50%, transparent); border-radius: 2px; padding: 0 5px; color: #4ee8d2; font: 600 9px/15px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
+	.job.failed { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
 	.working { display: flex; align-items: center; gap: 8px; border: 1px solid color-mix(in srgb, #4ab8ff 40%, transparent); border-radius: 2px; padding: 6px 8px; color: #4ab8ff; font-size: 12px; }
 	.row { display: flex; flex-wrap: wrap; gap: 6px; }
 	.field { display: grid; gap: 3px; }
