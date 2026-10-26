@@ -1,13 +1,13 @@
 <script lang="ts">
 	import type { Project } from '$lib/domain/schemas';
 	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
-	import { handOffLine, identityGaps, prepStage } from '$lib/domain/prep';
+	import { factsGaps, handOffLine, identityGaps, notesOf, prepStage } from '$lib/domain/prep';
 	import type { StillApproval } from '$lib/domain/stills';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 
 	/**
 	 * Prep (V1S-374): the references an episode needs, as a dependency graph per entry — source images →
-	 * reference spec → prompt and approval → reference → the scenes that use it. Characters first, then
+	 * facts → prompt (one pass from the skill and the images) → price card → reference → the scenes that use it. Characters first, then
 	 * locations, then props added by name. Every sheet goes through the approval card; a finished one lands in
 	 * the series' References drawer.
 	 */
@@ -21,7 +21,7 @@
 	let busy = $state<Record<string, string>>({});
 	let approvals = $state<Record<string, StillApproval>>({});
 	type Identity = NonNullable<ReferenceSpec['identity']>;
-	type Draft = { from: string; description: string; must_hold: string; from_sources: string; identity: Identity; owned_element: string; colour_name: string; colour_hex: string; powers: string; ownership_lock: string };
+	type Draft = { from: string; notes: string; identity: Identity; owned_element: string; colour_name: string; colour_hex: string; powers: string; ownership_lock: string };
 	let drafts = $state<Record<string, Draft>>({});
 	const emptyIdentity = (): Identity => ({ sex: '', age: null, height_cm: null, build: '', face: '', eyes: '', hair: '', marks: '' });
 	let promptDrafts = $state<Record<string, string>>({});
@@ -42,7 +42,7 @@
 		for (const item of items) {
 			const s = item.state.spec;
 			// A spec that changed on the server (drafted, filled, saved) replaces the local draft.
-			if (s && drafts[item.entry.key]?.from !== JSON.stringify(s)) drafts[item.entry.key] = { from: JSON.stringify(s), description: s.description, must_hold: s.must_hold.join('\n'), from_sources: s.from_sources, identity: { ...emptyIdentity(), ...(s.identity ?? {}) }, owned_element: s.owned_element ?? '', colour_name: s.owned_colour?.name ?? '', colour_hex: s.owned_colour?.hex ?? '', powers: (s.powers ?? []).join(', '), ownership_lock: s.ownership_lock ?? '' };
+			if (s && drafts[item.entry.key]?.from !== JSON.stringify(s)) drafts[item.entry.key] = { from: JSON.stringify(s), notes: notesOf(s), identity: { ...emptyIdentity(), ...(s.identity ?? {}) }, owned_element: s.owned_element ?? '', colour_name: s.owned_colour?.name ?? '', colour_hex: s.owned_colour?.hex ?? '', powers: (s.powers ?? []).join(', '), ownership_lock: s.ownership_lock ?? '' };
 			if (!item.state.spec) delete drafts[item.entry.key];
 			if (item.state.prompt !== null && promptDrafts[item.entry.key] === undefined) promptDrafts[item.entry.key] = item.state.prompt;
 			if (item.state.prompt === null) delete promptDrafts[item.entry.key];
@@ -81,9 +81,15 @@
 	};
 	const specOf = (item: View): ReferenceSpec => {
 		const d = drafts[item.entry.key];
-		const base = { name: item.entry.name, kind: item.entry.kind, template: item.template as ReferenceSpec['template'], description: d.description, must_hold: d.must_hold.split('\n').map((line) => line.trim()).filter(Boolean), from_sources: d.from_sources, owned_element: d.owned_element, powers: d.powers.split(',').map((p) => p.trim()).filter(Boolean), ownership_lock: d.ownership_lock };
+		const base = { name: item.entry.name, kind: item.entry.kind, template: item.template as ReferenceSpec['template'], notes: d.notes, description: '', must_hold: [], from_sources: '', owned_element: d.owned_element, powers: d.powers.split(',').map((p) => p.trim()).filter(Boolean), ownership_lock: d.ownership_lock };
 		return item.entry.kind === 'character' ? { ...base, identity: d.identity, owned_colour: { name: d.colour_name, hex: d.colour_hex } } : base;
 	};
+	/** Write the prompt: the facts as typed are saved first, so the writer reads what is on screen. */
+	async function writePrompt(item: View) {
+		const key = item.entry.key;
+		if (drafts[key] && drafts[key].from !== JSON.stringify(specOf(item)) && !(await call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false }))) return;
+		await call(key, 'The Agent is looking at the images and writing…', { action: 'write_prompt', key });
+	}
 	async function quote(key: string) {
 		delete approvals[key];
 		const body = await call(key, 'Pricing…', { action: 'quote', key });
@@ -124,7 +130,7 @@
 		}
 		jobs[key] = { ...jobs[key], phase: 'failed', message: 'Still not back after 15 minutes; reload the page to keep checking' };
 	}
-	const stageLabel: Record<ReturnType<typeof prepStage>, string> = { sources: 'Needs a spec', spec: 'Spec to approve', approved: 'Write the prompt', prompt: 'Ready to make', sent: 'Making', made: 'Made' };
+	const stageLabel: Record<ReturnType<typeof prepStage>, string> = { sources: 'Needs facts', spec: 'Write the prompt', prompt: 'Ready to price', sent: 'Making', made: 'Made' };
 </script>
 
 <svelte:window onkeydown={(event) => { if (event.key === 'Escape') zoom = null; }} />
@@ -139,7 +145,7 @@
 		<div>
 			<div class="cap accent">PREP · REFERENCES</div>
 			<h2 class="title">What {project.series?.episode_title ?? 'this episode'} needs</h2>
-			<p class="lede">Each reference is made to the ONE SHOT standard from a spec you approve, then lands in the References drawer. Characters first, then locations.</p>
+			<p class="lede">Each reference is made to the ONE SHOT standard in one pass from the skill, your images and the facts; you approve it on the price card, then it lands in the References drawer. Characters first, then locations.</p>
 		</div>
 		<span class="mono">episode spend {spent} cr</span>
 	</header>
@@ -171,9 +177,9 @@
 						<div class="node-cap">Source images · what you feed in</div>
 						<div class="thumbs">
 							{#each item.state.sources as source, i (source.url)}
-								<figure><button type="button" class="remove" disabled={!!busy[key]} onclick={() => void call(key, 'Removing…', { action: 'remove_source', key, url: source.url })} title={`Remove ${source.name} (the spec is redrafted without it)`} aria-label={`Remove ${source.name}`}>×</button><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={source.url} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
+								<figure><button type="button" class="remove" disabled={!!busy[key]} onclick={() => void call(key, 'Removing…', { action: 'remove_source', key, url: source.url })} title={`Remove ${source.name} (the prompt is rewritten without it)`} aria-label={`Remove ${source.name}`}>×</button><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={source.url} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
 							{:else}
-								<p class="muted">None yet: {item.template === 'T1' || item.template === 'W3' ? 'made from the spec alone' : ''}</p>
+								<p class="muted">None yet: {item.template === 'T1' || item.template === 'W3' ? 'made from the facts alone' : ''}</p>
 							{/each}
 						</div>
 						<div class="row">
@@ -182,9 +188,9 @@
 						</div>
 					</div>
 					<span class="edge" aria-hidden="true"></span>
-					<!-- 2. reference spec -->
+					<!-- 2. the facts, then the prompt (one pass: the skill, the images, the facts), then the price card -->
 					<div class="node wide">
-						<div class="node-cap">Reference spec{item.state.spec_approved_at ? ' · approved' : ''}</div>
+						<div class="node-cap">Facts · what the pictures can't say</div>
 						{#if jobs[key]}
 							{@const job = jobs[key]}
 							<div class={['job', job.phase]} role="status">
@@ -221,28 +227,26 @@
 								<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item))}</p>
 								{#if identityGaps(specOf(item)).length}<p class="note">Still needs: {identityGaps(specOf(item)).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}
 							{/if}
-							<label class="field"><span>Description</span><textarea rows="4" bind:value={drafts[key].description}></textarea></label>
-							<label class="field"><span>Must hold (one per line)</span><textarea rows="3" bind:value={drafts[key].must_hold}></textarea></label>
-							{#if item.state.sources.length}<label class="field"><span>From the source images</span><textarea rows="2" bind:value={drafts[key].from_sources}></textarea></label>{/if}
+							<label class="field"><span>{item.entry.kind === 'character' ? 'Notes · only changes from the pictures (e.g. dry hair, teal plaid instead of the hoodie)' : 'Notes · what it is, its era, sizes in metres'}</span><textarea rows="3" bind:value={drafts[key].notes}></textarea></label>
 							<div class="row">
-								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false })}>Save</button>
-								<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'Approving…', { action: 'save_spec', key, spec: specOf(item), approve: true })}>{item.state.spec_approved_at ? 'Approve again' : 'Approve spec'}</button>
-								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting…', { action: 'draft_spec', key })}>Redraft</button>
+								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false })}>Save facts</button>
+								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting the facts…', { action: 'draft_spec', key })}>Redraft facts</button>
 							</div>
 						{:else}
-							<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting…', { action: 'draft_spec', key })}>Draft spec</button>
+							<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting the facts…', { action: 'draft_spec', key })}>Draft facts</button>
 						{/if}
-						{#if item.state.spec_approved_at}
-							<div class="node-cap sub">Prompt{item.state.prompt_edited ? ' · edited by hand' : ''}</div>
+						{#if drafts[key]}
+							<div class="node-cap sub">Prompt · written from the skill, the images and the facts{item.state.prompt_edited ? ' · edited by hand' : ''}</div>
 							{#if promptDrafts[key] !== undefined}
 								<textarea class="prompt" rows="6" bind:value={promptDrafts[key]} aria-label="Prompt"></textarea>
 								<div class="row">
 									{#if promptDrafts[key] !== item.state.prompt}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'edit_prompt', key, prompt: promptDrafts[key] })}>Keep my edit</button>{/if}
-									<button type="button" class="key" disabled={!!busy[key]} onclick={() => { delete promptDrafts[key]; void call(key, 'The Agent is writing…', { action: 'write_prompt', key }); }}>Rewrite</button>
+									<button type="button" class="key" disabled={!!busy[key]} onclick={() => { delete promptDrafts[key]; void writePrompt(item); }}>Rewrite</button>
 									<button type="button" class="key on" disabled={!!busy[key] || promptDrafts[key] !== item.state.prompt} onclick={() => void quote(key)}>Check and price</button>
 								</div>
 							{:else}
-								<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is writing…', { action: 'write_prompt', key })}>Write prompt</button>
+								{@const gaps = factsGaps(specOf(item), item.entry.kind)}
+								<button type="button" class="key on" disabled={!!busy[key] || gaps.length > 0} title={gaps.length ? `Fill in ${gaps.join(', ')} first` : 'The Agent looks at the images, gives each one its job and writes the prompt'} onclick={() => void writePrompt(item)}>Write prompt</button>
 							{/if}
 							{#if approvals[key]}
 								<StillApprovalCard title={`${item.entry.name} · ${item.template}`} approval={approvals[key]} busy={!!busy[key]} busyLabel={busy[key] ?? ''} onapprove={(approval) => void make(key, approval)} />

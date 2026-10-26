@@ -3,7 +3,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import type { Project } from '$lib/domain/schemas';
 import {
-	emptyPrep, emptyState, handOffLine, identityGaps, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
+	emptyPrep, emptyState, factsGaps, handOffLine, identityGaps, notesOf, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
 	type PrepEntry, type PrepFile, type PrepState, type ReferenceSpec, type ScaleCheck
 } from '$lib/domain/prep';
 import type { StillApproval } from '$lib/domain/stills';
@@ -152,24 +152,29 @@ function entryContext(view: PrepView, project: Project, record: SeriesRecord | n
 
 async function sourceImages(state: PrepState): Promise<ModelImage[]> {
 	const out: ModelImage[] = [];
-	for (const source of state.sources.slice(0, 3)) {
+	for (const source of state.sources.slice(0, 6)) {
 		const ext = extname(source.file).toLowerCase();
 		try { out.push({ data: new Uint8Array(await readFile(source.file)), mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg' }); } catch { /* a missing file is skipped */ }
 	}
 	return out;
 }
 
-/** The Agent drafts the reference spec (fields only, no prompt); the operator edits and approves it. */
+/**
+ * The Agent drafts the facts: for a character the identity and hand-off fields, for a place or prop a short note
+ * on what it is. Never a description of the pictures; the operator's own notes are kept.
+ */
 export async function draftSpec(deps: PrepDeps, project: Project, key: string): Promise<{ ok: true; spec: ReferenceSpec; prep: PrepFile } | Failure> {
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
 	const { view } = found;
-	const ask = `${entryContext(view, project, found.record)}\n\nDraft the REFERENCE SPEC for this reference: the fields it will be made from, not the prompt. Return only JSON:\n{"name": "${view.entry.name}", "kind": "${view.entry.kind}", "template": "${view.template}", "description": "one plain paragraph: who or what it is and how it looks", "must_hold": ["each detail that must hold in every shot"], "from_sources": "which source images to lean on and how (empty if none)"${view.entry.kind === 'character' ? IDENTITY_FIELDS : ''}}\nUse the exact name as given. Never use the word "neon".${view.entry.kind === 'character' ? IDENTITY_RULES : ''}${view.state.sources.length > 1 ? SOURCE_ROLES : ''}`;
+	const character = view.entry.kind === 'character';
+	const ask = `${entryContext(view, project, found.record)}\n\nDraft the FACTS this reference is made from: only what the pictures cannot say. Do not describe the pictures; the prompt writer looks at them itself. Return only JSON:\n{"name": "${view.entry.name}", "kind": "${view.entry.kind}", "template": "${view.template}"${character ? IDENTITY_FIELDS : ', "notes": "two or three plain sentences: what this place or thing is in the story, its era and where it stands; sizes in metres"'}}\nUse the exact name as given. Never use the word "neon".${character ? IDENTITY_RULES : ''}`;
 	const parse = (value: unknown) => {
 		const spec = referenceSpecSchema.parse(value);
-		return { ...spec, name: view.entry.name, kind: view.entry.kind, template: view.template as ReferenceSpec['template'] };
+		const notes = character ? (view.state.spec?.notes ?? '') : spec.notes;
+		return { ...spec, notes, description: '', must_hold: [], from_sources: '', name: view.entry.name, kind: view.entry.kind, template: view.template as ReferenceSpec['template'] };
 	};
 	const system = await skillSystem();
 	const images = await sourceImages(view.state);
@@ -211,8 +216,8 @@ export async function saveSpec(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, p
 
 /** The identity and hand-off fields a character spec carries (ONE SHOT settings-and-qc.md, File 11). */
 const IDENTITY_FIELDS = ', "identity": {"sex": "male|female|…", "age": 19, "height_cm": 178, "build": "lean wiry free-runner", "face": "the face in one clause", "eyes": "amber eyes", "hair": "bleached platinum curls", "marks": "two silver lower-lip rings"}, "owned_element": "what supernatural element is theirs, or empty", "owned_colour": {"name": "amber", "hex": "#D98A2B"}, "powers": ["named powers, stable names"], "ownership_lock": "one sentence: how the element shows physically and what it is never mistaken for"';
-/** How several source images split the work (ONE SHOT T5b: each image gets one named job). */
-const SOURCE_ROLES = '\nWith more than one source image, give each one job: the image with the closest, largest view of the face (the portrait or close-up) is the FACE reference, because it carries the most detail; the face comes from it alone. A full-body image is there for what the face image cannot show: body, build, muscle, proportions, height and wardrobe. Say which image does which job in from_sources.';
+/** How the writer splits the attached images (ONE SHOT settings-and-qc: every reference image gets exactly one job, named). */
+const IMAGE_JOBS = 'Look at every attached image and give each one exactly one job, named in the prompt as "Image N controls …" (never "combine these naturally"). The image with the closest, sharpest view of the face controls the face; the image that shows the whole body best controls the body: build, muscle, proportions (leg length against torso) and the wardrobe as it sits on the body. Any other image gets its own named job, or is named as not used. Take no background, weather or light from any image.';
 const IDENTITY_RULES = '\nEvery character has an age and a height in centimetres: take them from the story, a data card on a source image, or the build you can see; never leave them out. Write face, eyes, hair and marks as short clauses, the way the CHARACTER hand-off line reads.';
 
 /** The look sections every character sheet prompt carries (oneshot-image-prompts output format). */
@@ -244,18 +249,38 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 	// The skill's look blocks, each as its own labelled section, so every sheet says how it should look.
 	if (view.entry.kind === 'character') for (const section of SHEET_SECTIONS) if (!new RegExp(`^\\s*\\**${section}\\**\\s*:`, 'mi').test(prompt)) out.push(`The ${section} section is missing ("${section}: …" on its own line)`);
 	for (const [i, source] of view.state.sources.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`, 'i').test(prompt) && view.state.sources.length) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
+	if (view.state.sources.length > 1 && !/\bimage \d+ controls\b/i.test(prompt)) out.push('Give each attached image its one job in the prompt ("Image N controls …")');
 	return out;
 }
 
-/** The prompt, written from the approved spec with the skill's template; then the approval card. */
+/** The facts the writer gets: identity and hand-off fields for a character, notes for a place or prop. */
+function factsText(spec: ReferenceSpec): string {
+	if (spec.kind !== 'character') return `NOTES: ${notesOf(spec)}`;
+	const id = spec.identity;
+	return [
+		`IDENTITY: ${[id?.sex, id?.age ? `${id.age}` : '', id?.height_cm ? `${id.height_cm} cm` : '', id?.build].filter(Boolean).join(', ')}`,
+		id?.face || id?.eyes || id?.hair || id?.marks ? `FACE, EYES, HAIR, MARKS (as the story has them; the pictures win on looks): ${[id?.face, id?.eyes, id?.hair, id?.marks].filter(Boolean).join('; ')}` : '',
+		spec.owned_element ? `OWNED ELEMENT: ${spec.owned_element}` : '',
+		spec.owned_colour?.hex ? `OWNED COLOUR: ${spec.owned_colour.name} ${spec.owned_colour.hex}` : '',
+		spec.powers.length ? `POWERS: ${spec.powers.join(', ')}` : '',
+		spec.ownership_lock ? `LOCK: ${spec.ownership_lock}` : '',
+		spec.notes ? `THE OPERATOR'S NOTES (these override the pictures): ${spec.notes}` : ''
+	].filter(Boolean).join('\n');
+}
+
+/**
+ * The prompt in one pass, as the skill would write it: the skill, the source images themselves (in order) and the
+ * facts. The writer gives each image its job; the QC repairs it; then the price card is the approval.
+ */
 export async function writePrompt(deps: PrepDeps, project: Project, key: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
 	const { view } = found;
-	if (!view.state.spec || !view.state.spec_approved_at) return fail(400, 'Approve the reference spec first');
+	const gaps = factsGaps(view.state.spec, view.entry.kind);
+	if (!view.state.spec || gaps.length) return fail(400, `Fill in ${gaps.join(', ')} first`);
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nAPPROVED REFERENCE SPEC (write from this, change nothing in it):\n${JSON.stringify(view.state.spec, null, 2)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `The source images are attached in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly.${view.state.sources.length > 1 ? SOURCE_ROLES.replace('in from_sources', 'and name each job in the prompt (image N controls the face; image M controls the body and wardrobe)') : ''}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. Frame the frontal full-body panel from the collarbones down, exactly as House Rule #1 words it: the same body as the rear panel, zoomed in evenly so the feet stay in frame and the head leaves the top edge. The zoom is even in every direction: leg length, torso length and width keep the rear panel's proportions, never stretched taller or narrower. State the true height in centimetres only (from the spec): never feet or inches, never a comparison. When a source image shows the full body, match its body proportions one-to-one: leg length against torso (the inseam exactly), build and shoulder width, neck length. Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. Use the identity fields of the spec for the SUBJECT (age, ${view.state.spec.identity?.height_cm ?? '?'} cm). End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. Frame the frontal full-body panel from the collarbones down, exactly as House Rule #1 words it: the same body as the rear panel, zoomed in evenly so the feet stay in frame and the head leaves the top edge. The zoom is even in every direction: leg length, torso length and width keep the rear panel's proportions, never stretched taller or narrower. State the true height in centimetres only (from the facts): never feet or inches, never a comparison. Match the body image's proportions one-to-one: leg length against torso (the inseam exactly), build and shoulder width, neck length. Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age and height from the facts (${view.state.spec.identity?.age ?? '?'}, ${view.state.spec.identity?.height_cm ?? '?'} cm) and its looks from the images. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
 		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
@@ -263,11 +288,13 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 		if (text.length < 80) throw new Error('prompt: too short');
 		return { prompt: text };
 	};
-	let { prompt } = await generateStructured(client, { system, prompt: ask, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse);
+	// The writer sees the images themselves: that is how it gives each one its job.
+	const images = await sourceImages(view.state);
+	let { prompt } = await generateStructured(client, { system, prompt: ask, images, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse);
 	// The QC runs before the operator sees the card; the Agent fixes what it finds itself (up to two rounds).
 	for (let round = 0, issues = prepQc(prompt, view); issues.length && round < 2; round++, issues = prepQc(prompt, view)) {
 		const repair = `${ask}\n\nYOUR PROMPT:\n${prompt}\n\nTHE QC FOUND (fix every one, change nothing else):\n${issues.map((issue) => `- ${issue}`).join('\n')}\n\nReturn only JSON: {"prompt": "the whole corrected prompt"}`;
-		({ prompt } = await generateStructured(client, { system, prompt: repair, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse));
+		({ prompt } = await generateStructured(client, { system, prompt: repair, images, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse));
 	}
 	const prep = await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, prompt, prompt_edited: false }));
 	return { ok: true, prep };
@@ -291,7 +318,7 @@ const stillInput = (view: PrepView) => ({
 	prompt: view.state.prompt ?? '',
 	attached: view.state.sources.map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
 	aspect_ratio: aspectOf(view.state.prompt, view.entry.kind),
-	blocked: view.state.prompt ? prepQc(view.state.prompt, view) : ['Write the prompt from the approved spec first']
+	blocked: view.state.prompt ? prepQc(view.state.prompt, view) : ['Write the prompt first']
 });
 
 export async function quotePrep(deps: PrepDeps, project: Project, key: string): Promise<{ ok: true; approval: StillApproval } | Failure> {

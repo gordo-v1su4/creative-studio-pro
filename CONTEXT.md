@@ -165,8 +165,8 @@ The step before shots where the references an episode needs are listed, given so
 _Avoid_: Setup, pre-production, asset prep
 
 **Reference spec**:
-The fields a reference is made from (who or what, its exact name, its source images, the details that must hold); once approved, the reference is made from it to the ONE SHOT standard.
-_Avoid_: Sheet spec, character brief
+The facts a reference is made from that its source images cannot show: for a character the exact name, age, height in cm, build and the hand-off parts (owned element, owned colour, powers, lock); for a place or prop what it is. The operator's notes on changes from the pictures go with it. It never describes the source images: the prompt is written in one pass from the ONE SHOT skill, the images themselves and these facts, and the price card is the only approval.
+_Avoid_: Sheet spec, character brief, description
 
 **Source image**:
 A picture a reference was made from (an earlier sheet, a photo, a test still); it is kept with the reference but never attached to a shot, and source images can look very different from each other.

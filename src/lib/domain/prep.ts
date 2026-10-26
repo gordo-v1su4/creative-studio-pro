@@ -99,16 +99,20 @@ export function templateFor(kind: PrepKind, hasSources: boolean): 'T1' | 'T5a' |
 /** Characters render as a wide three-panel sheet; location sheets and prop sheets are landscape too. */
 export const prepAspect = (kind: PrepKind) => (kind === 'prop' ? '4:3' : '16:9');
 
-/** The fields a reference is made from (glossary: Reference spec); the operator approves them first. */
+/**
+ * The facts a reference is made from (glossary: Reference spec): only what the pictures cannot say. The prompt
+ * writer looks at the source images itself, gives each one its job and writes the prompt in one pass, so the
+ * spec never describes the pictures (a description of them goes stale the moment the images change).
+ */
 export const referenceSpecSchema = z.object({
 	name: z.string().trim().min(1).max(200),
 	kind: z.enum(['character', 'location', 'prop']),
 	template: z.enum(['T1', 'T5a', 'W3', 'W8', 'W6']),
-	/** One plain paragraph: who or what it is and how it looks. */
-	description: z.string().trim().min(1).max(3000),
-	/** The details that must hold in every shot (wardrobe, marks, eye colour, signage…). */
-	must_hold: z.array(z.string().trim().min(1).max(300)).min(1).max(12),
-	/** Which source images to lean on and how (empty without sources). */
+	/** The operator's notes: changes from the pictures (wardrobe, dry hair…), or for a place or prop, what it is. */
+	notes: z.string().trim().max(3000).default(''),
+	/** Older specs only (description, must hold, from sources): kept so they parse, never used for characters. */
+	description: z.string().trim().max(3000).default(''),
+	must_hold: z.array(z.string().trim().min(1).max(300)).max(12).default([]),
 	from_sources: z.string().trim().max(1000).default(''),
 	/** Characters: who they are, field by field (every character has an age and a height). */
 	identity: z.object({
@@ -132,6 +136,16 @@ export type ReferenceSpec = z.infer<typeof referenceSpecSchema>;
 
 const cm = (value: number) => `${value} cm`;
 
+/** A place or prop's notes; an older spec's description stands in until notes are written. */
+export const notesOf = (spec: ReferenceSpec) => spec.notes || (spec.kind === 'character' ? '' : spec.description);
+
+/** Whether the facts are complete enough to write the prompt from. */
+export function factsGaps(spec: ReferenceSpec | null, kind: PrepKind): string[] {
+	if (!spec) return ['the facts (Draft facts)'];
+	if (kind === 'character') return identityGaps(spec);
+	return notesOf(spec) ? [] : ['notes: what it is'];
+}
+
 /** What a character spec still needs before its sheet can be made (age and height above all). */
 export function identityGaps(spec: ReferenceSpec): string[] {
 	if (spec.kind !== 'character') return [];
@@ -151,7 +165,7 @@ export function identityGaps(spec: ReferenceSpec): string[] {
  * Locations: LOCATION [NAME] — the description's first sentence.
  */
 export function handOffLine(spec: ReferenceSpec): string {
-	if (spec.kind !== 'character') return `${spec.kind === 'location' ? 'LOCATION' : 'PROP'} ${spec.name.toUpperCase()} — ${spec.description.split(/(?<=\.)\s/)[0]}`;
+	if (spec.kind !== 'character') return `${spec.kind === 'location' ? 'LOCATION' : 'PROP'} ${spec.name.toUpperCase()} — ${notesOf(spec).split(/(?<=\.)\s/)[0]}`;
 	const id = spec.identity;
 	const first = spec.name.replace(/"[^"]*"\s*/g, '').split(/\s+/)[0].toUpperCase();
 	const identity = [id?.sex, id?.age ? String(id.age) : '', id?.build, id?.height_cm ? cm(id.height_cm) : '', id?.face, id?.eyes, id?.hair, id?.marks].map((part) => (part ?? '').trim()).filter(Boolean).join(', ');
@@ -188,8 +202,9 @@ export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file
 export const prepStateSchema = z.object({
 	sources: z.array(prepSourceSchema).max(12).default([]),
 	spec: referenceSpecSchema.nullable().default(null),
+	/** Older Prep only: specs used to be approved before the prompt; the price card is the one approval now. */
 	spec_approved_at: z.string().nullable().default(null),
-	/** Written from the approved spec; an edit by hand is kept (prompt_edited). */
+	/** Written in one pass from the skill, the images and the facts; an edit by hand is kept (prompt_edited). */
 	prompt: z.string().max(20_000).nullable().default(null),
 	prompt_edited: z.boolean().default(false),
 	job: z.object({ job_id: z.string().min(1).max(200), sent_at: z.string() }).nullable().default(null),
@@ -202,11 +217,10 @@ export const emptyPrep = (): PrepFile => ({ schema_version: 1, props: [], entrie
 export const emptyState = (): PrepState => prepStateSchema.parse({});
 
 /** Where an entry stands, for the node graph. */
-export function prepStage(state: PrepState): 'sources' | 'spec' | 'approved' | 'prompt' | 'sent' | 'made' {
+export function prepStage(state: PrepState): 'sources' | 'spec' | 'prompt' | 'sent' | 'made' {
 	if (state.result) return 'made';
 	if (state.job) return 'sent';
 	if (state.prompt) return 'prompt';
-	if (state.spec_approved_at) return 'approved';
 	if (state.spec) return 'spec';
 	return 'sources';
 }
