@@ -107,13 +107,13 @@ exists.
     three-quarter look), both eyes and ears visible.
   - **Centre:** full body from the front, **head cropped out at the
     collarbones**, feet in frame. This panel is for costume, build and
-    proportion; the close-up owns the face. It is shot at the same camera
-    distance and scale as the rear panel: feet on the same floor line, the
-    collarbones at the same height as in the rear view, plain backdrop above.
-    Never let the headless body grow to fill the panel.
+    proportion; the close-up owns the face. It is the rear panel's body zoomed
+    in evenly: the feet stay in frame, the head leaves the top edge, and the
+    zoom is the same in every direction, so leg length, torso and width keep
+    the rear panel's proportions.
   - **Right:** full body from behind, head to feet, same pose.
 - Lock: same person, costume, proportions and light in every panel; feet
-  visible in both full-body panels, at the same scale; no text, no logos, not a 3D render, not
+  visible in both full-body panels; no text, no logos, not a 3D render, not
   airbrushed.
 - Grade: muted natural colour with one accent; never monochrome.
 - An evenly lit identity sheet (flat grey, little shadow) is the better file to

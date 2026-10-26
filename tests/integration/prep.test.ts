@@ -17,7 +17,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 const SPEC = { name: 'x', kind: 'character', template: 'T1', description: 'A broad-shouldered freshman in a teal plaid button-down.', must_hold: ['teal plaid button-down', 'blue eyes'], from_sources: '', identity: { sex: 'female', age: 19, height_cm: 168, build: 'slim', face: 'pale, watchful', eyes: 'amber-gold eyes', hair: 'dark bob', marks: 'cross choker' } };
 /** The hand-off line the app builds for that spec (the prompt must end with it). */
 const HAND_OFF = handOffLine(referenceSpecSchema.parse({ ...SPEC, name: 'Mara Voss' }));
-const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens. PANEL CENTRE: full body, front, framed from the collarbones down, at the same camera distance and scale as the rear panel. She is 168 cm tall.\nGRADE: full natural colour, gently muted, one amber accent.\nCAMERA: 100mm, chest height, straight on.\nREALISM: real skin pores, real fabric.\nLOCKS: same person in all three panels.\nAVOID: fangs, leg lengthening, text, watermark.\n' + HAND_OFF;
+const PROMPT = 'Create a photorealistic character key art plate: ONE character, Mara Voss, shown in three panels on a near-white seamless studio backdrop. PANEL LEFT: tight close-up of the head and upper shoulders, straight-on, face square to the camera, looking directly into the lens. PANEL CENTRE: full body, front, framed from the collarbones down, the rear body zoomed in evenly. She is 168 cm tall.\nGRADE: full natural colour, gently muted, one amber accent.\nCAMERA: 100mm, chest height, straight on.\nREALISM: real skin pores, real fabric.\nLOCKS: same person in all three panels.\nAVOID: fangs, leg lengthening, text, watermark.\n' + HAND_OFF;
 
 async function setup() {
 	const root = await mkdtemp(join(tmpdir(), 'csp-prep-')); roots.push(root);
@@ -130,7 +130,6 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(prepQc(PROMPT.replace(' She is 168 cm tall.', '').replace(HAND_OFF, ''), view!).join(' ')).toContain('true height');
 		expect(prepQc(PROMPT.replace('168 cm tall', '168 cm (5\'6") tall'), view!).join(' ')).toContain('cm or m only');
 		expect(prepQc(PROMPT.replace('collarbones', 'chin'), view!).join(' ')).toContain('collarbones');
-		expect(prepQc(PROMPT.replace('same camera distance and scale', 'framing'), view!).join(' ')).toContain('same camera distance and scale');
 		expect(prepQc(PROMPT.replace(HAND_OFF, ''), view!).join(' ')).toContain('CHARACTER hand-off line');
 		expect(prepQc(PROMPT.replace('near-white seamless studio backdrop', 'rainy street at night'), view!).join(' ')).toContain('near-white seamless studio backdrop');
 		// Removing the source takes it (and its copy) off the entry and back to T1, spec cleared.

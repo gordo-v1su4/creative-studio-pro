@@ -10,10 +10,7 @@ proportion. Exact wording to output, every time:
   "PANEL CENTRE: full body, front, framed from the collarbones DOWN — the head is
    cropped out of this panel entirely, no face, no chin, no neck above the
    collarbones. Body head-to-feet otherwise, feet in frame, standing at rest,
-   arms relaxed, weight even. Same camera distance and scale as the rear
-   panel: the feet stand on the same floor line, the collarbones sit at the
-   same height as in the rear panel, and the space above them is plain
-   backdrop. The body is never enlarged to fill the panel."
+   arms relaxed, weight even."
 
 Repeat it inside LOCKS as: "the frontal full-body panel has no head — cropped at
 the collarbones; the close-up panel is the only panel showing the face."
@@ -58,10 +55,7 @@ both sides of the face.
 PANEL CENTRE: full body, front, framed from the collarbones DOWN — the head is
 cropped out of this panel entirely, no face, no chin, no neck above the
 collarbones. Body otherwise complete to the feet, feet in frame, standing at
-rest, arms relaxed, weight even. Same camera distance and scale as the rear
-panel: the feet stand on the same floor line, the collarbones sit at the same
-height as in the rear panel, and the space above them is plain backdrop. The
-body is never enlarged to fill the panel.
+rest, arms relaxed, weight even.
 PANEL RIGHT: full body from behind, head to feet, same pose, showing the back of
 the costume.
 SUBJECT: [sex, age, build, height; face structure, skin, eyes, hair; wear]
@@ -74,8 +68,7 @@ REALISM: [File 01 block]
 LOCKS: the same identical person, costume, proportions and lighting in all three
 panels; the frontal full-body panel has no head — cropped at the collarbones;
 the close-up panel is the only panel showing the face; feet visible in both
-full-body panels; both full-body panels at the same scale, feet on the same
-floor line; no text, no logos, no watermark, no extra characters; not a 3D
+full-body panels; no text, no logos, no watermark, no extra characters; not a 3D
 render, not a video game screenshot, not a plastic or airbrushed look.
 
 T2 — FOUR-PANEL WITH HAZE + PRACTICAL GLOW

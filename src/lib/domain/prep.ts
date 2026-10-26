@@ -164,11 +164,16 @@ export function handOffLine(spec: ReferenceSpec): string {
 }
 
 /**
- * A character sheet's scale check: the rear body (or a full-body source, scaled to the rear body's height) laid
- * over the headless front panel, feet on one floor line. Front wider than the rear by more than 5% = not equal.
+ * A character sheet's proportion check. The ONE SHOT front panel is the rear body zoomed in evenly (head out of
+ * the top, feet in frame): any zoom is fine, a stretch is not. The rear body is fitted to the front with separate
+ * horizontal and vertical zoom; stretch = vertical / horizontal, and beyond 5% either way is not equal. Against
+ * a source photo, the photo's body is fitted to the rear panel the same way.
  */
 export const scaleCheckSchema = z.object({
 	ok: z.boolean(),
+	stretch: z.number().optional(),
+	zoom: z.number().optional(),
+	fit: z.number().optional(),
 	width_ratio: z.number(),
 	feet_offset: z.number(),
 	verdict: z.string().max(400),
