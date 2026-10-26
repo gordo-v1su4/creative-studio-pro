@@ -2,28 +2,101 @@
 # requires-python = ">=3.12"
 # dependencies = ["pillow>=10", "numpy>=1.26"]
 # ///
-"""Proportion check for a three-panel character sheet.
-
-The ONE SHOT front panel is the rear panel's body zoomed in evenly: feet in frame, head out of the top. Any
-zoom is fine; a stretch is not. This fits the rear body to the front body with a separate horizontal and
-vertical zoom (feet anchored, only the rows the front panel shows) and reports the stretch, tall / wide:
-1.00 is an even zoom, above 1 the front is stretched taller, below 1 wider.
-
-With --reference SOURCE.png the source's full body is fitted to the sheet's rear panel instead (both show
-the whole body), which tells whether the sheet's body is taller or narrower than the person in the photo.
-
-uv run scripts/panel_scale_check.py SHEET.png OUT.png [--reference SOURCE.png]
-Prints JSON: {"ok", "zoom", "stretch", "fit", "verdict", "width_ratio", "feet_offset"}.
-"""
+"""Compare original front-body pixels with a generated front using uniform scaling only. A bordered source sheet uses its first full-body panel. Plain full-body images use the whole image. Portraits and unsupported collages require a full-body crop. No generated rear baseline, anisotropic fitting, or automated anatomy verdict."""
 import argparse
 import json
 import sys
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageDraw, ImageFont
 
-TOLERANCE = 0.05  # a stretch beyond 5% either way is "not equal"
-WORK_H = 400  # fitting resolution
+
+
+
+
+def cutout(image: Image.Image) -> Image.Image:
+    """Keep original RGB pixels; remove a plain studio backdrop, with no synthesis."""
+    rgb = np.array(image.convert('RGB'))
+    h, w = rgb.shape[:2]
+    corners = np.concatenate([rgb[:max(1, h // 30), :max(1, w // 20)].reshape(-1, 3), rgb[:max(1, h // 30), -max(1, w // 20):].reshape(-1, 3)])
+    backdrop = np.median(corners, axis=0)
+    mask = np.abs(rgb.astype(float) - backdrop).max(axis=2) > 42
+    mask = np.array(Image.fromarray((mask * 255).astype('uint8')).filter(ImageFilter.MedianFilter(3))) > 0
+    exterior = Image.fromarray((mask * 255).astype('uint8')).copy()
+    for seed in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w // 2, h - 1)]:
+        if exterior.getpixel(seed) == 0:
+            ImageDraw.floodfill(exterior, seed, 128)
+    # White clothing enclosed by the silhouette is part of the person, not backdrop.
+    mask = np.array(exterior) != 128
+    rows, cols = np.flatnonzero(mask.any(axis=1)), np.flatnonzero(mask.any(axis=0))
+    if not len(rows) or not len(cols):
+        raise ValueError('No body found against a plain background. Use a cropped full-body reference.')
+    rgba = np.dstack([rgb, (mask * 255).astype('uint8')])
+    return Image.fromarray(rgba).crop((cols[0], rows[0], cols[-1] + 1, rows[-1] + 1))
+
+
+def original_cutout(image: Image.Image) -> tuple[Image.Image, str]:
+    """A bordered reference grid uses its first full-body panel, never the entire collage."""
+    rgb = np.array(image.convert('RGB'))
+    h, w = rgb.shape[:2]
+    dark = rgb.mean(axis=2) < 100
+    vertical = np.flatnonzero(dark[int(h * .08):int(h * .6)].mean(axis=0) > .98)
+    horizontal = np.flatnonzero(dark.mean(axis=1) > .95)
+    right = vertical[(vertical > w * .12) & (vertical < w * .5)]
+    bottom = horizontal[(horizontal > h * .4) & (horizontal < h * .85)]
+    note = 'Original full-body image'
+    if len(right) and len(bottom):
+        outer_lines = np.flatnonzero(dark[int(h * .08):int(h * .6)].mean(axis=0) > .85)
+        lefts = outer_lines[outer_lines < w * .025]
+        tops = horizontal[horizontal < h * .08]
+        left = int(lefts[-1]) if len(lefts) else 0
+        top = int(tops[-1]) if len(tops) else 0
+        margin = max(4, round(w * .003))
+        image = image.crop((left + margin, top + margin, int(right[0]) - margin, int(bottom[0]) - margin))
+        note = 'Original: first full-body panel of source sheet'
+    result = cutout(image)
+    if result.height / result.width < 1.8:
+        raise ValueError('This source is not an isolated full-body view. Use a front full-body crop, not a portrait or collage.')
+    return result, note
+
+
+def match_width(image: Image.Image, width: int) -> Image.Image:
+    return image.resize((width, round(image.height * width / image.width)), Image.Resampling.LANCZOS)
+
+
+def source_comparison(sheet: Image.Image, source: Image.Image, out: str) -> dict:
+    rgb = np.array(sheet.convert('RGB'))
+    bottom = rgb.shape[0]
+    while bottom > rgb.shape[0] * .8 and rgb[bottom - 1].mean() < 120:
+        bottom -= 1
+    rgb = rgb[:bottom]
+    (_, _), (x0, x1), (_, _) = gutters(rgb)
+    generated = cutout(Image.fromarray(rgb[:, x0:x1]))
+    original, note = original_cutout(source)
+    # One scalar per picture. Width matching makes extra body/leg length visible;
+    # fitting X and Y independently would hide precisely the distortion being reviewed.
+    width = 260
+    a, b = match_width(original, width), match_width(generated, width)
+    height = max(a.height, b.height)
+    col, top, foot = 380, 110, height + 110
+    canvas = Image.new('RGB', (col * 3, foot + 120), '#eeeeec')
+    draw = ImageDraw.Draw(canvas)
+    font = ImageFont.truetype('DejaVuSans.ttf', 18) if sys.platform != 'win32' else ImageFont.truetype('arial.ttf', 18)
+    draw.text((20, 15), 'Original reference vs generated FRONT - visual comparison', fill='#202020', font=font)
+    draw.text((20, 43), 'Same body width; feet aligned. Uniform scaling only. No automatic pass/fail.', fill='#404040', font=font)
+    for i, title in enumerate(['ORIGINAL CUTOUT', 'GENERATED FRONT', 'ORIGINAL OVER GENERATED (50%)']):
+        draw.text((i * col + 14, 79), title, fill='#202020', font=font)
+        draw.line((i * col + 12, foot, (i + 1) * col - 12, foot), fill='#666666', width=2)
+    for i, image in [(0, a), (1, b), (2, b)]:
+        canvas.paste(image, (i * col + (col - width) // 2, foot - image.height), image)
+    ghost = a.copy()
+    ghost.putalpha(ghost.getchannel('A').point(lambda value: round(value * .5)))
+    canvas.paste(ghost, (2 * col + (col - width) // 2, foot - a.height), ghost)
+    draw.text((20, foot + 25), note, fill='#303030', font=font)
+    draw.text((20, foot + 52), 'Compare shoulders, waist, crotch, knees and ankles. Width matching does not certify anatomy.', fill='#303030', font=font)
+    canvas.save(out)
+    return {'ok': True, 'width_ratio': 1, 'feet_offset': 0, 'method': 'original-front-v1',
+            'verdict': f'{note}. Original pixels, matched body width and aligned feet; neither image is stretched. Visual comparison only.'}
 
 
 def gutters(img: np.ndarray) -> list[tuple[int, int]]:
@@ -45,110 +118,18 @@ def gutters(img: np.ndarray) -> list[tuple[int, int]]:
     return panels
 
 
-def body_mask(panel: np.ndarray) -> np.ndarray:
-    """Everything that differs from the backdrop (sampled at the panel's top corners), holes filled per row."""
-    h, w, _ = panel.shape
-    corners = np.concatenate([panel[: h // 20, : w // 10].reshape(-1, 3), panel[: h // 20, -w // 10 :].reshape(-1, 3)])
-    diff = np.abs(panel.astype(np.int16) - np.median(corners, axis=0)).max(axis=2)
-    raw = np.array(Image.fromarray(((diff > 40) * 255).astype(np.uint8)).filter(ImageFilter.MedianFilter(5))) > 0
-    filled = np.zeros_like(raw)
-    for y in range(h):
-        xs = np.flatnonzero(raw[y])
-        if xs.size > 3:
-            filled[y, xs[0] : xs[-1] + 1] = True
-    return filled
-
-
-def crop_body(mask: np.ndarray) -> np.ndarray:
-    rows, cols = np.flatnonzero(mask.any(axis=1)), np.flatnonzero(mask.any(axis=0))
-    return mask[rows[0] : rows[-1] + 1, cols[0] : cols[-1] + 1]
-
-
-def place(body: np.ndarray, sx: float, sy: float, shape: tuple[int, int], feet: int, cx: float) -> np.ndarray:
-    """The body zoomed by (sx, sy), feet on the given row, centred on cx, on an empty canvas of `shape`."""
-    w, h = max(1, round(body.shape[1] * sx)), max(1, round(body.shape[0] * sy))
-    zoomed = np.array(Image.fromarray((body * 255).astype(np.uint8)).resize((w, h))) > 127
-    canvas = np.zeros(shape, bool)
-    y0, x0 = feet + 1 - h, round(cx - w / 2)
-    ys, xs, ye, xe = max(0, y0), max(0, x0), min(shape[0], y0 + h), min(shape[1], x0 + w)
-    if ye > ys and xe > xs:
-        canvas[ys:ye, xs:xe] = zoomed[ys - y0 : ye - y0, xs - x0 : xe - x0]
-    return canvas
-
-
-def fit(target: np.ndarray, body: np.ndarray, top_cropped: bool) -> tuple[float, float, float]:
-    """Best (sx, sy, overlap) laying `body` over `target`, feet anchored; compares only rows the target shows."""
-    rows, cols = np.flatnonzero(target.any(axis=1)), np.flatnonzero(target.any(axis=0))
-    top, feet, cx = rows[0], rows[-1], (cols[0] + cols[-1]) / 2
-    region = slice(top + (2 if top_cropped else 0), feet + 1)
-    base = (feet - top) / body.shape[0]  # the zoom that would make the heights match
-    best = (0.0, 1.0, 1.0)
-    for sx in np.arange(0.6, 1.8, 0.02) * (1 if top_cropped else base):
-        for sy in np.arange(0.6, 1.8, 0.02) * (1 if top_cropped else base):
-            placed = place(body, sx, sy, target.shape, feet, cx)
-            a, b = target[region], placed[region]
-            overlap = (a & b).sum() / max(1, (a | b).sum())
-            if overlap > best[0]:
-                best = (overlap, sx, sy)
-    return best[1], best[2], best[0]
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("sheet")
     ap.add_argument("out")
-    ap.add_argument("--reference", help="a full-body source image to fit to the sheet's rear panel")
+    ap.add_argument("--reference", help="original front full-body image or bordered reference sheet (first panel)")
     args = ap.parse_args()
 
-    full = Image.open(args.sheet).convert("RGB")
-    img = np.array(full)
-    # Cut off the stamped name strip (a dark band across the full width at the bottom).
-    row_mean = img.mean(axis=(1, 2))
-    bottom = img.shape[0]
-    while bottom > img.shape[0] * 0.8 and row_mean[bottom - 1] < 120:
-        bottom -= 1
-    img = img[:bottom]
-    (_, _), (fx0, fx1), (rx0, rx1) = gutters(img)
-    k = WORK_H / img.shape[0]
-    small = np.array(Image.fromarray(img).resize((round(img.shape[1] * k), WORK_H)))
-    front_small = body_mask(small[:, round(fx0 * k) : round(fx1 * k)])
-    rear_small = body_mask(small[:, round(rx0 * k) : round(rx1 * k)])
-
-    if args.reference:
-        src = Image.open(args.reference).convert("RGB")
-        src_small = np.array(src.resize((round(src.width * WORK_H / src.height), WORK_H)))
-        target, body, top_cropped, what = rear_small, crop_body(body_mask(src_small)), False, "the source photo"
-        panel = img[:, rx0:rx1]
-    else:
-        target, body, top_cropped, what = front_small, crop_body(rear_small), True, "the rear panel"
-        panel = img[:, fx0:fx1]
-    sx, sy, overlap = fit(target, body, top_cropped)
-    stretch = sy / sx
-
-    # Overlay at full size: the panel dimmed, the fitted correct body in red, the panel's overhang in yellow.
-    full_target = body_mask(panel)
-    rows, cols = np.flatnonzero(full_target.any(axis=1)), np.flatnonzero(full_target.any(axis=0))
-    body_full = np.array(Image.fromarray((body * 255).astype(np.uint8)).resize((round(body.shape[1] / k), round(body.shape[0] / k)))) > 127
-    placed = place(body_full, sx, sy, full_target.shape, rows[-1], (cols[0] + cols[-1]) / 2)
-    out = panel.astype(np.float32) * 0.85 + 255 * 0.15
-    out[placed] = out[placed] * 0.55 + np.array([230, 40, 40]) * 0.45
-    over = full_target & ~placed
-    out[over] = out[over] * 0.4 + np.array([250, 210, 30]) * 0.6
-    Image.fromarray(out.clip(0, 255).astype(np.uint8)).save(args.out)
-
-    sx, sy, stretch, overlap = float(sx), float(sy), float(stretch), float(overlap)
-    ok = bool(abs(stretch - 1) <= TOLERANCE)
-    zoom = (sx + sy) / 2
-    if ok:
-        verdict = f"Proportions match {what}: an even zoom ({stretch:.2f} tall to wide)."
-    elif stretch > 1:
-        verdict = f"Not equal: the body is stretched {stretch:.2f}x taller for its width than {what}."
-    else:
-        verdict = f"Not equal: the body is {1 / stretch:.2f}x wider for its height than {what}."
-    json.dump({"ok": ok, "zoom": round(zoom, 3), "stretch": round(stretch, 3), "fit": round(overlap, 3), "verdict": verdict,
-               "width_ratio": round(sx, 3), "feet_offset": 0.0}, sys.stdout)
-    print()
-
+    if not args.reference:
+        ap.error('Choose an original full-body source image. Generated rear panels are not a reference baseline.')
+    result = source_comparison(Image.open(args.sheet), Image.open(args.reference), args.out)
+    print(json.dumps(result))
+    return
 
 if __name__ == "__main__":
     main()

@@ -178,12 +178,13 @@ export function handOffLine(spec: ReferenceSpec): string {
 }
 
 /**
- * A character sheet's proportion check. The ONE SHOT front panel is the rear body zoomed in evenly (head out of
- * the top, feet in frame): any zoom is fine, a stretch is not. The rear body is fitted to the front with separate
- * horizontal and vertical zoom; stretch = vertical / horizontal, and beyond 5% either way is not equal. Against
- * a source photo, the photo's body is fitted to the rear panel the same way.
+ * Original-reference comparison: original cutout, generated front, and an overlay of the actual pixels.
+ * One scale factor per picture, matched by body width with feet aligned. No automatic anatomy verdict.
+ * Legacy measurement fields remain readable but their old checks are not shown in the UI.
  */
 export const scaleCheckSchema = z.object({
+	/** Only original-front-v1 is a current visual comparison; old numeric checks stay readable on disk. */
+	method: z.literal('original-front-v1').optional(),
 	ok: z.boolean(),
 	stretch: z.number().optional(),
 	zoom: z.number().optional(),
@@ -191,7 +192,7 @@ export const scaleCheckSchema = z.object({
 	width_ratio: z.number(),
 	feet_offset: z.number(),
 	verdict: z.string().max(400),
-	/** The overlay picture: the correct body in red over the front panel, the front's overhang in yellow. */
+	/** Original cutout, generated front, and original pixels at 50% over the generated front. */
 	overlay_url: z.string().max(1000),
 	against: z.enum(['rear', 'source']).default('rear'),
 	checked_at: z.string()

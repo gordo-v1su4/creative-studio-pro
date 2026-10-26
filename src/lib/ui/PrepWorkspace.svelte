@@ -264,16 +264,18 @@
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
 							{#if item.entry.kind === 'character'}
 								{@const scale = item.state.result.scale}
-								<div class="node-cap sub">Scale check · front vs {scale?.against === 'source' ? 'source body' : 'rear panel'}</div>
-								{#if scale}
-									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name} scale check: the correct body in red over the front panel, overhang in yellow` })} aria-label={`Show ${item.entry.name}'s scale check big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name} scale check`} loading="lazy" /></button>
-									<p class={scale.ok ? 'scale ok' : 'scale off'}>{scale.verdict}</p>
+								<div class="node-cap sub">Proportions · original vs generated front</div>
+								{#if scale?.method === 'original-front-v1'}
+									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% over generated. Same body width; feet aligned; uniform scaling only.` })} aria-label={`Show ${item.entry.name}'s original comparison big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name}: original and generated front comparison`} loading="lazy" /></button>
+									<p class="muted">{scale.verdict}</p>
+								{:else}
+									<p class="muted">Choose the original front full-body source below. Bigger is expected: compare proportions after uniform scaling. Old rear-panel verdicts are retired.</p>
 								{/if}
 								<div class="row">
-									<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Checking the scale…', { action: 'scale_check', key })}>Check vs rear</button>
 									{#each item.state.sources as source, i (source.url)}
-										<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Checking the scale…', { action: 'scale_check', key, source_url: source.url })} title={`Lay ${source.name} over the front panel, scaled to the rear body's height`}>vs image {i + 1}</button>
+										<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Preparing original comparison…', { action: 'scale_check', key, source_url: source.url })} title={`Compare the front full-body view in ${source.name} with the generated front. Uniform scaling; matched body width and aligned feet.`}>Compare original image {i + 1}</button>
 									{/each}
+									{#if !item.state.sources.length}<p class="muted">Add an original full-body source to compare.</p>{/if}
 								</div>
 							{/if}
 						{:else if item.current}

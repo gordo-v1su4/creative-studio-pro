@@ -30,7 +30,7 @@ export interface PrepDeps extends StillDeps {
 	notion: NotionApi | null;
 	/** Prints the exact name along the bottom of a sheet; returns the stamped copy's path. */
 	stamp: (file: string, name: string, out: string) => Promise<string>;
-	/** Fits the rear body (or a source photo's) to a character sheet's body and measures any stretch; absent in tests. */
+	/** Builds a visual comparison of original pixels and the generated front, using uniform scaling only. */
 	scaleCheck?: (sheet: string, out: string, reference?: string) => Promise<{ ok: boolean; stretch?: number; zoom?: number; fit?: number; width_ratio: number; feet_offset: number; verdict: string }>;
 }
 type Failure = { ok: false; status: number; message: string; reasons?: string[] };
@@ -280,7 +280,7 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	if (!view.state.spec || gaps.length) return fail(400, `Fill in ${gaps.join(', ')} first`);
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. Frame the frontal full-body panel from the collarbones down, exactly as House Rule #1 words it: the same body as the rear panel, zoomed in evenly so the feet stay in frame and the head leaves the top edge. The zoom is even in every direction: leg length, torso length and width keep the rear panel's proportions, never stretched taller or narrower. State the true height in centimetres only (from the facts): never feet or inches, never a comparison. Match the body image's proportions one-to-one: leg length against torso (the inseam exactly), build and shoulder width, neck length. Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age and height from the facts (${view.state.spec.identity?.age ?? '?'}, ${view.state.spec.identity?.height_cm ?? '?'} cm) and its looks from the images. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for GPT Image 2.5. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. Frame the frontal full-body panel from the collarbones down, exactly as House Rule #1 words it: preserve the ORIGINAL body reference, enlarged uniformly until the collarbones reach the top edge and the feet stay in frame. Use one scale factor for both axes; crop the head rather than elongating the body to fill the panel. The source image controls the leg-to-torso ratio, shoulder width, waist, hip width and limb lengths. A generated rear view is never the proportion baseline. Do not invent numeric ratios from an unmeasured image. State the true height in centimetres only (from the facts): never feet or inches, never a comparison. Match the body image's proportions one-to-one: leg length against torso (the inseam exactly), build and shoulder width, neck length. Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age and height from the facts (${view.state.spec.identity?.age ?? '?'}, ${view.state.spec.identity?.height_cm ?? '?'} cm) and its looks from the images. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
 		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
@@ -361,33 +361,34 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 			}
 		}
 	}
-	const scale = view.entry.kind === 'character' ? await checkScale(deps, project, view, stamped) : undefined;
+	const scale = view.entry.kind === 'character' && view.state.sources.length === 1 ? await checkScale(deps, project, view, stamped, view.state.sources[0].file) : undefined;
 	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, result: { file: stamped, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
 }
 
 /** The scale check on a character sheet; a failure to run it never stops a sheet from landing. */
 async function checkScale(deps: PrepDeps, project: Project, view: PrepView, sheet: string, reference?: string): Promise<ScaleCheck | undefined> {
-	if (!deps.scaleCheck) return undefined;
+	if (!deps.scaleCheck || !reference) return undefined;
 	const name = `${sheetFileName(view.entry.name)}-scale${reference ? '-source' : ''}.png`;
 	const out = join(deps.projectRoot, project.project_id, 'files', 'prep', 'checks', name);
 	await mkdir(dirname(out), { recursive: true });
 	try {
 		const result = await deps.scaleCheck(sheet, out, reference);
-		return { ...result, overlay_url: `/api/projects/${project.project_id}/files/prep/checks/${name}?t=${Date.now().toString(36)}`, against: reference ? 'source' : 'rear', checked_at: new Date().toISOString() };
+		return { ...result, method: 'original-front-v1', overlay_url: `/api/projects/${project.project_id}/files/prep/checks/${name}?t=${Date.now().toString(36)}`, against: 'source', checked_at: new Date().toISOString() };
 	} catch { return undefined; }
 }
 
-/** Re-run the scale check on the landed sheet, against the rear panel or one of the entry's source images. */
+/** Compare the landed front with an explicitly selected original source; never a generated rear panel. */
 export async function rerunScaleCheck(deps: PrepDeps, project: Project, key: string, sourceUrl?: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
 	const result = found.view.state.result;
 	if (!result) return fail(400, 'No sheet has landed for this entry yet');
 	if (found.view.entry.kind !== 'character') return fail(400, 'The scale check is for character sheets');
-	const source = sourceUrl ? found.view.state.sources.find((s) => s.url === sourceUrl) : undefined;
+	if (!sourceUrl) return fail(400, 'Choose the original full-body source image to compare');
+	const source = found.view.state.sources.find((s) => s.url === sourceUrl);
 	if (sourceUrl && !source) return fail(404, 'That source image is not on this entry');
 	const scale = await checkScale(deps, project, found.view, result.file, source?.file);
-	if (!scale) return fail(500, 'The scale check could not run');
+	if (!scale) return fail(422, 'Could not isolate a full body from this source. Choose a front full-body reference on a plain background, or upload a crop of that panel.');
 	return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, result: state.result ? { ...state.result, scale } : null })) };
 }
 
@@ -416,7 +417,7 @@ export async function attachOutside(deps: PrepDeps, project: Project, key: strin
 	catch (cause) { return fail(400, cause instanceof Error ? cause.message : 'Could not use that sheet'); }
 }
 
-/** `uv run scripts/panel_scale_check.py`: prints one JSON line with the verdict and writes the overlay. */
+/** `uv run scripts/panel_scale_check.py`: prints comparison metadata and writes the original/front/overlay image. */
 export function uvScaleCheck(repoRoot: string): NonNullable<PrepDeps['scaleCheck']> {
 	return (sheet, out, reference) => new Promise((resolve, reject) => {
 		execFile('uv', ['run', '-q', join(repoRoot, 'scripts', 'panel_scale_check.py'), sheet, out, ...(reference ? ['--reference', reference] : [])], { timeout: 180_000, windowsHide: true }, (error, stdout, stderr) => {
