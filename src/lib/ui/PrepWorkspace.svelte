@@ -275,8 +275,9 @@
 								{@const scale = item.state.result.scale}
 								<div class="node-cap sub">Proportions · original vs generated front</div>
 								{#if scale?.method === 'original-front-v1'}
-									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% over generated. Same body width; feet aligned; uniform scaling only.` })} aria-label={`Show ${item.entry.name}'s original comparison big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name}: original and generated front comparison`} loading="lazy" /></button>
+									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% opacity over generated. Opacity means transparency, not enlargement. Same body width; feet aligned; uniform scaling only.` })} aria-label={`Show ${item.entry.name}'s original comparison big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name}: original and generated front comparison`} loading="lazy" /></button>
 									<p class="muted">{scale.verdict}</p>
+									<p class="muted">The overlay shows the original at 50% opacity so both images are visible. This is not a size measurement.</p>
 								{:else}
 									<p class="muted">Choose the original front full-body source below. Bigger is expected: compare proportions after uniform scaling. Old rear-panel verdicts are retired.</p>
 								{/if}

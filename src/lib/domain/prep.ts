@@ -192,7 +192,7 @@ export const scaleCheckSchema = z.object({
 	width_ratio: z.number(),
 	feet_offset: z.number(),
 	verdict: z.string().max(400),
-	/** Original cutout, generated front, and original pixels at 50% over the generated front. */
+	/** Original cutout, generated front, and original pixels at 50% opacity over the generated front. */
 	overlay_url: z.string().max(1000),
 	against: z.enum(['rear', 'source']).default('rear'),
 	checked_at: z.string()

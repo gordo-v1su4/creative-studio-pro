@@ -84,7 +84,7 @@ def source_comparison(sheet: Image.Image, source: Image.Image, out: str) -> dict
     font = ImageFont.truetype('DejaVuSans.ttf', 18) if sys.platform != 'win32' else ImageFont.truetype('arial.ttf', 18)
     draw.text((20, 15), 'Original reference vs generated FRONT - visual comparison', fill='#202020', font=font)
     draw.text((20, 43), 'Same body width; feet aligned. Uniform scaling only. No automatic pass/fail.', fill='#404040', font=font)
-    for i, title in enumerate(['ORIGINAL CUTOUT', 'GENERATED FRONT', 'ORIGINAL OVER GENERATED (50%)']):
+    for i, title in enumerate(['ORIGINAL CUTOUT', 'GENERATED FRONT', 'OVERLAY: 50% OPACITY']):
         draw.text((i * col + 14, 79), title, fill='#202020', font=font)
         draw.line((i * col + 12, foot, (i + 1) * col - 12, foot), fill='#666666', width=2)
     for i, image in [(0, a), (1, b), (2, b)]:
@@ -94,6 +94,7 @@ def source_comparison(sheet: Image.Image, source: Image.Image, out: str) -> dict
     canvas.paste(ghost, (2 * col + (col - width) // 2, foot - a.height), ghost)
     draw.text((20, foot + 25), note, fill='#303030', font=font)
     draw.text((20, foot + 52), 'Compare shoulders, waist, crotch, knees and ankles. Width matching does not certify anatomy.', fill='#303030', font=font)
+    draw.text((20, foot + 79), '50% opacity means see-through. It does not mean 50% larger or a 50% proportion error.', fill='#303030', font=font)
     canvas.save(out)
     return {'ok': True, 'width_ratio': 1, 'feet_offset': 0, 'method': 'original-front-v1',
             'verdict': f'{note}. Original pixels, matched body width and aligned feet; neither image is stretched. Visual comparison only.'}
