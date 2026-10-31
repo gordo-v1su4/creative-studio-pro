@@ -55,6 +55,11 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
    - **Fixed vocabulary:** `subjects` must be names from the references list, or `unknown`. Never a description.
    - **Link the project to its series:** Cold Open has no series attached (`project.series` is empty), so the app can't find Blood Rush's references for it.
    - **Re-tag** the 47 shots afterwards, and let the planner use the names: same characters together, the lead in the opening and closing beats.
+0b. **Missing Seedance prompts on 18 takes.** 35 of the 53 video takes have their prompt and job ID. The rest:
+   - **15 V6 slices:** split from the v6 trailer, and the split didn't copy the source's prompt. Copy the source take's generation onto its slices, and make splitting do that from now on.
+   - **2 dropped `hf_…` files:** the job ID is in the file name. Look each one up with `higgsfield generate get <id>` and attach `job_id` and `generation`. Also make file intake do this for any dropped file named `hf_…<uuid>`.
+   - **1 TR- take.**
+   - Then re-tag those shots so their captions get the prompt as context.
 1. **Delete a cut.** There's no command for it yet, and the old broken first cuts need removing.
 2. **Stills in cuts.** The cut player plays video only, so the first cut leaves out the 9 P01 stills. Either make the player hold a still for its length, or animate those stills.
 3. **Play order on the Board.** Today selected shots play in their order on the Board (left to right, rows top to bottom), not the order you clicked them. You expected click order. Shift-clicks should keep click order; a box selection falls back to Board order.
