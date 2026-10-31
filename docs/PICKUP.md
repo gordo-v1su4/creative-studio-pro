@@ -29,6 +29,12 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 
 ## Next, in order
 
+0. **Captions must name the characters.** Today a tag says "a young man with bleached hair", not "Kai", so once shots come from different places there's no telling who is who. We have character sheets for everyone (the series references, with the headshot cropped from each sheet's first panel). Plan:
+   - **Who might be in the shot:** take the names in the shot's title, beat and generation prompt, and show the model only those headshots. A short list is far more reliable than "find these faces among everyone".
+   - **Giving the model the faces:** the gateway's `/caption/scene` takes one image. Either build one labelled contact image (the frame plus a strip of named headshots, made with ffmpeg; no server change), or extend the gateway to take several images, which Qwen3-VL supports through chat completions. The first is quicker; the second is cleaner. The same fix is needed in project-stack-structure's caption gateway.
+   - **Fixed vocabulary:** `subjects` must be names from the references list, or `unknown`. Never a description.
+   - **Link the project to its series:** Cold Open has no series attached (`project.series` is empty), so the app can't find Blood Rush's references for it.
+   - **Re-tag** the 47 shots afterwards, and let the planner use the names: same characters together, the lead in the opening and closing beats.
 1. **Delete a cut.** There's no command for it yet, and the old broken first cuts need removing.
 2. **Stills in cuts.** The cut player plays video only, so the first cut leaves out the 9 P01 stills. Either make the player hold a still for its length, or animate those stills.
 3. **Play order on the Board.** Today selected shots play in their order on the Board (left to right, rows top to bottom), not the order you clicked them. You expected click order. Shift-clicks should keep click order; a box selection falls back to Board order.
