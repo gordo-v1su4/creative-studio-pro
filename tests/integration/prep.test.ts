@@ -9,7 +9,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
-import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
+import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, readPrep, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -248,5 +248,19 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(aspectOf(`${PROMPT}\nSETTINGS: GPT Image 2.5, 3:2 landscape, high quality.`, 'character')).toBe('16:9');
 		expect(aspectOf('SETTINGS: GPT Image 2.5, 3:2 landscape.', 'location')).toBe('3:2');
 		expect(aspectOf(PROMPT, 'character')).toBe('16:9');
+	});
+	test('prep.json stores paths relative to the project, and a project made on another machine still finds its files', async () => {
+		const { deps, projectId } = await setup();
+		const added = await addSource(deps, projectId, 'r-mara', { file_name: 'original.png', bytes: new Uint8Array([1, 2, 3]) });
+		if (!added.ok) throw new Error(added.message);
+		const local = added.prep.entries['r-mara'].sources[0].file;
+		expect(existsSync(local)).toBeTrue();
+		const stored = JSON.parse(await readFile(join(deps.projectRoot, projectId, 'prep.json'), 'utf8'));
+		const relative = stored.entries['r-mara'].sources[0].file;
+		expect(relative.startsWith('files/prep/sources/')).toBeTrue();
+		// A prep.json written on the Windows desktop before paths were relative.
+		stored.entries['r-mara'].sources[0].file = `C:\\Users\\Gordo\\data\\projects\\${projectId}\\${relative.split('/').join('\\')}`;
+		await writeFile(join(deps.projectRoot, projectId, 'prep.json'), JSON.stringify(stored), 'utf8');
+		expect((await readPrep(deps.projectRoot, projectId)).entries['r-mara'].sources[0].file).toBe(local);
 	});
 });

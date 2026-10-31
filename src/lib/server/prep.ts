@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, stat, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type { Project } from '$lib/domain/schemas';
 import {
 	emptyPrep, emptyState, factsGaps, handOffLine, identityGaps, notesOf, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
@@ -39,12 +39,38 @@ const fail = (status: number, message: string, reasons?: string[]): Failure => (
 
 // ---- store ----
 const prepPath = (root: string, projectId: string) => join(root, projectId, 'prep.json');
+
+// prep.json keeps file paths relative to the project folder, so a project copied to
+// another machine still finds its images. Older files hold the absolute path of the
+// machine that made them; anything inside the project folder is rebased on read.
+function localPath(root: string, projectId: string, file: string): string {
+	const parts = file.split(/[\\/]+/);
+	const at = parts.lastIndexOf(projectId);
+	if (at >= 0) return join(root, projectId, ...parts.slice(at + 1));
+	return isAbsolute(file) || /^[A-Za-z]:[\\/]/.test(file) ? file : join(root, projectId, ...parts);
+}
+function storedPath(root: string, projectId: string, file: string): string {
+	const rel = relative(join(root, projectId), file);
+	return rel.startsWith('..') || isAbsolute(rel) ? file : rel.split(sep).join('/');
+}
+function mapPaths(prep: PrepFile, to: (file: string) => string): PrepFile {
+	const entries = Object.fromEntries(Object.entries(prep.entries).map(([key, state]) => [key, {
+		...state,
+		sources: state.sources.map((source) => ({ ...source, file: to(source.file) })),
+		result: state.result && { ...state.result, file: to(state.result.file), ...(state.result.source_file ? { source_file: to(state.result.source_file) } : {}) }
+	}]));
+	return { ...prep, entries };
+}
+
 export async function readPrep(root: string, projectId: string): Promise<PrepFile> {
-	try { return prepFileSchema.parse(JSON.parse(await readFile(prepPath(root, projectId), 'utf8'))); } catch { return emptyPrep(); }
+	try {
+		const prep = prepFileSchema.parse(JSON.parse(await readFile(prepPath(root, projectId), 'utf8')));
+		return mapPaths(prep, (file) => localPath(root, projectId, file));
+	} catch { return emptyPrep(); }
 }
 async function writePrep(root: string, projectId: string, prep: PrepFile): Promise<PrepFile> {
 	const valid = prepFileSchema.parse(prep);
-	await writeFile(prepPath(root, projectId), JSON.stringify(valid, null, '\t'), 'utf8');
+	await writeFile(prepPath(root, projectId), JSON.stringify(mapPaths(valid, (file) => storedPath(root, projectId, file)), null, '\t'), 'utf8');
 	return valid;
 }
 async function update(root: string, projectId: string, key: string, change: (state: PrepState) => PrepState): Promise<PrepFile> {
