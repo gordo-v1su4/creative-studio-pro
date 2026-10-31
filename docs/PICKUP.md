@@ -82,6 +82,8 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 
 ## Still parked
 
+- **Original names through Review Room:** Review Room renames files to shot codes on ingest but keeps the original name or identifier as metadata. When takes move between this app and Review Room, carry `name` (the original file name) and `job_id` as metadata. Check whether the sync can run both ways or only one.
+
 - Review Room on its own domain
 - A Trigger.dev job queue for Agent calls
 - Moving Prep media into Review Room
