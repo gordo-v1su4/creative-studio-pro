@@ -147,7 +147,10 @@ export function planCut(shots: AssemblyShot[], music: Pick<CutMusic, 'duration_s
 	// A title card often fades or flickers, which reads as cuts; it is never an edit.
 	const edits = shots.filter((shot) => !shot.tags?.title_card && (shot.tags?.cuts ?? 0) > MAX_INNER_CUTS);
 	if (edits.length) notes.push(`Left out ${edits.map((shot) => shot.title).join(', ')}: already an edit (cuts inside)`);
-	const usable = shots.filter((shot) => !edits.includes(shot));
+	// The cut player plays video only: a still in a cut stops it, so stills wait until they are animated.
+	const stills = shots.filter((shot) => shot.kind !== 'video');
+	if (stills.length) notes.push(`${stills.length} still${stills.length === 1 ? '' : 's'} left out (the cut player plays video; animate them to use them)`);
+	const usable = shots.filter((shot) => shot.kind === 'video' && !edits.includes(shot));
 	const title = usable.find((shot) => shot.tags?.title_card);
 	const pool = usable.filter((shot) => shot !== title);
 	const untagged = pool.filter((shot) => !shot.tags).length;
@@ -184,7 +187,9 @@ export function planCut(shots: AssemblyShot[], music: Pick<CutMusic, 'duration_s
 			Math.abs((energy.get(shot.n) ?? 0.5) - e) +
 			0.3 * Math.min(1, Math.abs(shot.n - nextInStory) / Math.max(4, pool.length / 3)) +
 			(prev && samePlace(shot.tags?.place, prev.tags?.place) ? 0.35 : 0) +
-			0.4 * (uses.get(shot.n) ?? 0);
+			0.4 * (uses.get(shot.n) ?? 0) +
+			// Footage too short for the hold this section wants belongs where the cut runs fast.
+			0.8 * Math.max(0, 1 - remaining(shot) / (beats * beat));
 		const pick: AssemblyShot = candidates.reduce((best, shot) => (cost(shot) < cost(best) - 1e-9 ? shot : best));
 		const offset = used.get(pick.n) ?? 0;
 		const length = holdFrom(points, t, beats, remaining(pick), music.duration_s);

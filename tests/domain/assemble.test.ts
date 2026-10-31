@@ -69,13 +69,21 @@ describe('planning the first cut', () => {
 	});
 
 	test('the title card is the end tag after the music; pre-cut sequences are left out', () => {
-		const withTitle = [...pool, shot(5, 8, { kind: 'image', title: 'Title', tags: tags({ title_card: true, cuts: 4 }) }), shot(6, 20, { title: 'Old trailer', tags: tags({ cuts: 12 }) })];
+		const withTitle = [...pool, shot(5, 8, { title: 'Title', tags: tags({ title_card: true, cuts: 4 }) }), shot(7, 8, { kind: 'image', title: 'A still' }), shot(6, 20, { title: 'Old trailer', tags: tags({ cuts: 12 }) })];
 		const { entries, notes, covered_s } = planCut(withTitle, music, quietLoud);
 		expect(covered_s).toBe(20);
 		expect(entries.at(-1)).toEqual({ card_id: 'c5', asset_id: 't5', in_s: 0, out_s: 3 });
 		expect(entries.some((entry) => entry.card_id === 'c6')).toBeFalse();
 		expect(notes).toContain('Left out Old trailer: already an edit (cuts inside)');
 		expect(notes).toContain('Ends on Title after the music');
+		expect(entries.some((entry) => entry.card_id === 'c7')).toBeFalse();
+		expect(notes).toContain('1 still left out (the cut player plays video; animate them to use them)');
+	});
+
+	test('footage too short for a long hold goes where the cut runs fast', () => {
+		const shots = [shot(1, 0.5, { tags: tags({ motion: 0.001 }) }), shot(2, 10, { tags: tags({ motion: 0.002 }) }), shot(3, 10, { tags: tags({ motion: 0.05 }) })];
+		const { entries } = planCut(shots, music, quietLoud);
+		expect(entries[0].card_id).toBe('c2');
 	});
 
 	test('section drive: half the label, half the loudness rank; one quiet sliver cannot flatten the rest', () => {
