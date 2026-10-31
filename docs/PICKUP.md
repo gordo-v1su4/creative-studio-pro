@@ -33,7 +33,9 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 - **Shape:** music dropouts. The song cuts out for a beat and a dialogue line or a moment plays, then the music slams back in. There should be several of these.
 - **The hook:** set something up early that nobody understands, and pay it off later in the show. The model is *How to Get Away with Murder* (Shonda Rhimes): twists where you think it's one thing and it's another.
 - **Research first:** study the best teaser trailers and how they build: dropouts, dialogue buttons, the reveal and the title card.
-- **Story changes, Notion first:** Notion is the story's source of truth, so these get written there, then reach the app on the next sync.
+- **Order of work:** finish the technical items below first, then the story.
+- **Story changes, Notion first and for good:** change the story in Notion permanently, so nothing gets pulled from the old version. Episode 1 can stay as it is; the arc changes from episode 2 on.
+  - Bryson can be in the trailer before his full backstory is worked out.
   - **Bryson** has to be in the trailer. He doesn't appear in episode 1. He's the dean's son.
   - **The dean** is spying on the group because he believes Kai is planning something evil.
   - **Bryson and Kai** have a secret romance, but Bryson is getting close to Kai on his dad's orders.
