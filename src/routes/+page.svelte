@@ -5,6 +5,7 @@
 		Background,
 		BackgroundVariant,
 		Controls,
+		SelectionMode,
 		type Node,
 		type Edge,
 		type Viewport
@@ -366,7 +367,9 @@
 		if (activeProject) { adoptProject(activeProject); fitRequest = `${activeProject.project_id}:${groupId}`; }
 	}
 
-	// Shots picked on the board (click, or shift-drag a box over several), in reading order.
+	// Shots picked on the board (click, or drag a box over several), in reading order.
+	// Dragging empty canvas draws the selection box; Space-drag, a middle/right drag or a two-finger scroll pans,
+	// and a pinch (or ⌘/Ctrl + scroll) zooms.
 	const selectedBeats = $derived(readingOrder(nodes.filter((node) => node.selected && isBeat(node.id)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y }))).map((item) => item.id));
 	const beatTitle = (cardId: string) => activeProject?.production.cards.find((card) => card.card_id === cardId)?.title ?? 'the shot';
 	const groupName = (groupId: string) => (activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId)?.name : null) ?? 'that group';
@@ -1089,7 +1092,7 @@
 					{#if newGroupName !== null}
 						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder={selectedBeats.length ? `Name for ${beatsLabel(selectedBeats)}` : 'Group name'} aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
 					{/if}
-					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the shots there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a shot onto a group to move it. Shift-drag a box over shots to select a row, then group it. Double-click a group to rename it.'}</p>
+					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the shots there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a shot onto a group to move it. Drag a box over shots to select them (Space-drag or two-finger scroll pans, pinch zooms), then group them. Double-click a group to rename it.'}</p>
 					{@const bin = benchedBeats(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
 					{#if bin.length === 0}
@@ -1152,6 +1155,11 @@
 						onreconnectend={onSpineReconnectEnd}
 						onbeforedelete={beforeBoardDelete}
 						selectionKey="Shift"
+						selectionOnDrag
+						selectionMode={SelectionMode.Partial}
+						panOnDrag={[1, 2]}
+						panOnScroll
+						panActivationKey="Space"
 						onnodeclick={({ node }) => (selectedNodeId = node.id)}
 						autoPanOnNodeDrag={autoPanDrag}
 						onnodedragstart={onNodeDragStart}
