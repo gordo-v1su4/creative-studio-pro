@@ -31,7 +31,10 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 
 0. **Captions must name the characters.** Today a tag says "a young man with bleached hair", not "Kai", so once shots come from different places there's no telling who is who. We have character sheets for everyone (the series references, with the headshot cropped from each sheet's first panel). Plan:
    - **Who might be in the shot:** take the names in the shot's title, beat and generation prompt, and show the model only those headshots. A short list is far more reliable than "find these faces among everyone".
-   - **Giving the model the faces:** the gateway's `/caption/scene` takes one image. Either build one labelled contact image (the frame plus a strip of named headshots, made with ffmpeg; no server change), or extend the gateway to take several images, which Qwen3-VL supports through chat completions. The first is quicker; the second is cleaner. The same fix is needed in project-stack-structure's caption gateway.
+   - **Giving the model the faces: copy stack-structure, which already solved this.**
+     - `src/trigger/caption.ts` (around line 154) sends up to three `referenceImages` with the frame, each with a `referenceLabels` entry `{ name, role }`. The live gateway at `caption.v1su4.dev` already accepts them.
+     - `src/components/studio/sceneCaptionPrompt.ts` has the rules. Match people by recognizable identity, never by clothes, gender or importance. Name a matched character and don't describe their looks. Answer `name: null` when unsure. Use named locations consistently. Return structured `evidence.subjects[{ name, confidence, role }]`.
+     - Reuse that prompt and evidence shape here instead of writing new ones.
    - **Fixed vocabulary:** `subjects` must be names from the references list, or `unknown`. Never a description.
    - **Link the project to its series:** Cold Open has no series attached (`project.series` is empty), so the app can't find Blood Rush's references for it.
    - **Re-tag** the 47 shots afterwards, and let the planner use the names: same characters together, the lead in the opening and closing beats.
