@@ -35,12 +35,20 @@ export interface ModelConnection {
 	apiKey: string;
 }
 
+/**
+ * Reasoning models (Kimi k3.1-pro) count their thinking against max_tokens, so a
+ * call's answer budget alone can be spent before any answer is written. Each call
+ * keeps its answer budget; this is the thinking allowance on top. Only used tokens
+ * are billed, and answer length is still held by each schema's own limits.
+ */
+export const REASONING_HEADROOM_TOKENS = 8000;
+
 export function createOpenAICompatibleClient(connection: ModelConnection): AgentModelClient {
 	const provider = createOpenAICompatible({ name: connection.choice.provider, apiKey: connection.apiKey, baseURL: connection.baseURL });
 	return {
 		choice: connection.choice,
 		async generate({ system, prompt, images = [], maxOutputTokens = 1800, timeoutMs = 60_000 }) {
-			const common = { model: provider(connection.choice.model), system, maxOutputTokens, abortSignal: AbortSignal.timeout(timeoutMs) };
+			const common = { model: provider(connection.choice.model), system, maxOutputTokens: maxOutputTokens + REASONING_HEADROOM_TOKENS, abortSignal: AbortSignal.timeout(timeoutMs) };
 			const result = images.length === 0
 				? await generateText({ ...common, prompt })
 				: await generateText({
