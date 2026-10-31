@@ -53,13 +53,19 @@ function withCuts(production: ProductionState, cuts: Cut[]): ProductionState {
 
 /** A whole-production save (board, beats, takes) keeps the stored cuts, whatever the saved copy holds. */
 export function keepStoredCuts(saved: ProductionState, stored: ProductionState): ProductionState {
-	const { cuts: _ignored, ...rest } = saved;
-	return stored.cuts ? { ...rest, cuts: stored.cuts } : rest;
+	const { cuts: _cuts, score: _score, ...rest } = saved;
+	return { ...rest, ...(stored.cuts ? { cuts: stored.cuts } : {}), ...(stored.score ? { score: stored.score } : {}) };
+}
+
+/** Set or clear the project's score. */
+export function applySetScore(production: ProductionState, music: CutMusic | null): TakeResult {
+	const { score: _old, ...rest } = production;
+	return { ok: true, production: music ? { ...rest, score: { ...music, beats: [...music.beats] } } : rest };
 }
 
 export function applyPushCut(
 	production: ProductionState,
-	cut: { cut_id: string; name: string; entries: CutEntryInput[] },
+	cut: { cut_id: string; name: string; entries: CutEntryInput[]; music?: CutMusic },
 	newId: () => string,
 	now: string
 ): TakeResult {
@@ -75,6 +81,7 @@ export function applyPushCut(
 		version: 1,
 		locked: false,
 		entries: cut.entries.map((entry) => copyEntry({ ...entry, entry_id: newId() })),
+		...(cut.music ? { music: { ...cut.music, beats: [...cut.music.beats] } } : {}),
 		created_at: now,
 		updated_at: now
 	};

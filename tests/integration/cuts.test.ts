@@ -197,6 +197,24 @@ describe('cuts', () => {
 		expect(cutsOf(removed.production)[0].music).toBeUndefined();
 	});
 
+	test('the project score is set and cleared by set_score, survives a production save, and a pushed cut can start with it', async () => {
+		const { root, gateway, project } = await setup();
+		const music = { url: `/api/projects/${project.project_id}/files/music/score.mp3`, name: 'score.mp3', duration_s: 30, bpm: 120, beats: [0.5, 1, 1.5] };
+		const scored = ok(await gateway.handle({ command: 'set_score', project_id: project.project_id, expected_version: project.version, music }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		expect(scored.production.score).toEqual(music);
+		expect(await lastEvent(root, project.project_id)).toBe('project.cut_score_set.v1');
+		// A whole-production save from a stale draft without the score keeps the stored one.
+		const { score: _dropped, ...stale } = scored.production;
+		const saved = await gateway.saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: scored.version, production: stale });
+		if (!saved.ok) throw new Error(saved.error.message);
+		expect(saved.data.production.score).toEqual(music);
+		const pushed = ok(await gateway.handle({ command: 'push_cut', project_id: project.project_id, expected_version: saved.data.version, name: 'First cut', entries: [{ card_id: 'b', asset_id: 'b1', in_s: 0, out_s: 1 }], music }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		expect(cutsOf(pushed.production)[0].music).toEqual(music);
+		const cleared = ok(await gateway.handle({ command: 'set_score', project_id: project.project_id, expected_version: pushed.version, music: null }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		expect(cleared.production.score).toBeUndefined();
+		expect(cutsOf(cleared.production)[0].music).toEqual(music);
+	});
+
 	test('a sound plan belongs to a locked version; an unlocked version has none to set', async () => {
 		const { gateway, project } = await setup();
 		const pushed = await pushTrailer(gateway, project);

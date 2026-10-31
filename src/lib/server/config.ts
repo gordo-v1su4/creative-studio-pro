@@ -15,7 +15,7 @@ import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/mod
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
 import type { AnimateDeps } from '$lib/server/animate';
-import { cliRunner, createHiggsfieldCli, createHiggsfieldImages, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator } from '$lib/server/higgsfield';
+import { cliRunner, createHiggsfieldCli, createHiggsfieldImages, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator, type CliRunner } from '$lib/server/higgsfield';
 import { probeMedia } from '$lib/server/media-probe';
 import { createReviewRoomClient } from '$lib/server/review-room';
 import type { PushDeps } from '$lib/server/review-room-takes';
@@ -124,6 +124,12 @@ export function getOperatorId(): string {
 export function getVideoGenerator(): VideoGenerator | null {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	return bin ? createHiggsfieldCli(cliRunner(bin)) : null;
+}
+
+/** The Higgsfield CLI runner for reading the operator's renders, or null when the CLI isn't installed. */
+export function getHiggsfieldRunner(): CliRunner | null {
+	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
+	return bin ? cliRunner(bin) : null;
 }
 
 /** Sound-effect generation through the same CLI (V1S-129), or null when the CLI isn't installed. */

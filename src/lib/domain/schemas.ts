@@ -486,6 +486,8 @@ export const productionStateSchema = z.object({
 	links: z.array(spineLinkSchema).max(400).optional(),
 	/** Cuts pushed from selections; changed only by cut commands, never by board edits. */
 	cuts: z.array(cutSchema).max(100).optional(),
+	/** The project's score: the song the Agent cuts a first cut to (set and cleared only by set_score). */
+	score: cutMusicSchema.optional(),
 	/** Generations sent from beats; a completed one points at the take it became. */
 	generations: z.array(generationSchema).max(1000).optional(),
 	/** Stills sent after approval (V1S-373), newest last. */
@@ -775,6 +777,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.cut_edited.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_renamed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_music_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.cut_score_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.cut_sound_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.group_changed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_split.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
@@ -1032,7 +1035,9 @@ export const pushCutCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	name: nonBlank(120),
-	entries: z.array(cutEntryInputSchema).min(1).max(200)
+	entries: z.array(cutEntryInputSchema).min(1).max(200),
+	/** A song the new cut starts with (the Agent's first cut to the score). */
+	music: cutMusicSchema.optional()
 });
 
 /** A cut's whole entry list after an edit: order, trims, ramps, dropped entries. */
@@ -1066,6 +1071,14 @@ export const setCutMusicCommandSchema = z.object({
 	project_id: idSchema,
 	expected_version: z.number().int().nonnegative(),
 	cut_id: idSchema,
+	music: cutMusicSchema.nullable()
+});
+
+/** Set the project's score (or clear it with null). */
+export const setScoreCommandSchema = z.object({
+	command: z.literal('set_score'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
 	music: cutMusicSchema.nullable()
 });
 

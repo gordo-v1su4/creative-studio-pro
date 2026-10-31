@@ -618,6 +618,23 @@
 		if (accepted.length === 0) report();
 	}
 
+	/** Higgsfield renders in as new shots, one request at a time in the order given (the server downloads each). */
+	function importRenders(jobIds: string[], groupId?: string) {
+		if (!activeProject || jobIds.length === 0) return;
+		let added = 0;
+		notify(`Importing ${jobIds.length} from Higgsfield…`);
+		for (const jobId of jobIds) {
+			enqueueBoard(
+				(project) => {
+					const params = new URLSearchParams({ job_id: jobId, expected_version: String(project.version) });
+					if (groupId) params.set('group_id', groupId);
+					return fetch(`/api/projects/${project.project_id}/higgsfield?${params}`, { method: 'POST' });
+				},
+				() => { added += 1; notify(added === jobIds.length ? `Imported ${added} from Higgsfield as new shots` : `Importing from Higgsfield… ${added} of ${jobIds.length}`); }
+			);
+		}
+	}
+
 	function flushPick(cardId: string, pending: { takeId: string; timer: ReturnType<typeof setTimeout> }) {
 		clearTimeout(pending.timer);
 		pendingPicks.delete(cardId);
@@ -1185,7 +1202,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files)} bind:tab={productionTab} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files)} onImportRenders={(jobIds) => importRenders(jobIds)} bind:tab={productionTab} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">

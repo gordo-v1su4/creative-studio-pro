@@ -20,15 +20,17 @@ const fail = (status: number, message: string) => json({ ok: false, error: { cod
 /**
  * Attach a song to a cut (V1S-126). The raw body is the audio file (name in
  * ?name=). It is stored under files/music/, its beat grid is computed in
- * code, and it is set on the cut (?cut_id=, ?expected_version=).
+ * code, and it is set on the cut (?cut_id=, ?expected_version=). Without a
+ * cut_id it becomes the project's score, the song the Agent's first cut is made to.
  */
 export const POST: RequestHandler = async ({ params, request, url }) => {
 	const projectId = idSchema.safeParse(params.projectId);
 	if (!projectId.success) return fail(400, 'Invalid project id');
 	const name = url.searchParams.get('name') ?? '';
 	if (!AUDIO.test(name)) return fail(415, `${name || 'That file'} is not a song file (mp3, wav, m4a, aac, flac, ogg, aiff)`);
-	const cutId = idSchema.safeParse(url.searchParams.get('cut_id'));
-	if (!cutId.success) return fail(400, 'cut_id is required');
+	const rawCutId = url.searchParams.get('cut_id');
+	const cutId = rawCutId === null ? null : idSchema.safeParse(rawCutId);
+	if (cutId && !cutId.success) return fail(400, 'Invalid cut_id');
 	const expectedVersion = Number(url.searchParams.get('expected_version'));
 	if (!Number.isInteger(expectedVersion) || expectedVersion < 0) return fail(400, 'expected_version is required');
 	if (!request.body) return fail(400, 'Empty upload');
@@ -54,10 +56,10 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		return fail(400, `${name} has no audible audio`);
 	}
 	const grid = beatGrid(onset);
-	const outcome = await getGateway().setCutMusic({
-		command: 'set_cut_music', project_id: projectId.data, expected_version: expectedVersion, cut_id: cutId.data,
-		music: { url: `/api/projects/${projectId.data}/files/music/${encodeURIComponent(fileName)}`, name, duration_s: Math.round((onset.length / ENVELOPE_HZ) * 1000) / 1000, bpm: grid.bpm, beats: grid.beats }
-	});
+	const music = { url: `/api/projects/${projectId.data}/files/music/${encodeURIComponent(fileName)}`, name, duration_s: Math.round((onset.length / ENVELOPE_HZ) * 1000) / 1000, bpm: grid.bpm, beats: grid.beats };
+	const outcome = cutId
+		? await getGateway().setCutMusic({ command: 'set_cut_music', project_id: projectId.data, expected_version: expectedVersion, cut_id: cutId.data, music })
+		: await getGateway().setScore({ command: 'set_score', project_id: projectId.data, expected_version: expectedVersion, music });
 	if (!outcome.ok) {
 		await rm(target, { force: true });
 		return json(outcome, { status: commandStatus(outcome.error) });

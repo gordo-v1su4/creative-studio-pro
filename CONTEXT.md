@@ -102,6 +102,10 @@ _Avoid_: Retime, time remap, speed curve (in prose)
 A cut whose picture is frozen for sound; it can no longer be trimmed, ramped or reordered.
 _Avoid_: Final cut, frozen cut, published cut
 
+**Score**:
+The project's song: the music the Agent's first cut is made to. The Agent chooses the shots, their order and how many beats each holds; code puts every cut on a beat.
+_Avoid_: Soundtrack, track, music bed (in prose)
+
 ### Agent
 
 **Agent**:

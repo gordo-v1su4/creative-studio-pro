@@ -18,14 +18,63 @@
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 	import { droppedFiles, pickedFiles } from '$lib/ui/dropped-files';
+	import HiggsfieldImport from '$lib/ui/HiggsfieldImport.svelte';
 
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
-	let { project, onUpdated, onAddFiles, tab = $bindable('story') }: {
+	let { project, onUpdated, onAddFiles, onImportRenders, tab = $bindable('story') }: {
 		project: Project; onUpdated: (project: Project) => void;
 		/** Files dropped or picked on the Shots tab: each becomes a new shot (benched until hooked in). */
 		onAddFiles?: (files: File[]) => void;
+		/** Higgsfield renders picked on the Shots tab (job ids, in the order to add): each becomes a new shot. */
+		onImportRenders?: (jobIds: string[]) => void;
 		tab?: ProductionTab
 	} = $props();
+
+	let higgsfieldOpen = $state(false);
+	const importedJobs = $derived(new Set(project.production.assets.flatMap((asset) => (asset.job_id ? [asset.job_id] : []))));
+
+	// --- The score: the song the Agent cuts a first cut to.
+	const score = $derived(project.production.score ?? null);
+	let scoreBusy = $state<'upload' | 'remove' | 'cutting' | null>(null);
+	let scoreError = $state<string | null>(null);
+	const clockOf = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+
+	async function uploadScore(file: File | undefined) {
+		if (!file) return;
+		scoreBusy = 'upload'; scoreError = null;
+		try {
+			const query = new URLSearchParams({ name: file.name, expected_version: String(project.version) });
+			const body = (await (await fetch(`/api/projects/${project.project_id}/cuts/music?${query}`, { method: 'POST', headers: { 'content-type': file.type || 'audio/*' }, body: file })).json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			onUpdated(body.data);
+		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'Adding the score failed'; }
+		finally { scoreBusy = null; }
+	}
+
+	async function removeScore() {
+		scoreBusy = 'remove'; scoreError = null;
+		try {
+			const body = (await (await fetch(`/api/projects/${project.project_id}/cuts`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: 'set_score', expected_version: project.version, music: null }) })).json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			onUpdated(body.data);
+		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'Removing the score failed'; }
+		finally { scoreBusy = null; }
+	}
+
+	/** The Agent's first cut to the score: a new cut, opened in the Cuts tab. */
+	async function cutToScore() {
+		scoreBusy = 'cutting'; scoreError = null;
+		try {
+			const body = (await (await fetch(`/api/projects/${project.project_id}/cuts/assemble`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expected_version: project.version }) })).json()) as { ok: true; data: Project; cut_id: string | null; notes: string[] } | { ok: false; error: { message: string } };
+			if (!body.ok) throw new Error(body.error.message);
+			onUpdated(body.data);
+			const cut = body.data.production.cuts?.find((entry) => entry.cut_id === body.cut_id);
+			notice = cut ? [`The Agent cut "${cut.name}": ${cut.entries.length} shots, ${cutLength(cut).toFixed(1)}s.`, ...body.notes].join(' ') : null;
+			tab = 'cuts';
+			if (body.cut_id) openCut = { cutId: body.cut_id, version: null };
+		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'The Agent could not cut to the score'; }
+		finally { scoreBusy = null; }
+	}
 
 	/** True while files are dragged over the Shots tab. */
 	let dropping = $state(false);
@@ -231,8 +280,27 @@
 				<span class="grow"></span>
 				<label class="btn cursor-pointer">Add files…<input type="file" multiple accept="image/*,video/*" class="sr-only" onchange={shotsPicked} /></label>
 				<label class="btn cursor-pointer">Add folder…<input type="file" multiple webkitdirectory class="sr-only" onchange={shotsPicked} /></label>
+				{#if onImportRenders}<button type="button" class="btn" onclick={() => (higgsfieldOpen = true)}>From Higgsfield…</button>{/if}
 			</div>
+			<div class="flex flex-wrap items-center gap-2 border-b border-[#223039] px-4 py-2.5" aria-label="Score">
+				<span class="meta-label text-[#59d9cf]">Score</span>
+				{#if score}
+					<span class="max-w-[320px] truncate text-[12px] text-[#9fc9cf]" title={score.name}>♪ {score.name}</span>
+					<span class="meta-label text-[#63838c]">{clockOf(score.duration_s)}{score.bpm ? ` · ${score.bpm} BPM` : ''} · {score.beats.length} beats</span>
+					<label class={['agent-mini cursor-pointer', scoreBusy && 'opacity-50']}>{scoreBusy === 'upload' ? 'adding…' : 'replace'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="sr-only" disabled={scoreBusy !== null} onchange={(event) => { void uploadScore(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
+					<button type="button" class="agent-mini" onclick={() => void removeScore()} disabled={scoreBusy !== null}>remove</button>
+				{:else}
+					<span class="text-[11.5px] text-[#668d98]">Add the song or score; the Agent cuts a first cut of these shots to it.</span>
+				{/if}
+				<span class="grow"></span>
+				{#if !score}
+					<label class={['btn cursor-pointer', scoreBusy && 'opacity-50']}>{scoreBusy === 'upload' ? 'Adding…' : 'Add score…'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="sr-only" disabled={scoreBusy !== null} onchange={(event) => { void uploadScore(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
+				{/if}
+				<button type="button" class="btn btn-accent" onclick={() => void cutToScore()} disabled={!score || scoreBusy !== null || draft.cards.length === 0} title="The Agent looks at a frame of every shot and the score's beats and loudness, picks the shots and their order, and pushes a new cut with every cut on a beat. Shots and the board are not changed.">{scoreBusy === 'cutting' ? 'The Agent is cutting… (a minute or two)' : 'First cut to score'}</button>
+			</div>
+			{#if scoreError}<p class="border-b border-[#223039] px-4 py-2 text-[12px] text-gate-failed" role="alert">{scoreError}</p>{/if}
 		{/if}
+		{#if higgsfieldOpen && onImportRenders}<HiggsfieldImport have={importedJobs} onImport={onImportRenders} onclose={() => (higgsfieldOpen = false)} />{/if}
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
 			{#each draft.cards as card (card.card_id)}
 				{@const image = assetFor(card.card_id, 'image')}

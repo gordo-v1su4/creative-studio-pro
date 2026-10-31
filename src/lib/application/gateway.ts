@@ -44,9 +44,9 @@ import { CODE_PATTERN, fillEpisodeCodes } from '$lib/domain/shot-codes';
 import { z } from 'zod';
 import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
-import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
+import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setScoreCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
 import { applyCreateGroup, applyMoveBeats, applyRenameGroup, applySplitIntoShots, MAIN_GROUP } from '$lib/domain/groups';
-import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, applySetCutMusic, applySetSoundPlan, keepStoredCuts } from '$lib/domain/cuts';
+import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, applySetCutMusic, applySetScore, applySetSoundPlan, keepStoredCuts } from '$lib/domain/cuts';
 
 type LedgerEventType = LedgerEvent['type'];
 
@@ -173,6 +173,8 @@ export class ProjectCommandGateway {
 				return this.lockProjectModel(raw);
 			case 'push_cut':
 				return this.pushCut(raw);
+			case 'set_score':
+				return this.setScore(raw);
 			case 'edit_cut':
 				return this.editCut(raw);
 			case 'rename_cut':
@@ -986,8 +988,15 @@ export class ProjectCommandGateway {
 	async pushCut(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = pushCutCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
-		const { name, entries } = parsed.data;
-		return this.updateCuts(parsed.data, (production, now) => applyPushCut(production, { cut_id: uuid7ish(), name, entries }, uuid7ish, now), 'project.cut_pushed.v1');
+		const { name, entries, music } = parsed.data;
+		return this.updateCuts(parsed.data, (production, now) => applyPushCut(production, { cut_id: uuid7ish(), name, entries, music }, uuid7ish, now), 'project.cut_pushed.v1');
+	}
+
+	/** The project's score, the song the Agent's first cut is made to. */
+	async setScore(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = setScoreCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateCuts(parsed.data, (production) => applySetScore(production, parsed.data.music), 'project.cut_score_set.v1');
 	}
 
 	async editCut(raw: unknown): Promise<CommandOutcome<Project>> {
