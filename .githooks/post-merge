@@ -1,0 +1,6 @@
+#!/bin/sh
+# Rebuild this machine's graft graph after a pull (graft/ is git-ignored, so each
+# machine keeps its own). Skipped where graft isn't installed; never blocks git.
+command -v graft >/dev/null 2>&1 || exit 0
+graft build >/dev/null 2>&1 && echo "graft: graph rebuilt" || echo "graft: rebuild failed, run \`graft build\`" >&2
+exit 0
