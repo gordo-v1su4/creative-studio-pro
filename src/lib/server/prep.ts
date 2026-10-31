@@ -39,6 +39,8 @@ const fail = (status: number, message: string, reasons?: string[]): Failure => (
 
 // ---- store ----
 const prepPath = (root: string, projectId: string) => join(root, projectId, 'prep.json');
+/** `Mara_Voss_sheet-1a2b3c4d.png` → `Mara_Voss_sheet` (sheet names never contain a dash). */
+const sheetNameOf = (file: string) => basename(file).split('-')[0];
 
 // prep.json keeps file paths relative to the project folder, so a project copied to
 // another machine still finds its images. Older files hold the absolute path of the
@@ -93,7 +95,9 @@ export async function prepView(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, p
 	const items = entries.map((entry) => {
 		const state = prep.entries[entry.key] ?? emptyState();
 		const file = entry.reference_page_id ? record?.reference_files?.[entry.reference_page_id] : undefined;
-		const versions = saved.filter(({ id }) => id.startsWith(`${sheetFileName(entry.name)}-`)).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
+		// A reference renamed in Notion keeps the versions saved under its earlier names.
+		const sheetNames = new Set([sheetFileName(entry.name), ...state.sheet_names, ...(state.result?.source_file ? [sheetNameOf(state.result.source_file)] : [])]);
+		const versions = saved.filter(({ id }) => sheetNames.has(sheetNameOf(id))).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
 		// Before version selection existed, landing always used the newest output.
 		// Identify those legacy current files only when their save time is close
 		// to (and before) the recorded landing time; otherwise leave it unknown.
@@ -436,7 +440,7 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 	}
 	const bodySource = view.state.sources.find((source) => source.url === view.state.body_source_url);
 	const scale = view.entry.kind === 'character' && bodySource ? await checkScale(deps, project, view, stamped, bodySource.file) : undefined;
-	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, result: { file: stamped, source_file: file, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
+	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, sheet_names: [...new Set([...state.sheet_names, sheetNameOf(file)])].slice(-20), result: { file: stamped, source_file: file, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
 }
 
 /** Reuse an existing saved output without generating or deleting anything. */
