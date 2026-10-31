@@ -15,6 +15,7 @@
 	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
 	import SpineEdge from '$lib/ui/edges/SpineEdge.svelte';
 	import FitOnOpen from '$lib/ui/FitOnOpen.svelte';
+	import FrameKey from '$lib/ui/FrameKey.svelte';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
@@ -1092,7 +1093,7 @@
 					{#if newGroupName !== null}
 						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder={selectedBeats.length ? `Name for ${beatsLabel(selectedBeats)}` : 'Group name'} aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
 					{/if}
-					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the shots there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a shot onto a group to move it. Drag a box over shots to select them (Space-drag or two-finger scroll pans, pinch zooms), then group them. Double-click a group to rename it.'}</p>
+					<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">{draggingBeats ? 'Drop on a group to move the shots there.' : selectedBeats.length ? `Click → on a group to move ${beatsLabel(selectedBeats)} there, or + new to make one from them.` : 'Pick a group to show its beats. Drag a shot onto a group to move it. Drag a box over shots to select them (Space-drag or two-finger scroll pans, pinch zooms; F frames the selection), then group them. Double-click a group to rename it.'}</p>
 					{@const bin = benchedBeats(activeProject.production)}
 					<div class="meta-label mt-5 flex items-center">Bin<span class="grow"></span><small class="font-mono text-[10px] text-text-dim">{bin.length}</small></div>
 					{#if bin.length === 0}
@@ -1146,7 +1147,7 @@
 						{nodeTypes}
 						{edgeTypes}
 						minZoom={0.25}
-						maxZoom={2}
+						maxZoom={4}
 						fitView={false}
 						nodesConnectable={(activeProject?.production.cards.length ?? 0) > 0}
 						isValidConnection={validSpineConnection}
@@ -1175,6 +1176,7 @@
 						/>
 						<Controls showLock={false} position="bottom-left" />
 						<FitOnOpen request={fitRequest} done={() => (fitRequest = null)} />
+						<FrameKey />
 					</SvelteFlow>
 					{#if selectedBeats.length > 1 && activeProject}
 						{@const moveTargets = groupsOf(activeProject.production).filter((g) => g.group_id !== activeGroup)}
