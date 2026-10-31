@@ -8,7 +8,7 @@
 	 * `_References`; nothing is copied anywhere else.
 	 */
 	type Ref = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean };
-	type RefFile = { width: number; height: number; file_name: string };
+	type RefFile = { width: number; height: number; file_name: string; version_id: string };
 	let {
 		seriesId, references, files, selectedTitle = null, onAttach, onUploaded
 	}: {
@@ -28,7 +28,8 @@
 	let uploading = $state<string | null>(null);
 	/** The sheet shown big (click a card's picture; Esc or a click closes it). */
 	let zoom = $state<{ src: string; alt: string } | null>(null);
-	const src = (pageId: string) => `/api/series/${seriesId}/references?page_id=${pageId}`;
+	// The URL names the version, so a new sheet is fetched fresh instead of served from the browser's cache.
+	const src = (pageId: string) => `/api/series/${seriesId}/references?page_id=${pageId}&v=${files[pageId]?.version_id ?? ''}`;
 	let error = $state<string | null>(null);
 
 	async function upload(ref: Ref, file: File) {

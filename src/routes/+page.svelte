@@ -39,6 +39,7 @@
 	import { SEED, connect, deriveSpine, disconnect, linksOf, spineOf, type SpineLink } from '$lib/domain/spine';
 	import type { Project, ProjectSummary, CanvasLayout, ShotReference } from '$lib/domain/schemas';
 	import { previousPick } from '$lib/domain/shot-references';
+	import { prepEntries } from '$lib/domain/prep';
 	import ReferencesDrawer from '$lib/ui/ReferencesDrawer.svelte';
 
 	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
@@ -58,12 +59,20 @@
 	let savingLayout = $state(false);
 	let loadError = $state<string | null>(null);
 	// The series' references (V1S-326): names for the chips on shots, thumbnails in the References drawer.
-	type SeriesRef = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean };
+	type SeriesRef = { page_id: string; name: string; kind: string; role: string; handles: string[]; file_name: string; name_on_sheet: boolean; scene_ids: string[] };
+	type SeriesRefFile = { width: number; height: number; file_name: string; version_id: string };
 	let seriesRefs = $state<SeriesRef[]>([]);
-	let seriesRefFiles = $state<Record<string, { width: number; height: number; file_name: string }>>({});
+	let seriesRefFiles = $state<Record<string, SeriesRefFile>>({});
+	// The drawer follows Prep's order for this episode (most-used characters first, then places in
+	// scene order); references the episode doesn't use come after.
+	let drawerRefs = $derived.by(() => {
+		const order = prepEntries(activeProject?.series?.scenes ?? [], seriesRefs).map((entry) => entry.reference_page_id);
+		const rank = (pageId: string) => { const at = order.indexOf(pageId); return at < 0 ? order.length : at; };
+		return seriesRefs.toSorted((a, b) => rank(a.page_id) - rank(b.page_id));
+	});
 	let seriesRefsFor = $state<string | null>(null);
 	function loadSeriesRefs(id: string) {
-		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { references?: { items: SeriesRef[] }; reference_files?: Record<string, { width: number; height: number; file_name: string }> } }) => {
+		void fetch(`/api/series/${id}`).then((response) => response.json()).then((body: { ok: boolean; data?: { references?: { items: SeriesRef[] }; reference_files?: Record<string, SeriesRefFile> } }) => {
 			if (body.ok && seriesRefsFor === id) {
 				seriesRefs = body.data?.references?.items ?? [];
 				seriesRefFiles = body.data?.reference_files ?? {};
@@ -1193,7 +1202,7 @@
 				{#if activeProject?.series}
 					<ReferencesDrawer
 						seriesId={activeProject.series.series_id}
-						references={seriesRefs}
+						references={drawerRefs}
 						files={seriesRefFiles}
 						selectedTitle={selectedCard?.title ?? null}
 						onAttach={(pageId) => selectedCard && setShotReferences(selectedCard.card_id, [...(selectedCard.references ?? []).filter((reference) => reference.kind === 'series'), { kind: 'series', page_id: pageId }, ...(selectedCard.references ?? []).filter((reference) => reference.kind !== 'series')])}
