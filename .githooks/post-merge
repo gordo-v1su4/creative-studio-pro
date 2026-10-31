@@ -1,6 +1,11 @@
 #!/bin/sh
 # Rebuild this machine's graft graph after a pull (graft/ is git-ignored, so each
 # machine keeps its own). Skipped where graft isn't installed; never blocks git.
+
+# graft rewrites .cursor/hooks.json with this machine's absolute path whenever it
+# upgrades; the committed relative path works everywhere, so put it back.
+grep -qE 'node \\"(/|[A-Za-z]:)' .cursor/hooks.json 2>/dev/null && git checkout -- .cursor/hooks.json
+
 command -v graft >/dev/null 2>&1 || exit 0
 graft build >/dev/null 2>&1 && echo "graft: graph rebuilt" || echo "graft: rebuild failed, run \`graft build\`" >&2
 exit 0
