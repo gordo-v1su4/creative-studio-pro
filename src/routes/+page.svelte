@@ -1377,6 +1377,9 @@
 </div>
 
 <style>
+	/* A shot on the board shows an arrow (click to select, drag to move); the closed hand only while it moves. */
+	:global(.svelte-flow .svelte-flow__node.draggable) { cursor: default; }
+	:global(.svelte-flow .svelte-flow__node.draggable.dragging) { cursor: grabbing; }
 	.layer-row { display: grid; grid-template-columns: 6px 1fr auto; align-items: center; gap: 8px; padding: 6px 7px; background: #151519; color: #8d9ca1; }
 	.layer-row > span { width: 6px; height: 6px; }
 	.layer-row b { font-size: 11px; font-weight: 500; }
