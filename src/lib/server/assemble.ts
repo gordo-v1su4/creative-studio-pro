@@ -52,9 +52,10 @@ export async function assembleFirstCut(client: AgentModelClient, project: Projec
 		bars.length ? `LOUDNESS BY BAR (time in seconds: 0 quiet to 9 loudest):\n${bars.map((bar) => `${bar.at.toFixed(1)}:${bar.level}`).join(' ')}` : '',
 		`SHOTS (${shots.length}; the pictures are in this order, one per shot that has one):\n${shotLines.join('\n')}`,
 		`PROJECT: ${project.title}${project.production.logline ? `. ${project.production.logline}` : ''}`,
-		`Answer with only JSON: {"name":"a short name for this cut","shots":[{"shot":3,"beats":8,"why":"a few words"}],"end_tag":{"shot":12,"seconds":3},"notes":"one or two lines on the shape of the cut"}. The shots' beats add up to ${beatCount}. A video shot can't hold longer than its footage.`
+		`Answer with only JSON: {"name":"a short name for this cut","shots":[{"shot":3,"beats":8,"why":"three or four words"}],"end_tag":{"shot":12,"seconds":3},"notes":"one or two lines on the shape of the cut"}. The shots' beats add up to ${beatCount}. A video shot can't hold longer than its footage.`
 	].filter(Boolean).join('\n\n');
-	const budget = { system: SYSTEM, images, maxOutputTokens: 4000, timeoutMs: 300_000 };
+	// A reasoning model with dozens of pictures is slow: allow it 15 minutes a pass.
+	const budget = { system: SYSTEM, images, maxOutputTokens: 4000, timeoutMs: 900_000 };
 	let plan = await generateStructured(client, { ...budget, prompt: ask }, (value) => answer.parse(value));
 	let laid = entriesFromPlan(plan.shots, shots, score, plan.end_tag);
 	// Short of the score (shots left out, or footage that ran out): one more pass, told exactly where it fell short.
@@ -68,12 +69,12 @@ export async function assembleFirstCut(client: AgentModelClient, project: Projec
 	return { name: plan.name, entries: laid.entries, notes: [plan.notes ?? '', ...laid.notes].filter(Boolean) };
 }
 
-/** A 512px JPEG of a local image or video file (for a video, the frame at `at` seconds). */
+/** A 384px JPEG of a local image or video file (for a video, the frame at `at` seconds). */
 export async function frameOf(file: string, at: number | null): Promise<ModelImage | null> {
 	const dir = await mkdtemp(join(tmpdir(), 'csp-frame-'));
 	const out = join(dir, 'frame.jpg');
 	try {
-		await runFfmpeg(['-y', ...(at !== null ? ['-ss', at.toFixed(2)] : []), '-i', file, '-frames:v', '1', '-vf', 'scale=512:512:force_original_aspect_ratio=decrease', '-q:v', '5', out], 60_000);
+		await runFfmpeg(['-y', ...(at !== null ? ['-ss', at.toFixed(2)] : []), '-i', file, '-frames:v', '1', '-vf', 'scale=384:384:force_original_aspect_ratio=decrease', '-q:v', '5', out], 60_000);
 		return { data: new Uint8Array(await readFile(out)), mediaType: 'image/jpeg' };
 	} catch {
 		return null;
