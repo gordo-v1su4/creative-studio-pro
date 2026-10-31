@@ -82,6 +82,7 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 
 ## Still parked
 
+- **Look at the whole Notion → app → Review Room flow together.** The story comes from Notion, shots are built in the app, then pushed to Review Room. Review Room keeps them in folders, named by shot code. Check how names, shot codes, original file names and job IDs line up at each step, and make sure nothing gets lost on the way.
 - **Original names through Review Room:** Review Room renames files to shot codes on ingest but keeps the original name or identifier as metadata. When takes move between this app and Review Room, carry `name` (the original file name) and `job_id` as metadata. Check whether the sync can run both ways or only one.
 
 - Review Room on its own domain
