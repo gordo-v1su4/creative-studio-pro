@@ -579,7 +579,7 @@
 
 <svelte:window onkeydown={key} />
 
-<div class="fixed inset-0 z-50 flex items-center justify-center overflow-auto bg-nr-deep/95 px-6 py-4" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
+<div class="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-nr-deep/95 px-6 py-4" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
 	<div class="w-full max-w-[1180px]">
 		<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[10px] text-nr-muted">
 			{#if source.kind === 'cut'}
@@ -636,8 +636,10 @@
 			<button type="button" class="ctl" onclick={close} title="Close (Esc)">close</button>
 		</div>
 
-		<!-- The picture gives way to the timeline on short windows: height is capped, width follows 16:9. -->
-		<canvas bind:this={canvas} class="mx-auto block aspect-video max-w-full rounded-[3px] bg-black" style:height="min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - 330px))" onclick={togglePause}></canvas>
+		<!-- The picture gives way to the timeline on short windows: height is capped, width follows 16:9. A cut has
+		     a song lane and an entry row under the timeline, so its picture leaves room for them: the whole player
+		     fits on one screen in both modes. -->
+		<canvas bind:this={canvas} class="mx-auto block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - ${source.kind === 'cut' ? 430 : 330}px))`} onclick={togglePause}></canvas>
 
 		<div class="transport mt-2" role="group" aria-label="Transport">
 			<button type="button" class="tkey" onclick={() => startClip(index - 1)} disabled={clips.length < 2} aria-label="Previous clip" title="Previous clip (↑)"><span class="ico skip back" aria-hidden="true"></span></button>
@@ -693,12 +695,15 @@
 						{/each}
 					</ul>
 				{/if}
-				<dl class="source mt-1.5">
-					<dt>take</dt><dd>{currentTake?.name ?? current.assetId}</dd>
-					<dt>full length</dt><dd>{current.duration.toFixed(2)}s · kept {current.in.toFixed(2)}–{current.out.toFixed(2)}{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
-					<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-nr-faint">no generation job on record</span>{/if}</dd>
-					<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-nr-faint">shot's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-nr-faint">none on record</span>{/if}</dd>
-				</dl>
+				<!-- Where the take came from folds away, so the player keeps the shape of the selection preview. -->
+				<details class="source-details mt-1">
+					<summary>{currentTake?.name ?? current.assetId} · {current.duration.toFixed(2)}s, kept {current.in.toFixed(2)}–{current.out.toFixed(2)}</summary>
+					<dl class="source mt-1.5">
+						<dt>full length</dt><dd>{current.duration.toFixed(2)}s{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
+						<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-nr-faint">no generation job on record</span>{/if}</dd>
+						<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-nr-faint">shot's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-nr-faint">none on record</span>{/if}</dd>
+					</dl>
+				</details>
 			</section>
 		{/if}
 
@@ -739,6 +744,9 @@
 	.hints .mouse { opacity: .8; }
 	.ctl.suggest { border-color: var(--color-nr-mark-line); color: var(--color-nr-mark); }
 	.ctl.push { border-color: var(--color-nr-accent-deep); color: var(--color-nr-accent); }
+	.source-details summary { cursor: pointer; color: var(--color-nr-faint); }
+	.source-details summary:hover { color: var(--color-nr-muted); }
+	.source-details .prompt { max-height: 96px; overflow: auto; }
 	.entry { border: 1px solid var(--color-nr-line-soft); background: var(--color-nr-deep); padding: 6px 8px; border-radius: 3px; font: 10px var(--font-mono); color: var(--color-nr-muted); }
 	.source { display: grid; grid-template-columns: 84px 1fr; gap: 2px 8px; }
 	.source dt { color: var(--color-nr-faint); text-transform: uppercase; }
