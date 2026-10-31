@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import type { EssentiaConfig } from '$lib/server/essentia';
 import { ProjectStore } from '$lib/adapters/project-store';
 import type { ProjectStoreConfig } from '$lib/adapters/project-store';
 import { RaycastBridge } from '$lib/adapters/m3-bridge';
@@ -124,6 +125,18 @@ export function getOperatorId(): string {
 export function getVideoGenerator(): VideoGenerator | null {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	return bin ? createHiggsfieldCli(cliRunner(bin)) : null;
+}
+
+/** The operator's caption gateway (Qwen3-VL) for shot tags, or null when it isn't set up. */
+export function getCaptionGateway(): { url: string; token: string } | null {
+	const url = env.SCENE_CAPTION_SMART_GATEWAY_URL?.trim(), token = env.SCENE_CAPTION_SMART_GATEWAY_TOKEN?.trim();
+	return url && token ? { url, token } : null;
+}
+
+/** The operator's Essentia service for song analysis, or null when ESSENTIA_API_URL / ESSENTIA_API_KEY aren't set. */
+export function getEssentia(): EssentiaConfig | null {
+	const url = env.ESSENTIA_API_URL?.trim(), key = env.ESSENTIA_API_KEY?.trim();
+	return url && key ? { url, key } : null;
 }
 
 /** The Higgsfield CLI runner for reading the operator's renders, or null when the CLI isn't installed. */

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { barLoudness, cutPoints, entriesFromPlan, shotsForAssembly, type AssemblyShot } from '../../src/lib/domain/assemble';
+import { barLoudness, cutPoints, planCut, samePlace, sectionDrive, sectionsFromBars, shotEnergies, shotsForAssembly, type AssemblyShot, type Section } from '../../src/lib/domain/assemble';
+import { applySetTakeTags, motionOf, wordsFromCaption, type ShotTags } from '../../src/lib/domain/shot-tags';
 import type { ProductionAsset, ProductionState, StoryCard } from '../../src/lib/domain/schemas';
 
 const card = (id: string, order: number, extra: Partial<StoryCard> = {}): StoryCard => ({
@@ -9,17 +10,20 @@ const take = (id: string, cardId: string, extra: Partial<ProductionAsset> = {}):
 	asset_id: id, card_id: cardId, kind: 'video', name: id, mime_type: 'video/mp4', url: `/files/${id}`, created_at: '2026-10-01T07:00:00.000Z', ...extra
 });
 const production = (cards: StoryCard[], assets: ProductionAsset[]): ProductionState => ({ status: 'draft', title: '', logline: '', premise: '', theme: '', cards, assets, updated_at: null });
-const shot = (n: number, max_s: number, extra: Partial<AssemblyShot> = {}): AssemblyShot => ({ n, card_id: `c${n}`, asset_id: `t${n}`, kind: 'video', title: `c${n}`, beat: '', in_s: 0, max_s, ...extra });
-// 120 BPM: a beat every half second for 10 seconds.
-const music = { duration_s: 10, beats: Array.from({ length: 19 }, (_, i) => (i + 1) * 0.5) };
+const tags = (extra: Partial<ShotTags> = {}): ShotTags => ({ caption: 'a shot', place: '', time_of_day: '', subjects: [], action: '', shot_size: '', lighting: '', title_card: false, motion: 0.01, cuts: 0, source: 'operator', at: '2026-10-31T00:00:00Z', ...extra });
+const shot = (n: number, max_s: number, extra: Partial<AssemblyShot> = {}): AssemblyShot => ({ n, card_id: `c${n}`, asset_id: `t${n}`, kind: 'video', title: `S${n}`, beat: '', in_s: 0, max_s, ...extra });
+// 120 BPM: a beat every half second for 20 seconds; quiet first half, loud second half.
+const music = { duration_s: 20, bpm: 120, beats: Array.from({ length: 39 }, (_, i) => (i + 1) * 0.5) };
+const quietLoud: Section[] = [{ start: 0, end: 10, label: 'intro', energy: 0.2 }, { start: 10, end: 20, label: 'chorus', energy: 0.9 }];
 
-describe('first cut to the score', () => {
-	test('the shots on offer: spine in story order, then shots off it; benched shots and shots with no pick left out; trims respected', () => {
+describe('shots for the first cut', () => {
+	test('spine in story order, then shots off it; benched shots and shots with no pick left out; trims and tags carried', () => {
 		const shots = shotsForAssembly({ ...production(
 			[card('a', 0), card('b', 1, { beat: 'Dropped in: hf.mp4' }), card('c', 2), card('d', 3), card('e', 4, { benched: true })],
-			[take('a1', 'a', { in_s: 1, out_s: 4 }), take('b1', 'b', { duration_s: 8, generation: { provider: 'higgsfield', model: 'Seedance 2.5', resolution: '720p', prompt: 'A neon alley at night' } }), take('c1', 'c', { kind: 'image', mime_type: 'image/png' }), take('e1', 'e')]
+			[take('a1', 'a', { in_s: 1, out_s: 4, tags: tags({ place: 'roof' }) }), take('b1', 'b', { duration_s: 8, generation: { provider: 'higgsfield', model: 'Seedance 2.5', resolution: '720p', prompt: 'A neon alley at night' } }), take('c1', 'c', { kind: 'image', mime_type: 'image/png' }), take('e1', 'e')]
 		), links: [{ from: 'seed', to: 'a' }, { from: 'a', to: 'c' }] });
 		expect(shots.map((s) => [s.n, s.card_id, s.kind, s.in_s, s.max_s])).toEqual([[1, 'a', 'video', 1, 3], [2, 'c', 'image', 0, 8], [3, 'b', 'video', 0, 8]]);
+		expect(shots[0].tags?.place).toBe('roof');
 		expect(shots[2].beat).toBe('A neon alley at night');
 	});
 
@@ -27,44 +31,111 @@ describe('first cut to the score', () => {
 		expect(cutPoints({ duration_s: 2, beats: [0.5, 1, 1.5] })).toEqual([0, 0.5, 1, 1.5, 2]);
 		expect(cutPoints({ duration_s: 2, beats: [] })).toEqual([0, 0.5, 1, 1.5, 2]);
 	});
+});
 
-	test('every cut lands on a beat, in the planned order, and the cut stops at the end of the score', () => {
-		const { entries, notes } = entriesFromPlan([{ shot: 2, beats: 4 }, { shot: 1, beats: 8 }, { shot: 3, beats: 16 }, { shot: 4, beats: 2 }], [shot(1, 8), shot(2, 8, { in_s: 1.5 }), shot(3, 20), shot(4, 5)], music);
-		expect(entries.map((e) => [e.card_id, e.in_s, e.out_s])).toEqual([['c2', 1.5, 3.5], ['c1', 0, 4], ['c3', 0, 4]]);
-		expect(notes.some((note) => note.includes('left out'))).toBeTrue();
+describe('planning the first cut', () => {
+	const pool = [shot(1, 10, { tags: tags({ motion: 0.002, place: 'video store' }) }), shot(2, 10, { tags: tags({ motion: 0.004, place: 'campus lawn' }) }), shot(3, 10, { tags: tags({ motion: 0.03, place: 'rooftop' }) }), shot(4, 10, { tags: tags({ motion: 0.05, place: 'street' }) })];
+
+	test('the same shots and score always give the same cut, every cut on a beat, the whole score covered', () => {
+		const first = planCut(pool, music, quietLoud);
+		expect(planCut(pool, music, quietLoud)).toEqual(first);
+		expect(first.covered_s).toBe(20);
+		let t = 0;
+		for (const entry of first.entries) {
+			t += entry.out_s - entry.in_s;
+			expect(cutPoints(music).some((p) => Math.abs(p - t) < 1e-6)).toBeTrue();
+		}
 	});
 
-	test('a shot whose footage runs out before its beats is cut at the last beat it reaches', () => {
-		const { entries } = entriesFromPlan([{ shot: 1, beats: 8 }, { shot: 2, beats: 2 }], [shot(1, 1.3), shot(2, 8)], music);
-		expect(entries.map((e) => e.out_s - e.in_s)).toEqual([1, 1]);
+	test('calm shots hold long in the quiet section, moving shots cut fast in the loud one', () => {
+		const { entries } = planCut(pool, music, quietLoud);
+		const firstLength = entries[0].out_s - entries[0].in_s;
+		expect(['c1', 'c2']).toContain(entries[0].card_id);
+		expect(firstLength).toBeCloseTo(3.5, 3);
+		let t = 0;
+		const loud = entries.filter((entry) => { const start = t; t += entry.out_s - entry.in_s; return start >= 10; });
+		expect(Math.max(...loud.map((entry) => entry.out_s - entry.in_s))).toBeLessThanOrEqual(1.5);
 	});
 
-	test('footage shorter than one beat holds as long as it runs, and the next cut snaps back onto the grid', () => {
-		const { entries } = entriesFromPlan([{ shot: 1, beats: 1 }, { shot: 2, beats: 1 }], [shot(1, 0.45), shot(2, 8)], music);
-		// The second shot runs to the 1.0s beat, so the cut is back on the grid.
-		expect(entries.map((e) => e.out_s)).toEqual([0.45, 0.55]);
+	test('every shot once before any twice; a second use continues further into its footage', () => {
+		const { entries, notes } = planCut(pool, music, quietLoud);
+		const firstUses = entries.slice(0, 4).map((entry) => entry.card_id);
+		expect(new Set(firstUses).size).toBe(4);
+		const again = entries.findIndex((entry, i) => i >= 4);
+		const before = entries.slice(0, again).filter((entry) => entry.card_id === entries[again].card_id).at(-1)!;
+		expect(entries[again].in_s).toBeCloseTo(before.out_s, 3);
+		expect(entries.every((entry, i) => i === 0 || entry.card_id !== entries[i - 1].card_id)).toBeTrue();
+		expect(notes.some((note) => note.includes('used again'))).toBeTrue();
 	});
 
-	test('unknown and repeated shots are left out with a note; a short plan says how much of the score it covers', () => {
-		const { entries, notes } = entriesFromPlan([{ shot: 9, beats: 2 }, { shot: 1, beats: 2 }, { shot: 1, beats: 2 }], [shot(1, 8)], music);
-		expect(entries).toHaveLength(1);
-		expect(notes).toEqual(['S9 is not a shot of this project; left out', 'S1 was placed twice; used once', 'The cut runs 1.0s of the 10.0s score']);
+	test('the title card is the end tag after the music; pre-cut sequences are left out', () => {
+		const withTitle = [...pool, shot(5, 8, { kind: 'image', title: 'Title', tags: tags({ title_card: true, cuts: 4 }) }), shot(6, 20, { title: 'Old trailer', tags: tags({ cuts: 12 }) })];
+		const { entries, notes, covered_s } = planCut(withTitle, music, quietLoud);
+		expect(covered_s).toBe(20);
+		expect(entries.at(-1)).toEqual({ card_id: 'c5', asset_id: 't5', in_s: 0, out_s: 3 });
+		expect(entries.some((entry) => entry.card_id === 'c6')).toBeFalse();
+		expect(notes).toContain('Left out Old trailer: already an edit (cuts inside)');
+		expect(notes).toContain('Ends on Title after the music');
 	});
 
-	test('the end tag plays after the music, held as asked (within its footage and at most 6s)', () => {
-		const { entries, covered_s } = entriesFromPlan([{ shot: 1, beats: 20 }], [shot(1, 20), shot(2, 2.5, { kind: 'image' })], music, { shot: 2, seconds: 3 });
-		expect(covered_s).toBe(10);
-		expect(entries.map((e) => [e.card_id, e.out_s - e.in_s])).toEqual([['c1', 10], ['c2', 2.5]]);
-		expect(entriesFromPlan([{ shot: 1, beats: 4 }], [shot(1, 20), shot(2, 20)], music, { shot: 2, seconds: 9 }).entries.at(-1)?.out_s).toBe(6);
+	test('section drive: half the label, half the loudness rank; one quiet sliver cannot flatten the rest', () => {
+		expect(sectionDrive([{ start: 0, end: 2, label: 'intro', energy: 0.075 }, { start: 2, end: 17, label: 'intro', energy: 0.421 }, { start: 17, end: 32, label: 'verse', energy: 0.415 }, { start: 32, end: 78, label: 'chorus', energy: 0.389 }, { start: 78, end: 86, label: 'chorus', energy: 0.449 }]))
+			.toEqual([0.075, 0.45, 0.475, 0.55, 0.925]);
+		expect(sectionDrive([{ start: 0, end: 8, label: 'bars', energy: 0.2 }, { start: 8, end: 16, label: 'bars', energy: 0.9 }])).toEqual([0, 1]);
 	});
 
-	test('bar loudness is 0 to 9 against the loudest bar', () => {
+	test('the same place twice in a row is avoided when another shot fits as well', () => {
+		const twins = [shot(1, 10, { tags: tags({ motion: 0.01, place: 'Video Haven store interior' }) }), shot(2, 10, { tags: tags({ motion: 0.01, place: 'interior of the Video Haven store' }) }), shot(3, 10, { tags: tags({ motion: 0.01, place: 'rooftop' }) })];
+		const { entries } = planCut(twins, { duration_s: 6, bpm: 120, beats: Array.from({ length: 11 }, (_, i) => (i + 1) * 0.5) }, [{ start: 0, end: 6, label: 'verse', energy: 0.5 }]);
+		// Equal motion ranks by story order, so S2 fits the section best; S1 is the same store, so the rooftop follows.
+		expect(entries.slice(0, 2).map((entry) => entry.card_id)).toEqual(['c2', 'c3']);
+	});
+
+	test('untagged shots are noted; no title card means no end tag', () => {
+		const { notes } = planCut([shot(1, 30)], music, quietLoud);
+		expect(notes).toContain('1 untagged shot placed by order only; tag them for a better cut');
+		expect(notes).toContain('No title card tagged, so no end tag');
+	});
+});
+
+describe('shot tags', () => {
+	test('motion is the mean calm frame change in the span; big jumps count as cuts', () => {
+		const signal = { fps: 10, diffs: [0.01, 0.01, 0.5, 0.03, 0.03, 0.4, 0.02, 0.02, 0.02, 0.02] };
+		expect(motionOf(signal)).toEqual({ motion: 0.02, cuts: 2 });
+		expect(motionOf(signal, 0.6, 1)).toEqual({ motion: 0.02, cuts: 0 });
+	});
+
+	test('caption JSON (gateway keys) becomes tag words', () => {
+		expect(wordsFromCaption({ caption: 'Malik catches the blade.', setting: 'fire escape', timeOfDay: 'Night', subjects: 'Malik and Rowan', shotType: 'Close-up', titleCard: 'false' }))
+			.toEqual({ caption: 'Malik catches the blade.', place: 'fire escape', time_of_day: 'night', subjects: ['Malik', 'Rowan'], action: '', shot_size: 'close-up', lighting: '', title_card: false });
+		expect(wordsFromCaption({ caption: 'BLOOD RUSH', titleCard: true }).title_card).toBeTrue();
+		expect(wordsFromCaption({ caption: "The word 'BLOODRUSH' is displayed in a metallic font." }).title_card).toBeTrue();
+		expect(wordsFromCaption({ caption: 'A man runs across a rooftop.' }).title_card).toBeFalse();
+	});
+
+	test('tags go on one take and can be cleared', () => {
+		const p = production([card('a', 0)], [take('a1', 'a'), take('a2', 'a')]);
+		const tagged = applySetTakeTags(p, 'a2', tags());
+		if (!tagged.ok) throw new Error(tagged.message);
+		expect(tagged.production.assets.map((a) => !!a.tags)).toEqual([false, true]);
+		const cleared = applySetTakeTags(tagged.production, 'a2', null);
+		expect(cleared.ok && cleared.production.assets[1].tags).toBeUndefined();
+		expect(applySetTakeTags(p, 'nope', tags()).ok).toBeFalse();
+	});
+
+	test('places match by shared words; energies rank by motion, stills calm', () => {
+		expect(samePlace('Video Haven store interior', 'interior of the Video Haven store')).toBeTrue();
+		expect(samePlace('rooftop at night', 'Video Haven store')).toBeFalse();
+		const energy = shotEnergies([shot(1, 5, { tags: tags({ motion: 0.05 }) }), shot(2, 5, { tags: tags({ motion: 0.01 }) }), shot(3, 5, { kind: 'image' }), shot(4, 5)]);
+		expect([...energy.entries()]).toEqual([[2, 0], [1, 1], [3, 0.15], [4, 0.5]]);
+	});
+
+	test('bar loudness and eight-bar sections', () => {
 		const rate = 100;
-		const samples = new Float32Array(10 * rate);
-		samples.fill(0.1, 0, 2 * rate);
-		samples.fill(0.8, 6 * rate, 8 * rate);
+		const samples = new Float32Array(20 * rate);
+		samples.fill(0.8, 16 * rate, 20 * rate);
 		const bars = barLoudness(samples, rate, music);
-		expect(bars.map((bar) => bar.at)).toEqual([0, 2, 4, 6, 8]);
-		expect(bars.map((bar) => bar.level)).toEqual([1, 0, 0, 9, 0]);
+		expect(bars.map((bar) => bar.level)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 9, 9]);
+		expect(sectionsFromBars(bars, 20)).toEqual([{ start: 0, end: 16, label: 'bars', energy: 0 }, { start: 16, end: 20, label: 'bars', energy: 1 }]);
 	});
 });

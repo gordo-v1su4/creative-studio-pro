@@ -25,6 +25,7 @@ import {
 	addTakeCommandSchema,
 	addBeatCommandSchema,
 	removeBeatsCommandSchema,
+	setTakeTagsCommandSchema,
 	linkDraftJobsCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
@@ -36,6 +37,7 @@ import { applyBench } from '$lib/domain/bench';
 import { applySetShotReferences } from '$lib/domain/shot-references';
 import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake, applyRemoveBeats } from '$lib/domain/media';
+import { applySetTakeTags } from '$lib/domain/shot-tags';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset, StillSend, StoryCard, TrailerHouse } from '$lib/domain/schemas';
@@ -170,6 +172,8 @@ export class ProjectCommandGateway {
 				return this.addBeat(raw);
 			case 'remove_beats':
 				return this.removeBeats(raw);
+			case 'set_take_tags':
+				return this.setTakeTags(raw);
 			case 'set_project_model':
 				return this.setProjectModel(raw);
 			case 'lock_project_model':
@@ -379,6 +383,12 @@ export class ProjectCommandGateway {
 			const added = applyAddBeat(production, card_id, title, take, benched ?? true);
 			return added.ok && group_id && group_id !== MAIN_GROUP ? applyMoveBeats(added.production, [card_id], group_id) : added;
 		}, 'project.beat_added.v1');
+	}
+
+	async setTakeTags(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = setTakeTagsCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateBoard(parsed.data, (production) => applySetTakeTags(production, parsed.data.take_id, parsed.data.tags), 'project.take_tagged.v1');
 	}
 
 	async removeBeats(raw: unknown): Promise<CommandOutcome<Project>> {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { shotSpecSchema } from './shot-spec';
+import { shotTagsSchema } from './shot-tags';
 import { modelChoiceSchema, projectAgentModelSchema } from '$lib/domain/model-provider';
 
 /**
@@ -319,6 +320,8 @@ export const productionAssetSchema = z.object({
 	grid: z.object({ url: z.string().max(2000), panel: z.number().int().nonnegative().max(23) }).optional(),
 	/** Series takes stored in Review Room (V1S-276, ADR 0001): the shot's asset, this take's version, its v### and shot code. */
 	review_room: z.object({ asset_id: z.string().max(64), version_id: z.string().max(64), version: z.number().int().positive(), code: z.string().max(40) }).optional(),
+	/** What the take shows and how much it moves (shot tags), for planning a cut. */
+	tags: shotTagsSchema.optional(),
 	/** Generated takes: the provider's job id and what was asked for (Finalize and source info read these). */
 	job_id: z.string().min(1).max(200).optional(),
 	generation: z.object({
@@ -414,7 +417,20 @@ export const cutMusicSchema = z.object({
 	name: nonBlank(300),
 	duration_s: z.number().positive(),
 	bpm: z.number().nonnegative(),
-	beats: z.array(z.number().nonnegative()).max(20_000)
+	beats: z.array(z.number().nonnegative()).max(20_000),
+	/** Labelled song sections from Essentia (intro, verse, chorus…), each with its energy 0..1. */
+	sections: z.array(z.object({ start: z.number().nonnegative(), end: z.number().positive(), label: z.string().max(60), energy: z.number().min(0).max(1) })).max(200).optional(),
+	/** Essentia's energy curve, thinned to at most 2000 points. */
+	energy: z.object({ curve: z.array(z.number()).max(2000), sample_rate_hz: z.number().positive(), start_time_s: z.number().nonnegative() }).optional(),
+	/** Where the beats came from: the app's own grid, or Essentia (running, done, or failed with why). */
+	analysis: z.object({
+		/** 'essentia-fast' was a CPU analysis made once on 2026-10-31; no longer made, still readable. */
+		source: z.enum(['local', 'essentia', 'essentia-fast']),
+		status: z.enum(['running', 'done', 'failed']),
+		job_id: z.string().max(200).optional(),
+		error: z.string().max(500).optional(),
+		at: rfc3339Schema
+	}).optional()
 });
 export type CutMusic = z.infer<typeof cutMusicSchema>;
 
@@ -760,6 +776,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.take_added.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_added.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_removed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.take_tagged.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Agent model provider (V1S-117): override, first-run lock, explicit switch.
 	z.object({
 		type: z.literal('project.agent_model_set.v1'), event_id: idSchema,
@@ -969,6 +986,15 @@ export const addBeatCommandSchema = z.object({
 	group_id: idSchema.optional(),
 	/** False for shots added on the Shots tab: off the spine but not benched, so the Agent's first cut uses them. */
 	benched: z.boolean().optional()
+});
+
+/** Put shot tags on a take (or clear them with null). */
+export const setTakeTagsCommandSchema = z.object({
+	command: z.literal('set_take_tags'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	take_id: idSchema,
+	tags: shotTagsSchema.nullable()
 });
 
 /** Take shots off the project with their takes; a shot a cut uses is refused. */

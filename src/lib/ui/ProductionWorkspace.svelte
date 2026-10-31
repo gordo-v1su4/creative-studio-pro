@@ -71,9 +71,9 @@
 		finally { shotBusy = null; }
 	}
 
-	// --- The score: the song the Agent cuts a first cut to.
+	// --- The score: the song the first cut is made to, analysed by Essentia (beats, energy, sections).
 	const score = $derived(project.production.score ?? null);
-	let scoreBusy = $state<'upload' | 'remove' | 'cutting' | null>(null);
+	let scoreBusy = $state<'upload' | 'remove' | 'cutting' | 'analysing' | null>(null);
 	let scoreError = $state<string | null>(null);
 	const clockOf = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
@@ -99,7 +99,74 @@
 		finally { scoreBusy = null; }
 	}
 
-	/** The Agent's first cut to the score: a new cut, opened in the Cuts tab. */
+	async function scoreCall(method: 'POST' | 'GET') {
+		const body = (await (await fetch(`/api/projects/${project.project_id}/score/analysis`, { method })).json()) as { ok: true; data: Project; analysis?: NonNullable<Project['production']['score']>['analysis'] } | { ok: false; error: { message: string } };
+		if (!body.ok) throw new Error(body.error.message);
+		onUpdated(body.data);
+		return body.analysis;
+	}
+
+	/** Send the score to Essentia, then check on it every few seconds until it is done or fails. */
+	async function analyseScore() {
+		scoreBusy = 'analysing'; scoreError = null;
+		try {
+			let analysis = await scoreCall('POST');
+			while (analysis?.status === 'running') {
+				await new Promise((done) => setTimeout(done, 4000));
+				analysis = await scoreCall('GET');
+			}
+			if (analysis?.status === 'failed') scoreError = analysis.error ?? 'Essentia could not analyse the score';
+		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'Essentia could not analyse the score'; }
+		finally { scoreBusy = null; }
+	}
+
+	// --- Shot tags: each shot's pick captioned and its motion measured, one at a time.
+	const untaggedPicks = $derived(project.production.cards.flatMap((card) => { const pick = pickFor(project.production, card); return pick && !pick.tags ? [pick.asset_id] : []; }));
+	let tagging = $state<{ done: number; total: number; failed: number; stop: boolean } | null>(null);
+	/** Set by the stop button; the workers check it between takes. */
+	let stopTagging = false;
+
+	/**
+	 * Two takes in flight: while one is on the caption gateway's GPU (which takes one at a time), the next one's
+	 * frames are being measured. Three failures in a row stop the run instead of grinding through every shot.
+	 */
+	async function tagShots() {
+		const queue = [...untaggedPicks];
+		const run = { done: 0, total: queue.length, failed: 0, stop: false };
+		tagging = { ...run };
+		stopTagging = false;
+		let inARow = 0;
+		const worker = async () => {
+			for (let takeId = queue.shift(); takeId && !run.stop && !stopTagging; takeId = queue.shift()) {
+				try {
+					const body = (await (await fetch(`/api/projects/${project.project_id}/tags`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ take_id: takeId }) })).json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+					if (!body.ok) throw new Error(body.error.message);
+					inARow = 0;
+					onUpdated(body.data);
+				} catch (cause) {
+					run.failed += 1;
+					scoreError = `Tagging: ${cause instanceof Error ? cause.message : 'failed'}`;
+					if (++inARow >= 3) { run.stop = true; scoreError += ' (stopped after three failures in a row)'; }
+				}
+				run.done += 1;
+				if (tagging) tagging = { ...run };
+			}
+		};
+		await Promise.all([worker(), worker()]);
+		tagging = null;
+	}
+
+	/** The title-card flag by hand, for when the caption missed it (or saw one that isn't). */
+	async function setTitleCard(takeId: string, titleCard: boolean) {
+		const take = project.production.assets.find((asset) => asset.asset_id === takeId);
+		if (!take?.tags) return;
+		shotBusy = takeId;
+		try { await boardCommand({ command: 'set_take_tags', take_id: takeId, tags: { ...take.tags, title_card: titleCard } }); }
+		catch (cause) { shotNotice = { text: cause instanceof Error ? cause.message : 'Saving the tag failed' }; }
+		finally { shotBusy = null; }
+	}
+
+	/** The first cut to the score, planned in code from the tags and the score's sections: a new cut, opened in the Cuts tab. */
 	async function cutToScore() {
 		scoreBusy = 'cutting'; scoreError = null;
 		try {
@@ -107,10 +174,10 @@
 			if (!body.ok) throw new Error(body.error.message);
 			onUpdated(body.data);
 			const cut = body.data.production.cuts?.find((entry) => entry.cut_id === body.cut_id);
-			notice = cut ? [`The Agent cut "${cut.name}": ${cut.entries.length} shots, ${cutLength(cut).toFixed(1)}s.`, ...body.notes].join(' ') : null;
+			notice = cut ? [`"${cut.name}": ${cut.entries.length} entries, ${cutLength(cut).toFixed(1)}s.`, ...body.notes].join(' · ') : null;
 			tab = 'cuts';
 			if (body.cut_id) openCut = { cutId: body.cut_id, version: null };
-		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'The Agent could not cut to the score'; }
+		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'The first cut failed'; }
 		finally { scoreBusy = null; }
 	}
 
@@ -325,16 +392,28 @@
 				{#if score}
 					<span class="max-w-[320px] truncate text-[12px] text-[#9fc9cf]" title={score.name}>♪ {score.name}</span>
 					<span class="meta-label text-[#63838c]">{clockOf(score.duration_s)}{score.bpm ? ` · ${score.bpm} BPM` : ''} · {score.beats.length} beats</span>
+					{#if score.analysis?.source === 'essentia' && score.analysis.status === 'done' && score.sections?.length}
+						<span class="meta-label text-[#63838c]" title={score.sections.map((s) => `${clockOf(s.start)}–${clockOf(s.end)} ${s.label} (energy ${s.energy})`).join('\n')}>Essentia · {score.sections.map((s) => s.label).join(' · ')}</span>
+					{:else if score.analysis?.status === 'failed'}
+						<span class="meta-label text-gate-failed" title={score.analysis.error}>Essentia failed</span>
+					{/if}
+					<button type="button" class="agent-mini" onclick={() => void analyseScore()} disabled={scoreBusy !== null} title="Send the score to your Essentia service for its beats, energy and sections (verse, chorus…); the first cut follows them">{scoreBusy === 'analysing' ? 'analysing…' : score.analysis?.status === 'done' ? 're-analyse' : 'analyse'}</button>
 					<label class={['agent-mini cursor-pointer', scoreBusy && 'opacity-50']}>{scoreBusy === 'upload' ? 'adding…' : 'replace'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="sr-only" disabled={scoreBusy !== null} onchange={(event) => { void uploadScore(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
 					<button type="button" class="agent-mini" onclick={() => void removeScore()} disabled={scoreBusy !== null}>remove</button>
 				{:else}
-					<span class="text-[11.5px] text-[#668d98]">Add the song or score; the Agent cuts a first cut of these shots to it.</span>
+					<span class="text-[11.5px] text-[#668d98]">Add the song or score; the first cut of these shots is made to it.</span>
 				{/if}
 				<span class="grow"></span>
 				{#if !score}
 					<label class={['btn cursor-pointer', scoreBusy && 'opacity-50']}>{scoreBusy === 'upload' ? 'Adding…' : 'Add score…'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="sr-only" disabled={scoreBusy !== null} onchange={(event) => { void uploadScore(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
 				{/if}
-				<button type="button" class="btn btn-accent" onclick={() => void cutToScore()} disabled={!score || scoreBusy !== null || draft.cards.length === 0} title="The Agent looks at a frame of every shot and the score's beats and loudness, picks the shots and their order, and pushes a new cut with every cut on a beat. Shots and the board are not changed.">{scoreBusy === 'cutting' ? 'The Agent is cutting… (a minute or two)' : 'First cut to score'}</button>
+				{#if tagging}
+					<span class="meta-label text-[#9fc9cf]">tagging {tagging.done + 1 > tagging.total ? tagging.total : tagging.done + 1} of {tagging.total}{tagging.failed ? ` · ${tagging.failed} failed` : ''}</span>
+					<button type="button" class="agent-mini" onclick={() => (stopTagging = true)}>stop</button>
+				{:else if untaggedPicks.length}
+					<button type="button" class="btn" onclick={() => void tagShots()} disabled={scoreBusy !== null} title="Caption each shot's pick (your caption gateway, else the Agent's model) and measure its motion, one shot at a time; the first cut is planned from these tags">Tag shots ({untaggedPicks.length})</button>
+				{/if}
+				<button type="button" class="btn btn-accent" onclick={() => void cutToScore()} disabled={!score || scoreBusy !== null || tagging !== null || draft.cards.length === 0} title="Plan a first cut in code from the shots' tags and the score's sections: calm shots held in quiet parts, moving shots cut fast in loud ones, every cut on a beat, the whole score covered, ending on the title card. Shots and the board are not changed.">{scoreBusy === 'cutting' ? 'Cutting…' : 'First cut to score'}</button>
 			</div>
 			{#if scoreError}<p class="border-b border-[#223039] px-4 py-2 text-[12px] text-gate-failed" role="alert">{scoreError}</p>{/if}
 		{/if}
@@ -351,6 +430,7 @@
 				{@const image = assetFor(card.card_id, 'image')}
 				{@const video = assetFor(card.card_id, 'video')}
 				{@const face = faceFor(card.card_id)}
+				{@const tagged = pickFor(project.production, card)}
 				<article class={['story-card', card.benched && 'benched']}>
 					<div class="flex items-center gap-2"><span class="card-index">{String(card.order + 1).padStart(2, '0')}</span><input value={card.title} oninput={(event) => updateCard(card.card_id, { title: event.currentTarget.value })} aria-label={`Card ${card.order + 1} title`} /><span class="meta-label text-[#63838c]">{card.duration_ms / 1000}s</span></div>
 					<nav class="card-face-nav" aria-label={`Card ${card.order + 1} face`}>
@@ -376,8 +456,15 @@
 						<span class="grow"></span><span class="meta-label text-[#55747c]">{face}</span>
 						<button type="button" class="face-arrow" onclick={() => moveFace(card.card_id, 1)} aria-label={`Next face for ${card.title}`}>→</button>
 					</div>
+					{#if tagged?.tags}
+						<p class="mt-2 text-[11px] leading-4 text-[#9fc9cf]" title={[tagged.tags.caption, tagged.tags.place && `Place: ${tagged.tags.place}`, tagged.tags.subjects.length ? `Who: ${tagged.tags.subjects.join(', ')}` : '', tagged.tags.shot_size && `Shot: ${tagged.tags.shot_size}`, `Motion ${tagged.tags.motion}${tagged.tags.cuts ? ` · ${tagged.tags.cuts} cuts inside` : ''}`, `Tagged by ${tagged.tags.source}`].filter(Boolean).join('\n')}>
+							<span class="tag-caption">{tagged.tags.caption}</span>
+							<span class="meta-label text-[#63838c]">{tagged.tags.place.split(/[,.]/)[0].slice(0, 40)}{tagged.tags.cuts > 3 ? ' · already an edit' : ''}</span>
+						</p>
+					{/if}
 					<div class="mt-2 flex items-center gap-2 border-t border-[#1b262c] pt-2">
 						{#if card.benched}<span class="meta-label text-[#f2c14e]">benched</span>{/if}
+						{#if tagged?.tags}<button type="button" class={['agent-mini', tagged.tags.title_card && 'title-on']} onclick={() => void setTitleCard(tagged.asset_id, !tagged.tags?.title_card)} disabled={shotBusy !== null} title="The title card closes the first cut as its end tag, after the music">title card</button>{/if}
 						<span class="grow"></span>
 						<button type="button" class="agent-mini" onclick={() => void setBenched(card, !card.benched)} disabled={shotBusy !== null} title={card.benched ? 'Use this shot again in plays and the Agent\'s cut' : 'Keep this shot, but leave it out of plays and the Agent\'s first cut'}>{card.benched ? 'unbench' : 'bench'}</button>
 						<button type="button" class="agent-mini remove" onclick={() => void removeShot(card)} disabled={shotBusy !== null} title="Remove this shot and its takes from the project (you can undo right after; a shot a cut uses can't be removed)">{shotBusy === card.card_id ? '…' : 'remove'}</button>
@@ -507,6 +594,8 @@
 	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
 	.story-card.benched { opacity: 0.5; }
+	.tag-caption { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+	.agent-mini.title-on { color: #f2c14e; border-color: #f2c14e; }
 	.story-card.benched:hover { opacity: 0.85; }
 	.agent-mini.remove:hover { color: #ff6b6b; border-color: #ff6b6b; }
 	.shots-dropping { outline: 1px dashed #59d9cf; outline-offset: -6px; }
