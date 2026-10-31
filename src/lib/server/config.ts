@@ -170,11 +170,16 @@ export async function getGridDeps(): Promise<GridDeps> {
 }
 
 /** Reference images in Review Room (V1S-326); null until Review Room is configured. The cache sits beside the series records. */
+/** Local copies of Review Room reference images, readable without a Review Room connection. */
+export function getReferenceCacheDir(): string {
+	return joinPath(dirname(getProjectRoot()), 'series', 'reference-cache');
+}
+
 export function getReferenceFileDeps(): ReferenceFileDeps | null {
 	const config = getReviewRoomConfig();
 	if (!config) return null;
 	return {
-		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: joinPath(dirname(getProjectRoot()), 'series', 'reference-cache'), probe: probeMedia,
+		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: getReferenceCacheDir(), probe: probeMedia,
 		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output])
 	};
 }

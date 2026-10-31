@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
 import type { RequestHandler } from './$types';
-import { getReferenceFileDeps, getSeriesStore } from '$lib/server/config';
+import { getReferenceCacheDir, getReferenceFileDeps, getSeriesStore } from '$lib/server/config';
 import { cachedReference, uploadReference } from '$lib/server/reference-files';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'references' } }, { status });
@@ -26,11 +28,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 };
 
 export const GET: RequestHandler = async ({ params, url }) => {
-	const deps = getReferenceFileDeps();
-	if (!deps) return fail(503, 'Review Room is not configured');
 	const record = await getSeriesStore().read(params.seriesId);
 	const file = record?.reference_files?.[url.searchParams.get('page_id') ?? ''];
 	if (!file) return fail(404, 'No image uploaded for that reference yet');
+	// A copy already cached on this machine is served without Review Room; only a missing one is fetched.
+	const cached = join(getReferenceCacheDir(), `${file.version_id}${extname(file.file_name).toLowerCase() || '.png'}`);
+	if (existsSync(cached)) return new Response(await readFile(cached), { headers: { 'content-type': file.mime_type, 'cache-control': 'private, max-age=3600' } });
+	const deps = getReferenceFileDeps();
+	if (!deps) return fail(503, 'Review Room is not configured');
 	try {
 		const path = await cachedReference(deps, file);
 		return new Response(await readFile(path), { headers: { 'content-type': file.mime_type, 'cache-control': 'private, max-age=3600' } });
