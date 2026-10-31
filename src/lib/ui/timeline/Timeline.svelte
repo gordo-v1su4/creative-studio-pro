@@ -27,6 +27,8 @@
 	 * long as its kept span plays (speed ramps included). Hover a block's edge to trim it
 	 * (the trimmed-off media shows as a ghost while you drag), drag a block's body to move
 	 * it, click to jump there. The selected clip's speed ramp sits in the lane below it.
+	 * Zoom (buttons, or ⌘/Ctrl + wheel or a pinch around the pointer) widens the track
+	 * inside a scrolling view; while it plays, the view keeps the playhead on screen.
 	 */
 	let {
 		clips,
@@ -70,8 +72,16 @@
 	}
 
 	const EDGE = 7;
+	/** Most a clip block may be stretched: one second of program as wide as the view. */
+	const MAX_PX_PER_S = 900;
+	/** A long cut opens zoomed in enough that an average clip is about this wide. */
+	const OPEN_CLIP_PX = 60;
 	let host = $state<HTMLDivElement>();
+	let scroller = $state<HTMLDivElement>();
 	let width = $state(900);
+	/** 1 = the whole cut fits the view; above 1 the track is that many views wide. */
+	let zoom = $state(1);
+	let zoomTouched = false;
 	type Gesture =
 		| { kind: 'trim'; clip: number; edge: 'in' | 'out'; startX: number; start: number; scale: number; starts: number[] }
 		| { kind: 'move'; clip: number; startX: number; dx: number; moved: boolean; scale: number; starts: number[] }
@@ -85,7 +95,42 @@
 	const liveStarts = $derived(lengths.reduce<number[]>((starts, _l, i) => [...starts, i === 0 ? 0 : starts[i - 1] + lengths[i - 1]], []));
 	const total = $derived(lengths.reduce((sum, length) => sum + length, 0));
 	// Freeze the layout mid-gesture so blocks don't slide under the pointer.
-	const scale = $derived(gesture && gesture.kind !== 'seek' ? gesture.scale : width / Math.max(1, total));
+	const scale = $derived(gesture && gesture.kind !== 'seek' ? gesture.scale : (width * zoom) / Math.max(1, total));
+	const maxZoom = $derived(Math.max(1, (MAX_PX_PER_S * Math.max(1, total)) / width));
+	// A long cut opens readable, until the operator picks a zoom themselves.
+	$effect(() => {
+		if (zoomTouched || !clips.length) return;
+		zoom = Math.min(maxZoom, Math.max(1, (clips.length * OPEN_CLIP_PX) / width));
+	});
+
+	/** Zoom keeping one program time (the pointer's, else the playhead's) at the same place in the view. */
+	function setZoom(next: number, anchorClientX?: number) {
+		zoomTouched = true;
+		const view = scroller;
+		const target = Math.min(maxZoom, Math.max(1, next));
+		if (!view) { zoom = target; return; }
+		const rect = view.getBoundingClientRect();
+		const offset = anchorClientX !== undefined ? anchorClientX - rect.left : Math.min(rect.width, Math.max(0, programTime * scale - view.scrollLeft));
+		const time = (view.scrollLeft + offset) / scale;
+		zoom = target;
+		const nextScale = (width * target) / Math.max(1, total);
+		requestAnimationFrame(() => (view.scrollLeft = Math.max(0, time * nextScale - offset)));
+	}
+
+	function wheel(event: WheelEvent) {
+		// ⌘/Ctrl + wheel, and a trackpad pinch (which arrives as Ctrl + wheel), zoom; plain wheel scrolls.
+		if (!(event.ctrlKey || event.metaKey)) return;
+		event.preventDefault();
+		setZoom(zoom * Math.exp(-event.deltaY * 0.01), event.clientX);
+	}
+
+	// While playing zoomed in, keep the playhead on screen: page on when it nears the right edge.
+	$effect(() => {
+		const view = scroller;
+		if (!view || zoom <= 1 || gesture) return;
+		const x = programTime * scale;
+		if (x < view.scrollLeft || x > view.scrollLeft + view.clientWidth - 24) view.scrollLeft = Math.max(0, x - view.clientWidth * 0.2);
+	});
 	const starts = $derived(gesture && gesture.kind !== 'seek' ? gesture.starts : liveStarts);
 
 	const tickStep = $derived([0.5, 1, 2, 5, 10, 15, 30].find((step) => step * scale >= 56) ?? 60);
@@ -156,7 +201,7 @@
 
 	onMount(() => {
 		const resize = new ResizeObserver(([entry]) => (width = Math.max(200, entry.contentRect.width)));
-		resize.observe(host!);
+		resize.observe(scroller!);
 		return () => resize.disconnect();
 	});
 </script>
@@ -164,6 +209,15 @@
 <svelte:window onpointermove={windowMove} onpointerup={windowUp} />
 
 <div class="timeline select-none">
+	<div class="zoombar" aria-label="Timeline zoom">
+		<button type="button" onclick={() => setZoom(zoom / 1.6)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out (⌘/Ctrl + scroll)">−</button>
+		<span class="readout" title="How many screens wide the cut is">{zoom < 1.05 ? 'fit' : `${zoom.toFixed(1)}×`}</span>
+		<button type="button" onclick={() => setZoom(zoom * 1.6)} disabled={zoom >= maxZoom} aria-label="Zoom in" title="Zoom in (⌘/Ctrl + scroll, or pinch)">+</button>
+		<button type="button" class="fit" onclick={() => setZoom(1)} disabled={zoom <= 1} title="Show the whole cut">fit</button>
+	</div>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div bind:this={scroller} class="scroller" onwheel={wheel}>
+	<div class="content" style:width={`${Math.max(width, total * scale)}px`}>
 	<div bind:this={host} class="relative">
 		<!-- Ruler -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -239,7 +293,7 @@
 		</div>
 	</div>
 
-	<!-- Speed lane under the selected clip -->
+	<!-- Speed lane under the selected clip (inside the scrolling content, so it stays under its clip) -->
 	{#if clips[focus]}
 		<div class="relative mt-2 h-[86px] border-t border-nr-line-soft pt-1">
 			<span class="absolute left-0 top-1 font-mono text-[8px] tracking-[.12em] text-nr-faint">SPEED · {focus + 1}</span>
@@ -250,9 +304,19 @@
 			</div>
 		</div>
 	{/if}
+	</div>
+	</div>
 </div>
 
 <style>
+	.scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+	.content { position: relative; }
+	.zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: 4px; font: 9px var(--font-mono); color: var(--color-nr-faint); }
+	.zoombar button { min-width: 20px; height: 18px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; color: var(--color-nr-muted); font: 600 10px/16px var(--font-mono); }
+	.zoombar button.fit { padding: 0 6px; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+	.zoombar button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
+	.zoombar button:disabled { opacity: .35; }
+	.zoombar .readout { min-width: 34px; text-align: center; }
 	.timeline { background: var(--color-nr-deep); }
 	.ghost { background: repeating-linear-gradient(135deg, rgba(153, 246, 228, .07) 0 4px, transparent 4px 8px); border: 1px dashed rgba(153, 246, 228, .25); }
 	.block { background: var(--color-nr-surface); cursor: grab; }
