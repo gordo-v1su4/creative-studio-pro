@@ -17,11 +17,36 @@
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
 	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
+	import { droppedFiles, pickedFiles } from '$lib/ui/dropped-files';
 
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
-	let { project, onUpdated, tab = $bindable('story') }: {
-		project: Project; onUpdated: (project: Project) => void; tab?: ProductionTab
+	let { project, onUpdated, onAddFiles, tab = $bindable('story') }: {
+		project: Project; onUpdated: (project: Project) => void;
+		/** Files dropped or picked on the Shots tab: each becomes a new shot (benched until hooked in). */
+		onAddFiles?: (files: File[]) => void;
+		tab?: ProductionTab
 	} = $props();
+
+	/** True while files are dragged over the Shots tab. */
+	let dropping = $state(false);
+	function shotsDragOver(event: DragEvent) {
+		if (!onAddFiles || !event.dataTransfer?.types.includes('Files')) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = 'copy';
+		dropping = true;
+	}
+	function shotsDrop(event: DragEvent) {
+		dropping = false;
+		if (!onAddFiles || !event.dataTransfer?.types.includes('Files')) return;
+		event.preventDefault();
+		void droppedFiles(event.dataTransfer).then((files) => onAddFiles?.(files));
+	}
+	function shotsPicked(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const files = pickedFiles(input.files);
+		input.value = '';
+		onAddFiles?.(files);
+	}
 
 	let busy = $state(false);
 	/** V1S-378: the cut whose Score prompt panel is open. */
@@ -197,6 +222,17 @@
 	{:else if tab === 'prep'}
 		{#if project.series}<PrepWorkspace {project} {onUpdated} />{:else}<p class="p-5 text-[12.5px] text-nr-muted">Prep is for an episode imported from a series.</p>{/if}
 	{:else if tab === 'beats'}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class={['relative min-h-full', dropping && 'shots-dropping']} ondragover={shotsDragOver} ondragleave={(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) dropping = false; }} ondrop={shotsDrop}>
+		{#if onAddFiles}
+			<div class="flex flex-wrap items-center gap-2 border-b border-[#223039] px-4 py-2.5">
+				<span class="meta-label text-[#59d9cf]">{draft.cards.length} {draft.cards.length === 1 ? 'shot' : 'shots'}</span>
+				<span class="text-[11.5px] text-[#668d98]">Drop images, videos or whole folders anywhere here; each file becomes a new shot, in file-name order.</span>
+				<span class="grow"></span>
+				<label class="btn cursor-pointer">Add files…<input type="file" multiple accept="image/*,video/*" class="sr-only" onchange={shotsPicked} /></label>
+				<label class="btn cursor-pointer">Add folder…<input type="file" multiple webkitdirectory class="sr-only" onchange={shotsPicked} /></label>
+			</div>
+		{/if}
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
 			{#each draft.cards as card (card.card_id)}
 				{@const image = assetFor(card.card_id, 'image')}
@@ -230,6 +266,8 @@
 				</article>
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
+		</div>
+		{#if dropping}<div class="shots-drop-hint" aria-hidden="true">Drop to add as shots</div>{/if}
 		</div>
 	{:else if tab === 'cuts'}
 		<div class="mx-auto max-w-5xl p-5">
@@ -349,6 +387,8 @@
 	.cut-row b { font-size: 12px; font-weight: 600; }
 	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
+	.shots-dropping { outline: 1px dashed #59d9cf; outline-offset: -6px; }
+	.shots-drop-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(5 7 10 / 0.6); color: #59d9cf; font: 600 12px var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; pointer-events: none; }
 	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }
 	.preview-stage div { max-width: 520px; padding: 30px; }
 	.preview-stage b { color: #bcebee; }

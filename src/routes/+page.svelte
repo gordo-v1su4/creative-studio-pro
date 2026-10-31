@@ -25,6 +25,7 @@
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { benchedBeats } from '$lib/domain/bench';
 	import { mediaKind } from '$lib/domain/media';
+	import { droppedFiles } from '$lib/ui/dropped-files';
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
@@ -561,36 +562,52 @@
 	}
 
 	function boardDrop(event: DragEvent) {
-		const files = [...(event.dataTransfer?.files ?? [])];
-		if (!activeProject || files.length === 0) return;
+		if (!activeProject || !event.dataTransfer?.types.includes('Files')) return;
 		event.preventDefault();
-		for (const [cardId, pending] of pendingPicks) flushPick(cardId, pending);
 		const nodeId = (event.target as Element | null)?.closest('.svelte-flow__node')?.getAttribute('data-id');
 		const cardId = nodeId && activeProject.production.cards.some((card) => card.card_id === nodeId) ? nodeId : null;
 		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const at = { x: (event.clientX - box.left - viewport.x) / viewport.zoom, y: (event.clientY - box.top - viewport.y) / viewport.zoom };
+		void droppedFiles(event.dataTransfer).then((files) => importFiles(files, cardId ? { cardId } : { at, groupId: activeGroup }));
+	}
+
+	/**
+	 * Files in through the board intake, one request at a time in the order given: each a new take on `cardId`,
+	 * or each a new benched shot (placed from `at` on the board, in `groupId`). The Board and the Shots tab both use it.
+	 */
+	function importFiles(files: File[], place: { cardId?: string; at?: { x: number; y: number }; groupId?: string } = {}) {
+		if (!activeProject || files.length === 0) return;
+		for (const [cardId, pending] of pendingPicks) flushPick(cardId, pending);
 		const refused = files.filter((file) => !mediaKind(file.name)).map((file) => file.name);
+		const accepted = files.filter((file) => mediaKind(file.name));
 		const flagged: string[] = [];
+		let added = 0;
 		const report = () => {
 			const lines = [
+				accepted.length > 1 ? `Added ${added} of ${accepted.length}` : '',
 				refused.length ? `Not an image or video, left out: ${refused.join(', ')}` : '',
 				flagged.length ? `Under 2K on the long edge, flagged: ${flagged.join(', ')}` : ''
 			].filter(Boolean);
 			if (lines.length) notify(lines.join(' · '));
 		};
-		files.filter((file) => mediaKind(file.name)).forEach((file, index) => {
+		if (accepted.length > 1) notify(`Adding ${accepted.length} files…`);
+		accepted.forEach((file, index) => {
 			const params = new URLSearchParams({ name: file.name });
-			if (cardId) params.set('card_id', cardId);
-			else { params.set('x', String(Math.round(at.x + index * 40))); params.set('y', String(Math.round(at.y + index * 40))); params.set('group_id', activeGroup); }
+			if (place.cardId) params.set('card_id', place.cardId);
+			else {
+				if (place.at) { params.set('x', String(Math.round(place.at.x + index * 40))); params.set('y', String(Math.round(place.at.y + index * 40))); }
+				if (place.groupId) params.set('group_id', place.groupId);
+			}
 			enqueueBoard(
 				(project) => {
 					params.set('expected_version', String(project.version));
 					return fetch(`/api/projects/${project.project_id}/media?${params}`, { method: 'POST', headers: { 'content-type': file.type || 'application/octet-stream' }, body: file });
 				},
 				(result) => {
+					added += 1;
 					const take = result.take as { under_2k?: boolean; name: string; width?: number; height?: number };
 					if (take.under_2k) flagged.push(`${take.name} (${take.width}×${take.height})`);
-					if (!cardId && layout) {
+					if (!place.cardId && place.at && layout) {
 						// The server placed the new shot at the drop point; mirror it so the board doesn't jump.
 						layout = { ...layout, nodes: [...layout.nodes, { node_id: String(result.beat_id), type: 'story_card', lane: 'storyboard', x: Number(params.get('x')), y: Number(params.get('y')), width: 320, height: 400 }] };
 					}
@@ -598,7 +615,7 @@
 				}
 			);
 		});
-		if (refused.length && refused.length === files.length) report();
+		if (accepted.length === 0) report();
 	}
 
 	function flushPick(cardId: string, pending: { takeId: string; timer: ReturnType<typeof setTimeout> }) {
@@ -1168,7 +1185,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} bind:tab={productionTab} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files)} bind:tab={productionTab} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">
