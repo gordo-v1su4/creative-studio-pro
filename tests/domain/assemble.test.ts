@@ -14,11 +14,11 @@ const shot = (n: number, max_s: number, extra: Partial<AssemblyShot> = {}): Asse
 const music = { duration_s: 10, beats: Array.from({ length: 19 }, (_, i) => (i + 1) * 0.5) };
 
 describe('first cut to the score', () => {
-	test('the shots on offer: spine in story order, then benched and dropped-in shots; trims respected; shots with no pick left out', () => {
-		const shots = shotsForAssembly(production(
-			[card('a', 0), card('b', 1, { benched: true, beat: 'Dropped in: hf.mp4' }), card('c', 2), card('d', 3)],
-			[take('a1', 'a', { in_s: 1, out_s: 4 }), take('b1', 'b', { duration_s: 8, generation: { provider: 'higgsfield', model: 'Seedance 2.5', resolution: '720p', prompt: 'A neon alley at night' } }), take('c1', 'c', { kind: 'image', mime_type: 'image/png' })]
-		));
+	test('the shots on offer: spine in story order, then shots off it; benched shots and shots with no pick left out; trims respected', () => {
+		const shots = shotsForAssembly({ ...production(
+			[card('a', 0), card('b', 1, { beat: 'Dropped in: hf.mp4' }), card('c', 2), card('d', 3), card('e', 4, { benched: true })],
+			[take('a1', 'a', { in_s: 1, out_s: 4 }), take('b1', 'b', { duration_s: 8, generation: { provider: 'higgsfield', model: 'Seedance 2.5', resolution: '720p', prompt: 'A neon alley at night' } }), take('c1', 'c', { kind: 'image', mime_type: 'image/png' }), take('e1', 'e')]
+		), links: [{ from: 'seed', to: 'a' }, { from: 'a', to: 'c' }] });
 		expect(shots.map((s) => [s.n, s.card_id, s.kind, s.in_s, s.max_s])).toEqual([[1, 'a', 'video', 1, 3], [2, 'c', 'image', 0, 8], [3, 'b', 'video', 0, 8]]);
 		expect(shots[2].beat).toBe('A neon alley at night');
 	});
@@ -49,6 +49,13 @@ describe('first cut to the score', () => {
 		const { entries, notes } = entriesFromPlan([{ shot: 9, beats: 2 }, { shot: 1, beats: 2 }, { shot: 1, beats: 2 }], [shot(1, 8)], music);
 		expect(entries).toHaveLength(1);
 		expect(notes).toEqual(['S9 is not a shot of this project; left out', 'S1 was placed twice; used once', 'The cut runs 1.0s of the 10.0s score']);
+	});
+
+	test('the end tag plays after the music, held as asked (within its footage and at most 6s)', () => {
+		const { entries, covered_s } = entriesFromPlan([{ shot: 1, beats: 20 }], [shot(1, 20), shot(2, 2.5, { kind: 'image' })], music, { shot: 2, seconds: 3 });
+		expect(covered_s).toBe(10);
+		expect(entries.map((e) => [e.card_id, e.out_s - e.in_s])).toEqual([['c1', 10], ['c2', 2.5]]);
+		expect(entriesFromPlan([{ shot: 1, beats: 4 }], [shot(1, 20), shot(2, 20)], music, { shot: 2, seconds: 9 }).entries.at(-1)?.out_s).toBe(6);
 	});
 
 	test('bar loudness is 0 to 9 against the loudest bar', () => {

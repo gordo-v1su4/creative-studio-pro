@@ -13,8 +13,8 @@ import { getRender, renderFileName } from '$lib/server/higgsfield-renders';
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'higgsfield' } }, { status });
 
 /**
- * Import one finished Higgsfield render (?job_id=) as a new shot, benched like a dropped file (?group_id= for
- * the board's group). The render is read fresh through the CLI and its file downloaded into the project; the
+ * Import one finished Higgsfield render (?job_id=) as a new shot, benched like a dropped file (?benched=0 to add
+ * it unbenched; ?group_id= for the board's group). The render is read fresh through the CLI and its file downloaded into the project; the
  * take keeps the job id and prompt. A render already in the project is refused.
  */
 export const POST: RequestHandler = async ({ params, url }) => {
@@ -61,7 +61,7 @@ export const POST: RequestHandler = async ({ params, url }) => {
 	const beatId = uuid7ish();
 	const outcome = await getGateway().addBeat({
 		command: 'add_beat', project_id: projectId.data, expected_version: expectedVersion, card_id: beatId,
-		title, take, ...(groupId ? { group_id: groupId } : {})
+		title, take, ...(groupId ? { group_id: groupId } : {}), ...(url.searchParams.get('benched') === '0' ? { benched: false } : {})
 	});
 	if (!outcome.ok) {
 		await rm(target, { force: true });

@@ -29,11 +29,11 @@ export interface AssemblyShot {
 
 export interface PlanItem { shot: number; beats: number }
 
-/** Every shot with a usable pick: the spine in story order first, then everything off it (benched, dropped in) in card order. */
+/** Every shot with a usable pick: the spine in story order first, then shots off it in card order. Benched shots are left out. */
 export function shotsForAssembly(production: ProductionState): AssemblyShot[] {
 	const spine = liveSpine(production);
 	const onSpine = new Set(spine.map((card) => card.card_id));
-	const rest = [...production.cards].sort((a, b) => a.order - b.order).filter((card) => !onSpine.has(card.card_id));
+	const rest = [...production.cards].sort((a, b) => a.order - b.order).filter((card) => !onSpine.has(card.card_id) && !card.benched);
 	const shots: AssemblyShot[] = [];
 	for (const card of [...spine, ...rest]) {
 		const pick = pickFor(production, card);
@@ -63,7 +63,7 @@ const r3 = (s: number) => Math.round(s * 1000) / 1000;
  * the last beat its footage reaches (or where its footage ends), and the cut stops at the end of the score.
  * Unknown and repeated shot numbers are left out, with a note.
  */
-export function entriesFromPlan(plan: PlanItem[], shots: AssemblyShot[], music: Pick<CutMusic, 'duration_s' | 'beats'>): { entries: CutEntryInput[]; notes: string[] } {
+export function entriesFromPlan(plan: PlanItem[], shots: AssemblyShot[], music: Pick<CutMusic, 'duration_s' | 'beats'>, endTag?: EndTag | null): { entries: CutEntryInput[]; notes: string[]; covered_s: number } {
 	const points = cutPoints(music);
 	const byNumber = new Map(shots.map((shot) => [shot.n, shot]));
 	const used = new Set<number>();
@@ -85,9 +85,24 @@ export function entriesFromPlan(plan: PlanItem[], shots: AssemblyShot[], music: 
 		entries.push({ card_id: shot.card_id, asset_id: shot.asset_id, in_s: r3(shot.in_s), out_s: r3(shot.in_s + length) });
 		t = r3(t + length);
 	}
+	const covered_s = t;
 	if (entries.length && t < music.duration_s - 1) notes.push(`The cut runs ${t.toFixed(1)}s of the ${music.duration_s.toFixed(1)}s score`);
-	return { entries, notes };
+	// The end tag: one ident shot after the music, held over the silence.
+	if (endTag && entries.length) {
+		const shot = byNumber.get(endTag.shot);
+		if (!shot) notes.push(`End tag S${endTag.shot} is not a shot of this project; left out`);
+		else {
+			const hold = Math.min(shot.max_s, Math.max(MIN_ENTRY_S, Math.min(END_TAG_MAX_S, endTag.seconds)));
+			entries.push({ card_id: shot.card_id, asset_id: shot.asset_id, in_s: r3(shot.in_s), out_s: r3(shot.in_s + hold) });
+			if (used.has(shot.n)) notes.push(`End tag S${shot.n} also plays earlier in the cut`);
+		}
+	}
+	return { entries, notes, covered_s };
 }
+
+/** The ident after the music: which shot and how long it holds. */
+export interface EndTag { shot: number; seconds: number }
+export const END_TAG_MAX_S = 6;
 
 /**
  * How loud the score is in each bar (four beats), 0 to 9 against its loudest bar, so the Agent can see the

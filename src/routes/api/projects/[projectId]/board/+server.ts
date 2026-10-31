@@ -4,7 +4,7 @@ import { getGateway, getReviewRoomConfig } from '$lib/server/config';
 import { createReviewRoomClient, idempotencyKey } from '$lib/server/review-room';
 import { commandStatus } from '$lib/server/http';
 
-const BOARD_COMMANDS = new Set(['set_pick', 'reject_take', 'restore_take', 'bench_beat', 'unbench_beat', 'rewire_spine', 'set_shot_references', 'create_group', 'rename_group', 'move_beats']);
+const BOARD_COMMANDS = new Set(['set_pick', 'reject_take', 'restore_take', 'bench_beat', 'unbench_beat', 'rewire_spine', 'set_shot_references', 'create_group', 'rename_group', 'move_beats', 'remove_beats']);
 
 /** Thin same-origin command route (AD-1, AD-3): board edits to beats and their takes. */
 export const POST: RequestHandler = async ({ params, request }) => {

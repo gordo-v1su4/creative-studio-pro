@@ -575,7 +575,7 @@
 	 * Files in through the board intake, one request at a time in the order given: each a new take on `cardId`,
 	 * or each a new benched shot (placed from `at` on the board, in `groupId`). The Board and the Shots tab both use it.
 	 */
-	function importFiles(files: File[], place: { cardId?: string; at?: { x: number; y: number }; groupId?: string } = {}) {
+	function importFiles(files: File[], place: { cardId?: string; at?: { x: number; y: number }; groupId?: string; unbenched?: boolean } = {}) {
 		if (!activeProject || files.length === 0) return;
 		for (const [cardId, pending] of pendingPicks) flushPick(cardId, pending);
 		const refused = files.filter((file) => !mediaKind(file.name)).map((file) => file.name);
@@ -597,6 +597,7 @@
 			else {
 				if (place.at) { params.set('x', String(Math.round(place.at.x + index * 40))); params.set('y', String(Math.round(place.at.y + index * 40))); }
 				if (place.groupId) params.set('group_id', place.groupId);
+				if (place.unbenched) params.set('benched', '0');
 			}
 			enqueueBoard(
 				(project) => {
@@ -619,7 +620,7 @@
 	}
 
 	/** Higgsfield renders in as new shots, one request at a time in the order given (the server downloads each). */
-	function importRenders(jobIds: string[], groupId?: string) {
+	function importRenders(jobIds: string[], groupId?: string, unbenched = false) {
 		if (!activeProject || jobIds.length === 0) return;
 		let added = 0;
 		notify(`Importing ${jobIds.length} from Higgsfield…`);
@@ -628,6 +629,7 @@
 				(project) => {
 					const params = new URLSearchParams({ job_id: jobId, expected_version: String(project.version) });
 					if (groupId) params.set('group_id', groupId);
+					if (unbenched) params.set('benched', '0');
 					return fetch(`/api/projects/${project.project_id}/higgsfield?${params}`, { method: 'POST' });
 				},
 				() => { added += 1; notify(added === jobIds.length ? `Imported ${added} from Higgsfield as new shots` : `Importing from Higgsfield… ${added} of ${jobIds.length}`); }
@@ -1202,7 +1204,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files)} onImportRenders={(jobIds) => importRenders(jobIds)} bind:tab={productionTab} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} bind:tab={productionTab} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">

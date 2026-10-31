@@ -20,7 +20,7 @@ const fail = (status: number, code: string, message: string) =>
  * Board intake (AD-1, AD-3): a file dropped on the board. The raw body is the
  * file (name in ?name=); it is copied into the project folder, probed, then
  * added through the gateway as a take on ?card_id= (add_take) or, without a
- * card, as a new benched beat placed at ?x=&y= on the canvas (add_beat).
+ * card, as a new benched beat placed at ?x=&y= on the canvas (add_beat; ?benched=0 for the Shots tab, which adds it unbenched).
  */
 export const POST: RequestHandler = async ({ params, request, url }) => {
 	const projectId = idSchema.safeParse(params.projectId);
@@ -61,7 +61,8 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		? await getGateway().addTake({ command: 'add_take', project_id: projectId.data, expected_version: expectedVersion, card_id: cardId, take })
 		: await getGateway().addBeat({
 				command: 'add_beat', project_id: projectId.data, expected_version: expectedVersion, card_id: newBeatId,
-				title: name.replace(/\.[^.]+$/, '').slice(0, 200) || 'Dropped file', take, ...(groupId ? { group_id: groupId } : {})
+				title: name.replace(/\.[^.]+$/, '').slice(0, 200) || 'Dropped file', take, ...(groupId ? { group_id: groupId } : {}),
+				...(url.searchParams.get('benched') === '0' ? { benched: false } : {})
 			});
 	if (!outcome.ok) {
 		await rm(target, { force: true });

@@ -215,6 +215,22 @@ describe('cuts', () => {
 		expect(cutsOf(cleared.production)[0].music).toEqual(music);
 	});
 
+	test('remove_beats takes a shot and its takes off the project, refuses a shot a cut uses, and a save puts it back', async () => {
+		const { root, gateway, project } = await setup();
+		const pushed = ok(await gateway.handle({ command: 'push_cut', project_id: project.project_id, expected_version: project.version, name: 'Uses b', entries: [{ card_id: 'b', asset_id: 'b1', in_s: 0, out_s: 1 }] }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		const refused = await gateway.handle({ command: 'remove_beats', project_id: project.project_id, expected_version: pushed.version, card_ids: ['b'] });
+		expect(refused.ok).toBeFalse();
+		if (!refused.ok) expect(refused.error.message).toContain('Uses b');
+		const removed = ok(await gateway.handle({ command: 'remove_beats', project_id: project.project_id, expected_version: pushed.version, card_ids: ['a'] }) as Awaited<ReturnType<ProjectCommandGateway['pushCut']>>);
+		expect(removed.production.cards.map((card) => [card.card_id, card.order])).toEqual([['b', 0]]);
+		expect(removed.production.assets.map((asset) => asset.asset_id)).toEqual(['b1']);
+		expect(await lastEvent(root, project.project_id)).toBe('project.beat_removed.v1');
+		const back = await gateway.saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: removed.version, production: pushed.production });
+		if (!back.ok) throw new Error(back.error.message);
+		expect(back.data.production.cards.map((card) => card.card_id)).toEqual(['a', 'b']);
+		expect(cutsOf(back.data.production)).toHaveLength(1);
+	});
+
 	test('a sound plan belongs to a locked version; an unlocked version has none to set', async () => {
 		const { gateway, project } = await setup();
 		const pushed = await pushTrailer(gateway, project);

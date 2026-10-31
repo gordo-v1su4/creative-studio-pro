@@ -9,16 +9,18 @@ import { generateStructured, type AgentModelClient, type ModelImage } from './mo
 import { runFfmpeg } from './ffmpeg';
 
 /** How many shots the Agent sees as pictures; any beyond are described in words only. */
-export const MAX_FRAMES = 40;
+export const MAX_FRAMES = 48;
 
 const SYSTEM = `You are a trailer editor cutting a first assembly to a finished score. You see one frame from each shot (labelled S1, S2, … in the order given) and a map of the score: its length, tempo, beat count and how loud each bar is.
 Choose the shots that tell the strongest story, put them in the order that plays best against the music, and say how many beats each one holds.
-Editing rules: open on intrigue, build with the score, save the most striking images for the loudest bars and the hits, cut faster (1 to 2 beats) where the music drives and let shots breathe (4 to 8 beats) where it is quiet. Every cut lands on a beat. Use each shot at most once; leave weak, broken or repeated shots out. Fill the whole score: the beats you give should add up to about the score's beat count.
+Editing rules: open on intrigue, build with the score, save the most striking images for the loudest bars and the hits, cut faster (1 to 2 beats) where the music drives and let shots breathe (4 to 8 beats) where it is quiet. Every cut lands on a beat. Use each shot at most once; leave weak, broken or repeated shots out. The cut must run the whole score, start to finish: the beats you give must add up to the score's beat count, so if you leave shots out, give the others more beats (a video shot can't hold longer than its footage).
+After the music ends comes the end tag: one ident shot (the title card, or the strongest closing image if there is no title card) held 2 to 4 seconds over silence. Name it in end_tag and leave it out of the shots list.
 Answer with JSON only.`;
 
 const answer = z.object({
 	name: z.string().trim().min(1).max(120),
 	shots: z.array(z.object({ shot: z.number().int().positive(), beats: z.number().positive().max(64), why: z.string().max(300).optional() })).min(1).max(200),
+	end_tag: z.object({ shot: z.number().int().positive(), seconds: z.number().positive().max(10) }).nullable().optional(),
 	notes: z.string().max(1000).optional()
 });
 
@@ -50,10 +52,18 @@ export async function assembleFirstCut(client: AgentModelClient, project: Projec
 		bars.length ? `LOUDNESS BY BAR (time in seconds: 0 quiet to 9 loudest):\n${bars.map((bar) => `${bar.at.toFixed(1)}:${bar.level}`).join(' ')}` : '',
 		`SHOTS (${shots.length}; the pictures are in this order, one per shot that has one):\n${shotLines.join('\n')}`,
 		`PROJECT: ${project.title}${project.production.logline ? `. ${project.production.logline}` : ''}`,
-		`Answer with only JSON: {"name":"a short name for this cut","shots":[{"shot":3,"beats":8,"why":"a few words"}],"notes":"one or two lines on the shape of the cut"}. A video shot can't hold longer than its footage.`
+		`Answer with only JSON: {"name":"a short name for this cut","shots":[{"shot":3,"beats":8,"why":"a few words"}],"end_tag":{"shot":12,"seconds":3},"notes":"one or two lines on the shape of the cut"}. The shots' beats add up to ${beatCount}. A video shot can't hold longer than its footage.`
 	].filter(Boolean).join('\n\n');
-	const plan = await generateStructured(client, { system: SYSTEM, prompt: ask, images, maxOutputTokens: 3000, timeoutMs: 240_000 }, (value) => answer.parse(value));
-	const laid = entriesFromPlan(plan.shots, shots, score);
+	const budget = { system: SYSTEM, images, maxOutputTokens: 4000, timeoutMs: 300_000 };
+	let plan = await generateStructured(client, { ...budget, prompt: ask }, (value) => answer.parse(value));
+	let laid = entriesFromPlan(plan.shots, shots, score, plan.end_tag);
+	// Short of the score (shots left out, or footage that ran out): one more pass, told exactly where it fell short.
+	if (laid.covered_s < score.duration_s - 1) {
+		const short = `${ask}\n\nYour plan:\n${JSON.stringify(plan)}\n\nLaid on the beats it covers only ${laid.covered_s.toFixed(1)}s of the ${score.duration_s.toFixed(1)}s score (${laid.notes.join('; ') || 'too few beats'}). Give the whole plan again so it runs to the end of the score: add shots or give shots more beats, within their footage.`;
+		const retry = await generateStructured(client, { ...budget, prompt: short }, (value) => answer.parse(value));
+		const relaid = entriesFromPlan(retry.shots, shots, score, retry.end_tag);
+		if (relaid.covered_s > laid.covered_s) { plan = retry; laid = relaid; }
+	}
 	if (laid.entries.length === 0) throw new Error('The Agent placed no usable shots');
 	return { name: plan.name, entries: laid.entries, notes: [plan.notes ?? '', ...laid.notes].filter(Boolean) };
 }

@@ -139,7 +139,8 @@ export function removeShots(production: ProductionState, cardIds: string[]): { p
 	return drop.size ? { production: dropCards(production, drop), removed: drop.size } : { production, removed: 0 };
 }
 
-function dropCards(production: ProductionState, drop: Set<string>): ProductionState {
+/** Take cards out (their takes stay unless the caller drops them); the spine closes over each gap. */
+export function dropCards(production: ProductionState, drop: Set<string>): ProductionState {
 	const cards = production.cards.filter((card) => !drop.has(card.card_id)).toSorted((a, b) => a.order - b.order).map((card, order) => ({ ...card, order }));
 	let links = production.links;
 	if (links) {

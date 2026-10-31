@@ -1,5 +1,7 @@
 import type { ProductionAsset, ProductionState, StoryCard } from './schemas';
 import { defaultLinks } from './spine';
+import { dropCards } from './episode-fit';
+import { cutsOf } from './cuts';
 import type { TakeResult } from './takes';
 
 /**
@@ -54,7 +56,7 @@ export function applyAddTake(production: ProductionState, cardId: string, take: 
  * A new beat for a file dropped on empty canvas: benched and off the spine,
  * so the story order doesn't change until the operator hooks it in.
  */
-export function applyAddBeat(production: ProductionState, cardId: string, title: string, take: NewTake): TakeResult {
+export function applyAddBeat(production: ProductionState, cardId: string, title: string, take: NewTake, benched = true): TakeResult {
 	if (production.cards.some((card) => card.card_id === cardId)) return { ok: false, message: `Beat ${cardId} already exists` };
 	if (production.assets.some((asset) => asset.asset_id === take.asset_id)) return { ok: false, message: `Take ${take.asset_id} already exists` };
 	const beat: StoryCard = {
@@ -68,7 +70,7 @@ export function applyAddBeat(production: ProductionState, cardId: string, title:
 		video_prompt: 'None yet (dropped file).',
 		status: 'draft',
 		pick_take_id: take.asset_id,
-		benched: true
+		...(benched ? { benched: true } : {})
 	};
 	return {
 		ok: true,
@@ -80,4 +82,18 @@ export function applyAddBeat(production: ProductionState, cardId: string, title:
 			assets: [...production.assets, { ...take, card_id: cardId }]
 		}
 	};
+}
+
+/**
+ * Remove shots from the project, with their takes; the spine closes over each gap. A shot a cut uses is
+ * refused (the cut would lose its picture): drop it from the cut first. The files stay in the project folder.
+ */
+export function applyRemoveBeats(production: ProductionState, cardIds: string[]): TakeResult {
+	const drop = new Set(cardIds);
+	const missing = cardIds.filter((id) => !production.cards.some((card) => card.card_id === id));
+	if (missing.length) return { ok: false, message: `Not on this project: ${missing.join(', ')}` };
+	const inCuts = cutsOf(production).filter((cut) => [cut.entries, ...(cut.versions ?? []).map((version) => version.entries)].flat().some((entry) => drop.has(entry.card_id)));
+	if (inCuts.length) return { ok: false, message: `Used in ${inCuts.map((cut) => cut.name).join(', ')}; drop it from the cut first` };
+	const removed = dropCards(production, drop);
+	return { ok: true, production: { ...removed, assets: removed.assets.filter((asset) => !drop.has(asset.card_id)) } };
 }

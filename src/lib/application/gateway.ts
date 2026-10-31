@@ -24,6 +24,7 @@ import {
 	rewireSpineCommandSchema,
 	addTakeCommandSchema,
 	addBeatCommandSchema,
+	removeBeatsCommandSchema,
 	linkDraftJobsCommandSchema
 } from '$lib/domain/schemas';
 import { applyForceAdvance, applyInterviewRound, evaluateInterviewRound, applyBriefLock, isCurrentBriefLocked } from '$lib/domain/gates';
@@ -34,7 +35,7 @@ import { applySetPick, applyRejectTake, applyRestoreTake, type TakeResult } from
 import { applyBench } from '$lib/domain/bench';
 import { applySetShotReferences } from '$lib/domain/shot-references';
 import { applyRewire } from '$lib/domain/spine';
-import { applyAddBeat, applyAddTake } from '$lib/domain/media';
+import { applyAddBeat, applyAddTake, applyRemoveBeats } from '$lib/domain/media';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
 import { applyLinkDraftJobs } from '$lib/domain/finalize';
 import type { Generation, ProductionAsset, StillSend, StoryCard, TrailerHouse } from '$lib/domain/schemas';
@@ -167,6 +168,8 @@ export class ProjectCommandGateway {
 				return this.addTake(raw);
 			case 'add_beat':
 				return this.addBeat(raw);
+			case 'remove_beats':
+				return this.removeBeats(raw);
 			case 'set_project_model':
 				return this.setProjectModel(raw);
 			case 'lock_project_model':
@@ -371,11 +374,17 @@ export class ProjectCommandGateway {
 	async addBeat(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = addBeatCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
-		const { card_id, title, take, group_id } = parsed.data;
+		const { card_id, title, take, group_id, benched } = parsed.data;
 		return this.updateBoard(parsed.data, (production) => {
-			const added = applyAddBeat(production, card_id, title, take);
+			const added = applyAddBeat(production, card_id, title, take, benched ?? true);
 			return added.ok && group_id && group_id !== MAIN_GROUP ? applyMoveBeats(added.production, [card_id], group_id) : added;
 		}, 'project.beat_added.v1');
+	}
+
+	async removeBeats(raw: unknown): Promise<CommandOutcome<Project>> {
+		const parsed = removeBeatsCommandSchema.safeParse(raw);
+		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
+		return this.updateBoard(parsed.data, (production) => applyRemoveBeats(production, parsed.data.card_ids), 'project.beat_removed.v1');
 	}
 
 	/** Board groups (V1S-131): create, rename, move beats between them. */

@@ -23,7 +23,7 @@
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
 	let { project, onUpdated, onAddFiles, onImportRenders, tab = $bindable('story') }: {
 		project: Project; onUpdated: (project: Project) => void;
-		/** Files dropped or picked on the Shots tab: each becomes a new shot (benched until hooked in). */
+		/** Files dropped or picked on the Shots tab: each becomes a new shot (off the spine, not benched). */
 		onAddFiles?: (files: File[]) => void;
 		/** Higgsfield renders picked on the Shots tab (job ids, in the order to add): each becomes a new shot. */
 		onImportRenders?: (jobIds: string[]) => void;
@@ -32,6 +32,44 @@
 
 	let higgsfieldOpen = $state(false);
 	const importedJobs = $derived(new Set(project.production.assets.flatMap((asset) => (asset.job_id ? [asset.job_id] : []))));
+
+	// --- Bench (keep it, but leave it out of plays and the Agent's cut) and remove (gone, with one undo).
+	let shotBusy = $state<string | null>(null);
+	let shotNotice = $state<{ text: string; undo?: { production: ProductionState; version: number } } | null>(null);
+
+	async function boardCommand(body: Record<string, unknown>): Promise<Project> {
+		const result = (await (await fetch(`/api/projects/${project.project_id}/board`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, expected_version: project.version }) })).json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+		if (!result.ok) throw new Error(result.error.message);
+		onUpdated(result.data);
+		return result.data;
+	}
+
+	async function setBenched(card: StoryCard, benched: boolean) {
+		shotBusy = card.card_id; shotNotice = null;
+		try { await boardCommand({ command: benched ? 'bench_beat' : 'unbench_beat', card_id: card.card_id }); }
+		catch (cause) { shotNotice = { text: cause instanceof Error ? cause.message : 'Benching failed' }; }
+		finally { shotBusy = null; }
+	}
+
+	async function removeShot(card: StoryCard) {
+		shotBusy = card.card_id; shotNotice = null;
+		const before = cloneProduction(project.production);
+		try {
+			const after = await boardCommand({ command: 'remove_beats', card_ids: [card.card_id] });
+			shotNotice = { text: `Removed ${card.title}.`, undo: { production: before, version: after.version } };
+		} catch (cause) { shotNotice = { text: cause instanceof Error ? cause.message : 'Removing failed' }; }
+		finally { shotBusy = null; }
+	}
+
+	/** Put the removed shot back: the production as it was, if nothing else changed since. */
+	async function undoRemove() {
+		const undo = shotNotice?.undo;
+		if (!undo || undo.version !== project.version) { shotNotice = { text: 'The project changed since; the removal can no longer be undone here.' }; return; }
+		shotBusy = 'undo';
+		try { await request({ mode: 'save', expected_version: project.version, production: undo.production }); shotNotice = { text: 'Put back.' }; }
+		catch (cause) { shotNotice = { text: cause instanceof Error ? cause.message : 'Undo failed' }; }
+		finally { shotBusy = null; }
+	}
 
 	// --- The score: the song the Agent cuts a first cut to.
 	const score = $derived(project.production.score ?? null);
@@ -300,13 +338,20 @@
 			</div>
 			{#if scoreError}<p class="border-b border-[#223039] px-4 py-2 text-[12px] text-gate-failed" role="alert">{scoreError}</p>{/if}
 		{/if}
+		{#if shotNotice}
+			<p class="flex items-center gap-2 border-b border-[#223039] bg-[#0d1418] px-4 py-2 text-[12px] text-[#9fc9cf]" role="status">
+				<span class="grow">{shotNotice.text}</span>
+				{#if shotNotice.undo && shotNotice.undo.version === project.version}<button type="button" class="agent-mini" onclick={() => void undoRemove()} disabled={shotBusy !== null}>undo</button>{/if}
+				<button type="button" class="agent-mini" onclick={() => (shotNotice = null)}>dismiss</button>
+			</p>
+		{/if}
 		{#if higgsfieldOpen && onImportRenders}<HiggsfieldImport have={importedJobs} onImport={onImportRenders} onclose={() => (higgsfieldOpen = false)} />{/if}
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
 			{#each draft.cards as card (card.card_id)}
 				{@const image = assetFor(card.card_id, 'image')}
 				{@const video = assetFor(card.card_id, 'video')}
 				{@const face = faceFor(card.card_id)}
-				<article class="story-card">
+				<article class={['story-card', card.benched && 'benched']}>
 					<div class="flex items-center gap-2"><span class="card-index">{String(card.order + 1).padStart(2, '0')}</span><input value={card.title} oninput={(event) => updateCard(card.card_id, { title: event.currentTarget.value })} aria-label={`Card ${card.order + 1} title`} /><span class="meta-label text-[#63838c]">{card.duration_ms / 1000}s</span></div>
 					<nav class="card-face-nav" aria-label={`Card ${card.order + 1} face`}>
 						{#each faces as item}<button type="button" class:active={face === item} onclick={() => setFace(card.card_id, item)} aria-pressed={face === item}>{item}</button>{/each}
@@ -330,6 +375,12 @@
 						<button type="button" class="agent-mini" onclick={() => updateCard(card.card_id, { status: card.status === 'approved' ? 'draft' : 'approved' })}>{card.status}</button>
 						<span class="grow"></span><span class="meta-label text-[#55747c]">{face}</span>
 						<button type="button" class="face-arrow" onclick={() => moveFace(card.card_id, 1)} aria-label={`Next face for ${card.title}`}>→</button>
+					</div>
+					<div class="mt-2 flex items-center gap-2 border-t border-[#1b262c] pt-2">
+						{#if card.benched}<span class="meta-label text-[#f2c14e]">benched</span>{/if}
+						<span class="grow"></span>
+						<button type="button" class="agent-mini" onclick={() => void setBenched(card, !card.benched)} disabled={shotBusy !== null} title={card.benched ? 'Use this shot again in plays and the Agent\'s cut' : 'Keep this shot, but leave it out of plays and the Agent\'s first cut'}>{card.benched ? 'unbench' : 'bench'}</button>
+						<button type="button" class="agent-mini remove" onclick={() => void removeShot(card)} disabled={shotBusy !== null} title="Remove this shot and its takes from the project (you can undo right after; a shot a cut uses can't be removed)">{shotBusy === card.card_id ? '…' : 'remove'}</button>
 					</div>
 				</article>
 			{/each}
@@ -455,6 +506,9 @@
 	.cut-row b { font-size: 12px; font-weight: 600; }
 	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
+	.story-card.benched { opacity: 0.5; }
+	.story-card.benched:hover { opacity: 0.85; }
+	.agent-mini.remove:hover { color: #ff6b6b; border-color: #ff6b6b; }
 	.shots-dropping { outline: 1px dashed #59d9cf; outline-offset: -6px; }
 	.shots-drop-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(5 7 10 / 0.6); color: #59d9cf; font: 600 12px var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; pointer-events: none; }
 	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }

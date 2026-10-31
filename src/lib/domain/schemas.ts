@@ -759,6 +759,7 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.spine_rewired.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.take_added.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.beat_added.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	z.object({ type: z.literal('project.beat_removed.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Agent model provider (V1S-117): override, first-run lock, explicit switch.
 	z.object({
 		type: z.literal('project.agent_model_set.v1'), event_id: idSchema,
@@ -965,7 +966,17 @@ export const addBeatCommandSchema = z.object({
 	title: nonBlank(200),
 	take: newTakeSchema,
 	/** The group the board is showing; the new beat joins it. */
-	group_id: idSchema.optional()
+	group_id: idSchema.optional(),
+	/** False for shots added on the Shots tab: off the spine but not benched, so the Agent's first cut uses them. */
+	benched: z.boolean().optional()
+});
+
+/** Take shots off the project with their takes; a shot a cut uses is refused. */
+export const removeBeatsCommandSchema = z.object({
+	command: z.literal('remove_beats'),
+	project_id: idSchema,
+	expected_version: z.number().int().nonnegative(),
+	card_ids: z.array(idSchema).min(1).max(200)
 });
 
 /** Link existing takes to the Seedance draft jobs they came from (found by matching files), so they can be finalized. */
