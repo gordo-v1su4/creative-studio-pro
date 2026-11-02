@@ -37,6 +37,31 @@ export async function frameOf(file: string, at: number | null): Promise<ModelIma
 	}
 }
 
+/**
+ * The gateway stops its Qwen backend after ten idle minutes; whoever calls it wakes it first (as stack-structure does).
+ * Asking to start an already running backend is harmless, so two takes tagged at once can both ask.
+ */
+export async function wakeCaptionGateway(gateway: CaptionGateway, fetchImpl: TagDeps['fetch'] = fetch, timeoutMs = 300_000, pollMs = 3_000): Promise<void> {
+	const base = gateway.url.replace(/\/+$/, '');
+	const headers = { authorization: `Bearer ${gateway.token}` };
+	const healthy = async () => {
+		const response = await fetchImpl(`${base}/health`, { headers, signal: AbortSignal.timeout(10_000) }).catch(() => null);
+		const body = (await response?.json().catch(() => null)) as { qwenBackendHealthy?: boolean } | null;
+		return body?.qwenBackendHealthy === true;
+	};
+	if (await healthy()) return;
+	const started = await fetchImpl(`${base}/admin/qwen/start`, { method: 'POST', headers, signal: AbortSignal.timeout(35_000) }).catch((cause) => { throw new Error(`Caption gateway not answering (${cause instanceof Error ? cause.message : 'network'}); check it on app-vm`); });
+	if (!started.ok) {
+		const body = (await started.json().catch(() => null)) as { detail?: string } | null;
+		throw new Error(`Caption gateway could not wake its model (${started.status}): ${body?.detail ?? 'no detail'}`);
+	}
+	for (const until = Date.now() + timeoutMs; Date.now() < until;) {
+		await new Promise((done) => setTimeout(done, pollMs));
+		if (await healthy()) return;
+	}
+	throw new Error(`Caption gateway's model did not wake within ${Math.round(timeoutMs / 1000)} s; check its backend on app-vm`);
+}
+
 async function captionByGateway(gateway: CaptionGateway, image: ModelImage, context: string, source: string, fetchImpl: TagDeps['fetch'] = fetch): Promise<Record<string, unknown>> {
 	const form = new FormData();
 	form.set('image', new Blob([image.data as Uint8Array<ArrayBuffer>], { type: image.mediaType }), 'frame.jpg');
@@ -86,6 +111,7 @@ export async function tagTake(deps: TagDeps, project: Project, take: ProductionA
 	let source: ShotTags['source'] = 'caption-gateway';
 	let model: string | undefined;
 	if (deps.gateway) {
+		await wakeCaptionGateway(deps.gateway, deps.fetch);
 		meta = await captionByGateway(deps.gateway, image, context, take.name, deps.fetch);
 		model = 'qwen3-vl';
 	} else {

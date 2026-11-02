@@ -75,9 +75,10 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 
 ## Machines and services
 
-- **PC:** needs `git pull` (the post-merge hook rebuilds graft). Its `.env.local` also needs `ESSENTIA_API_URL`, `ESSENTIA_API_KEY`, `SCENE_CAPTION_SMART_GATEWAY_URL` and `SCENE_CAPTION_SMART_GATEWAY_TOKEN`; copy them from the Mac. Restart the dev server after any env change.
+- **PC:** pulled and set up on 2026-11-02 (see below). Restart the dev server after any env change.
 - **Essentia:** `https://essentia.v1su4.dev`. There's one key; beatsmaxxer-pro's `.env` has the working copy. Studio jobs need app-vm's GPU.
-- **Caption gateway:** `https://caption.v1su4.dev`, running Qwen3-VL-8B on app-vm. It now runs with `--cache-ram 0` (RAM went from 14 GiB to about 0.6 GiB).
+- **Caption gateway:** `https://caption.v1su4.dev`, running Qwen3-VL-8B on app-vm. It now runs with `--cache-ram 0` (RAM went from 14 GiB to about 0.6 GiB). The gateway stops its model after 10 idle minutes. Tagging wakes it first (`POST /admin/qwen/start`, then wait for `/health`), so the first shot of a run waits while the model loads. The token is BWS `SCENE_CAPTION_GATEWAY_TOKEN`.
+- **PC env (2026-11-02):** `.env.local` now has the four keys above. Essentia's key came from BWS; beatsmaxxer-pro's `.env` holds a different key that also works, so one of the two is probably stale.
 - **If either service says "no CUDA":** follow proxmox-home `docs/app-vm-dockhand-runbook.md`. On 2026-10-31 the GPU had fallen off the bus, and a VM restart fixed it. Never fall back to CPU.
 
 ## Still parked
