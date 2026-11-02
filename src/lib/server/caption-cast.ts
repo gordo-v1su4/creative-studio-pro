@@ -119,6 +119,9 @@ export function namedSubjects(meta: Record<string, unknown>, cast: CastMember[])
 		...evidence.filter((s) => s.confidence !== 'uncertain').map((s) => s.name)
 	].map((s) => (typeof s === 'string' ? s.trim() : '')).filter(Boolean);
 	const out = said.map((name) => cast.find((member) => namesOf(member.reference).some((n) => n.toLowerCase() === name.toLowerCase()) || member.name.toLowerCase() === name.toLowerCase())?.label ?? 'unknown');
-	const named = [...new Set(out.filter((n) => n !== 'unknown'))];
+	// The caption can name a cast member while the subjects list only describes them ("a person in a hoodie").
+	const captioned = typeof meta.caption === 'string' ? cast.filter((member) => firstMention(meta.caption as string, member.reference) >= 0).map((member) => member.label) : [];
+	const named = [...new Set([...out.filter((n) => n !== 'unknown'), ...captioned])];
+	if (captioned.length && out.filter((n) => n === 'unknown').length <= captioned.filter((n) => !out.includes(n)).length) return named;
 	return out.includes('unknown') ? [...named, 'unknown'] : named;
 }

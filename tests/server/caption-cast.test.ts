@@ -47,6 +47,11 @@ describe('namedSubjects', () => {
 		expect(namedSubjects({ subjects: [], evidence: { subjects: [{ name: 'Mara Voss', confidence: 'supported' }, { name: 'Kai', confidence: 'uncertain' }] } }, cast)).toEqual(['Mara']);
 	});
 
+	it('takes a name from the caption when the subjects list only describes them', () => {
+		expect(namedSubjects({ caption: 'Kai \'Hoodie\' Santana leaps over the street', subjects: ['a person in a hoodie'] }, cast)).toEqual(['Kai']);
+		expect(namedSubjects({ caption: 'Kai watches two strangers', subjects: ['Kai', 'a man', 'a woman'] }, cast)).toEqual(['Kai', 'unknown']);
+	});
+
 	it('never names someone who was not in the headshots', () => {
 		expect(namedSubjects({ subjects: ['Elias'] }, cast)).toEqual(['unknown']);
 	});
