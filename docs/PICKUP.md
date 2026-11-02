@@ -39,6 +39,10 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
   - **Bryson** has to be in the trailer. He doesn't appear in episode 1. He's the dean's son.
   - **The dean** is spying on the group because he believes Kai is planning something evil.
   - **Bryson and Kai** have a secret romance, but Bryson is getting close to Kai on his dad's orders.
+- **Trailer only, Notion untouched (2026-11-02, supersedes "Notion first" above for now):** the trailer doesn't have to fit the story yet. It has to be intense, "what did I just watch".
+  - **Pitch:** a *Grey's Anatomy* turn. The night before, an encounter: a girl they nearly attack, bite or change, and crazy things happen that night. Next day at school she's in Kai's class, and then at cheer practice. Whoever was in last night's altercation is now right next to them in public, where nobody can know. Bryson is in the mix too, and nobody knows anybody's gay.
+  - **Comic beat:** the cheer team has to tumble badly on purpose, because they're too perfect.
+  - Kai already works at Video Haven (the video store refs 04/05), which answers the job question.
 - **More direction (2026-11-02):** add to what we have; the bigger rework of the show's idea waits.
   - **Tone:** very fast, confusing, high real-life drama. *Euphoria* college kids dealing with life, plus this other thing on top. Not "I'm going to bite you"; the serum is an underground deal nobody knows about.
   - **Length:** the length of the song (`freshman-year-mashup-full.wav`, 1:26), with dropouts for dialogue moments.
@@ -52,7 +56,8 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
 
 ## Next, in order
 
-0. **Captions must name the characters.** Today a tag says "a young man with bleached hair", not "Kai", so once shots come from different places there's no telling who is who. We have character sheets for everyone (the series references, with the headshot cropped from each sheet's first panel). Plan:
+0. **Done 2026-11-02: captions name the characters** (`src/lib/server/caption-cast.ts`). Each take is sent with at most two headshots (the gateway's limit is two characters plus one location), cropped from the first panel of the series sheets. The characters named in the take or shot title come first, then the ones its prompt names most; a shot that names nobody gets the project's two most named characters. `subjects` are first names or `unknown`. A non-episode project finds its series by title prefix ("Blood Rush — …"). Left over: caption text can still repeat an old name from a generation prompt ("Lucian Blaise"); the planner doesn't use the names yet. The original plan follows.
+0. **(Original plan) Captions must name the characters.** Today a tag says "a young man with bleached hair", not "Kai", so once shots come from different places there's no telling who is who. We have character sheets for everyone (the series references, with the headshot cropped from each sheet's first panel). Plan:
    - **Who might be in the shot:** take the names in the shot's title, beat and generation prompt, and show the model only those headshots. A short list is far more reliable than "find these faces among everyone".
    - **Giving the model the faces: copy stack-structure, which already solved this.**
      - `src/trigger/caption.ts` (around line 154) sends up to three `referenceImages` with the frame, each with a `referenceLabels` entry `{ name, role }`. The live gateway at `caption.v1su4.dev` already accepts them.

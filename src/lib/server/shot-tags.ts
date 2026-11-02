@@ -6,6 +6,8 @@ import { motionOf, wordsFromCaption, type ShotTags } from '$lib/domain/shot-tags
 import { generateStructured, type AgentModelClient, type ModelImage } from './model-provider';
 import { runFfmpeg } from './ffmpeg';
 import { readFrameSignal } from './frame-signal';
+import { castFor, namedSubjects, type CastHeadshot, type CastMember } from './caption-cast';
+import type { SeriesReferenceItem } from './references';
 
 /**
  * Tagging one take: a caption of its middle frame (the operator's caption gateway, Qwen3-VL; the Agent's
@@ -17,6 +19,8 @@ export interface CaptionGateway { url: string; token: string }
 
 export interface TagDeps {
 	gateway: CaptionGateway | null;
+	/** The series' characters and how to get each one's headshot; absent = captions name nobody. */
+	cast?: { references: SeriesReferenceItem[]; regulars: SeriesReferenceItem[]; headshot: (reference: SeriesReferenceItem) => Promise<ModelImage | null> };
 	agent: () => Promise<AgentModelClient | null>;
 	fetch?: (input: string, init?: RequestInit) => Promise<Response>;
 }
@@ -62,13 +66,20 @@ export async function wakeCaptionGateway(gateway: CaptionGateway, fetchImpl: Tag
 	throw new Error(`Caption gateway's model did not wake within ${Math.round(timeoutMs / 1000)} s; check its backend on app-vm`);
 }
 
-async function captionByGateway(gateway: CaptionGateway, image: ModelImage, context: string, source: string, fetchImpl: TagDeps['fetch'] = fetch): Promise<Record<string, unknown>> {
+/** Stack-structure's identity rules (sceneCaptionPrompt.ts), for frames sent with character headshots. */
+const NAME_RULES = 'Character reference headshots come before the frame; each is labelled with its name. Use a listed name, exactly as given, only when a person in the frame is recognizably that character by face and identity, never by clothes, gender or importance. Name a matched character and do not describe their hair, face, body or clothes. A person who matches no headshot is "unknown"; when unsure, answer unknown. subjects must be listed names or "unknown", never descriptions. Also return evidence.subjects as [{ name, confidence: "supported" | "uncertain", role: "focal" | "background" }].';
+
+async function captionByGateway(gateway: CaptionGateway, image: ModelImage, context: string, source: string, fetchImpl: TagDeps['fetch'] = fetch, headshots: CastHeadshot[] = []): Promise<Record<string, unknown>> {
 	const form = new FormData();
 	form.set('image', new Blob([image.data as Uint8Array<ArrayBuffer>], { type: image.mediaType }), 'frame.jpg');
 	form.set('mode', 'smart');
-	form.set('prompt', ASK);
+	form.set('prompt', headshots.length ? `${ASK} ${NAME_RULES}` : ASK);
 	form.set('sourceName', source.slice(0, 200));
-	form.set('captionContext', context.slice(0, 1500));
+	form.set('captionContext', (headshots.length ? `Characters who may appear: ${headshots.map((h) => h.label).join(', ')}. ${context}` : context).slice(0, 1500));
+	headshots.forEach((headshot, index) => {
+		form.append('referenceImages', new Blob([headshot.image.data as Uint8Array<ArrayBuffer>], { type: headshot.image.mediaType }), `${headshot.label}.jpg`);
+		form.append('referenceLabels', JSON.stringify({ name: headshot.label, role: index === 0 ? 'primary' : 'secondary' }));
+	});
 	// The gateway answers in seconds; two minutes covers waiting on its GPU lock behind another job.
 	const response = await fetchImpl(`${gateway.url.replace(/\/+$/, '')}/caption/scene`, { method: 'POST', body: form, headers: { authorization: `Bearer ${gateway.token}` }, signal: AbortSignal.timeout(120_000) }).catch((cause) => { throw new Error(`Caption gateway not answering (${cause instanceof Error ? cause.message : 'network'}); check its backend on app-vm`); });
 	const body = (await response.json().catch(() => null)) as { ok?: boolean; caption?: string; meta?: Record<string, unknown>; detail?: string } | null;
@@ -110,9 +121,19 @@ export async function tagTake(deps: TagDeps, project: Project, take: ProductionA
 	let meta: Record<string, unknown> | null = null;
 	let source: ShotTags['source'] = 'caption-gateway';
 	let model: string | undefined;
+	const cast: CastMember[] = [];
 	if (deps.gateway) {
+		const headshots: CastHeadshot[] = [];
+		if (deps.cast) {
+			const card = project.production.cards.find((entry) => entry.card_id === take.card_id);
+			for (const member of castFor({ title: `${take.name} · ${card?.title ?? ''}`, body: context }, deps.cast.references, deps.cast.regulars)) {
+				const headshot = await deps.cast.headshot(member.reference);
+				if (headshot) { headshots.push({ label: member.label, image: headshot }); cast.push(member); }
+			}
+		}
 		await wakeCaptionGateway(deps.gateway, deps.fetch);
-		meta = await captionByGateway(deps.gateway, image, context, take.name, deps.fetch);
+		meta = await captionByGateway(deps.gateway, image, context, take.name, deps.fetch, headshots);
+		if (cast.length) meta = { ...meta, subjects: namedSubjects(meta, cast) };
 		model = 'qwen3-vl';
 	} else {
 		const client = await deps.agent();

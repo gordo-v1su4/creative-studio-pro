@@ -3,7 +3,9 @@ import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
-import { getCaptionGateway, getGateway, getProjectRoot, getProjectStore, resolveProjectModel } from '$lib/server/config';
+import { getCaptionGateway, getGateway, getProjectRoot, getProjectStore, getReferenceCacheDir, getReferenceFileDeps, getSeriesStore, resolveProjectModel } from '$lib/server/config';
+import { castSeries, headshotOf, projectRegulars, sheetFiles } from '$lib/server/caption-cast';
+import { reviewRoomReferenceFiles } from '$lib/server/reference-files';
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { tagTake } from '$lib/server/shot-tags';
@@ -28,8 +30,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	let tags;
 	try {
+		const record = await castSeries(getSeriesStore(), project);
+		const references = record?.references?.items ?? [];
+		const refs = getReferenceFileDeps();
+		const sheet = record ? sheetFiles(record, getReferenceCacheDir(), refs ? reviewRoomReferenceFiles(refs) : undefined) : null;
 		tags = await tagTake({
 			gateway: getCaptionGateway(),
+			cast: sheet && references.length ? { references, regulars: projectRegulars(project, references), headshot: async (reference) => { const file = await sheet(reference); return file ? headshotOf(file) : null; } } : undefined,
 			agent: async () => { const resolved = await resolveProjectModel(project); return resolved.ok ? createOpenAICompatibleClient(resolved.connection) : null; }
 		}, project, take, file);
 	} catch (cause) {
