@@ -39,6 +39,12 @@ Read this first next session. Everything below is on `main` (last commit `a0939c
   - **Bryson** has to be in the trailer. He doesn't appear in episode 1. He's the dean's son.
   - **The dean** is spying on the group because he believes Kai is planning something evil.
   - **Bryson and Kai** have a secret romance, but Bryson is getting close to Kai on his dad's orders.
+- **More direction (2026-11-02):** add to what we have; the bigger rework of the show's idea waits.
+  - **Tone:** very fast, confusing, high real-life drama. *Euphoria* college kids dealing with life, plus this other thing on top. Not "I'm going to bite you"; the serum is an underground deal nobody knows about.
+  - **Length:** the length of the song (`freshman-year-mashup-full.wav`, 1:26), with dropouts for dialogue moments.
+  - **Bryson's angle:** the dean wants him close to Kai to learn why Kai does secret things (the underground serum dealing). They meet on campus, and it turns into a secret romance. Play that card; rework the trailer as needed so it makes sense.
+  - **Kai:** it's the 2000s. Kai is amazing at parkour, gymnastics and tumbling, which is why he does crazy tumbling passes on rooftops. He was the football hero as a senior at his high school, so he's well known, and he's also a competitive cheerleader (the team is top three in the country), which people can't believe is real. He's chill and cool. Job still open: video store or climbing wall.
+  - **A *Bring It On* moment:** a funny, huge competitive-cheer beat in the trailer (the show's opening could go that way too) that shows how crazy the team's tumbling is.
 - **What the app needs for this:**
   - Dropout markers in a cut: the song ducks or mutes over a span while that shot's own dialogue plays.
   - The first cut should leave room for dialogue moments, not just cut on beats.
