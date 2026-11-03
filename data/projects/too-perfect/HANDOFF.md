@@ -85,3 +85,10 @@ All are 2K+ PNGs on Higgsfield's CDN. They are listed in `prompts/grids/ref-urls
 1. The user renders the 15 s and 30 s teasers, or asks for changes to them.
 2. Pick keeper panels from the grids, and crop them out at 2K.
 3. Review the Marcus and twist grids.
+
+## Status check (2026-11-03, cloud session)
+
+- All four prompts lint clean: both teasers (`--target seedance`) and the Marcus and twist v2 grids (`--target nano_banana`).
+- **Teaser render cost (Seedance 2.5, omni_reference, 16:9, 720p, audio on):** 15 s = **105 credits**, 30 s = **210 credits**. Balance 2,808.53 (Creator plan). Seedance 2.5 isn't on Unlimited. Not sent yet: needs the user's OK.
+- **Grids still to review:** Marcus GPT v2 `aebde844`, Marcus NBP `7257b390`, twist GPT v2 `1f0baac7`, twist NBP `7b984a97` and `2a2990bd`. They're shown in the Higgsfield widget. The cloud container can't fetch the CDN or Review Room (network policy blocks `d8j0ntlcm91z4.cloudfront.net` and `review.v1su4.dev`), so the user reviews them, or those hosts get added to the environment's allowed domains.
+- **Reference media IDs on Higgsfield** (for the teaser `medias`): Rafa `ba09dd36-9d96-4ca4-9a7c-05fd819c3e54`, Marcus `fa0cfd0a-b357-41e0-af34-0945dcd6cf17`, Brooke `7a2266f1-0d4a-47be-abb3-cfe6a888d089`, Lorraine `54fd0468-cb77-4754-9aac-ac55e48d2b20`, gym `06fe006f-82cf-46ed-a224-d763af4e0546`, parking lot `89d22504-a545-47ce-a80c-e3e428c2cc2f`. Tess still needs an upload or lookup.
