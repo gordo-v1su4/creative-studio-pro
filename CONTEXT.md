@@ -58,6 +58,10 @@ _Avoid_: Export, dump, handoff folder
 Bringing a show bundle into the app: it fills the series' Notion template, connects the series and lands existing renders as takes; it can run again, adding what's new without overwriting or removing anything.
 _Avoid_: Inject, sync (for this), upload
 
+**Show folder**:
+A show's tracked folder under `shows/`, started by copying `shows/_template`; it is the show bundle, holds only text and ids, and every freestyle chunk is committed to it.
+_Avoid_: Project folder (that is the app's own store), workspace
+
 **Production rules**:
 The lessons a show has learned (look, words, render settings, how references are used), kept on its story page and followed by the Agent; one that holds for every show is promoted to the house rules.
 _Avoid_: Notes, preferences, style guide
@@ -79,6 +83,10 @@ _Avoid_: Shot fields, shot recipe, shot sheet
 **Take**:
 One generated clip or still attached to a shot; a shot can hold several.
 _Avoid_: Asset, alternate, version
+
+**Montage take**:
+One generated clip that holds several shots joined by hard cuts (a hyper-cut teaser or moment); it lands on its scene and can be split into separate shots later.
+_Avoid_: Multi-shot clip, cut-up take, sequence
 
 **Pick**:
 The take currently chosen to represent its shot.
