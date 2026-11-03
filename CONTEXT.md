@@ -66,6 +66,14 @@ _Avoid_: Project folder (that is the app's own store), workspace
 A teaser made in one push with no questions: from a show folder or just a logline and whatever images exist, the Agent writes one teaser prompt, shows the price and renders a draft that lands as a montage take.
 _Avoid_: Fast path, one-click trailer
 
+**Style image**:
+An image attached for its world, light or texture rather than its content (a found picture that isn't of anything in the show); the prompt never describes it.
+_Avoid_: Mood board, Pinterest image, inspo
+
+**Look pool**:
+A curated set of reference images for lighting, grade, grain and faces, house-wide and per show, attached to image prompts so any model lands the house look.
+_Avoid_: Style refs (alone), moodboard, LoRA (that is a separate, trained thing)
+
 **Production rules**:
 The lessons a show has learned (look, words, render settings, how references are used), kept on its story page and followed by the Agent; one that holds for every show is promoted to the house rules.
 _Avoid_: Notes, preferences, style guide
