@@ -37,6 +37,7 @@ The story beats and the misleading-trailer plan are in `FLASH-CUTS.md`.
   - Never write the word "neon".
   - Nobody wears a white hoodie.
   - References must be at least 2K.
+- **Git:** after every chunk, commit and push straight to `main` (cloud sessions too) so nothing is left only in the cloud.
 - **Video renders: 480p only, always,** until the user says to move up to 720p. Never 720p or 1080p before that.
 - **Teaser prompts:** use the character sheets and location plates as references. Grids are at most a loose reference, and the prompt never describes what's in them (no overhead twist, no yelling, no bleeding from the grids); tell new beats instead. That's what has worked best.
 - **Credits:**
