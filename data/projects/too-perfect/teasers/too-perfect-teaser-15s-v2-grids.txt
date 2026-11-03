@@ -1,0 +1,66 @@
+Create a 15-second, 16:9 cinematic live-action drama thriller teaser for "TOO PERFECT".
+
+REFERENCE AND CONTINUITY
+@Image_1 = the Cardinals practice — storyboard grid; a dark warehouse cheer gym with a blue spring floor, steel rafters, red CARDINALS NATIONALS 2001 banners and cold green-white tube light
+@Image_2 = the Cardinals squad — storyboard grid; the coed squad on the blue spring floor, the men in grey and black tanks with white wrist tape, the women in black crop tops and shorts with red bows
+@Image_3 = the Cardinals locker room — storyboard grid; grey-green steel lockers, a wooden bench, white wrist tape, a red drop on blue carpet
+@Image_4 = the secret night — storyboard grid; a rain-soaked night parking lot, a dark green sedan with a green-glowing dashboard, a rainy payphone booth, a dim house party
+@Image_5 = the coach's office — storyboard grid; a dim office of framed red-and-white team photos, a green banker's desk lamp, a framed 1998 squad photo with a brass plate
+No image: Rafa Quiñones — young Latino tumbler, dark curly hair with faded sides, grey sleeveless tank, black shorts, white wrist tape, thin gold chain, as in @Image_1, @Image_3 and @Image_5
+No image: Tess Lindqvist — blonde flyer, high ponytail with a red bow, black crop top and black shorts, as in @Image_1 and @Image_3
+No image: Marcus Hale — young Black base, twisted hair with blond tips, black tank top, silver chain, as in @Image_4
+No image: Coach Lorraine Duvall — woman in her fifties, greying hair in a low bun, navy-and-red track jacket, whistle on a red lanyard, as in @Image_1 and @Image_5
+No image: the 1998 team photo — the framed 1998 squad photo with the brass plate from @Image_5
+No image: the IV bag — a small bag of dark red fluid with a clear drip chamber and a thin line
+Render every shot as full-screen moving footage; no grid ever appears. Wardrobe never changes from the grids. Screen direction: every tumbling pass travels left to right. The IV bag hangs from the same open locker door every time it appears.
+
+STORY AND TONE
+Rafa Quiñones is the reason the Cardinals cheer squad is suddenly perfect: Rafa Quiñones gives blood like a donor, and the Cardinals cheer squad takes it by IV drip in the Cardinals locker room like a vitamin session. Coach Lorraine Duvall makes the squad fake mistakes so nobody notices. Marcus Hale is watching. The tone is a hyper-cut sports drama that turns into a thriller on the last beat. Performances stay grounded and quiet; nobody screams, nobody poses for camera.
+
+[00:00–00:03] — COLD OPEN
+Wide low angle across the blue spring floor of the Cardinals gym in cold green overhead light, the camera static: four bases of the Cardinals cheer squad launch Tess Lindqvist in a basket toss and Tess Lindqvist rises into the black rafters.
+A low synth pulse swells under the toss.
+Hard cut.
+Extreme close-up, handheld: chalked hands clap and white chalk explodes into the light.
+The beat drops on the clap.
+
+[00:03–00:08] — THE RUSH
+Side tracking shot at hip height, heavy motion blur: Rafa Quiñones hits a full-twisting layout across the spring floor, left to right.
+Kick drum.
+Hard cut.
+Tight insert in the Cardinals locker room, locked off: a blue elastic band snaps snug around a bare upper arm.
+Snare crack on the snap.
+Hard cut.
+Extreme close-up, slow push-in: the drip chamber under the IV bag ticks once.
+Kick drum.
+Hard cut.
+High angle from the rafters, static: a two-high pyramid of the Cardinals cheer squad, and Marcus Hale at the bottom buckles a knee on purpose; the stunt folds clean into the arms of the other bases.
+Bass hit on the fold.
+Hard cut.
+Medium close-up, static at eye level at the edge of the spring floor: Coach Lorraine Duvall takes the whistle out of the mouth.
+
+COACH LORRAINE DUVALL, to the Cardinals cheer squad, flat and quiet:
+"Worse. Do it worse."
+
+[00:08–00:12] — THE RAMP
+The beat doubles in speed and every cut lands on it.
+Extreme close-up: one eye of Tess Lindqvist, the pupil wide, the lashes still.
+Hard cut.
+Medium shot through a gap in the lockers of the Cardinals locker room: Tess Lindqvist on the bench scrolling a phone, the IV line taped to the back of the left hand.
+Hard cut.
+Close-up, handheld: Rafa Quiñones on the bench of the Cardinals locker room, peeling a small round bandage off the crook of the elbow.
+Hard cut.
+Close-up through a car windshield at night, dashboard glow: Marcus Hale stares straight ahead, not blinking.
+Hard cut.
+Wide, static: the whole Cardinals cheer squad sticks the same landing in perfect sync, nobody breathing hard.
+A riser climbs to a shriek.
+
+[00:12–00:15] — THE DROP-OUT
+The music cuts completely. Only the hum of the overhead tubes.
+Slow push-in on the 1998 team photo: in the middle of the back row, Rafa Quiñones, the same face at the same age, the frame glass catching a green desk lamp.
+Hard cut to black.
+Title: "TOO PERFECT"
+One drop hits a tile floor.
+
+VISUALS AND SOUND
+Photoreal live action, 2001, a real elite coed cheer gym with a blue spring floor, high steel rafters, red-and-white championship banners. Vintage anamorphic lens, oval bokeh, heavy 35 mm grain, muted palette of cold green, deep teal, slate blue and one hard red on the bows and banners. Motion blur on everything that moves; every action shot is handheld or tracking, every insert locked off. Zero slow-motion accents. The score is a hard half-time trap beat with a distorted synth bass, cut so every picture cut lands on a kick or snare, doubling in tempo from 00:08 and cutting to silence at 00:12. Ambience is gym hum, sneaker squeaks and chalk. Duck the music beneath dialogue. Speak only the 1 scripted line, verbatim, with natural delivery and synchronized mouths. No narration or additional dialogue. No subtitles. Only the final title appears onscreen.

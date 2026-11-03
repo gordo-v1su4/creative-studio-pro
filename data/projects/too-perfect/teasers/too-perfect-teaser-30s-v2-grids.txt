@@ -1,0 +1,104 @@
+Create a 30-second, 16:9 cinematic live-action drama thriller teaser for "TOO PERFECT".
+
+REFERENCE AND CONTINUITY
+@Image_1 = the Cardinals practice — storyboard grid; a dark warehouse cheer gym with a blue spring floor, steel rafters, red CARDINALS NATIONALS 2001 banners and cold green-white tube light
+@Image_2 = the Cardinals squad — storyboard grid; the coed squad on the blue spring floor, the men in grey and black tanks with white wrist tape, the women in black crop tops and shorts with red bows
+@Image_3 = the Cardinals locker room — storyboard grid; grey-green steel lockers, a wooden bench, white wrist tape, a red drop on blue carpet
+@Image_4 = the secret night — storyboard grid; a rain-soaked night parking lot, a dark green sedan with a green-glowing dashboard, a rainy payphone booth, a dim house party
+@Image_5 = the coach's office — storyboard grid; a dim office of framed red-and-white team photos, a green banker's desk lamp, a framed 1998 squad photo with a brass plate
+No image: Rafa Quiñones — young Latino tumbler, dark curly hair with faded sides, grey sleeveless tank, black shorts, white wrist tape, thin gold chain, as in @Image_1, @Image_3 and @Image_5
+No image: Tess Lindqvist — blonde flyer, high ponytail with a red bow, black crop top and black shorts, as in @Image_1 and @Image_3
+No image: Marcus Hale — young Black base, twisted hair with blond tips, black tank top, silver chain, as in @Image_4
+No image: Brooke Ashby — long auburn hair with a silver butterfly clip, fitted pink tee, as in @Image_4
+No image: Coach Lorraine Duvall — woman in her fifties, greying hair in a low bun, navy-and-red track jacket, whistle on a red lanyard, as in @Image_1 and @Image_5
+No image: the 1998 team photo — the framed 1998 squad photo with the brass plate from @Image_5
+No image: the IV bag — a small bag of dark red fluid with a clear drip chamber and a thin line
+Render every shot as full-screen moving footage; no grid ever appears. Wardrobe never changes from the grids. Screen direction: every tumbling pass travels left to right. The IV bag hangs from the same open locker door every time it appears. The green sedan is always parked facing camera-left.
+
+STORY AND TONE
+A misleading trailer. It sells a cheer drama about a team that got too good, a flyer who is breaking and a popular couple, then lets the truth leak in flash cuts: Rafa Quiñones gives blood like a donor, the Cardinals cheer squad takes it by IV drip, Coach Lorraine Duvall hides the squad's perfection with planned mistakes, Marcus Hale is the college president's son dating Brooke Ashby for cover while secretly falling for Rafa Quiñones, and the squad has not aged since 1998. Tone: Euphoria voice-over over Breaking Bad pacing. Performances stay grounded and quiet, never theatrical, never posing for camera.
+
+[00:00–00:04] — THE DISASTER
+Wide, handheld, the Cardinals gym in cold green overhead light with a red ambulance light sweeping the far wall: Tess Lindqvist lies still on the blue spring floor while the Cardinals cheer squad backs away.
+A single sustained synth note.
+Hard cut.
+Close-up, handheld: Rafa Quiñones kneels and cradles the head of Tess Lindqvist off the spring floor with both hands.
+The note cuts out.
+Hard cut.
+Black frame for half a second.
+
+TESS LINDQVIST, voice-over, calm and amused:
+"Everyone thinks it's the cheer. It's never the cheer."
+
+[00:04–00:10] — THE TEAM THAT GOT GOOD
+The beat drops: a bouncing half-time trap groove with stadium claps.
+Low wide angle, static: four bases of the Cardinals cheer squad launch Tess Lindqvist in a basket toss up into the black rafters.
+Hard cut.
+Side tracking shot at hip height, heavy motion blur: Rafa Quiñones lands a full-twisting layout, left to right.
+Hard cut.
+Medium shot, static: the Cardinals cheer squad in a tight circle on the spring floor, holding hands, eyes closed, heads bowed.
+Hard cut.
+Close-up, handheld: chalked hands clap and white chalk bursts into the light on the snare.
+Hard cut.
+Wide, static from the bleachers: Marcus Hale sits alone at the edge of the Cardinals gym, the only one not cheering.
+Hard cut.
+High angle from the rafters, static: a two-high pyramid of the Cardinals cheer squad, and Marcus Hale at the bottom buckles a knee on purpose; the stunt folds clean into the arms of the other bases.
+
+COACH LORRAINE DUVALL, to the Cardinals cheer squad, flat and quiet:
+"Worse. Do it worse."
+
+[00:10–00:16] — THE COUPLE
+The groove keeps rolling under a warped vocal chop.
+Medium shot, handheld, the house party: Marcus Hale laughs with an arm around Brooke Ashby.
+Hard cut.
+Close-up across the house party: Brooke Ashby watches Marcus Hale with a knowing half-smile.
+Hard cut.
+Wide, static: headlights flare on in the fog as the green sedan idles in the gym parking lot.
+Hard cut.
+Extreme close-up inside the green sedan, dashboard glow: two hands rest on the gearshift, one over the other.
+Hard cut.
+Close-up in the passenger seat of the green sedan: Marcus Hale in the rear-view mirror, no longer laughing.
+Hard cut.
+Medium shot, handheld, the dorm hallway at night: Marcus Hale at the payphone, eyes closed.
+
+MARCUS HALE, into the payphone, barely a whisper:
+"Dad. It's him."
+
+[00:16–00:24] — THE LEAK
+The beat doubles in speed and every cut lands on a kick.
+Tight insert in the Cardinals locker room, locked off: a blue elastic band snaps snug around a bare upper arm.
+Hard cut.
+Extreme close-up, slow push-in: the drip chamber under the IV bag ticks once.
+Hard cut.
+Medium shot through a gap in the lockers of the Cardinals locker room: Tess Lindqvist on the bench scrolling a phone, the IV line taped to the back of the left hand.
+Hard cut.
+Close-up, handheld: Rafa Quiñones peels a small round bandage off the crook of the elbow.
+Hard cut.
+Extreme close-up: one eye of Tess Lindqvist, the pupil wide.
+Hard cut.
+Wide, static at night: behind the Cardinals gym, Coach Lorraine Duvall drops a box of old papers into a burning barrel.
+Hard cut.
+Tracking shot, low, heavy motion blur: a hospital gurney wheel races down a dark corridor.
+Hard cut.
+Wide, static, the dorm hallway: a pale glow appears under one closed door after another down the corridor.
+Hard cut.
+Close-up, handheld, inches away: Rafa Quiñones leans toward camera.
+
+RAFA QUIÑONES, to camera, a low whisper:
+"Nobody gets this good by practising."
+
+A riser climbs to a shriek.
+
+[00:24–00:30] — THE TWIST
+The music cuts completely. Only the hum of the overhead tubes.
+Wide, static, the coach's office: Coach Lorraine Duvall alone under the green desk lamp, staring at the wall of photos.
+Hard cut.
+Slow push-in on the 1998 team photo: in the middle of the back row, Rafa Quiñones, the same face at the same age, and beside Rafa Quiñones, Tess Lindqvist, also unchanged.
+Hard cut.
+Wide, static, the roof of the Cardinals gym at night: Rafa Quiñones sits on the edge, legs hanging over the fog, and turns to look straight into the lens.
+Hard cut to black.
+Title: "TOO PERFECT"
+One drop hits a tile floor.
+
+VISUALS AND SOUND
+Photoreal live action, 2001, a real elite coed cheer gym with a blue spring floor, high steel rafters, red-and-white championship banners. Vintage anamorphic lens, oval bokeh, heavy 35 mm grain, muted palette of cold green, deep teal, slate blue and one hard red on the bows, banners and the ambulance light. Motion blur on everything that moves; action is handheld or tracking, inserts are locked off. Zero slow-motion accents. The score is a half-time trap groove with stadium claps and a distorted synth bass, cut so every picture cut lands on a kick or snare, doubling in tempo from 00:16 and cutting to silence at 00:24. Ambience is gym hum, sneaker squeaks, party murmur and an idling engine. Duck the music beneath dialogue. Speak only the 4 scripted lines, verbatim, with natural delivery and synchronized mouths. No narration or additional dialogue. No subtitles. Only the final title appears onscreen.

@@ -37,6 +37,8 @@ The story beats and the misleading-trailer plan are in `FLASH-CUTS.md`.
   - Never write the word "neon".
   - Nobody wears a white hoodie.
   - References must be at least 2K.
+- **Video renders: 480p only, always,** until the user says to move up to 720p. Never 720p or 1080p before that.
+- **Teaser prompts:** use the character sheets and location plates as references. Grids are at most a loose reference, and the prompt never describes what's in them (no overhead twist, no yelling, no bleeding from the grids); tell new beats instead. That's what has worked best.
 - **Credits:**
   - Paid renders need the user's OK with the cost shown.
   - Nano Banana Pro on Higgsfield Unlimited (toggle on) is free and needs no OK.
@@ -93,3 +95,6 @@ All are 2K+ PNGs on Higgsfield's CDN. They are listed in `prompts/grids/ref-urls
 - **Grids still to review:** Marcus GPT v2 `aebde844`, Marcus NBP `7257b390`, twist GPT v2 `1f0baac7`, twist NBP `7b984a97` and `2a2990bd`. They're shown in the Higgsfield widget. The cloud container can't fetch the CDN or Review Room (network policy blocks `d8j0ntlcm91z4.cloudfront.net` and `review.v1su4.dev`), so the user reviews them, or those hosts get added to the environment's allowed domains.
 - **Reference media IDs on Higgsfield** (for the teaser `medias`): Rafa `ba09dd36-9d96-4ca4-9a7c-05fd819c3e54`, Marcus `fa0cfd0a-b357-41e0-af34-0945dcd6cf17`, Brooke `7a2266f1-0d4a-47be-abb3-cfe6a888d089`, Lorraine `54fd0468-cb77-4754-9aac-ac55e48d2b20`, gym `06fe006f-82cf-46ed-a224-d763af4e0546`, parking lot `89d22504-a545-47ce-a80c-e3e428c2cc2f`. Tess still needs an upload or lookup.
 - **Teasers sent to render (user OK'd, 315 credits):** 15 s job `d7db05f1-316b-4185-b2e5-c30193e33e82`, 30 s job `5c8875ff-74a2-4e06-8edb-a711410d9660`. Settings: Seedance 2.5, omni_reference, 16:9, 720p, audio on, prompts verbatim from `teasers/`, Higgsfield's "IN THE DARK" preset turned down. Tess's reference media ID is `cd1934ae-8a91-4123-b90c-f9d41f66327b`. Next: check them with `jobs_wait` or `show_generation_by_ids`, review, then revise.
+- **Superseded:** the 30 s v2-grids render `bdd60c8f-da2c-4d78-9cac-00ba138a5206` went out at 720p (210 credits) before the user's correction; the 15 s v2 was denied. The v2-grids prompts describe the grid panels, so they're dropped.
+- **Now:** `teasers/too-perfect-teaser-15s-v3.txt`, new beats, lint-clean. References in order: Rafa `ba09dd36-9d96-4ca4-9a7c-05fd819c3e54`, Tess `cd1934ae-8a91-4123-b90c-f9d41f66327b`, Marcus `fa0cfd0a-b357-41e0-af34-0945dcd6cf17`, Lorraine `54fd0468-cb77-4754-9aac-ac55e48d2b20`, gym `06fe006f-82cf-46ed-a224-d763af4e0546`, locker room `2fdbaabe-19a0-43f4-b95e-859f695197d6`, coach's office `1f50ffd4-ee6c-4906-8f0e-61f6bf6977b7`. Render at 480p once the user OKs it.
+- Other location media IDs: dorm hallway `c23fe497-f6fe-4e72-aa39-d996af88cb68`, roof `1f9e7ceb-7656-4236-b9af-2dd2edccd416`, parking lot `89d22504-a545-47ce-a80c-e3e428c2cc2f`, Brooke `7a2266f1-0d4a-47be-abb3-cfe6a888d089`.
