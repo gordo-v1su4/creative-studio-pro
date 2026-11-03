@@ -1,6 +1,14 @@
 # Too Perfect: handoff (2026-11-02)
 
-A new show, separate from Blood Rush. Everything for it lives in `data/projects/too-perfect/`. Only the text is in git; the 595 MB of images (sheets, plates, grids) stay on the Windows desktop. Use the reference links below instead.
+A new show, separate from Blood Rush. Everything for it lives in `data/projects/too-perfect/`. Only the text is in git.
+
+**Images are on the server.** The 23 main images are in Review Room (https://review.v1su4.dev), project **Too Perfect** `ks75drxa63detat0ycy3d0mv9d8hgsrs`, in four folders:
+- Character Sheets
+- Character Sheets (labelled)
+- Locations
+- Shot Grids
+
+Every file's asset and version ID, and how to download one, are in `REVIEW-ROOM.md`. The full local set (595 MB, including rejected takes) stays on the Windows desktop. The Higgsfield CDN links below are a public fallback for the 11 main references.
 
 ## The show
 
@@ -61,7 +69,7 @@ All are 2K+ PNGs on Higgsfield's CDN. They are listed in `prompts/grids/ref-urls
 
 ## Where things stand
 
-- **Grids (Higgsfield job ids; results on the desktop in `stills/grids/`):**
+- **Grids (Higgsfield job ids; the keepers are in Review Room's Shot Grids folder):**
   - Body:
     - GPT `6d86463a` is the stripped, GPT-safe version.
     - NBP `6b9dc8ea` has the IV bag and the blood drop, with gutters.
