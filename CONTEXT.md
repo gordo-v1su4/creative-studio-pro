@@ -46,6 +46,22 @@ _Avoid_: Synopsis, treatment
 The conversation, with any model, that turns an idea or a rough story into the filled Notion template: season story beats, episode outlines, and scenes for the episode being made.
 _Avoid_: Story interview (as the name of the step), writing session
 
+**Freestyle**:
+Making a show outside the app, in a free conversation with any model: story, references, prompts and renders together, before any Notion page exists.
+_Avoid_: Going rogue, side session
+
+**Show bundle**:
+The folder a freestyle leaves behind: one manifest of the show's story, references, episodes, scenes, shots, prompts and render ids, plus free-form notes.
+_Avoid_: Export, dump, handoff folder
+
+**Import**:
+Bringing a show bundle into the app: it fills the series' Notion template, connects the series and lands existing renders as takes; it can run again, adding what's new without overwriting or removing anything.
+_Avoid_: Inject, sync (for this), upload
+
+**Production rules**:
+The lessons a show has learned (look, words, render settings, how references are used), kept on its story page and followed by the Agent; one that holds for every show is promoted to the house rules.
+_Avoid_: Notes, preferences, style guide
+
 **Fit to length**:
 The Agent writing the shots a scene still needs to fill its share of the episode's target length, from the scene's action, dialogue, story beats and references.
 _Avoid_: Auto-fill, generate shots

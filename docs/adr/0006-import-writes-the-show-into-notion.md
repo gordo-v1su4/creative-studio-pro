@@ -1,0 +1,3 @@
+# An import writes the show into Notion; the app never keeps a second story
+
+A show bundle made in a freestyle is imported by filling the series' Notion template (story page, References, Episodes, Scenes, Shots) and then connecting the series the usual way, never by writing the story straight into the app. Notion stays the one story master, as Review Room is the one media master (ADR 0001): an app-only story would need its own editor and would drift from Notion the first time a show is touched in both. Existing renders in the bundle arrive as takes in Review Room by their Higgsfield job id. An import can run again: it adds new scenes, shots and takes matched by name and never overwrites or removes anything already in Notion or on the board.
