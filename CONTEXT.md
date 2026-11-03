@@ -62,6 +62,10 @@ _Avoid_: Inject, sync (for this), upload
 A show's tracked folder under `shows/`, started by copying `shows/_template`; it is the show bundle, holds only text and ids, and every freestyle chunk is committed to it.
 _Avoid_: Project folder (that is the app's own store), workspace
 
+**Quick teaser**:
+A teaser made in one push with no questions: from a show folder or just a logline and whatever images exist, the Agent writes one teaser prompt, shows the price and renders a draft that lands as a montage take.
+_Avoid_: Fast path, one-click trailer
+
 **Production rules**:
 The lessons a show has learned (look, words, render settings, how references are used), kept on its story page and followed by the Agent; one that holds for every show is promoted to the house rules.
 _Avoid_: Notes, preferences, style guide
