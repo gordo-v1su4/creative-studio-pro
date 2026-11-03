@@ -74,6 +74,10 @@ _Avoid_: Mood board, Pinterest image, inspo
 A curated set of reference images for lighting, grade, grain and faces, house-wide and per show, attached to image prompts so any model lands the house look.
 _Avoid_: Style refs (alone), moodboard, LoRA (that is a separate, trained thing)
 
+**Location pack**:
+A location's main plate plus its coverage angles (reverse, left, right, high), and for places that recur a lot an orbit video, so every side of the place is fixed before shots are made.
+_Avoid_: Location set, 360 (alone), environment plates
+
 **Production rules**:
 The lessons a show has learned (look, words, render settings, how references are used), kept on its story page and followed by the Agent; one that holds for every show is promoted to the house rules.
 _Avoid_: Notes, preferences, style guide

@@ -42,7 +42,7 @@ The story beats and the misleading-trailer plan are in `FLASH-CUTS.md`.
 - **Teaser prompts:** use the character sheets and location plates as references. Grids are at most a loose reference, and the prompt never describes what's in them (no overhead twist, no yelling, no bleeding from the grids); tell new beats instead. That's what has worked best.
 - **Credits:**
   - Paid renders need the user's OK with the cost shown.
-  - Nano Banana Pro on Higgsfield Unlimited (toggle on) is free and needs no OK.
+  - Nano Banana Pro on Higgsfield Unlimited (toggle on) is free and needs no OK, but only until about 2026-11-17; after that it's paid like everything else, so show the cost.
 
 ## Models
 
