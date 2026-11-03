@@ -25,3 +25,5 @@ A read-only search of 1,180 Higgsfield jobs (2025-09-24 to 2026-11-03) for tease
 - **Music:** a specific record ("warped, pitched-down trap remix, reverb-soaked male vocal, sub-bass… one sudden silence"), never a timed sound plan.
 
 **Open question for V1S-417:** this style was proven on Sora 2. Seedance 2.5 needs testing, since the operator says Seedance needs more input to look good.
+
+**Merge with the earlier list:** an earlier Grok session made a similar ranked list (a poll of the best ones), on the PC at `E:\Higgsfield\Projects_By_Name\01_Named_Projects`. V1S-417 starts by reading it.
