@@ -1,0 +1,9 @@
+Final location set (2026-11-02)
+
+dorm-hallway      graded-v2 (locked, do not change)
+coach-office      original render, no grade (do not regrade)
+locker-room       original render, no grade (do not regrade)
+gym, gym-wide     original render, brightened: eq=brightness=0.035:gamma=1.08
+president-office  original, matched down to the coach office: huesaturation=colors=r+y:saturation=-0.3,eq=brightness=-0.035:gamma=0.92:saturation=0.85
+parking-lot       lot-night-v5-nbp-9ea0dba2 (flat overcast, single lamp glow), no grade
+roof              roof-night-v5-nbp-19f3e419 (flat overcast, fog), no grade

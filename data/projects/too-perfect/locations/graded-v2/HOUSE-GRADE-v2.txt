@@ -1,0 +1,11 @@
+BASE (offices):
+huesaturation=colors=r+y:saturation=-0.45,eq=saturation=0.72:contrast=0.96,colorbalance=rs=-0.03:bs=0.04:rm=-0.01:gm=0.01:bm=0.015:rh=-0.01:bh=0.01,curves=all='0/0.035 0.5/0.48 1/0.95'
+
+GREEN (gym, locker room: fluorescent practicals):
+huesaturation=colors=r+y:saturation=-0.45,eq=saturation=0.72:contrast=0.96,colorbalance=rs=-0.03:bs=0.04:rm=-0.01:gm=0.01:bm=0.015:rh=-0.01:bh=0.01,curves=all='0/0.035 0.5/0.48 1/0.95',colorbalance=rm=-0.015:gm=0.045:bm=-0.005:gh=0.03:rh=-0.01
+
+DORM (keeps the pale yellow):
+huesaturation=colors=r+y:saturation=-0.2,eq=saturation=0.75:contrast=0.96,colorbalance=rs=-0.02:bs=0.03,curves=all='0/0.035 0.5/0.48 1/0.95'
+
+EXT (all exteriors: dark blue-green night, no sodium orange):
+huesaturation=colors=r+y:saturation=-0.8,huesaturation=colors=r+y:hue=40,eq=saturation=0.6:brightness=-0.06:gamma=0.78:contrast=1.0,colorbalance=rs=-0.06:gs=0.02:bs=0.06:rm=-0.04:gm=0.035:bm=0.03:rh=-0.03:gh=0.01:bh=0.01,curves=all='0/0.03 0.5/0.4 1/0.85'
