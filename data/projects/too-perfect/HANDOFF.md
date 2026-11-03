@@ -100,3 +100,12 @@ All are 2K+ PNGs on Higgsfield's CDN. They are listed in `prompts/grids/ref-urls
 - **Now:** `teasers/too-perfect-teaser-15s-v3.txt`, new beats, lint-clean. References in order: Rafa `ba09dd36-9d96-4ca4-9a7c-05fd819c3e54`, Tess `cd1934ae-8a91-4123-b90c-f9d41f66327b`, Marcus `fa0cfd0a-b357-41e0-af34-0945dcd6cf17`, Lorraine `54fd0468-cb77-4754-9aac-ac55e48d2b20`, gym `06fe006f-82cf-46ed-a224-d763af4e0546`, locker room `2fdbaabe-19a0-43f4-b95e-859f695197d6`, coach's office `1f50ffd4-ee6c-4906-8f0e-61f6bf6977b7`. Render at 480p once the user OKs it.
 - Other location media IDs: dorm hallway `c23fe497-f6fe-4e72-aa39-d996af88cb68`, roof `1f9e7ceb-7656-4236-b9af-2dd2edccd416`, parking lot `89d22504-a545-47ce-a80c-e3e428c2cc2f`, Brooke `7a2266f1-0d4a-47be-abb3-cfe6a888d089`.
 - **Rendering at 480p (2026-11-03):** 15 s v3 `1fa2cc6a-b8ae-43b4-a525-16f452b8e5e9`, 10 s moment "the cover" (Brooke, Marcus, Rafa: parking lot, dorm hallway, roof) `edfb8a14-ca01-4281-9526-559030e96ffa`, 10 s moment "Nationals" (Tess, Rafa, Lorraine: gym, locker room) `191f31ce-62d2-4d84-91e8-1fe43350163d`. Prompts are in `teasers/`. References are sheets and plates only, with new beats.
+
+## In the app (2026-11-03)
+
+Too Perfect is now a Notion series made from the Series Template: https://app.notion.com/p/40d8a0067650816bb8efd7306e3fcbdd (under Creative Studio Pro).
+- **Season 1 Story:** logline, world, cast, the rules, the ladder, and a "Production rules (learned)" section, all read by the app's Agent.
+- **References:** the 5 characters (labelled sheet file names) and 8 locations.
+- **Episode 0 "Teaser":** three scenes (The Drawer, The Cover, Nationals), one shot each, with the render job IDs and prompt files in Notes.
+- **To finish in the app (on the PC):** Series → paste the Notion link → Connect; upload the reference images to the series' Review Room `_References`; import Episode 0; attach the three 480p renders as takes once they're done.
+- **Asked for:** a "freestyle → inject" import that doesn't go through Notion (not built yet).
