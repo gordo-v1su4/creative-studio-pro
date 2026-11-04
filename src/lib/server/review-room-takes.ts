@@ -6,7 +6,7 @@ import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
 import { DELIVERABLE_KINDS, episodeCode, formatDeliverableCode, formatShotCode, parseShotCode, type DeliverableKind } from '$lib/domain/shot-codes';
-import { pickFor } from '$lib/domain/takes';
+import { applyRejectTake, applyRestoreTake, pickFor } from '$lib/domain/takes';
 import type { SeriesStore } from './series';
 import { uploadTake, type ReviewRoomClient } from './review-room';
 import type { MediaProbe } from './media-probe';
@@ -99,11 +99,30 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 			if (!outcome.ok) return { ok: false, status: 409, message: outcome.error.message };
 			project = outcome.data; known.add(version.versionId); added += 1;
 		}
-		// Review Room's current version is the pick.
+	}
+	// Apply a feed's review decisions in one save. Project snapshots are ledger entries, so
+	// saving each shot separately makes a large review refresh needlessly expensive.
+	let reviewed = project.production;
+	for (const version of feed.versions.filter((entry) => entry.excluded !== undefined)) {
+		const take = reviewed.assets.find((entry) => entry.review_room?.version_id === version.versionId);
+		if (!take || !!take.rejected === version.excluded) continue;
+		const changed = (version.excluded ? applyRejectTake : applyRestoreTake)(reviewed, take.asset_id);
+		if (!changed.ok) return { ok: false, status: 400, message: changed.message };
+		reviewed = changed.production;
+	}
+	for (const asset of feed.assets) {
+		if (asset.status && reviewed.assets.some((entry) => entry.review_room?.asset_id === asset.assetId && entry.review_status !== asset.status)) {
+			reviewed = { ...reviewed, assets: reviewed.assets.map((entry) => entry.review_room?.asset_id === asset.assetId ? { ...entry, review_status: asset.status } : entry) };
+		}
+	}
+	if (reviewed !== project.production) project = await deps.store.updateProject(projectId, project.version, (current) => ({ ...current, production: reviewed }));
+	for (const asset of feed.assets) {
+		// An excluded current version never becomes the pick here. Do not persist a pick
+		// already selected by the normal fallback (for example a shot's only take).
 		const current = project.production.assets.find((entry) => entry.review_room?.version_id === asset.currentVersionId);
-		const now = project.production.cards.find((entry) => entry.card_id === card.card_id);
-		if (current && now && now.pick_take_id !== current.asset_id) {
-			const set = await deps.gateway.handle({ command: 'set_pick', project_id: projectId, expected_version: project.version, card_id: card.card_id, take_id: current.asset_id });
+		const now = current && project.production.cards.find((entry) => entry.card_id === current.card_id);
+		if (current && !current.rejected && now && pickFor(project.production, now)?.asset_id !== current.asset_id) {
+			const set = await deps.gateway.handle({ command: 'set_pick', project_id: projectId, expected_version: project.version, card_id: now.card_id, take_id: current.asset_id });
 			if (set.ok) { project = set.data as Project; picked += 1; }
 		}
 	}

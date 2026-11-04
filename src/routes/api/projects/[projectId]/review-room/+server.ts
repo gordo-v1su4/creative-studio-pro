@@ -2,11 +2,13 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
-import { getPushDeps } from '$lib/server/config';
+import { getProjectStore, getPushDeps } from '$lib/server/config';
 import { connectTrailer } from '$lib/server/review-room-trailer';
 import { pullTakes, pushTake } from '$lib/server/review-room-takes';
+import { reviewTake } from '$lib/server/review-room-review';
 
 const bodySchema = z.discriminatedUnion('action', [
+	z.object({ action: z.literal('review'), take_id: idSchema, expected_version: z.number().int(), status: z.enum(['awaiting_review', 'in_progress', 'needs_changes', 'approved']).optional(), excluded: z.boolean().optional() }),
 	z.object({ action: z.literal('connect_trailer'), expected_version: z.number().int(), project_id: idSchema, folder_id: idSchema,
 		show_code: z.string().regex(/^[A-Z]{3}$/), code: z.string().regex(/^TR\d{3}$/), reference_series_id: idSchema.optional() }),
 	// Store one series take in Review Room (V1S-276): the shot's next version, current when it is the pick.
@@ -25,6 +27,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const body = bodySchema.safeParse(await request.json().catch(() => null));
 	if (!body.success) return fail(400, body.error.issues[0]?.message ?? 'Invalid request');
 	const deps = await getPushDeps();
+	if (body.data.action === 'review') {
+		if (body.data.status === undefined && body.data.excluded === undefined) return fail(400, 'Choose a review decision');
+		try { return json({ ok: true, data: await reviewTake({ store: getProjectStore(), client: deps?.client }, projectId.data, body.data) }); }
+		catch (cause) { return fail(400, cause instanceof Error ? cause.message : 'Review could not be saved'); }
+	}
 	if (!deps) return fail(503, 'Add CSP_REVIEW_ROOM_URL and CSP_REVIEW_ROOM_API_KEY to .env.local first');
 	if (body.data.action === 'connect_trailer') {
 		const project = await deps.store.readProject(projectId.data);

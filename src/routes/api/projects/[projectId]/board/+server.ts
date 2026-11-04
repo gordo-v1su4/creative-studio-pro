@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { getGateway, getReviewRoomConfig } from '$lib/server/config';
+import { getGateway, getProjectStore, getReviewRoomConfig } from '$lib/server/config';
 import { createReviewRoomClient, idempotencyKey } from '$lib/server/review-room';
+import { reviewTake } from '$lib/server/review-room-review';
 import { commandStatus } from '$lib/server/http';
 
 const BOARD_COMMANDS = new Set(['set_pick', 'reject_take', 'restore_take', 'bench_beat', 'unbench_beat', 'rewire_spine', 'set_shot_references', 'create_group', 'rename_group', 'move_beats', 'remove_beats', 'set_take_tags']);
@@ -16,6 +17,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 	if (!BOARD_COMMANDS.has(String(body.command))) {
 		return json({ ok: false, error: { code: 'INVALID_COMMAND', message: `Not a board command: ${String(body.command)}`, retryable: false, source: 'application' } }, { status: 400 });
+	}
+	if ((body.command === 'reject_take' || body.command === 'restore_take') && typeof body.take_id === 'string' && typeof body.expected_version === 'number') {
+		const config = getReviewRoomConfig();
+		try {
+			const data = await reviewTake({ store: getProjectStore(), client: config ? createReviewRoomClient(config) : undefined }, params.projectId, { take_id: body.take_id, expected_version: body.expected_version, excluded: body.command === 'reject_take' });
+			return json({ ok: true, data });
+		} catch (cause) { return json({ ok: false, error: { code: 'INVALID_COMMAND', message: cause instanceof Error ? cause.message : 'Review could not be saved' } }, { status: 400 }); }
 	}
 	const outcome = await getGateway().handle({ ...body, project_id: params.projectId });
 	if (!outcome.ok) return json(outcome, { status: commandStatus(outcome.error) });

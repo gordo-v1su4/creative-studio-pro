@@ -19,6 +19,7 @@
 	import { clock } from '$lib/ui/clock.svelte';
 	import { droppedFiles, pickedFiles } from '$lib/ui/dropped-files';
 	import HiggsfieldImport from '$lib/ui/HiggsfieldImport.svelte';
+	import TakeReview from '$lib/ui/TakeReview.svelte';
 
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
 	let { project, onUpdated, onAddFiles, onImportRenders, tab = $bindable('story') }: {
@@ -31,6 +32,19 @@
 	} = $props();
 
 	let higgsfieldOpen = $state(false);
+	let roomBusy = $state(false);
+	let roomNote = $state<string | null>(null);
+	async function syncRoom() {
+		roomBusy = true; roomNote = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'pull' }) });
+			const body = await response.json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Review sync failed');
+			onUpdated(body.data);
+			roomNote = `Reviews synced · ${body.added} new takes · ${body.picked} picks followed.`;
+		} catch (cause) { roomNote = cause instanceof Error ? cause.message : 'Review sync failed'; }
+		finally { roomBusy = false; }
+	}
 	const importedJobs = $derived(new Set(project.production.assets.flatMap((asset) => (asset.job_id ? [asset.job_id] : []))));
 
 	// --- Bench (keep it, but leave it out of plays and the Agent's cut) and remove (gone, with one undo).
@@ -209,6 +223,7 @@
 	let error = $state<string | null>(null);
 	let draft = $state<ProductionState>({ status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null });
 	let loadedVersion = $state(-1);
+	const unsaved = $derived(JSON.stringify(draft) !== JSON.stringify(project.production));
 	let previewCardId = $state('');
 	type CardFace = 'text' | 'image' | 'video';
 	let cardFaces = $state<Record<string, CardFace>>({});
@@ -386,7 +401,9 @@
 				<label class="btn cursor-pointer">Add files…<input type="file" multiple accept="image/*,video/*" class="sr-only" onchange={shotsPicked} /></label>
 				<label class="btn cursor-pointer">Add folder…<input type="file" multiple webkitdirectory class="sr-only" onchange={shotsPicked} /></label>
 				{#if onImportRenders}<button type="button" class="btn" onclick={() => (higgsfieldOpen = true)}>From Higgsfield…</button>{/if}
+				{#if project.series || project.review_room}<button type="button" class="btn" onclick={() => void syncRoom()} disabled={roomBusy || unsaved} title="Pull Review Room status, exclusions, new takes and current picks">{roomBusy ? 'Syncing reviews…' : 'Sync reviews'}</button>{/if}
 			</div>
+			{#if roomNote}<p class="px-4 py-2 text-[12px] text-[#9fc9cf]" role="status">{roomNote}</p>{/if}
 			<div class="flex flex-wrap items-center gap-2 border-b border-[#223039] px-4 py-2.5" aria-label="Score">
 				<span class="meta-label text-[#59d9cf]">Score</span>
 				{#if score}
@@ -469,6 +486,7 @@
 						<button type="button" class="agent-mini" onclick={() => void setBenched(card, !card.benched)} disabled={shotBusy !== null} title={card.benched ? 'Use this shot again in plays and the Agent\'s cut' : 'Keep this shot, but leave it out of plays and the Agent\'s first cut'}>{card.benched ? 'unbench' : 'bench'}</button>
 						<button type="button" class="agent-mini remove" onclick={() => void removeShot(card)} disabled={shotBusy !== null} title="Remove this shot and its takes from the project (you can undo right after; a shot a cut uses can't be removed)">{shotBusy === card.card_id ? '…' : 'remove'}</button>
 					</div>
+					<TakeReview {project} cardId={card.card_id} {onUpdated} disabled={unsaved || roomBusy} />
 				</article>
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}

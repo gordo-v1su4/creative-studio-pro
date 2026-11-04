@@ -74,6 +74,12 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 		},
 		async changes(projectId: string, since: number | string) {
 			return request<ChangeFeed>('GET', `/api/v1/projects/${encodeURIComponent(projectId)}/changes?since=${encodeURIComponent(String(since))}`);
+		},
+		async setReviewStatus(assetId: string, status: 'awaiting_review' | 'in_progress' | 'needs_changes' | 'approved'): Promise<void> {
+			await request('PUT', `/api/v1/assets/${encodeURIComponent(assetId)}/review-status`, { status }, idempotencyKey('review-status', assetId, crypto.randomUUID()));
+		},
+		async setVersionExcluded(versionId: string, excluded: boolean): Promise<void> {
+			await request('PUT', `/api/v1/versions/${encodeURIComponent(versionId)}/exclusion`, { excluded }, idempotencyKey('exclusion', versionId, crypto.randomUUID()));
 		}
 	};
 }
@@ -82,8 +88,8 @@ export type ReviewRoomClient = ReturnType<typeof createReviewRoomClient>;
 /** Review Room's changes feed (docs/agent-api.md "Changes since a cursor"). */
 export interface ChangeFeed {
 	cursor: string;
-	assets: Array<{ assetId: string; folderId: string | null; assetCode: string | null; title: string; currentVersionId: string | null; misfiled: boolean; copiedFromAssetId: string | null; updatedAt: number }>;
-	versions: Array<{ versionId: string; assetId: string; version: number; isCurrent: boolean; processingState: string; mimeType: string; createdAt: number }>;
+	assets: Array<{ assetId: string; folderId: string | null; assetCode: string | null; title: string; currentVersionId: string | null; misfiled: boolean; copiedFromAssetId: string | null; updatedAt: number; status?: 'awaiting_review' | 'in_progress' | 'needs_changes' | 'approved' }>;
+	versions: Array<{ versionId: string; assetId: string; version: number; isCurrent: boolean; processingState: string; mimeType: string; createdAt: number; excluded?: boolean }>;
 	removedAssets: Array<{ assetId: string; mergedIntoAssetId: string | null; reason: string }>;
 }
 

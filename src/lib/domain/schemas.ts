@@ -310,6 +310,8 @@ export const productionAssetSchema = z.object({
 	speed: z.array(z.object({ x: z.number().min(0).max(1), rate: z.number().min(1).max(4) })).max(64).optional(),
 	/** Rejected takes are kept but left out of cycling and selections. */
 	rejected: z.boolean().optional(),
+	/** Review Room's shot review status; exclusion is a separate decision on one take. */
+	review_status: z.enum(['awaiting_review', 'in_progress', 'needs_changes', 'approved']).optional(),
 	/** Probed on intake (dropped files); stills under 2K on the long edge are flagged. */
 	width: z.number().int().positive().optional(),
 	height: z.number().int().positive().optional(),
