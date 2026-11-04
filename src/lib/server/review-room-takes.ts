@@ -63,22 +63,28 @@ type Pushed ={ ok: true; project: Project; code: string; version: number } | { o
  */
 export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok: true; project: Project; added: number; picked: number; misfiled: Array<{ scene: string; title: string }> } | { ok: false; status: number; message: string }> {
 	let project = await deps.store.readProject(projectId);
-	if (!project?.series) return { ok: false, status: 400, message: 'Only a series episode pulls takes from Review Room' };
+	if (!project || (!project.series && !project.review_room)) return { ok: false, status: 400, message: 'Connect this project to Review Room first' };
 	const series = project.series;
-	const record = await deps.series.read(series.series_id);
-	if (!record?.review_room || !record.show_code) return { ok: false, status: 400, message: 'Link the series to Review Room and set its show code first (Series page)' };
-	const room = record.review_room;
+	const record = series ? await deps.series.read(series.series_id) : null;
+	const room = project.review_room ?? record?.review_room;
+	if (!room) return { ok: false, status: 400, message: 'Link this project to Review Room first' };
 	const feed = await deps.client.changes(room.project_id, room.cursor ?? '0');
-	const episode = episodeCode(series.season ?? null, series.episode_number);
-	const sceneByFolder = new Map(series.scenes.flatMap((scene) => (room.folders[`scene:${scene.page_id}`] ? [[room.folders[`scene:${scene.page_id}`], scene] as const] : [])));
+	const episode = series ? episodeCode(series.season ?? null, series.episode_number) : null;
+	const sceneByFolder = new Map((series?.scenes ?? []).flatMap((scene) => {
+		const folder = record?.review_room?.folders[`scene:${scene.page_id}`];
+		return folder ? [[folder, scene] as const] : [];
+	}));
 	const misfiled = feed.assets.filter((asset) => asset.misfiled && asset.folderId && sceneByFolder.has(asset.folderId)).map((asset) => ({ scene: sceneByFolder.get(asset.folderId!)!.title, title: asset.title }));
 	const known = new Set(project.production.assets.flatMap((asset) => (asset.review_room ? [asset.review_room.version_id] : [])));
 	let added = 0, picked = 0;
 	for (const asset of feed.assets) {
 		const code = asset.assetCode ? parseShotCode(asset.assetCode) : null;
-		if (!code || code.show !== record.show_code || code.episode !== episode) continue;
-		const scene = series.scenes.find((entry) => entry.code === code.scene);
-		const card = scene && project.production.cards.find((entry) => entry.group_id === scene.group_id && entry.shot_number === code.shot);
+		const trailerShot = project.review_room && Object.entries(project.review_room.shots).find(([, shot]) => shot.code === asset.assetCode);
+		const scene = code && series?.scenes.find((entry) => entry.code === code.scene);
+		const card = trailerShot
+			? project.production.cards.find((entry) => entry.card_id === trailerShot[0])
+			: code && code.show === record?.show_code && code.episode === episode && scene
+				? project.production.cards.find((entry) => entry.group_id === scene.group_id && entry.shot_number === code.shot) : undefined;
 		if (!card) continue;
 		for (const version of feed.versions.filter((entry) => entry.assetId === asset.assetId && !known.has(entry.versionId) && entry.processingState !== 'failed').toSorted((a, b) => a.version - b.version)) {
 			const media = await deps.client.versionMedia(version.versionId);
@@ -101,25 +107,36 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 			if (set.ok) { project = set.data as Project; picked += 1; }
 		}
 	}
-	await deps.series.write({ ...record, review_room: { ...room, cursor: feed.cursor } });
+	if (project.review_room) project = await deps.store.updateProject(projectId, project.version, (current) => ({ ...current, review_room: { ...current.review_room!, cursor: feed.cursor } }));
+	else if (record?.review_room) await deps.series.write({ ...record, review_room: { ...record.review_room, cursor: feed.cursor } });
 	return { ok: true, project, added, picked, misfiled };
 }
 
 export async function pushTake(deps: PushDeps, projectId: string, takeId: string): Promise<Pushed> {
 	const project = await deps.store.readProject(projectId);
-	if (!project?.series) return { ok: false, status: 400, message: 'Only a series episode stores its takes in Review Room' };
+	if (!project) return { ok: false, status: 404, message: 'Project not found' };
+	if (!project.series && !project.review_room) return { ok: false, status: 400, message: 'Connect this project to Review Room first' };
 	const take = project.production.assets.find((asset) => asset.asset_id === takeId);
 	const card = take && project.production.cards.find((entry) => entry.card_id === take.card_id);
 	if (!take || !card) return { ok: false, status: 404, message: 'Take not found' };
 	if (take.review_room) return { ok: true, project, code: take.review_room.code, version: take.review_room.version };
 	if (take.kind === 'audio') return { ok: false, status: 400, message: 'Audio takes stay with the sound stage' };
-	const record = await deps.series.read(project.series.series_id);
-	if (!record?.review_room) return { ok: false, status: 400, message: 'Link this series to its Review Room project first (Series page)' };
-	if (!record.show_code) return { ok: false, status: 400, message: 'Set the show code first (Series page)' };
-	const scene = project.series.scenes.find((entry) => entry.group_id === card.group_id);
-	if (!scene?.code || !card.shot_number) return { ok: false, status: 400, message: `${card.title} has no shot code yet; assign codes on the Series page` };
-	const folderId = record.review_room.folders[`scene:${scene.page_id}`];
-	if (!folderId) return { ok: false, status: 400, message: `${scene.title} has no Review Room folder yet; sync folders on the Series page` };
+	let remoteProject: string, folderId: string, code: string, sceneTitle: string;
+	let record = project.series ? await deps.series.read(project.series.series_id) : null;
+	if (project.review_room) {
+		const shot = project.review_room.shots[card.card_id];
+		if (!shot) return { ok: false, status: 400, message: 'Sync trailer folders to register this shot first' };
+		remoteProject = project.review_room.project_id; folderId = shot.folder_id; code = shot.code;
+		sceneTitle = project.production.groups?.find((group) => group.group_id === card.group_id)?.name ?? project.title;
+	} else {
+		if (!record?.review_room || !record.show_code || !project.series) return { ok: false, status: 400, message: 'Link this series to Review Room and set its show code first' };
+		const scene = project.series.scenes.find((entry) => entry.group_id === card.group_id);
+		if (!scene?.code || !card.shot_number) return { ok: false, status: 400, message: `${card.title} has no shot code yet` };
+		folderId = record.review_room.folders[`scene:${scene.page_id}`];
+		if (!folderId) return { ok: false, status: 400, message: `${scene.title} has no Review Room folder yet` };
+		remoteProject = record.review_room.project_id; sceneTitle = scene.title;
+		code = formatShotCode({ show: record.show_code, episode: episodeCode(project.series.season ?? null, project.series.episode_number), scene: scene.code, shot: card.shot_number });
+	}
 
 	const files = resolve(join(deps.projectRoot, projectId, 'files'));
 	const prefix = `/api/projects/${projectId}/files/`;
@@ -127,22 +144,21 @@ export async function pushTake(deps: PushDeps, projectId: string, takeId: string
 	const path = resolve(join(files, decodeURIComponent(take.url.slice(prefix.length))));
 	if (!path.startsWith(files + sep)) return { ok: false, status: 400, message: 'Take path escapes the project folder' };
 
-	const code = formatShotCode({ show: record.show_code, episode: episodeCode(project.series.season ?? null, project.series.episode_number), scene: scene.code, shot: card.shot_number });
 	const work = await mkdtemp(join(tmpdir(), 'csp-poster-'));
 	try {
 		const posterPath = join(work, 'poster.jpg');
 		await deps.poster(path, posterPath);
 		const probed = await deps.probe(path);
 		const stored = await uploadTake(deps.client, {
-			projectId: record.review_room.project_id, folderId, assetCode: code, name: take.name, type: take.mime_type,
+			projectId: remoteProject, folderId, assetCode: code, name: take.name, type: take.mime_type,
 			bytes: new Uint8Array(await readFile(path)), poster: new Uint8Array(await readFile(posterPath)),
 			durationSec: take.kind === 'image' ? 0 : probed.duration_s ?? take.duration_s ?? 0, width: probed.width ?? take.width ?? 0, height: probed.height ?? take.height ?? 0,
-			metadata: { model: take.generation?.model ?? '', prompt: take.generation?.prompt ?? (take.kind === 'image' ? card.image_prompt : card.video_prompt), sourceLabel: 'Creative Studio Pro', notes: `${card.title} · ${scene.title}` },
+			metadata: { model: take.generation?.model ?? '', prompt: take.generation?.prompt ?? (take.kind === 'image' ? card.image_prompt : card.video_prompt), sourceLabel: 'Creative Studio Pro', notes: `${card.title} · ${sceneTitle}\n${card.beat}\n${card.purpose}` },
 			makeCurrent: pickFor(project.production, card)?.asset_id === takeId
 		});
 		const marked = await deps.gateway.markTakeStored(projectId, project.version, takeId, { asset_id: stored.assetId, version_id: stored.versionId, version: stored.version, code });
 		if (!marked.ok) return { ok: false, status: 409, message: `Stored as ${code} v${stored.version}, but noting it failed: ${marked.error.message}` };
-		if (!record.codes_locked_at) await deps.series.write({ ...record, codes_locked_at: new Date().toISOString() });
+		if (record && !record.codes_locked_at) await deps.series.write({ ...record, codes_locked_at: new Date().toISOString() });
 		return { ok: true, project: marked.data, code, version: stored.version };
 	} finally {
 		await rm(work, { recursive: true, force: true });

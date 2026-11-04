@@ -607,6 +607,13 @@ export const projectSchema = z.object({
 	creative_room: creativeRoomRunSchema.nullable().default(null),
 	voices: z.array(voiceSchema).default([]),
 	trailer_house: trailerHouseSchema.nullable().default(null),
+	/** Standalone trailer storage, independent of Notion episode imports. Codes remain stable on reorder. */
+	review_room: z.object({
+		project_id: idSchema, folder_id: idSchema, code: z.string().regex(/^TR\d{3}$/),
+		show_code: z.string().regex(/^[A-Z]{3}$/), reference_series_id: idSchema.optional(),
+		shots: z.record(z.string(), z.object({ code: z.string(), folder_id: idSchema })),
+		cursor: z.union([z.string(), z.number()]).optional()
+	}).optional(),
 	/** An episode imported from a Notion series: which one, and its scene outline (one board group per scene). */
 	series: z.object({
 		series_id: z.string().min(1).max(64),

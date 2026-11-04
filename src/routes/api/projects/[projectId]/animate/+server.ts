@@ -68,7 +68,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!polled.ok) return fail(polled.status, polled.code, polled.message);
 		// Series episodes linked to Review Room: settled generations are stored there right away (V1S-276).
 		let project = polled.project;
-		const push = project.series ? await getPushDeps() : null;
+		const push = (project.series || project.review_room) ? await getPushDeps() : null;
 		if (push) {
 			const settled = new Set((project.production.generations ?? []).filter((generation) => generation.status === 'completed' && generation.take_id).map((generation) => generation.take_id!));
 			for (const take of project.production.assets.filter((asset) => settled.has(asset.asset_id) && !asset.review_room)) {

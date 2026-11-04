@@ -3,9 +3,12 @@ import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { getPushDeps } from '$lib/server/config';
+import { connectTrailer } from '$lib/server/review-room-trailer';
 import { pullTakes, pushTake } from '$lib/server/review-room-takes';
 
 const bodySchema = z.discriminatedUnion('action', [
+	z.object({ action: z.literal('connect_trailer'), expected_version: z.number().int(), project_id: idSchema, folder_id: idSchema,
+		show_code: z.string().regex(/^[A-Z]{3}$/), code: z.string().regex(/^TR\d{3}$/), reference_series_id: idSchema.optional() }),
 	// Store one series take in Review Room (V1S-276): the shot's next version, current when it is the pick.
 	z.object({ action: z.literal('push'), take_id: idSchema }),
 	// Store every take of this episode that isn't in Review Room yet.
@@ -23,6 +26,18 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!body.success) return fail(400, body.error.issues[0]?.message ?? 'Invalid request');
 	const deps = await getPushDeps();
 	if (!deps) return fail(503, 'Add CSP_REVIEW_ROOM_URL and CSP_REVIEW_ROOM_API_KEY to .env.local first');
+	if (body.data.action === 'connect_trailer') {
+		const project = await deps.store.readProject(projectId.data);
+		if (!project) return fail(404, 'Project not found');
+		if (project.series) return fail(400, 'Episodes use their series connection');
+		if (project.version !== body.data.expected_version) return fail(409, 'Project changed; reload first');
+		try {
+			const { action, expected_version, ...input } = body.data;
+			const connection = await connectTrailer(deps.client, project, input);
+			const saved = await deps.store.updateProject(projectId.data, expected_version, (current) => ({ ...current, review_room: connection }));
+			return json({ ok: true, data: saved });
+		} catch (cause) { return fail(400, cause instanceof Error ? cause.message : 'Connection failed'); }
+	}
 	if (body.data.action === 'pull') {
 		const pulled = await pullTakes(deps, projectId.data);
 		return pulled.ok ? json({ ok: true, data: pulled.project, added: pulled.added, picked: pulled.picked, misfiled: pulled.misfiled }) : fail(pulled.status, pulled.message);
