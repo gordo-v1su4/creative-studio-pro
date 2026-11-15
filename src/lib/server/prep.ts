@@ -15,6 +15,7 @@ import { cachedReference, uploadReference, type ReferenceFileDeps } from './refe
 import type { NotionApi } from './notion';
 import type { SeriesRecord, SeriesStore } from './series';
 import { joeyPrerequisites, joeyPromptIssues } from '$lib/domain/joey-prep';
+import { characterSheetInputsSchema, fillCharacterSheet, type CharacterSheetInputs } from '$lib/domain/character-sheet';
 
 /**
  * Prep (V1S-374): list what an episode needs, take source images, let the Agent draft each reference spec with
@@ -163,6 +164,15 @@ export async function setPrepWorkflow(deps: PrepContextDeps, project: Project, k
 	const state = { ...found.view.state, workflow };
 	if (input.confirm) { const issues = joeyPrerequisites(state); if (issues.length) return fail(400, issues.join('; ')); workflow.confirmed = true; }
 	return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, current => ({ ...current, workflow, prompt: null, prompt_edited: false })) };
+}
+
+export async function setSheetInputs(deps: PrepContextDeps, project: Project, key: string, input: CharacterSheetInputs): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const found = await findEntry(deps, project, key);
+	if (!found.ok) return found;
+	if (found.view.state.job) return fail(409, 'Wait for this reference generation to finish');
+	if (found.view.entry.kind !== 'character' || found.view.state.workflow?.stage !== 'sheet') return fail(400, 'Choose the character sheet step first');
+	const sheet_inputs = characterSheetInputsSchema.parse(input);
+	return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, state => ({ ...state, sheet_inputs, workflow: { ...found.view.state.workflow!, confirmed: false }, prompt: null, prompt_edited: false })) };
 }
 
 export async function addProp(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, name: string): Promise<PrepFile> {
@@ -404,6 +414,10 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 		const gaps = joeyPrerequisites(view.state);
 		if (!view.state.workflow.confirmed) gaps.push('Confirm the pre-prompt check first');
 		if (gaps.length) return fail(400, gaps.join('; '));
+		if (view.state.workflow.builder === 'castkit-v1' && view.state.workflow.stage === 'sheet') {
+			const prompt = fillCharacterSheet(await readAgentSkill('castkit-v1', 'references/character-sheet.txt'), view.state.sheet_inputs!);
+			return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, state => ({ ...state, workflow: view.state.workflow, prompt, prompt_edited: false })) };
+		}
 		const client = await deps.agent(project);
 		if (!client) return fail(503, 'No Agent model is configured');
 		const { workflow, spec, sources } = view.state;
@@ -456,24 +470,38 @@ export function aspectOf(prompt: string | null, kind: PrepView['entry']['kind'])
 	const named = prompt?.match(/^SETTINGS:[^\n]*?\b(\d{1,2}:\d{1,2})\b/m)?.[1];
 	return named && ASPECTS.has(named) ? named : prepAspect(kind);
 }
+function sheetSources(state: PrepState) {
+	if (state.workflow?.builder !== 'castkit-v1' || state.workflow.stage !== 'sheet') return state.sources;
+	return [state.workflow.approved_source_url, state.sheet_inputs?.wardrobe_source_url].flatMap(url => state.sources.find(source => source.url === url) ?? []);
+}
 const stillInput = (view: PrepView) => ({
 	model: view.state.image_model,
 	prompt: view.state.prompt ?? '',
-	attached: view.state.sources.map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
+	attached: sheetSources(view.state).map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
 	aspect_ratio: view.state.workflow?.builder === 'castkit-v1' && view.state.workflow.stage !== 'sheet' ? '3:4' : aspectOf(view.state.prompt, view.entry.kind),
 	blocked: view.state.prompt ? prepQc(view.state.prompt, view) : ['Write the prompt first']
 });
 
+async function fixedSheetProblems(view: PrepView): Promise<string[]> {
+	if (view.state.workflow?.builder !== 'castkit-v1' || view.state.workflow.stage !== 'sheet') return [];
+	try {
+		const expected = fillCharacterSheet(await readAgentSkill('castkit-v1', 'references/character-sheet.txt'), view.state.sheet_inputs!);
+		return view.state.prompt === expected ? [] : ['Rebuild the sheet prompt from the fixed template before pricing or sending'];
+	} catch (cause) { return [cause instanceof Error ? cause.message : 'Complete the fixed template fields']; }
+}
+
 export async function quotePrep(deps: PrepDeps, project: Project, key: string): Promise<{ ok: true; approval: StillApproval } | Failure> {
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
-	return { ok: true, approval: await quoteStill(deps, project, stillInput(found.view)) };
+	const input = stillInput(found.view);
+	return { ok: true, approval: await quoteStill(deps, project, { ...input, blocked: [...input.blocked, ...await fixedSheetProblems(found.view)] }) };
 }
 
 export async function sendPrep(deps: PrepDeps, project: Project, key: string, approved: { approval_key: string; confirmed_credits: number }): Promise<{ ok: true; job_id: string; prep: PrepFile } | Failure> {
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
-	const sent = await sendStill(deps, { ...stillInput(found.view), project_id: project.project_id, purpose: 'reference', ...approved });
+	const input = stillInput(found.view);
+	const sent = await sendStill(deps, { ...input, blocked: [...input.blocked, ...await fixedSheetProblems(found.view)], project_id: project.project_id, purpose: 'reference', ...approved });
 	if (!sent.ok) return sent;
 	const prep = await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, job: { job_id: sent.job_id, sent_at: new Date().toISOString() } }));
 	return { ok: true, job_id: sent.job_id, prep };

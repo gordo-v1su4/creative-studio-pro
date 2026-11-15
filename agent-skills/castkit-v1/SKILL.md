@@ -15,9 +15,9 @@ A character is not one picture. It is a canonical face, a set of identity marker
 | **1 — Additions** | Something permanent changes on a locked character. | A face lock |
 | **2 — Outfit build** | A look goes onto the locked character, as one single full-body image. | A face lock |
 | **3 — Outfit replacement** | An outfit exists on someone else; swap the character in. | A character reference |
-| **4 — Character sheet** | An approved outfit image becomes a multi-angle reference. | An approved outfit image |
+| **4 — Character sheet** | Reviewed references become a three-panel reference. | Identity reference plus reviewed wardrobe/body coverage |
 
-Never skip forward. No outfit on an unlocked face, no sheet before an approved outfit image.
+Never build an outfit on an unlocked face. A sheet uses reviewed identity and wardrobe references under Station 4; these can be scene photos or portraits when the owner supplies missing details.
 
 ---
 
@@ -333,91 +333,29 @@ For an animated character, add one line before the close: *"The result is render
 
 ---
 
-# STATION 4 — CHARACTER SHEETS
+# STATION 4 — CHARACTER SHEETS: FIXED TEMPLATE
 
-Built only from an approved outfit image. One prompt, one image.
+For photoreal three-panel sheets, use `references/character-sheet.txt` verbatim. This file is the complete prompt, not an example or a writing guide. It overrides the generic full-close, reference-economy and sheet-writing instructions for this station. Do not append a flat close, identity description, facial-anatomy checklist, model-specific prose or a second copy of the instructions. Never introduce "faithful copy" or "photocopy" wording.
 
-**3-panel is the default.** A sheet is one image with a fixed pixel budget; six panels starve the face. Don't ask which format, don't offer the 6-panel.
+## Fill only the declared fields
 
-**References:** the approved outfit image alone is the best source — it already agrees with itself. Add the face lock as a second reference only if identity drifted in the outfit image, the face is obscured or soft, a sheet already returned the wrong face, or the user asks. When both are attached, state what each governs.
+- `{{SUBJECT}}`: a short visual selector for the person in the first image. For a single-person image: `the only person in the reference`. For a scene with multiple people: identify the intended person unambiguously, for example `the foreground woman with the dark bob`. Do not use names or re-describe facial anatomy.
+- `{{REFERENCES}}`: choose exactly one of the following fixed sentences. One image: `Use the first reference for visible body proportions, clothing, footwear and accessories. Use the supplied details below for anything outside the reference frame.` Two images: `Use the second attached reference for body proportions, clothing, footwear and accessories only. The face and identity come from the first reference.`
+- `{{DIRECTION}}`: only the owner's requested changes and supplied missing details. Default: `Keep the appearance, clothing and accessories shown in the references unchanged.` Insert the owner's approved text literally; do not expand it into a new prompt.
 
-## 3-panel layout
+No other wording changes. Same template version and same fields produce identical prompt text. This does not guarantee identical generated pixels.
 
-1. **LEFT — full body front, head cropped off above the intact neck.** Keep the complete solid body, chest, shoulders and natural neck; only the head is absent.
-2. **CENTER — full body rear, head attached.** Hair fall, back construction, hem, footwear.
-3. **RIGHT — tight chest-up face.** Just above the crown to the collarbones, face filling the panel. Never waist-up.
+## Reference inputs and missing information
 
-## Orientation lock — dead-on always
+Input is not required to be a sheet or a forward-facing standing portrait. A scene frame, angled portrait, crop or existing sheet uses the same template. First attachment governs identity; an optional second attachment governs body and wardrobe. Source camera angle, expression, background and lighting are replaced by the fixed sheet instructions. Never mix another person's face into the identity reference.
 
-**Every sheet panel is a flat orthographic view: dead-on front, dead-on rear, dead-on face. Never a three-quarter turn unless the user asks for one by name.** A sheet is a measuring tool — a rotated torso hides one side of the garment, foreshortens the shoulder line, and kills the panel's value as a reference.
+If identity is ambiguous, request a subject selector. If the body, rear outfit or footwear is not adequately shown, request another reference or the missing design details. If visible injuries, makeup, accessories or other temporary state may need changing, ask the owner rather than silently keeping or removing them. Do not invent unseen details to complete the blanks. Review reference roles and completeness before generation; do not trigger a paid job to test the template.
 
-The outfit image feeding the sheet is almost always shot at an angle (Station 3's default pose is 15–30 degrees off camera). **That angle never carries into the sheet.** State the override explicitly: the sheet re-squares the body no matter how the reference stands. Same for weight — the reference's hip-cocked stance becomes even weight on both feet.
+The standard layout is fixed: left full-body front with head omitted above an intact neck, center full-body rear with head attached, right frontal face close-up. Both body views share anatomical scale and empty margins. A hood-up or six-panel request needs a separately approved template variant; do not improvise changes to this standard template.
 
-Ship the matching clause verbatim inside each panel block:
+## Delivery
 
-**Front (full body):** *"The body faces the camera dead-on — shoulders and hips both square to the lens and level, both sides of the figure equally visible, feet planted parallel and pointing straight at camera, weight even across both feet. This is a flat frontal view regardless of how the figure stands in the reference: no three-quarter turn, no rotation of the torso or hips away from the lens, no twist at the waist, no contrapposto, no weight shifted onto one hip, no shoulder dropped or pushed forward, no foot turned out."*
-
-**Rear (full body):** *"The figure is seen dead-on from directly behind — shoulders and hips square to the lens and level, the spine centered in the panel, feet parallel, weight even. This is a flat rear view: no three-quarter turn, no rotation, no twist at the waist, no weight shifted onto one hip, no glance back over the shoulder."*
-
-**Face (chest-up):** *"The head is dead-on to camera, squared and level, both ears equally visible, the nose centered between the eyes, eyes directly into the lens. This is a flat frontal view: no three-quarter turn, no head rotation, no chin lifted or dropped, no tilt to either side."*
-
-**If the user asks for a three-quarter panel by name,** run it — state the degree of turn and which way the body points on screen, and leave every other panel dead-on.
-
-## The headless front — intact neck, clean head crop
-
-For every neckline, keep the complete solid body and the full natural neck. Remove only the head and head hair at the top of the neck, immediately below the jawline. This is a clean image crop at the head, not a physical cross-section. The neck stays its normal length and width; the chest, shoulders and skin remain intact. Keep necklaces and chokers resting naturally against the neck and chest.
-
-Never use an invisible-body or hollow-garment treatment in a character sheet. Do not expose the inside of the neck, torso or clothes. Do not replace the chest with empty background or a dark cavity. A hoodie, collar or open neckline does not change this rule. Standalone garment-repair plates are a separate task and must not supply the sheet's body instructions.
-
-Ship this panel block with only the bracket filled:
-
-```
-LEFT PANEL — full body front view, head cropped off cleanly above the intact neck. The body faces the camera dead-on — shoulders and hips both square to the lens and level, both sides of the figure equally visible, feet planted parallel and pointing straight at camera, weight even across both feet. This is a flat frontal view regardless of how the figure stands in the reference: no three-quarter turn, no rotation of the torso or hips away from the lens, no twist at the waist, no contrapposto, no weight shifted onto one hip, no shoulder dropped or pushed forward, no foot turned out. Show the complete solid figure from the top of the neck down to [the shoes / the hem], arms relaxed at the sides, hands open and loose. Keep the entire natural neck at its normal length, the shoulders, upper chest and all visible skin intact, matching the reference. Remove only the head and head hair immediately below the jawline, at the very top of the neck. Finish there with a clean straight image-crop edge; show no top-facing surface, exposed interior or anatomical cross-section. Above the edge is only the flat gray field. The body remains solid and normally clothed, with visible chest skin preserved wherever the outfit is open. Necklaces and chokers rest naturally against the intact neck and chest. No hollow torso, empty clothing shell, floating jewelry, dark cavity, transparency, exposed tissue or blood. Leave generous empty headroom where the head would be, and keep the front body at the same anatomical scale as the rear body.
-```
-
-The head and head hair are absent only from the front panel. Keep the head attached in the rear panel and the full face visible in the face panel.
-
-## 3-panel prompt
-
-```
-A three-panel character reference sheet composed as one horizontal frame, divided into three equal vertical panels side by side with thin clean separation, the same figure and the same outfit rendered identically across all three. No text, no labels, no numbering anywhere in the image.
-
-[If more than one reference: what each governs.]
-
-[Identity — build, skin, hair, makeup, markers, nails. Once, for all panels.]
-
-[Wardrobe — head to toe, every garment, footwear, jewelry. Once, for all panels.]
-
-[LEFT PANEL — intact-neck head crop block, verbatim.]
-
-CENTER PANEL — full body rear, head attached. The complete figure from above the crown down to [the shoes / the hem], seen dead-on from directly behind — shoulders and hips square to the lens and level, the spine centered in the panel, arms relaxed at the sides, feet parallel, weight even. This is a flat rear view: no three-quarter turn, no rotation, no twist at the waist, no weight shifted onto one hip, no glance back over the shoulder. [Hair fall, back construction, hem, footwear from behind.]
-
-RIGHT PANEL — tight chest-up face lock. Framed from just above the crown down to the collarbones with the face filling the panel. The head is dead-on to camera, squared and level, both ears equally visible, the nose centered between the eyes, eyes directly into the lens, neutral expression, lips closed and relaxed. This is a flat frontal view: no three-quarter turn, no head rotation, no chin lifted or dropped, no tilt to either side. [What enters at the bottom of frame.] Every facial plane, the eyes, brows, nose, lips, and hairline read at maximum detail.
-
-Skin renders at its true natural tone, identical in value and hue across the face, arms, hands, back, and body in every panel, never darkened, never pale or cool-shifted.
-
-[FLAT CLOSE for the render — verbatim, with the flatness stated as uniform across all three panels.]
-```
-
-## Extra panels — the 6-panel (explicit request only)
-
-If the user names it, say once: *"Heads up — six panels cuts the pixel budget per cell, so the face holds noticeably less detail than the 3-panel's face lock. Happy to run it."* Then proceed and never re-litigate.
-
-**Layout:** a 3×2 grid in one frame. Default panels: full body front · left profile close headshot · full body back · right profile close headshot · front face close headshot · one detail close-up (nails, a key jewelry piece, a piercing, a tattoo, or a held prop — the user picks at the check). Swap panels by name if asked, keep the grid. Every panel carries its position label (TOP LEFT, TOP CENTER, and so on). The front panel can use the same intact-neck head crop on request.
-
-**Profiles:** state which way the face points on screen and that the ear, jaw line, and nose profile read cleanly against the field.
-
-**Orientation:** the same lock applies — the full body front and the front face close are dead-on, the full body back is dead-on from behind, each carrying its clause verbatim. The two profile headshots are the only turned panels in the grid, and they are true 90-degree profiles, not three-quarter turns.
-
-## Rules for every sheet
-
-- One prompt, one code block, one image
-- Identity and wardrobe described once, up top
-- Each panel describes only what differs
-- Every panel is dead-on — front, rear, or face — with its orientation clause shipped verbatim; a three-quarter turn only when the user names it
-- The skin-tone consistency line is mandatory — rear panels drift darker without it
-- Flatness stated as uniform across every panel
-- Every panel carries its label; no rendered text in the image
+State the tool settings outside the prompt: 16:9, chosen model and resolution/quality. List references in attach order and their roles. Deliver the filled template in one code block. Keep provenance, repository notes and explanations outside the prompt. For later character or wardrobe requests, fill the same fields rather than rewriting the body.
 
 ---
 
@@ -449,33 +387,23 @@ If the user names it, say once: *"Heads up — six panels cuts the pixel budget 
 - [ ] Additions carry the firewall; face-at-rest changes trigger a re-lock
 - [ ] Outfits: proposal approved first, then a direct build — no stand-in model, no preemptive plates
 - [ ] References: fewest needed, each one's role stated when more than one
-- [ ] Sheets: 3-panel unless named; identity and wardrobe once; intact-neck head crop for every neckline, block verbatim, solid body and naturally resting jewelry; skin-tone line present
-- [ ] Sheets: every panel dead-on with its orientation clause verbatim — no three-quarter turn anywhere unless the user asked for it
-- [ ] Correct flat close for the render, all five requirements present, uniform across panels
+- [ ] Sheets: use the fixed template file verbatim; fill only SUBJECT, REFERENCES and DIRECTION; confirm reference coverage
+- [ ] Sheets: panel instructions, anatomical scale and lighting text remain unchanged
+- [ ] Non-sheet plates: correct flat close for the render; sheets use their complete fixed template without appended prose
 - [ ] Garment text written exactly with placement
 - [ ] No names, no ratios, no tags, no negative blocks, no meta
 
 ## REPAIR PASS
 
+For a sheet, first verify the template version, filled fields, attachment order and source coverage. Restore the exact template if wording drifted. Do not repair a sheet by adding facial anatomy, negative lists or new prose. If a model still fails with the correct inputs, retain the failed result for review and ask for direction before spending again.
+
+The following repairs apply to non-sheet plates only:
+
 | Symptom | Fix |
 |---|---|
-| Face drifting between outfits | Lock isn't tight enough — rebuild chest-up with fuller facial description |
-| Garment rounded off to generic | Invisible mannequin plate for that one piece only |
-| Rear panel skin darker | Skin-tone consistency line missing |
-| Shadow under feet or behind shoulders | Zero-shadow-outside-the-subject paragraph missing or trimmed |
-| Background brightening or tinted near the figure | Zero-light-bleed clause missing |
-| Background reads as a wall or floor | "Color field, not a backdrop" line missing |
-| Modelling on the face | One of the five flat requirements missing |
-| Blur, vignette, or grain on the background | Capture language leaked in |
-| Hair change altered the face | Firewall missing or shortened |
-| Marker in the wrong place | Not anchored to a fixed anatomical landmark |
-| Sheet mushy or averaged | Too many references — drop to the approved outfit image |
-| Panel comes back in a three-quarter turn | Orientation clause missing, trimmed, or paraphrased — ship it verbatim |
-| Figure copied the reference's angled, hip-cocked stance | The "regardless of how the figure stands in the reference" override was cut |
-| Neck interior or cross-section visible | Keep the full natural neck; use a straight image-crop edge immediately below the jawline, with no top surface |
-| Hollow torso, empty clothes or floating necklace | Remove invisible-body wording; preserve solid chest skin, full neck and jewelry resting against the body |
-| Hair on chest with no head | Hair-goes-with-the-head clause missing |
-| Front figure smaller than rear | Restore matching anatomical scale and empty headroom above the neck |
-| Animated character sliding toward photoreal | Style lock missing or paraphrased — restore it verbatim at the top of the close |
-| Animated character inconsistent across panels | Style lock not stated as applying to every panel |
-| Garment rendered in the reference's material | Material override line missing |
+| Face drifting between outfits | Check the face lock and reference roles |
+| Garment rounded off to generic | Use the standalone garment-repair station for that piece only |
+| Hair change altered the face | Restore the additions firewall |
+| Marker in the wrong place | Anchor it to a fixed anatomical landmark |
+| Garment rendered in the reference's material | Restore the approved material override |
+| Animated plate sliding toward photoreal | Restore the approved style lock verbatim |

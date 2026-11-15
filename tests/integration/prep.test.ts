@@ -9,7 +9,8 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
-import { addPrepEntry, setPrepWorkflow, useCurrentAsSource } from '../../src/lib/server/prep';
+import { addPrepEntry, setPrepWorkflow, useCurrentAsSource, setSheetInputs, editPrompt } from '../../src/lib/server/prep';
+import { characterSheetInputsSchema, fillCharacterSheet } from '../../src/lib/domain/character-sheet';
 import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, readPrep, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
@@ -95,6 +96,41 @@ test('a standalone trailer derives required identities and reuses a show image w
 	const changed = await addSource(deps, trailer.project_id, 'r-mara', {file_name:'new.png',bytes:new Uint8Array([5,6,7])});
 	if (!changed.ok) throw new Error(changed.message);
 	expect(changed.prep.entries['r-mara'].workflow?.confirmed).toBeFalse();
+});
+
+test('fixed sheets need no Agent and preserve reference roles; rewritten prose is blocked before spend', async () => {
+	const {deps,projectId,submitted} = await setup();
+	const project = (await deps.store.readProject(projectId))!;
+	// Upload order deliberately differs from the declared role order.
+	await addSource(deps,projectId,'r-mara',{file_name:'outfit.png',bytes:new Uint8Array([1])});
+	const attached = await addSource(deps,projectId,'r-mara',{file_name:'scene.png',bytes:new Uint8Array([2])});
+	if (!attached.ok) throw new Error(attached.message);
+	const [outfit,identity] = attached.prep.entries['r-mara'].sources;
+	await setPrepWorkflow(deps,project,'r-mara',{stage:'sheet',approved_source_url:identity.url});
+	expect((await setPrepWorkflow(deps,project,'r-mara',{confirm:true})).ok).toBeFalse();
+	const inputs = characterSheetInputsSchema.parse({subject:'the foreground woman with the dark bob',direction:'Use the supplied black suit and boots; remove temporary injuries.',wardrobe_source_url:outfit.url,coverage_confirmed:true});
+	const saved = await setSheetInputs(deps,project,'r-mara',inputs);
+	if (!saved.ok) throw new Error(saved.message);
+	deps.agent = async () => { throw new Error('Fixed sheet must not call an Agent'); };
+	const confirmed = await setPrepWorkflow(deps,project,'r-mara',{confirm:true});
+	if (!confirmed.ok) throw new Error(confirmed.message);
+	const first = await writePrompt(deps,project,'r-mara');
+	if (!first.ok) throw new Error(first.message);
+	const second = await writePrompt(deps,project,'r-mara');
+	if (!second.ok) throw new Error(second.message);
+	const expected = fillCharacterSheet(await readFile('agent-skills/castkit-v1/references/character-sheet.txt','utf8'),inputs);
+	expect(first.prep.entries['r-mara'].prompt).toBe(expected);
+	expect(second.prep.entries['r-mara'].prompt).toBe(expected);
+	const quote = await quotePrep(deps,project,'r-mara');
+	if (!quote.ok) throw new Error(quote.message);
+	expect(quote.approval.blocked).toEqual([]);
+	expect(quote.approval.references.map(ref=>ref.file)).toEqual([identity.file,outfit.file]);
+	await editPrompt(deps,projectId,'r-mara',expected+' Extra improvised prose.');
+	const blocked = await quotePrep(deps,project,'r-mara');
+	if (!blocked.ok) throw new Error(blocked.message);
+	expect(blocked.approval.blocked.join(' ')).toContain('fixed template');
+	expect((await sendPrep(deps,project,'r-mara',{approval_key:quote.approval.approval_key,confirmed_credits:2.75})).ok).toBeFalse();
+	expect(submitted).toHaveLength(0);
 });
 
 describe('references go up before the job (CLI upload fix)', () => {

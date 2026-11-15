@@ -1,0 +1,15 @@
+Create a photoreal character reference sheet. Use the first attached reference as the identity source for {{SUBJECT}}. Preserve the reference identity, face, skin tone, hair and distinguishing marks. The source may be a scene photo, an angled portrait or an existing sheet. Replace the source pose, expression, camera angle, lighting and layout with the sheet instructions below. Do not reproduce other people or the source environment.
+
+{{REFERENCES}}
+
+Requested changes and supplied missing details: {{DIRECTION}}
+
+One horizontal image, three equal vertical panels with thin clean separation.
+
+LEFT PANEL — headless full-body front. Shoulders and hips square to camera, arms relaxed down, feet parallel, weight even. Keep the solid chest, shoulders and full natural neck. Omit only the head immediately below the jawline, with a clean straight edge and no visible interior or cut surface. Leave empty gray headroom inside the panel where the head would be. Keep clothing and jewelry resting naturally against the body; no hollow torso or empty clothing shell.
+
+CENTER PANEL — full-body rear, head attached. Dead-on from directly behind, shoulders and hips square and level, arms relaxed, feet parallel, weight even. Include the complete head and all footwear. Match the front body's anatomical scale and align shoulders, waist, knees and soles across both body panels. Leave margins above and below; do not enlarge the front body to fill its empty headroom.
+
+RIGHT PANEL — tight frontal face close-up, from above the crown and any head accessories to the collarbones. Head level and square to camera, eyes toward the lens, neutral expression, lips closed. Preserve the reference face and natural skin finish without changing facial proportions or adding texture.
+
+Uniform flat 18% neutral gray field across all panels. Soft, even, shadowless frontal illumination with equal fill from both sides, above and below. Preserve natural skin and clothing colors. Clear detail throughout, no depth-of-field blur, floor, horizon, gradient, rim light or cast shadows. Remove source banners and panel labels. Preserve existing garment graphics; add no text, labels or numbering. Render one completed sheet.

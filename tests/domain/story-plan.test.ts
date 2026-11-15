@@ -6,6 +6,7 @@ import { emptyState, referenceSpecSchema } from '../../src/lib/domain/prep';
 import { joeyPrerequisites, joeyPromptIssues } from '../../src/lib/domain/joey-prep';
 import { applyRecordGeneration, applySettleGeneration } from '../../src/lib/domain/animate';
 import { generationSchema } from '../../src/lib/domain/schemas';
+import { characterSheetInputsSchema } from '../../src/lib/domain/character-sheet';
 
 test('only approved moments append shots; repeats preserve existing boards, media and picks', () => {
 	const original = productionStateSchema.parse({ story_plan: { title: 'Trailer', sections: [{ id: 'act-1', title: 'Act 1', summary: '', moments: [{ id: 'moment-1', title: 'Cornered', beat: 'Kai chooses an escape route.', duration_s: 6, characters: ['Kai'], location: 'Roof', approved: false, shots: [{ id: 'shot-1', title: 'The gap', beat: 'Kai looks across the gap.', duration_s: 6 }] }] }] } });
@@ -37,10 +38,11 @@ test('only approved moments append shots; repeats preserve existing boards, medi
 test('Joey workflows require reviewed facts and the correct predecessor without old sheet QC', () => {
 	const state = emptyState();
 	state.workflow = {builder:'castkit-v1',stage:'sheet',approved_source_url:null,confirmed:false};
-	expect(joeyPrerequisites(state)).toContain('Choose an approved outfit image');
+	expect(joeyPrerequisites(state)).toContain('Choose the subject reference for the sheet');
 	state.spec = referenceSpecSchema.parse({name:'Kai',kind:'character',template:'T1',notes:'Approved outfit'});
 	state.sources = [{name:'outfit.png',file:'outfit.png',url:'/outfit.png',added_at:'2026-11-15'}];
 	state.workflow.approved_source_url = '/outfit.png';
+	state.sheet_inputs = characterSheetInputsSchema.parse({coverage_confirmed:true});
 	expect(joeyPrerequisites(state)).toEqual([]);
 	expect(joeyPromptIssues('18% neutral gray shadowless LEFT PANEL headless CENTER PANEL RIGHT PANEL', state)).toContain('Confirm the pre-prompt check first');
 	state.workflow.confirmed = true;

@@ -5,6 +5,7 @@
 	import type { StillApproval } from '$lib/domain/stills';
 	import type { ImageModelId } from '$lib/domain/image-models';
 	import ImageModelPicker from './ImageModelPicker.svelte';
+	import SheetTemplateFields from './SheetTemplateFields.svelte';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 
 	/**
@@ -28,6 +29,7 @@
 	let drafts = $state<Record<string, Draft>>({});
 	const emptyIdentity = (): Identity => ({ sex: '', age: null, height_cm: null, build: '', face: '', eyes: '', hair: '', marks: '' });
 	let promptDrafts = $state<Record<string, string>>({});
+	let sheetDirty = $state<Record<string, boolean>>({});
 	let newNames = $state<Record<string, string>>({ character: '', location: '', prop: '' });
 	/** The picture shown big (click any picture; Esc or a click closes it). */
 	let zoom = $state<{ src: string; alt: string } | null>(null);
@@ -90,6 +92,7 @@
 	/** Write the prompt: the facts as typed are saved first, so the writer reads what is on screen. */
 	async function writePrompt(item: View) {
 		const key = item.entry.key;
+		if (item.state.workflow?.stage === 'sheet') { await call(key, 'Filling the fixed template…', { action: 'write_prompt', key }); return; }
 		if (drafts[key] && drafts[key].from !== JSON.stringify(specOf(item)) && !(await call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false }))) return;
 		await call(key, 'The Agent is looking at the images and writing…', { action: 'write_prompt', key });
 	}
@@ -185,7 +188,7 @@
 					<b class="name">{item.entry.name}</b>
 					<span class="chip">{item.state.result ? 'Reference made' : item.state.sources.length ? 'Images supplied' : item.current ? 'Existing reference available' : 'Needs image or design'}</span>
 					{#if item.entry.role}<span class="role">{item.entry.role}</span>{/if}
-					<span class={['chip', stage]}>{stageLabel[stage]}</span>
+					<span class={['chip', stage]}>{item.state.workflow?.stage === 'sheet' && stage === 'sources' ? (item.state.prompt ? 'Ready to price' : 'Template inputs') : stageLabel[stage]}</span>
 					<span class="mono">{item.template}</span>
 					{#if busy[key]}<span class="pulse" aria-hidden="true"></span><span class="mono">{busy[key]}</span>{/if}
 				</div>
@@ -204,7 +207,7 @@
 							<label class="key">Add image<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'source', event.currentTarget.files)} /></label>
 							{#if item.current}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Adding…', { action: 'use_current', key })}>Use existing reference</button><button type="button" class="key" onclick={() => zoom = { src: item.current!.url, alt: item.entry.name }}>Preview existing reference</button>{/if}
 						</div>
-						{#if item.entry.kind === 'character'}
+						{#if item.entry.kind === 'character' && item.state.workflow?.stage !== 'sheet'}
 							<label class="field"><span>Body reference</span><select class="key" aria-label={`Body reference for ${item.entry.name}`} value={item.state.body_source_url ?? ''} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void call(key, 'Saving body reference…', { action: 'set_body_source', key, url: event.currentTarget.value || null })}>
 								<option value="">No body reference · create from facts</option>
 								{#each item.state.sources as source, i (source.url)}<option value={source.url}>Image {i + 1} · {source.name}</option>{/each}
@@ -215,14 +218,17 @@
 					<span class="edge" aria-hidden="true"></span>
 					<!-- 2. the facts, then the prompt (one pass: the skill, the images, the facts), then the price card -->
 					<div class="node wide">
-						<div class="node-cap">Facts · what the pictures can't say</div>
+						<div class="node-cap">{item.state.workflow?.stage === 'sheet' ? 'Sheet template · fixed wording' : "Facts · what the pictures can't say"}</div>
 						{#if item.state.workflow}
 							<div class="node-cap">Joey’s {item.state.workflow.builder === 'castkit-v1' ? 'Castkit v1' : 'Scenecraft v1'}</div>
 							<label class="field"><span>Creation step</span><select value={item.state.workflow.stage} aria-label={`Creation step for ${item.entry.name}`} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void call(key, 'Changing workflow…', { action: 'set_workflow', key, stage: event.currentTarget.value })}>
-							{#if item.entry.kind === 'character'}<option value="face_lock">Face lock · establish identity</option><option value="outfit">Outfit · requires approved face lock</option><option value="sheet">Three-panel sheet · requires approved outfit</option>{:else}<option value="environment">Environment master · establish location</option><option value="coverage">Matching coverage · requires approved master</option>{/if}
+							{#if item.entry.kind === 'character'}<option value="face_lock">Face lock · establish identity</option><option value="outfit">Outfit · requires approved face lock</option><option value="sheet">Three-panel sheet · fixed template from references</option>{:else}<option value="environment">Environment master · establish location</option><option value="coverage">Matching coverage · requires approved master</option>{/if}
 							</select></label>
-							{#if ['outfit', 'sheet', 'coverage'].includes(item.state.workflow.stage)}<label class="field"><span>Approved predecessor reference</span><select value={item.state.workflow.approved_source_url ?? ''} aria-label={`Approved predecessor for ${item.entry.name}`} onchange={(event) => void call(key, 'Selecting reference…', { action: 'set_workflow', key, approved_source_url: event.currentTarget.value || null })}><option value="">Choose an attached image you have approved</option>{#each item.state.sources as source (source.url)}<option value={source.url}>{source.name}</option>{/each}</select></label>{/if}
-							<p class="muted">{item.entry.kind === 'character' ? 'Photoreal · flat 18% neutral gray · face and outfit: 3:4 · sheet: 16:9. Lock the face, then approve an outfit before making a sheet.' : 'Photoreal environment plate · motivated light · master geometry stays fixed for matching coverage.'}</p>
+							{#if ['outfit', 'sheet', 'coverage'].includes(item.state.workflow.stage)}<label class="field"><span>{item.state.workflow.stage === 'sheet' ? 'Identity reference · first attachment' : 'Approved predecessor reference'}</span><select value={item.state.workflow.approved_source_url ?? ''} aria-label={`Approved predecessor for ${item.entry.name}`} onchange={(event) => void call(key, 'Selecting reference…', { action: 'set_workflow', key, approved_source_url: event.currentTarget.value || null })}><option value="">Choose an attached image you have approved</option>{#each item.state.sources as source (source.url)}<option value={source.url}>{source.name}</option>{/each}</select></label>{/if}
+							<p class="muted">{item.entry.kind === 'character' ? 'Photoreal · flat 18% neutral gray · face and outfit: 3:4 · sheet: 16:9. Sheets use reviewed references and fixed template fields.' : 'Photoreal environment plate · motivated light · master geometry stays fixed for matching coverage.'}</p>
+							{#if item.state.workflow.stage === 'sheet'}
+								{#key JSON.stringify(item.state.sheet_inputs)}<SheetTemplateFields value={item.state.sheet_inputs} sources={item.state.sources} primary={item.state.workflow.approved_source_url} busy={!!busy[key] || !!item.state.job} ondirty={(dirty) => sheetDirty[key] = dirty} onsave={async (inputs) => !!(await call(key, 'Saving template fields…', { action:'set_sheet_inputs',key,inputs }))} />{/key}
+							{/if}
 						{/if}
 						<div class="field"><span>Image model · Higgsfield</span><ImageModelPicker value={item.state.image_model} name={item.entry.name} disabled={!!busy[key] || !!item.state.job} onchange={(model) => void changeModel(key, model)} /></div>
 						{#if item.entry.kind === 'character' && !item.state.workflow}<p class="muted">16:9 landscape sheet · both models</p>{/if}
@@ -241,6 +247,7 @@
 							</div>
 						{/if}
 						{#if busy[key] && !(jobs[key] && (jobs[key].phase === 'making' || jobs[key].phase === 'sending'))}<p class="working"><span class="pulse" aria-hidden="true"></span>{busy[key]}{busy[key].startsWith('The Agent') ? ' This takes about a minute.' : ''}</p>{/if}
+						{#if item.state.workflow?.stage !== 'sheet'}
 						{#if drafts[key]}
 							{#if item.entry.kind === 'character'}
 								{@const id = drafts[key].identity}
@@ -272,22 +279,23 @@
 						{:else}
 							<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting the facts…', { action: 'draft_spec', key })}>Draft facts</button>
 						{/if}
-						{#if drafts[key]}
-							<div class="node-cap sub">Prompt · written from the skill, the images and the facts{item.state.prompt_edited ? ' · edited by hand' : ''}</div>
+						{/if}
+						{#if drafts[key] || item.state.workflow?.stage === 'sheet'}
+							<div class="node-cap sub">{item.state.workflow?.stage === 'sheet' ? 'Prompt · fixed template, literal field substitution' : 'Prompt · written from the skill, the images and the facts'}{item.state.prompt_edited ? ' · edited by hand' : ''}</div>
 							{#if promptDrafts[key] !== undefined}
-								<textarea class="prompt" rows="6" bind:value={promptDrafts[key]} aria-label="Prompt"></textarea>
+								<textarea class="prompt" rows="6" bind:value={promptDrafts[key]} readonly={item.state.workflow?.stage === 'sheet'} aria-label="Prompt"></textarea>
 								<div class="row">
 									{#if promptDrafts[key] !== item.state.prompt}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'edit_prompt', key, prompt: promptDrafts[key] })}>Keep my edit</button>{/if}
-									<button type="button" class="key" disabled={!!busy[key]} onclick={() => { delete promptDrafts[key]; void writePrompt(item); }}>Rewrite</button>
-									<button type="button" class="key on" disabled={!!busy[key] || promptDrafts[key] !== item.state.prompt} onclick={() => void quote(key)}>Check and price</button>
+									<button type="button" class="key" disabled={!!busy[key] || !!sheetDirty[key]} onclick={() => { delete promptDrafts[key]; void writePrompt(item); }}>{item.state.workflow?.stage === 'sheet' ? 'Rebuild from template' : 'Rewrite'}</button>
+									<button type="button" class="key on" disabled={!!busy[key] || !!sheetDirty[key] || promptDrafts[key] !== item.state.prompt} onclick={() => void quote(key)}>Check and price</button>
 								</div>
 							{:else}
 								{@const gaps = item.state.workflow ? (item.state.workflow.confirmed ? [] : ['the pre-prompt check']) : factsGaps(specOf(item), item.entry.kind, !!item.state.body_source_url)}
-								{#if item.state.workflow && !item.state.workflow.confirmed}<p class="muted">Pre-prompt check: review the attached images, facts, creation step, and approved predecessor above. Confirm this combination before the writer prepares the full prompt.</p><button type="button" class="key" disabled={!!busy[key]} onclick={async () => { if (drafts[key] && drafts[key].from !== JSON.stringify(specOf(item)) && !(await call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false }))) return; await call(key, 'Confirming…', { action: 'set_workflow', key, confirm: true }); }}>Confirm pre-prompt check</button>{/if}
-								<button type="button" class="key on" disabled={!!busy[key] || gaps.length > 0} title={gaps.length ? `Fill in ${gaps.join(', ')} first` : 'The Agent looks at the images, gives each one its job and writes the prompt'} onclick={() => void writePrompt(item)}>Write prompt</button>
+								{#if item.state.workflow && !item.state.workflow.confirmed}<p class="muted">Pre-prompt check: review the reference roles and saved inputs above. Confirm this combination before preparing the prompt.</p><button type="button" class="key" disabled={!!busy[key] || !!sheetDirty[key]} onclick={async () => { if (item.state.workflow?.stage !== 'sheet' && drafts[key] && drafts[key].from !== JSON.stringify(specOf(item)) && !(await call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false }))) return; await call(key, 'Confirming…', { action: 'set_workflow', key, confirm: true }); }}>Confirm pre-prompt check</button>{/if}
+								<button type="button" class="key on" disabled={!!busy[key] || !!sheetDirty[key] || gaps.length > 0} title={gaps.length ? `Fill in ${gaps.join(', ')} first` : item.state.workflow?.stage === 'sheet' ? 'Fill the fixed template without a model rewrite' : 'The Agent looks at the images, gives each one its job and writes the prompt'} onclick={() => void writePrompt(item)}>{item.state.workflow?.stage === 'sheet' ? 'Build prompt from template' : 'Write prompt'}</button>
 							{/if}
 							{#if approvals[key]}
-								<StillApprovalCard title={`${item.entry.name} · ${item.template}`} approval={approvals[key]} busy={!!busy[key]} busyLabel={busy[key] ?? ''} onapprove={(approval) => void make(key, approval)} />
+								<StillApprovalCard title={`${item.entry.name} · ${item.template}`} approval={approvals[key]} busy={!!busy[key] || !!sheetDirty[key]} busyLabel={busy[key] ?? ''} onapprove={(approval) => void make(key, approval)} />
 							{/if}
 						{/if}
 					</div>
