@@ -12,7 +12,7 @@ Every file's asset and version ID, and how to download one, are in `REVIEW-ROOM.
 
 ## The show
 
-An elite coed college cheer squad, the Cardinals, set in 2001, is suddenly too good. Its secret is the lead's blood.
+An elite coed college cheer squad, the Cardinals, set in the present day, is suddenly too good. Its secret is the lead's blood.
 
 - **Rafa Quiñones:** the lead, an attractive "stud chulo" tumbler. His blood is the drug.
 - **Tess Lindqvist:** the flyer who is breaking.

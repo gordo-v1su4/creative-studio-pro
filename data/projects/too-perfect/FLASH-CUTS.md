@@ -27,8 +27,8 @@ The trailer lies on purpose: it cuts together moments that don't belong together
 | Marcus at a party, arm around a girl, laughing | Marcus is straight, the popular guy | The girl is his cover. Later a car picks Marcus up after practice; the driver is Rafa, and they kiss in the dark |
 | Rafa's hands on Tess's throat in the locker room | Rafa is hurting Tess | Rafa is holding Tess's head up while she seizes |
 | The coach burning a box of paper in a barrel behind the gym | The coach is covering up a crime | The coach is burning old Nationals test results that would show the squad has been "clean" since 1998: the problem is older than Rafa |
-| Marcus on a pay phone: "Dad, it's him." | Marcus is turning Rafa in | Marcus is warning his father off: "It's him. Leave him alone." |
-| A body bag on a gurney in a hallway | Someone on the squad died | The 1998 team. A photo on the coach's office wall: same uniforms, same faces, same ages, 2001 |
+| Marcus on his iPhone in the dorm hallway: "Dad, it's him." | Marcus is turning Rafa in | Marcus is warning his father off: "It's him. Leave him alone." |
+| A body bag on a gurney in a hallway | Someone on the squad died | The 1998 team. A photo on the coach's office wall: same uniforms, same faces, same ages, today |
 
 The last one is the real twist hook: the squad doesn't age. The trailer never says it; a viewer has to catch it on a second watch.
 
@@ -62,12 +62,12 @@ Every action fragment has motion blur. Every gym fragment is on the blue spring 
 
 **Night, memory and rumour:**
 
-17. A Polaroid flash in the dark locker room.
+17. A phone camera flash in the dark locker room.
 18. The ice-pack cart rolling slowly on its own across the empty gym.
 19. The coach's whistle dropped on the tile, still swinging on its lanyard.
 20. Rafa on the gym roof at night, sitting on the edge, legs hanging.
 21. Phones lighting up in a dark dorm hallway, one after another, all with the same message.
-22. A pay phone receiver swinging on its cord.
+22. An iPhone face-down on the floor, buzzing, the screen lighting up: "Dad".
 23. A gurney wheel, fast, down a corridor.
 
 **The turn (last 3 seconds, before the title):**
