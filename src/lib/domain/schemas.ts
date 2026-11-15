@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { shotSpecSchema } from './shot-spec';
 import { shotTagsSchema } from './shot-tags';
+import { storyPlanSchema } from './story-plan';
+import { identityTagsSchema } from './identity-tags';
 import { modelChoiceSchema, projectAgentModelSchema } from '$lib/domain/model-provider';
 
 /**
@@ -248,6 +250,7 @@ export const shotReferenceSchema = z.discriminatedUnion('kind', [
 export type ShotReference = z.infer<typeof shotReferenceSchema>;
 
 export const storyCardSchema = z.object({
+	identity_tags: identityTagsSchema.optional(),
 	card_id: idSchema,
 	order: z.number().int().nonnegative(),
 	title: nonBlank(200),
@@ -297,6 +300,7 @@ export const storyCardSchema = z.object({
 export type StoryCard = z.infer<typeof storyCardSchema>;
 
 export const productionAssetSchema = z.object({
+	identity_tags: identityTagsSchema.optional(),
 	asset_id: idSchema,
 	card_id: idSchema,
 	kind: z.enum(['image', 'video', 'audio']),
@@ -456,6 +460,8 @@ export type Cut = z.infer<typeof cutSchema>;
 
 /** A generation sent from a beat (Animate) until its result lands as a take. */
 export const generationSchema = z.object({
+	/** Identity declaration at submission time, retained even if the shot is later edited. */
+	identity_tags: identityTagsSchema.optional(),
 	request_id: z.string().min(1).max(200),
 	card_id: idSchema,
 	provider: z.literal('higgsfield'),
@@ -498,6 +504,8 @@ export const productionStateSchema = z.object({
 	logline: z.string().max(2000).default(''),
 	premise: z.string().max(8000).default(''),
 	theme: z.string().max(2000).default(''),
+	/** Reviewed deliverable outline, separate from the existing footage pool and episode imports. */
+	story_plan: storyPlanSchema.optional(),
 	cards: z.array(storyCardSchema).max(400).default([]),
 	assets: z.array(productionAssetSchema).max(500).default([]),
 	/** Spine links on the board (from 'seed' or a beat, to a beat). Absent = seed then beats in card order. */

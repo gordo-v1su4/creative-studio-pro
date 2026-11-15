@@ -94,7 +94,7 @@ export async function draftAnimatePrompt(
 		'- Prefer several hard cuts in one generation when the shot allows.',
 		'Follow the project rules exactly; never break a must-not. Return JSON only: {"prompt": string}.'
 	].join('\n');
-	const context = JSON.stringify({ beat: input.card.title, what_happens: input.card.beat, purpose: input.card.purpose, previous_video_prompt: input.card.video_prompt, duration_s: input.card.duration_ms / 1000, project_rules: input.rules ?? '(none)' }, null, 2);
+	const context = JSON.stringify({ beat: input.card.title, declared_reference_identities: input.card.identity_tags, what_happens: input.card.beat, purpose: input.card.purpose, previous_video_prompt: input.card.video_prompt, duration_s: input.card.duration_ms / 1000, project_rules: input.rules ?? '(none)' }, null, 2);
 	const parse = (value: unknown) => {
 		const prompt = (value as { prompt?: unknown })?.prompt;
 		if (typeof prompt !== 'string' || prompt.trim().length < 10) throw new Error('prompt must be a non-empty string');

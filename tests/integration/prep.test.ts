@@ -9,6 +9,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
+import { addPrepEntry, setPrepWorkflow, useCurrentAsSource } from '../../src/lib/server/prep';
 import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, readPrep, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
@@ -52,6 +53,49 @@ async function setup() {
 	};
 	return { deps, projectId: created.data.project_id, asks, submitted, estimated, setStatus: (next: GenerationStatus) => { status = next; } };
 }
+
+test('a standalone trailer derives required identities and reuses a show image without modifying its source', async () => {
+	const { deps, projectId } = await setup();
+	const source = (await deps.store.readProject(projectId))!;
+	const attached = await attachOutside(deps, source, 'r-mara', { file_name: 'mara.png', bytes: new Uint8Array([1,2,3]) });
+	if (!attached.ok) throw new Error(attached.message);
+	const before = JSON.stringify(await readPrep(deps.projectRoot, projectId));
+	const created = await deps.gateway.createProject({command:'create_project',title:'Trailer',brief:'',creative_focus:'full room',created_by:'test'});
+	if (!created.ok) throw new Error(created.error.message);
+	const saved = await deps.gateway.saveProduction({command:'save_production',project_id:created.data.project_id,expected_version:created.data.version,production:{...created.data.production,story_plan:{title:'Trailer',prep_source_project_id:projectId,sections:[{id:'act',title:'Act 1',summary:'',moments:[{id:'moment',title:'Tears',beat:'Mara notices the tears.',duration_s:8,characters:['Mara Voss'],location:'Dorm',approved:false,shots:[]}]}]}}});
+	if (!saved.ok) throw new Error(saved.error.message);
+	const trailer = saved.data;
+	const view = await prepView(deps, trailer);
+	if (!view.ok) throw new Error(view.message);
+	expect(view.items.find(item => item.entry.key === 'r-mara')?.current).not.toBeNull();
+	expect(view.items[0].state.workflow?.builder).toBe('castkit-v1');
+	const reused = await useCurrentAsSource(deps, trailer, 'r-mara');
+	if (!reused.ok) throw new Error(reused.message);
+	expect(reused.prep.entries['r-mara'].sources).toHaveLength(1);
+	expect(JSON.stringify(await readPrep(deps.projectRoot, projectId))).toBe(before);
+	await addPrepEntry(deps, trailer.project_id, 'character', 'Bryson Vane');
+	const updated = await prepView(deps, trailer);
+	if (!updated.ok) throw new Error(updated.message);
+	expect(updated.items.some(item => item.entry.name === 'Bryson Vane')).toBeTrue();
+	const confirmed = await setPrepWorkflow(deps, trailer, 'r-mara', {stage:'sheet',confirm:true});
+	expect(confirmed.ok).toBeFalse();
+	await saveSpec(deps, trailer, 'r-mara', {spec:referenceSpecSchema.parse({...SPEC,name:'Mara Voss'}),approve:false});
+	const ready = await setPrepWorkflow(deps, trailer, 'r-mara', {stage:'face_lock',confirm:true});
+	if (!ready.ok) throw new Error(ready.message);
+	expect(ready.prep.entries['r-mara'].workflow?.confirmed).toBeTrue();
+	let selectedSkill = '';
+	deps.agent = async () => ({choice:{provider:'kimi',model:'k3'} as never,generate:async ({system}) => { selectedSkill = system; return JSON.stringify({prompt:'Photoreal face lock on a flat 18% neutral gray field with shadowless lighting. Preserve the supplied face identity, skin texture and expression at a straight-on camera angle.'}); }});
+	const written = await writePrompt(deps,trailer,'r-mara');
+	if (!written.ok) throw new Error(written.message);
+	expect(selectedSkill).toContain('castkit-v1');
+	expect(written.prep.entries['r-mara'].prompt).toContain('face lock');
+	const quoted = await quotePrep(deps,trailer,'r-mara');
+	if (!quoted.ok) throw new Error(quoted.message);
+	expect((await readPrep(deps.projectRoot,trailer.project_id)).entries['r-mara'].workflow?.confirmed).toBeTrue();
+	const changed = await addSource(deps, trailer.project_id, 'r-mara', {file_name:'new.png',bytes:new Uint8Array([5,6,7])});
+	if (!changed.ok) throw new Error(changed.message);
+	expect(changed.prep.entries['r-mara'].workflow?.confirmed).toBeFalse();
+});
 
 describe('references go up before the job (CLI upload fix)', () => {
 	test('local files are uploaded with one retry and passed by id; ids pass through', async () => {

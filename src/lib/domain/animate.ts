@@ -106,7 +106,8 @@ export function pendingGenerations(production: ProductionState): Generation[] {
 export function applyRecordGeneration(production: ProductionState, generation: Generation): TakeResult {
 	if (!production.cards.some((card) => card.card_id === generation.card_id)) return { ok: false, message: `Beat ${generation.card_id} not on this project` };
 	if ((production.generations ?? []).some((entry) => entry.request_id === generation.request_id)) return { ok: false, message: `Generation ${generation.request_id} already recorded` };
-	return { ok: true, production: { ...production, generations: [...(production.generations ?? []), generation] } };
+	const identity_tags = generation.identity_tags ?? production.cards.find(card => card.card_id === generation.card_id)?.identity_tags;
+	return { ok: true, production: { ...production, generations: [...(production.generations ?? []), { ...generation, ...(identity_tags ? { identity_tags: structuredClone(identity_tags) } : {}) }] } };
 }
 
 /**
@@ -152,7 +153,7 @@ export function applySettleGeneration(
 		production: {
 			...production,
 			generations,
-			assets: [...production.assets, { ...outcome.take, card_id: generation.card_id }],
+			assets: [...production.assets, { ...outcome.take, identity_tags: outcome.take.identity_tags ?? generation.identity_tags, card_id: generation.card_id }],
 			cards: production.cards.map((card) => (card.card_id === generation.card_id ? { ...card, pick_take_id: outcome.take!.asset_id } : card))
 		}
 	};

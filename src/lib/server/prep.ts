@@ -4,7 +4,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'nod
 import type { Project } from '$lib/domain/schemas';
 import {
 	emptyPrep, emptyState, factsGaps, handOffLine, identityGaps, notesOf, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
-	type PrepEntry, type PrepFile, type PrepState, type ReferenceSpec, type ScaleCheck
+	type PrepEntry, type PrepFile, type PrepState, type ReferenceSpec, type ScaleCheck, type PrepKind, type PrepScene
 } from '$lib/domain/prep';
 import type { StillApproval } from '$lib/domain/stills';
 import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
@@ -14,6 +14,7 @@ import { quoteStill, sendStill, settleStill, type StillDeps } from './stills';
 import { cachedReference, uploadReference, type ReferenceFileDeps } from './reference-files';
 import type { NotionApi } from './notion';
 import type { SeriesRecord, SeriesStore } from './series';
+import { joeyPrerequisites, joeyPromptIssues } from '$lib/domain/joey-prep';
 
 /**
  * Prep (V1S-374): list what an episode needs, take source images, let the Agent draft each reference spec with
@@ -77,23 +78,42 @@ async function writePrep(root: string, projectId: string, prep: PrepFile): Promi
 }
 async function update(root: string, projectId: string, key: string, change: (state: PrepState) => PrepState): Promise<PrepFile> {
 	const prep = await readPrep(root, projectId);
-	return writePrep(root, projectId, { ...prep, entries: { ...prep.entries, [key]: change(prep.entries[key] ?? emptyState()) } });
+	const previous = prep.entries[key] ?? emptyState();
+	const next = change(previous);
+	if (next.workflow && (JSON.stringify(previous.sources) !== JSON.stringify(next.sources) || JSON.stringify(previous.spec) !== JSON.stringify(next.spec) || previous.body_source_url !== next.body_source_url)) next.workflow = { ...next.workflow, confirmed: false };
+	return writePrep(root, projectId, { ...prep, entries: { ...prep.entries, [key]: next } });
 }
 
 // ---- the list ----
 export interface PrepVersion { id: string; url: string; made_at: string; outside: boolean; current: boolean }
 export interface PrepView { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: PrepVersion[] }
 
-export async function prepView(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, project: Project): Promise<{ ok: true; items: PrepView[]; props: string[] } | Failure> {
-	if (!project.series) return fail(400, 'Prep is for an episode imported from a series');
-	const record = await deps.series.read(project.series.series_id);
+type PrepContextDeps = Pick<PrepDeps, 'projectRoot' | 'series'> & Partial<Pick<PrepDeps, 'store'>>;
+async function prepContext(deps: PrepContextDeps, project: Project) {
+	const sourceId = project.production.story_plan?.prep_source_project_id;
+	const source = sourceId && sourceId !== project.project_id ? await deps.store?.readProject(sourceId) : null;
+	if (sourceId && !source) throw new Error('The reference project is unavailable; choose another reference project');
+	const seriesId = project.series?.series_id ?? project.production.story_plan?.source?.series_id ?? source?.series?.series_id;
+	const record = seriesId ? await deps.series.read(seriesId) : null;
+	const inherited = source ? await readPrep(deps.projectRoot, source.project_id) : null;
+	const scenes: PrepScene[] = project.series?.scenes ?? (project.production.story_plan?.sections.flatMap((section, number) => section.moments.map(moment => ({ page_id: moment.id, title: moment.title, number: number * 100, location: moment.location, characters: moment.characters }))) ?? []);
+	return { source, record, inherited, scenes };
+}
+
+export async function prepView(deps: PrepContextDeps, project: Project): Promise<{ ok: true; items: PrepView[]; props: string[] } | Failure> {
+	const { record, inherited, scenes } = await prepContext(deps, project);
 	const prep = await readPrep(deps.projectRoot, project.project_id);
-	const entries = prepEntries(project.series.scenes, record?.references?.items ?? [], prep.props);
+	const entries = prepEntries(scenes, record?.references?.items ?? [], prep.props);
+	for (const custom of prep.custom_entries ?? []) {
+		if (entries.some(entry => entry.kind === custom.kind && entry.name.toLowerCase() === custom.name.toLowerCase())) continue;
+		entries.push({ key: `${custom.kind}:${custom.name}`, kind: custom.kind, name: custom.name, role: '', reference_page_id: null, scenes: [] });
+	}
 	const folder = join(deps.projectRoot, project.project_id, 'files', 'prep', 'made');
 	const names = await readdir(folder).catch((cause: NodeJS.ErrnoException) => { if (cause.code === 'ENOENT') return []; throw cause; });
 	const saved = await Promise.all(names.filter((name) => IMAGE_EXT.has(extname(name).toLowerCase())).map(async (id) => ({ id, made_at: (await stat(join(folder, id))).mtime.toISOString() })));
 	const items = entries.map((entry) => {
-		const state = prep.entries[entry.key] ?? emptyState();
+		const stored = prep.entries[entry.key] ?? emptyState();
+		const state = { ...stored, ...(project.production.story_plan && entry.kind !== 'prop' && !stored.workflow ? { workflow: { builder: entry.kind === 'character' ? 'castkit-v1' as const : 'scenecraft-v1' as const, stage: entry.kind === 'character' ? 'face_lock' as const : 'environment' as const, approved_source_url: null, confirmed: false } } : {}) };
 		const file = entry.reference_page_id ? record?.reference_files?.[entry.reference_page_id] : undefined;
 		// A reference renamed in Notion keeps the versions saved under its earlier names.
 		const sheetNames = new Set([sheetFileName(entry.name), ...state.sheet_names, ...(state.result?.source_file ? [sheetNameOf(state.result.source_file)] : [])]);
@@ -109,17 +129,40 @@ export async function prepView(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, p
 		// The stamped filename stays stable for downstream references; the browser
 		// must request fresh pixels whenever a different result lands there.
 		const visible = state.result ? { ...state, result: { ...state.result, url: `${state.result.url.split('?')[0]}?v=${encodeURIComponent(state.result.made_at)}` } } : state;
-		return { entry, state: visible, versions, template: templateFor(entry.kind, state.sources.length > 0), current: file && record ? { url: `/api/series/${record.series_id}/references?page_id=${entry.reference_page_id}` } : null };
+		const inheritedResult = inherited?.entries[entry.key]?.result;
+		return { entry, state: visible, versions, template: templateFor(entry.kind, state.sources.length > 0), current: inheritedResult ? { url: `${inheritedResult.url.split('?')[0]}?v=${encodeURIComponent(inheritedResult.made_at)}` } : file && record ? { url: `/api/series/${record.series_id}/references?page_id=${entry.reference_page_id}` } : null };
 	});
 	return { ok: true, items, props: prep.props };
 }
 
-async function findEntry(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, project: Project, key: string): Promise<{ ok: true; view: PrepView; record: SeriesRecord | null } | Failure> {
+async function findEntry(deps: PrepContextDeps, project: Project, key: string): Promise<{ ok: true; view: PrepView; record: SeriesRecord | null } | Failure> {
 	const listed = await prepView(deps, project);
 	if (!listed.ok) return listed;
 	const view = listed.items.find((item) => item.entry.key === key);
 	if (!view) return fail(404, 'That entry is not on the Prep list');
-	return { ok: true, view, record: await deps.series.read(project.series!.series_id) };
+	return { ok: true, view, record: (await prepContext(deps, project)).record };
+}
+
+export async function addPrepEntry(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, kind: PrepKind, name: string): Promise<PrepFile> {
+	const prep = await readPrep(deps.projectRoot, projectId);
+	const clean = name.trim();
+	const custom = prep.custom_entries ?? [];
+	if (custom.some(entry => entry.kind === kind && entry.name.toLowerCase() === clean.toLowerCase())) return prep;
+	return writePrep(deps.projectRoot, projectId, { ...prep, custom_entries: [...custom, { kind, name: clean }] });
+}
+
+export async function setPrepWorkflow(deps: PrepContextDeps, project: Project, key: string, input: { stage?: NonNullable<PrepState['workflow']>['stage']; approved_source_url?: string | null; confirm?: boolean }): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const found = await findEntry(deps, project, key);
+	if (!found.ok) return found;
+	if (found.view.state.job) return fail(409, 'Wait for this reference generation to finish');
+	const character = found.view.entry.kind === 'character';
+	if (found.view.entry.kind === 'prop') return fail(400, 'Props use the existing prop workflow');
+	const stage = input.stage ?? found.view.state.workflow?.stage ?? (character ? 'face_lock' : 'environment');
+	if (character ? !['face_lock', 'outfit', 'sheet'].includes(stage) : !['environment', 'coverage'].includes(stage)) return fail(400, 'Choose a workflow for this kind of reference');
+	const workflow: NonNullable<PrepState['workflow']> = { builder: character ? 'castkit-v1' : 'scenecraft-v1', stage, approved_source_url: input.approved_source_url === undefined ? found.view.state.workflow?.approved_source_url ?? null : input.approved_source_url, confirmed: false };
+	const state = { ...found.view.state, workflow };
+	if (input.confirm) { const issues = joeyPrerequisites(state); if (issues.length) return fail(400, issues.join('; ')); workflow.confirmed = true; }
+	return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, current => ({ ...current, workflow, prompt: null, prompt_edited: false })) };
 }
 
 export async function addProp(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, name: string): Promise<PrepFile> {
@@ -162,7 +205,7 @@ export async function addSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: 
 		...state, sources: [...state.sources, { name: input.file_name.slice(0, 300), file: join(folder, name), url, added_at: new Date().toISOString() }].slice(-12),
 		body_source_url: state.sources.slice(-11).some((source) => source.url === state.body_source_url) ? state.body_source_url : null,
 		// The spec stays (Redraft is there for a fresh one); only the prompt goes, since it numbers the images.
-		prompt: null, prompt_edited: false
+		prompt: null, prompt_edited: false, ...(state.workflow ? { workflow: { ...state.workflow, confirmed: false } } : {})
 	}));
 	return { ok: true, prep };
 }
@@ -177,9 +220,11 @@ export async function removeSource(deps: Pick<PrepDeps, 'projectRoot'>, projectI
 }
 
 /** The current reference image (an old sheet) as a source image, so ONE SHOT remakes it to the standard. */
-export async function useCurrentAsSource(deps: Pick<PrepDeps, 'projectRoot' | 'series' | 'references'>, project: Project, key: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
+export async function useCurrentAsSource(deps: PrepContextDeps & Pick<PrepDeps, 'references'>, project: Project, key: string): Promise<{ ok: true; prep: PrepFile } | Failure> {
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
+	const inherited = (await prepContext(deps, project)).inherited?.entries[key]?.result;
+	if (inherited) return addSource(deps, project.project_id, key, { file_name: basename(inherited.file), bytes: new Uint8Array(await readFile(inherited.file)) });
 	const pageId = found.view.entry.reference_page_id;
 	const file = pageId ? found.record?.reference_files?.[pageId] : undefined;
 	if (!file || !deps.references) return fail(404, 'There is no current reference image to use');
@@ -188,7 +233,8 @@ export async function useCurrentAsSource(deps: Pick<PrepDeps, 'projectRoot' | 's
 }
 
 // ---- the Agent: reference spec, then the prompt ----
-async function skillSystem(): Promise<string> {
+async function skillSystem(builder?: PrepState['workflow']): Promise<string> {
+	if (builder) return `You prepare reference images using Joey's ${builder.builder}. Follow the full skill. This app presents the pre-prompt check and obtains confirmation before writing; generation still requires its separate price approval. Use source images as identity/geometry authority. Do not invent missing facts. Character names are app metadata; image prompts follow the skill's visual-handle rules. The confirmed Bible and explicit owner notes override house defaults.\n\n${await readAgentSkill(builder.builder)}`;
 	const [skill, templates, look, guide] = await Promise.all([
 		readAgentSkill('oneshot-image-prompts'),
 		readAgentSkill('oneshot-image-prompts', 'references/templates.md'),
@@ -199,21 +245,28 @@ async function skillSystem(): Promise<string> {
 }
 
 function entryContext(view: PrepView, project: Project, record: SeriesRecord | null): string {
-	const scenes = project.series!.scenes.filter((scene) => view.entry.scenes.some((s) => s.page_id === scene.page_id));
+	const scenes = (project.series?.scenes ?? []).filter((scene) => view.entry.scenes.some((s) => s.page_id === scene.page_id));
 	const mentions = scenes.map((scene) => {
 		const text = [scene.summary, scene.story_beats].join('\n');
 		const first = view.entry.name.split(/\s+/)[0];
 		const lines = text.split('\n').filter((line) => line.includes(first)).slice(0, 4).join(' ');
 		return `- ${scene.title} (${scene.location}): ${lines || scene.summary.slice(0, 300)}`;
 	}).join('\n');
-	const story = (record?.story?.text ?? '').slice(0, 2500);
+	const story = (project.production.story_plan?.source?.text ?? record?.story?.text ?? '').slice(0, 2500);
 	return [
 		`Reference: ${view.entry.name} (${view.entry.kind})${view.entry.role ? ` — ${view.entry.role}` : ''}`,
 		`Template: ${view.template}`,
 		`Source images attached: ${view.state.sources.length ? view.state.sources.map((s, i) => `image ${i + 1} = ${s.name}`).join(', ') : 'none'}`,
 		`The season (setting and look):\n${story}`,
 		`Scenes in this episode that use it:\n${mentions || '(none listed)'}`
+		, `This production's story and direction:\n${project.production.premise}`
 	].join('\n\n');
+}
+
+function zPrompt(value: unknown): string {
+	const prompt = typeof value === 'object' && value !== null && 'prompt' in value ? String(value.prompt).replace(/^\s*```[\w-]*\s*$/gm, '').trim() : '';
+	if (prompt.length < 80 || prompt.length > 20_000) throw new Error('The reference writer returned an incomplete or oversized prompt');
+	return prompt;
 }
 
 async function sourceImages(state: PrepState): Promise<ModelImage[]> {
@@ -236,13 +289,13 @@ export async function draftSpec(deps: PrepDeps, project: Project, key: string): 
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
 	const { view } = found;
 	const character = view.entry.kind === 'character';
-	const ask = `${entryContext(view, project, found.record)}\n\nDraft the FACTS this reference is made from: only what the pictures cannot say. Do not describe the pictures; the prompt writer looks at them itself. Return only JSON:\n{"name": "${view.entry.name}", "kind": "${view.entry.kind}", "template": "${view.template}"${character ? IDENTITY_FIELDS : ', "notes": "two or three plain sentences: what this place or thing is in the story, its era and where it stands; sizes in metres"'}}\nUse the exact name as given. Never use the word "neon".${character ? IDENTITY_RULES : ''}`;
+	const ask = view.state.workflow ? `${entryContext(view, project, found.record)}\n\nExtract proposed design facts for the selected Joey workflow. Owner canon and supplied images take priority over skill defaults. Do not invent ages, heights, powers or visual identities. Leave unsupported identity fields empty or null; list unresolved design choices in notes for the owner to decide. Return JSON {name,kind,template,notes,identity:{sex,age,height_cm,build,face,eyes,hair,marks}}. Use the exact metadata name ${JSON.stringify(view.entry.name)}, kind ${view.entry.kind}, template ${view.template}. The name belongs to metadata, not the final image prompt.` : `${entryContext(view, project, found.record)}\n\nDraft the FACTS this reference is made from: only what the pictures cannot say. Do not describe the pictures; the prompt writer looks at them itself. Return only JSON:\n{"name": "${view.entry.name}", "kind": "${view.entry.kind}", "template": "${view.template}"${character ? IDENTITY_FIELDS : ', "notes": "two or three plain sentences: what this place or thing is in the story, its era and where it stands; sizes in metres"'}}\nUse the exact name as given. Never use the word "neon".${character ? IDENTITY_RULES : ''}`;
 	const parse = (value: unknown) => {
 		const spec = referenceSpecSchema.parse(value);
-		const notes = character ? (view.state.spec?.notes ?? '') : spec.notes;
+		const notes = character && !view.state.workflow ? (view.state.spec?.notes ?? '') : spec.notes;
 		return { ...spec, notes, description: '', must_hold: [], from_sources: '', name: view.entry.name, kind: view.entry.kind, template: view.template as ReferenceSpec['template'] };
 	};
-	const system = await skillSystem();
+	const system = await skillSystem(view.state.workflow);
 	const images = await sourceImages(view.state);
 	let spec: ReferenceSpec;
 	try { spec = await generateStructured(client, { system, prompt: ask, images, maxOutputTokens: 1600, timeoutMs: 120_000 }, parse); }
@@ -276,7 +329,7 @@ export async function saveSpec(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, p
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
 	const spec = referenceSpecSchema.parse({ ...input.spec, name: found.view.entry.name, kind: found.view.entry.kind, template: found.view.template });
-	const prep = await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, spec, spec_approved_at: input.approve ? new Date().toISOString() : null, prompt: null, prompt_edited: false }));
+	const prep = await update(deps.projectRoot, project.project_id, key, (state) => ({ ...state, spec, spec_approved_at: input.approve ? new Date().toISOString() : null, prompt: null, prompt_edited: false, ...(state.workflow ? { workflow: { ...state.workflow, confirmed: false } } : {}) }));
 	return { ok: true, prep };
 }
 
@@ -291,6 +344,7 @@ export const SHEET_SECTIONS = ['GRADE', 'CAMERA', 'REALISM', 'LOCKS', 'AVOID'] a
 
 /** QC on a reference prompt before the approval card (V1S-374). */
 export function prepQc(prompt: string, view: PrepView): string[] {
+	if (view.state.workflow) return joeyPromptIssues(prompt, view.state);
 	const out: string[] = [];
 	const preserveBody = !!view.state.body_source_url;
 	if (!prompt.includes(view.entry.name)) out.push(`The prompt must call it by its exact name, "${view.entry.name}"`);
@@ -346,6 +400,18 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 	const found = await findEntry(deps, project, key);
 	if (!found.ok) return found;
 	const { view } = found;
+	if (view.state.workflow) {
+		const gaps = joeyPrerequisites(view.state);
+		if (!view.state.workflow.confirmed) gaps.push('Confirm the pre-prompt check first');
+		if (gaps.length) return fail(400, gaps.join('; '));
+		const client = await deps.agent(project);
+		if (!client) return fail(503, 'No Agent model is configured');
+		const { workflow, spec, sources } = view.state;
+		const prompt = await generateStructured(client, { system: await skillSystem(workflow), prompt: `Write the full image prompt for the confirmed ${workflow.stage} task. Return JSON only {"prompt":"the whole prompt"}. Follow the skill's complete structure and verbatim closes. Do not put names, image tags, aspect ratios or ages in the image prompt. Metadata names remain outside it. Do not append the older ONE SHOT hand-off line. Render photoreal unless the owner explicitly requests animation.\nFacts:\n${JSON.stringify(spec)}\nApproved predecessor reference: ${workflow.approved_source_url ?? 'none required at this station'}\nAttached references in order:\n${sources.map((source, i) => `${i + 1}: ${source.name}${source.url === workflow.approved_source_url ? ' (approved predecessor)' : ''}`).join('\n')}\nProduction context:\n${entryContext(view, project, found.record)}`, images: await sourceImages(view.state), maxOutputTokens: 6000, timeoutMs: 180_000 }, value => zPrompt(value));
+		const issues = prepQc(prompt, view);
+		if (issues.length) return fail(422, 'The reference prompt needs correction', issues);
+		return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, state => ({ ...state, workflow, prompt, prompt_edited: false })) };
+	}
 	const preserveBody = view.entry.kind === 'character' && !!view.state.body_source_url;
 	const bodyIndex = view.state.sources.findIndex((source) => source.url === view.state.body_source_url) + 1;
 	if (preserveBody && !bodyIndex) return fail(400, 'The selected body reference is no longer attached');
@@ -394,7 +460,7 @@ const stillInput = (view: PrepView) => ({
 	model: view.state.image_model,
 	prompt: view.state.prompt ?? '',
 	attached: view.state.sources.map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
-	aspect_ratio: aspectOf(view.state.prompt, view.entry.kind),
+	aspect_ratio: view.state.workflow?.builder === 'castkit-v1' && view.state.workflow.stage !== 'sheet' ? '3:4' : aspectOf(view.state.prompt, view.entry.kind),
 	blocked: view.state.prompt ? prepQc(view.state.prompt, view) : ['Write the prompt first']
 });
 
@@ -421,7 +487,8 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 	let uploaded = false;
 	let note = '';
 	const pageId = view.entry.reference_page_id;
-	if (!pageId) note = `Add a "${view.entry.name}" row to the series' References in Notion (Kind ${view.entry.kind}) and re-sync; then attach this sheet to put it in the drawer.`;
+	if (!project.series) note = 'Saved to this project’s Prep. The source project’s reference remains unchanged.';
+	else if (!pageId) note = `Add a "${view.entry.name}" row to the series' References in Notion (Kind ${view.entry.kind}) and re-sync; then attach this sheet to put it in the drawer.`;
 	else if (!deps.references) note = 'Review Room is not configured, so the sheet stays here.';
 	else {
 		const result = await uploadReference(deps.references, project.series!.series_id, { page_id: pageId, file_name: `${name}.png`, bytes: new Uint8Array(await readFile(stamped)) });
@@ -439,7 +506,7 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 		}
 	}
 	const bodySource = view.state.sources.find((source) => source.url === view.state.body_source_url);
-	const scale = view.entry.kind === 'character' && bodySource ? await checkScale(deps, project, view, stamped, bodySource.file) : undefined;
+	const scale = view.entry.kind === 'character' && bodySource && !view.state.workflow ? await checkScale(deps, project, view, stamped, bodySource.file) : undefined;
 	return update(deps.projectRoot, project.project_id, view.entry.key, (state) => ({ ...state, job: null, sheet_names: [...new Set([...state.sheet_names, sheetNameOf(file)])].slice(-20), result: { file: stamped, source_file: file, url, made_at: new Date().toISOString(), outside, uploaded, note, ...(scale ? { scale } : {}) } }));
 }
 

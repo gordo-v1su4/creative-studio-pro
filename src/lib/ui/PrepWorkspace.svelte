@@ -12,7 +12,7 @@
 	 * locations, then props added by name. Every sheet goes through the approval card; a finished one lands in
 	 * the series' References drawer.
 	 */
-	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
+	let { project, onUpdated, onContinue }: { project: Project; onUpdated: (project: Project) => void; onContinue?: () => void } = $props();
 
 	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: Array<{ id: string; url: string; made_at: string; outside: boolean; current: boolean }> };
 	let items = $state<View[]>([]);
@@ -27,15 +27,15 @@
 	let drafts = $state<Record<string, Draft>>({});
 	const emptyIdentity = (): Identity => ({ sex: '', age: null, height_cm: null, build: '', face: '', eyes: '', hair: '', marks: '' });
 	let promptDrafts = $state<Record<string, string>>({});
-	let newProp = $state('');
+	let newNames = $state<Record<string, string>>({ character: '', location: '', prop: '' });
 	/** The picture shown big (click any picture; Esc or a click closes it). */
 	let zoom = $state<{ src: string; alt: string } | null>(null);
 
 	const base = $derived(`/api/projects/${project.project_id}/prep`);
 	const sections = $derived([
-		{ kind: 'character', label: 'Characters', list: items.filter((item) => item.entry.kind === 'character') },
-		{ kind: 'location', label: 'Locations', list: items.filter((item) => item.entry.kind === 'location') },
-		{ kind: 'prop', label: 'Props', list: items.filter((item) => item.entry.kind === 'prop') }
+		{ kind: 'character', label: 'Characters', singular: 'character', list: items.filter((item) => item.entry.kind === 'character') },
+		{ kind: 'location', label: 'Locations', singular: 'location', list: items.filter((item) => item.entry.kind === 'location') },
+		{ kind: 'prop', label: 'Props', singular: 'prop', list: items.filter((item) => item.entry.kind === 'prop') }
 	]);
 
 	function take(body: { data?: { items: View[]; episode_spent: number } | null; project?: Project }) {
@@ -161,28 +161,28 @@
 	<header class="top">
 		<div>
 			<div class="cap accent">PREP · REFERENCES</div>
-			<h2 class="title">What {project.series?.episode_title ?? 'this episode'} needs</h2>
-			<p class="lede">Each reference is made to the ONE SHOT standard in one pass from the skill, your images and the facts; you approve it on the price card, then it lands in the References drawer. Characters first, then locations.</p>
+			<h2 class="title">What {project.series?.episode_title ?? project.title} needs</h2>
+			<p class="lede">Add characters, locations and props. Attach images to show who and what you mean, then develop the reference before making shots.</p>
+			{#if project.production.story_plan?.prep_source_project_id}<p class="lede">Existing show references are available below. Use an existing reference as a source to refresh it for this trailer; the source project stays intact.</p>{/if}
 		</div>
-		<span class="mono">episode spend {spent} cr</span>
+		<div><span class="mono">project spend {spent} cr</span>{#if onContinue}<button type="button" class="key" onclick={onContinue}>Continue to shot plan</button>{/if}</div>
 	</header>
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	{#if loading}<p class="muted">Reading the episode…</p>{/if}
+	{#if loading}<p class="muted">Loading references…</p>{/if}
 
 	{#each sections as section (section.kind)}
 		<div class="section-head"><span class="cap">{section.label}</span><span class="line"></span><span class="mono">{section.list.length}</span></div>
-		{#if section.kind === 'prop'}
-			<form class="add" onsubmit={(event) => { event.preventDefault(); if (newProp.trim()) { void call('prop', 'Adding…', { action: 'add_prop', name: newProp }); newProp = ''; } }}>
-				<input bind:value={newProp} placeholder="A prop a scene needs, e.g. Red vial" aria-label="New prop name" />
-				<button type="submit" class="key" disabled={!newProp.trim()}>Add prop</button>
-			</form>
-		{/if}
+		<form class="add" onsubmit={async (event) => { event.preventDefault(); const name = newNames[section.kind].trim(); if (name && await call(`add-${section.kind}`, 'Adding…', { action: 'add_entry', kind: section.kind, name })) newNames[section.kind] = ''; }}>
+			<input bind:value={newNames[section.kind]} placeholder={`Name this ${section.singular}`} aria-label={`New ${section.singular} name`} maxlength="200" />
+			<button type="submit" class="key" disabled={!newNames[section.kind].trim() || !!busy[`add-${section.kind}`]}>Add {section.singular}</button>
+		</form>
 		{#each section.list as item (item.entry.key)}
 			{@const key = item.entry.key}
 			{@const stage = prepStage(item.state)}
 			<article class={['entry', stage === 'made' && 'made']} aria-label={item.entry.name}>
 				<div class="entry-head">
 					<b class="name">{item.entry.name}</b>
+					<span class="chip">{item.state.result ? 'Reference made' : item.state.sources.length ? 'Images supplied' : item.current ? 'Existing reference available' : 'Needs image or design'}</span>
 					{#if item.entry.role}<span class="role">{item.entry.role}</span>{/if}
 					<span class={['chip', stage]}>{stageLabel[stage]}</span>
 					<span class="mono">{item.template}</span>
@@ -201,7 +201,7 @@
 						</div>
 						<div class="row">
 							<label class="key">Add image<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'source', event.currentTarget.files)} /></label>
-							{#if item.current}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Adding…', { action: 'use_current', key })}>Use current sheet</button>{/if}
+							{#if item.current}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Adding…', { action: 'use_current', key })}>Use existing reference</button><button type="button" class="key" onclick={() => zoom = { src: item.current!.url, alt: item.entry.name }}>Preview existing reference</button>{/if}
 						</div>
 						{#if item.entry.kind === 'character'}
 							<label class="field"><span>Body reference</span><select class="key" aria-label={`Body reference for ${item.entry.name}`} value={item.state.body_source_url ?? ''} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void call(key, 'Saving body reference…', { action: 'set_body_source', key, url: event.currentTarget.value || null })}>
@@ -215,10 +215,18 @@
 					<!-- 2. the facts, then the prompt (one pass: the skill, the images, the facts), then the price card -->
 					<div class="node wide">
 						<div class="node-cap">Facts · what the pictures can't say</div>
+						{#if item.state.workflow}
+							<div class="node-cap">Joey’s {item.state.workflow.builder === 'castkit-v1' ? 'Castkit v1' : 'Scenecraft v1'}</div>
+							<label class="field"><span>Creation step</span><select value={item.state.workflow.stage} aria-label={`Creation step for ${item.entry.name}`} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void call(key, 'Changing workflow…', { action: 'set_workflow', key, stage: event.currentTarget.value })}>
+							{#if item.entry.kind === 'character'}<option value="face_lock">Face lock · establish identity</option><option value="outfit">Outfit · requires approved face lock</option><option value="sheet">Three-panel sheet · requires approved outfit</option>{:else}<option value="environment">Environment master · establish location</option><option value="coverage">Matching coverage · requires approved master</option>{/if}
+							</select></label>
+							{#if ['outfit', 'sheet', 'coverage'].includes(item.state.workflow.stage)}<label class="field"><span>Approved predecessor reference</span><select value={item.state.workflow.approved_source_url ?? ''} aria-label={`Approved predecessor for ${item.entry.name}`} onchange={(event) => void call(key, 'Selecting reference…', { action: 'set_workflow', key, approved_source_url: event.currentTarget.value || null })}><option value="">Choose an attached image you have approved</option>{#each item.state.sources as source (source.url)}<option value={source.url}>{source.name}</option>{/each}</select></label>{/if}
+							<p class="muted">{item.entry.kind === 'character' ? 'Photoreal · flat 18% neutral gray · face and outfit: 3:4 · sheet: 16:9. Lock the face, then approve an outfit before making a sheet.' : 'Photoreal environment plate · motivated light · master geometry stays fixed for matching coverage.'}</p>
+						{/if}
 						<label class="field"><span>Image model</span><select class="key" aria-label={`Image model for ${item.entry.name}`} value={item.state.image_model} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void changeModel(key, event.currentTarget.value as ImageModelId)}>
 							{#each IMAGE_MODEL_IDS as model (model)}<option value={model}>{IMAGE_MODELS[model].label} · 2K{model === 'gpt_image_2_5' ? ' · High' : ''}</option>{/each}
 						</select></label>
-						{#if item.entry.kind === 'character'}<p class="muted">16:9 landscape sheet · both models</p>{/if}
+						{#if item.entry.kind === 'character' && !item.state.workflow}<p class="muted">16:9 landscape sheet · both models</p>{/if}
 						{#if jobs[key]}
 							{@const job = jobs[key]}
 							<div class={['job', job.phase]} role="status">
@@ -254,8 +262,8 @@
 									<label class="wide"><span>Powers (comma)</span><input bind:value={drafts[key].powers} placeholder="wall-run, blur-step" /></label>
 									<label class="full"><span>Ownership lock</span><input bind:value={drafts[key].ownership_lock} placeholder="How it shows physically, never as…" /></label>
 								</div>
-								<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item), !!item.state.body_source_url)}</p>
-								{#if identityGaps(specOf(item), !!item.state.body_source_url).length}<p class="note">Still needs: {identityGaps(specOf(item), !!item.state.body_source_url).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}
+								{#if !item.state.workflow}<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item), !!item.state.body_source_url)}</p>
+								{#if identityGaps(specOf(item), !!item.state.body_source_url).length}<p class="note">Still needs: {identityGaps(specOf(item), !!item.state.body_source_url).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}{/if}
 							{/if}
 							<label class="field"><span>{item.entry.kind === 'character' ? 'Notes · only changes from the pictures (e.g. dry hair, teal plaid instead of the hoodie)' : 'Notes · what it is, its era, sizes in metres'}</span><textarea rows="3" bind:value={drafts[key].notes}></textarea></label>
 							<div class="row">
@@ -275,7 +283,8 @@
 									<button type="button" class="key on" disabled={!!busy[key] || promptDrafts[key] !== item.state.prompt} onclick={() => void quote(key)}>Check and price</button>
 								</div>
 							{:else}
-								{@const gaps = factsGaps(specOf(item), item.entry.kind, !!item.state.body_source_url)}
+								{@const gaps = item.state.workflow ? (item.state.workflow.confirmed ? [] : ['the pre-prompt check']) : factsGaps(specOf(item), item.entry.kind, !!item.state.body_source_url)}
+								{#if item.state.workflow && !item.state.workflow.confirmed}<p class="muted">Pre-prompt check: review the attached images, facts, creation step, and approved predecessor above. Confirm this combination before the writer prepares the full prompt.</p><button type="button" class="key" disabled={!!busy[key]} onclick={async () => { if (drafts[key] && drafts[key].from !== JSON.stringify(specOf(item)) && !(await call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false }))) return; await call(key, 'Confirming…', { action: 'set_workflow', key, confirm: true }); }}>Confirm pre-prompt check</button>{/if}
 								<button type="button" class="key on" disabled={!!busy[key] || gaps.length > 0} title={gaps.length ? `Fill in ${gaps.join(', ')} first` : 'The Agent looks at the images, gives each one its job and writes the prompt'} onclick={() => void writePrompt(item)}>Write prompt</button>
 							{/if}
 							{#if approvals[key]}
@@ -326,7 +335,7 @@
 							{/if}
 						{:else if item.current}
 							<button type="button" class="pic" onclick={() => (zoom = { src: item.current!.url, alt: `${item.entry.name}, current sheet` })} aria-label={`Show ${item.entry.name}'s current sheet big`}><img class="sheet old" src={item.current.url} alt={`${item.entry.name}, current sheet`} loading="lazy" /></button>
-							<p class="muted">Current sheet (not yet ONE SHOT)</p>
+							<p class="muted">Existing reference · available to reuse</p>
 						{:else}
 							<p class="muted">Not made yet</p>
 						{/if}

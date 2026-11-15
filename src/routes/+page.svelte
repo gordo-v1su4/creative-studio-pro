@@ -19,6 +19,7 @@
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
+	import NewProjectFlow from '$lib/ui/NewProjectFlow.svelte';
 	import CapabilityChip from '$lib/ui/CapabilityChip.svelte';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
@@ -737,32 +738,9 @@
 	}
 
 	async function createProject() {
-		creating = true;
-		try {
-			const response = await fetch('/api/projects', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					command: 'create_project',
-					title: 'Untitled creative spurt',
-					brief: '',
-					creative_focus: 'full room',
-					created_by: 'gordo'
-				})
-			});
-			if (!response.ok && response.status !== 201) {
-				throw new Error(`create_project failed: ${response.status}`);
-			}
-			const body = (await response.json()) as { ok: boolean; data: Project };
-			if (!body.ok) throw new Error('create_project rejected');
-			await loadProjects();
-			await openProject(body.data.project_id);
-		} catch (e) {
-			loadError = e instanceof Error ? e.message : 'Project create failed';
-		} finally {
-			creating = false;
-		}
+		newProjectOpen = true;
 	}
+	let newProjectOpen = $state(false);
 
 	async function saveSeed() {
 		if (!activeProject || !seedDirty || savingSeed) return;
@@ -981,6 +959,8 @@
 		};
 	});
 </script>
+
+{#if newProjectOpen}<NewProjectFlow onClose={() => newProjectOpen = false} onCreated={async (id) => { await loadProjects(); await switchProject(id); openWorkspace('story'); newProjectOpen = false; }} />{/if}
 
 <svelte:head><title>{activeProject ? `${activeProject.title} — Creative Studio Pro` : 'Creative Studio Pro'}</title></svelte:head>
 
@@ -1214,7 +1194,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} bind:tab={productionTab} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">

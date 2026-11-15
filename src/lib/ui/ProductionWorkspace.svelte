@@ -20,14 +20,16 @@
 	import { droppedFiles, pickedFiles } from '$lib/ui/dropped-files';
 	import HiggsfieldImport from '$lib/ui/HiggsfieldImport.svelte';
 	import TakeReview from '$lib/ui/TakeReview.svelte';
+	import StoryPlan from '$lib/ui/StoryPlan.svelte';
 
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
-	let { project, onUpdated, onAddFiles, onImportRenders, tab = $bindable('story') }: {
+	let { project, onUpdated, onAddFiles, onImportRenders, onOpenBoard, tab = $bindable('story') }: {
 		project: Project; onUpdated: (project: Project) => void;
 		/** Files dropped or picked on the Shots tab: each becomes a new shot (off the spine, not benched). */
 		onAddFiles?: (files: File[]) => void;
 		/** Higgsfield renders picked on the Shots tab (job ids, in the order to add): each becomes a new shot. */
 		onImportRenders?: (jobIds: string[]) => void;
+		onOpenBoard?: (groupId?: string) => void;
 		tab?: ProductionTab
 	} = $props();
 
@@ -250,6 +252,7 @@
 	}
 
 	async function generate() {
+		if (project.production.story_plan) { error = 'Review the proposed moments and draft their shots in the trailer plan above.'; return; }
 		busy = true; error = null;
 		try { const next = await request({ mode: 'generate', expected_version: project.version }); if (next.production.cards.length) tab = 'beats'; }
 		catch (cause) { error = cause instanceof Error ? cause.message : 'Story build failed'; }
@@ -260,6 +263,12 @@
 		saving = true; error = null;
 		try { await request({ mode: 'save', expected_version: project.version, production: draft }); }
 		catch (cause) { error = cause instanceof Error ? cause.message : 'Production save failed'; }
+		finally { saving = false; }
+	}
+	async function continueToPrep() {
+		saving = true; error = null;
+		try { await request({ mode: 'save', expected_version: project.version, production: draft }); tab = 'prep'; }
+		catch (cause) { error = cause instanceof Error ? cause.message : 'Could not save before continuing'; }
 		finally { saving = false; }
 	}
 
@@ -361,13 +370,19 @@
 
 	{#if tab === 'story'}
 		<div class="mx-auto max-w-4xl p-5">
+			{#if project.production.story_plan}
+				<StoryPlan {project} {onUpdated} onPrep={() => void continueToPrep()} onBoard={() => onOpenBoard?.(`plan-section-${project.production.story_plan?.sections[0].id}`)} />
+			{/if}
 			{#if project.series}
 				<SeasonStructure {project} />
 			<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} {onUpdated} /></div>
 			{/if}
-			<div class="mb-12">
+			<details class="mb-8" open={!project.production.story_plan}>
+				<summary class="cursor-pointer text-sm text-[#80aeb9]">Idea tools · Trailer House</summary>
 				<TrailerHousePanel {project} {onUpdated} onBuildStory={() => void generate()} building={busy} />
-			</div>
+			</details>
+			<details open={!project.production.story_plan}>
+				<summary class="mb-5 cursor-pointer text-sm text-[#80aeb9]">Delivery brief and working story notes</summary>
 			<div class="mb-12">
 				<BriefPanel {project} {onUpdated} />
 				<details class="mt-4">
@@ -377,19 +392,20 @@
 			</div>
 			<div class="flex items-start gap-4">
 				<div class="grow">
-					<div class="meta-label text-[#59d9cf]">DRAFT STORY SPINE</div>
+					<div class="meta-label text-[#59d9cf]">{project.production.story_plan ? 'WORKING STORY NOTES' : 'DRAFT STORY SPINE'}</div>
 					<h2 class="mt-2 text-xl font-semibold text-[#c7eef0]">{draft.title || project.title}</h2>
 					<p class="mt-2 max-w-3xl text-[13px] leading-6 text-[#80aeb9]">{draft.logline || 'Generate the first story draft from the seed, interview evidence, and selected creative voice.'}</p>
 				</div>
-				<button type="button" class="btn btn-accent" onclick={() => void generate()} disabled={busy}>{busy ? 'The Agent is building…' : draft.cards.length ? 'Rebuild story' : 'Build story draft'}</button>
+				{#if !project.production.story_plan}<button type="button" class="btn btn-accent" onclick={() => void generate()} disabled={busy}>{busy ? 'The Agent is building…' : draft.cards.length ? 'Rebuild story' : 'Build story draft'}</button>{/if}
 			</div>
 			<div class="mt-5 grid gap-4 md:grid-cols-2">
 				<label class="workspace-field"><span>Premise</span><textarea bind:value={draft.premise} rows="9" placeholder="The complete dramatic premise…"></textarea></label>
 				<label class="workspace-field"><span>Theme / dramatic question</span><textarea bind:value={draft.theme} rows="9" placeholder="What the story is really testing…"></textarea></label>
 			</div>
+			</details>
 		</div>
 	{:else if tab === 'prep'}
-		{#if project.series}<PrepWorkspace {project} {onUpdated} />{:else}<p class="p-5 text-[12.5px] text-nr-muted">Prep is for an episode imported from a series.</p>{/if}
+		<PrepWorkspace {project} {onUpdated} onContinue={() => tab = 'story'} />
 	{:else if tab === 'beats'}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class={['relative min-h-full', dropping && 'shots-dropping']} ondragover={shotsDragOver} ondragleave={(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) dropping = false; }} ondrop={shotsDrop}>

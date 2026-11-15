@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { referenceSpecSchema } from '$lib/domain/prep';
+import { addPrepEntry, setPrepWorkflow } from '$lib/server/prep';
 import { IMAGE_MODEL_IDS } from '$lib/domain/image-models';
 import { episodeSpend } from '$lib/domain/stills';
 import { getPrepDeps } from '$lib/server/config';
@@ -14,6 +15,8 @@ import {
 const fail = (status: number, message: string, reasons: string[] = []) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 422 ? 'GATE_BLOCKED' : 'INVALID_COMMAND', message, reasons, retryable: status >= 500, source: 'prep' } }, { status });
 const key = z.string().min(1).max(300);
 const bodySchema = z.discriminatedUnion('action', [
+	z.object({ action: z.literal('set_workflow'), key, stage: z.enum(['face_lock', 'outfit', 'sheet', 'environment', 'coverage']).optional(), approved_source_url: z.string().max(1000).nullable().optional(), confirm: z.boolean().optional() }),
+	z.object({ action: z.literal('add_entry'), kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200) }),
 	z.object({ action: z.literal('use_version'), key, version_id: z.string().min(1).max(300) }),
 	z.object({ action: z.literal('set_image_model'), key, model: z.enum(IMAGE_MODEL_IDS) }),
 	z.object({ action: z.literal('set_body_source'), key, url: z.string().min(1).max(1000).nullable() }),
@@ -66,6 +69,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!body.success) return fail(400, body.error.issues[0]?.message ?? 'Invalid Prep request');
 		const b = body.data;
 		switch (b.action) {
+			case 'set_workflow': return done(await setPrepWorkflow(deps, project, b.key, b));
+			case 'add_entry': await addPrepEntry(deps, projectId.data, b.kind, b.name); return done({ ok: true });
 			case 'use_version': return done(await usePrepVersion(deps, project, b.key, b.version_id));
 			case 'set_image_model': return done(await setImageModel(deps, project, b.key, b.model));
 			case 'set_body_source': return done(await setBodySource(deps, projectId.data, b.key, b.url));

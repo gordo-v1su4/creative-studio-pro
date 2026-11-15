@@ -23,10 +23,13 @@ requirements and design source of truth for what the app is being built toward.
 
 Shorter entry points at repo root: [../PRD.md](../PRD.md), [../UI-UX.md](../UI-UX.md).
 
-## Deferred workflow improvements
+## Story and Prep workflow improvements
 
-Recorded November 15, 2026 during Blood Rush trailer planning. These are two
-follow-ups for after the trailer work; do not switch into implementing them now.
+Recorded November 15, 2026 during Blood Rush trailer planning, then brought into
+scope at the owner's request. The first implementation is described in
+[Trailer moments and Joey Prep](../implementation/trailer-moments-and-joey-prep.md).
+The verified public Notion template link, full coverage report and automatic
+Review Room template synchronization remain follow-ups. The original requirements:
 
 1. **New Project starts from the owner's actual starting point.** Offer three
    paths: **I need an idea**, **I have an idea**, and **I already have a story**.

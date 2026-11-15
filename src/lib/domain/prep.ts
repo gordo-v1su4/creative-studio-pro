@@ -201,6 +201,7 @@ export type ScaleCheck = z.infer<typeof scaleCheckSchema>;
 
 export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
 export const prepStateSchema = z.object({
+	workflow: z.object({ builder: z.enum(['castkit-v1', 'scenecraft-v1']), stage: z.enum(['face_lock', 'outfit', 'sheet', 'environment', 'coverage']), approved_source_url: z.string().max(1000).nullable().default(null), confirmed: z.boolean().default(false) }).optional(),
 	image_model: z.enum(['gpt_image_2_5', 'nano_banana_pro']).default('gpt_image_2_5'),
 	sources: z.array(prepSourceSchema).max(12).default([]),
 	/** Explicit source role: portraits must not silently become body references. */
@@ -217,7 +218,7 @@ export const prepStateSchema = z.object({
 	result: z.object({ file: z.string(), source_file: z.string().optional(), url: z.string(), made_at: z.string(), outside: z.boolean().default(false), uploaded: z.boolean().default(false), note: z.string().max(500).default(''), scale: scaleCheckSchema.optional() }).nullable().default(null)
 });
 export type PrepState = z.infer<typeof prepStateSchema>;
-export const prepFileSchema = z.object({ schema_version: z.literal(1), props: z.array(z.string().max(200)).max(50).default([]), entries: z.record(z.string(), prepStateSchema).default({}) });
+export const prepFileSchema = z.object({ schema_version: z.literal(1), props: z.array(z.string().max(200)).max(50).default([]), custom_entries: z.array(z.object({ kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200) })).max(200).optional(), entries: z.record(z.string(), prepStateSchema).default({}) });
 export type PrepFile = z.infer<typeof prepFileSchema>;
 export const emptyPrep = (): PrepFile => ({ schema_version: 1, props: [], entries: {} });
 export const emptyState = (): PrepState => prepStateSchema.parse({});

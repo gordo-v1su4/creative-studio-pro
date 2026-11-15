@@ -2,12 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /**
- * The Agent's own skills (ADR 0004): the five ONE SHOT Community Edition skills, copied into `agent-skills/`.
+ * The Agent's own skills (ADR 0004): five ONE SHOT skills plus Joey's Castkit and Scenecraft.
  * They are the app's logic for references, image prompts, keyframes, video prompts, fresh ideas and score
  * prompts (ADR 0003). The app's copy is its own: edit it here when the app needs it to change; it is not synced
  * from the Hermes vault.
  */
-export const AGENT_SKILLS = ['live-action-studio', 'oneshot-image-prompts', 'ghost', 'fresh-idea-community', 'ghostsuno'] as const;
+export const AGENT_SKILLS = ['live-action-studio', 'oneshot-image-prompts', 'ghost', 'fresh-idea-community', 'ghostsuno', 'castkit-v1', 'scenecraft-v1'] as const;
 export type AgentSkill = (typeof AGENT_SKILLS)[number];
 
 export const agentSkillPath = (skill: AgentSkill, file = 'SKILL.md') => join(process.cwd(), 'agent-skills', skill, file);

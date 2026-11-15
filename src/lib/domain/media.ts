@@ -46,7 +46,7 @@ export function applyAddTake(production: ProductionState, cardId: string, take: 
 		ok: true,
 		production: {
 			...production,
-			assets: [...production.assets, { ...take, card_id: cardId }],
+			assets: [...production.assets, { ...take, identity_tags: take.identity_tags ?? production.cards.find(card => card.card_id === cardId)?.identity_tags, card_id: cardId }],
 			cards: production.cards.map((card) => (card.card_id === cardId ? { ...card, pick_take_id: take.asset_id } : card))
 		}
 	};
