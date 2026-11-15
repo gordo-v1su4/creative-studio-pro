@@ -15,7 +15,9 @@ App-owned skill copies came unchanged from `C:/Users/Gordo/.agents/skills/` on N
 | castkit-v1 | Joey | 1F3BAEC1F908F7A8E015160F4F70BC89B52DFFEDD72F9EE6F8CE80CC08FC14E9 |
 | scenecraft-v1 | Joey | 78B43C660883A80D07C77F921049E15312CD53FD9B1E901BEE7AA0316E8EF57B |
 
-No global/vault skill was edited. Ghost continues to guide shot coverage. Project Stack Structure's Bible adapter was inspected in its unreleased worktree; it was not transplanted or treated as deployed.
+The initial import left global/vault skills unchanged. A subsequent owner-requested Castkit correction replaces the sheet's neckline-dependent hollow-body variants with an intact-neck head crop for every outfit. The chest, shoulders and full natural neck stay solid; only the head is omitted immediately below the jawline, with no visible cross-section. Jewelry stays against the body. This correction is present in the app-owned copy and the installed `.agents` and `.codex` Castkit copies; the table above records the original import hashes. No vault skill was edited. Previously saved prompts require redrafting to use the correction.
+
+Ghost continues to guide shot coverage. Project Stack Structure's Bible adapter was inspected in its unreleased worktree; it was not transplanted or treated as deployed.
 
 Declared character/location keys travel from moments to board cards, queued generation records and landed takes. Generation records freeze the identity declarations at submission. These tags are metadata, not automatic visual recognition or model training.
 

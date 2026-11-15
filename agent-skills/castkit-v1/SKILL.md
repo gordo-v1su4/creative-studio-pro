@@ -343,7 +343,7 @@ Built only from an approved outfit image. One prompt, one image.
 
 ## 3-panel layout
 
-1. **LEFT — full body front, headless.** The head is removed from the body, not cropped by the frame. Isolates garment, silhouette, and proportion.
+1. **LEFT — full body front, head cropped off above the intact neck.** Keep the complete solid body, chest, shoulders and natural neck; only the head is absent.
 2. **CENTER — full body rear, head attached.** Hair fall, back construction, hem, footwear.
 3. **RIGHT — tight chest-up face.** Just above the crown to the collarbones, face filling the panel. Never waist-up.
 
@@ -363,41 +363,19 @@ Ship the matching clause verbatim inside each panel block:
 
 **If the user asks for a three-quarter panel by name,** run it — state the degree of turn and which way the body points on screen, and leave every other panel dead-on.
 
-## The headless cut — chosen by the neckline
+## The headless front — intact neck, clean head crop
 
-**The test: does the garment have a real opening at the top the eye expects a neck to come out of?**
-Yes → **Variant A, ghost mannequin** (the neck disappears, the opening is a hollow).
-No → **Variant B, clean neck cut** (the neck stays and ends in a flat sculptural edge).
+For every neckline, keep the complete solid body and the full natural neck. Remove only the head and head hair at the top of the neck, immediately below the jawline. This is a clean image crop at the head, not a physical cross-section. The neck stays its normal length and width; the chest, shoulders and skin remain intact. Keep necklaces and chokers resting naturally against the neck and chest.
 
-| Neckline | Variant |
-|---|---|
-| Mock neck, turtleneck, funnel, collar band, crew, shirt or jacket collar, hood | A |
-| Ribbed tank, high scoop at the collarbone, keyhole, zip closed to the throat | A |
-| Strapless, bandeau, tube, halter, spaghetti strap, thin-strap camisole | B |
-| Wide or square scoop, deep cowl, plunge, V below the collarbone | B |
-| Triangle bralette, bikini top, bare shoulders with a separate choker | B |
+Never use an invisible-body or hollow-garment treatment in a character sheet. Do not expose the inside of the neck, torso or clothes. Do not replace the chest with empty background or a dark cavity. A hoodie, collar or open neckline does not change this rule. Standalone garment-repair plates are a separate task and must not supply the sheet's body instructions.
 
-**Borderline:** collar plus bare shoulders (mock-neck sleeveless, halter into a neckband) → A, the collar wins. A scoop sitting right on the collarbone and genuinely ambiguous → B.
-
-**The two differences that matter:** A says *no head, no neck, no hair*; B says *no head, no hair* and keeps the neck. A names the collar specifically ("the ribbed crew collar," not "the collar").
-
-### Variant A — ghost mannequin
+Ship this panel block with only the bracket filled:
 
 ```
-LEFT PANEL — full body front view, no head, no neck, and no hair. The body faces the camera dead-on from the shoulders down to [the shoes / the hem] — shoulders and hips both square to the lens and level, both sides of the figure equally visible, arms relaxed at the sides, hands open and loose, feet planted parallel and pointing straight at camera, weight even across both feet. This is a flat frontal view regardless of how the figure stands in the reference: no three-quarter turn, no rotation of the torso or hips away from the lens, no twist at the waist, no contrapposto, no weight shifted onto one hip, no shoulder dropped or pushed forward, no foot turned out. There is no head, no neck, and no hair at all — nothing rises above the shoulder line, and no hair falls across the chest or shoulders. The [specific collar] holds its own three-dimensional shape at the top of the garment and its opening is an empty dark hollow looking down into the inside of the garment, with the inner back of the fabric faintly visible inside the opening. The garment reads as worn by an invisible body — full volume, natural drape, real fabric tension across the chest and shoulders, but nothing emerging from the neckline. No stump, no skin, no cut edge, no anatomy, no blood, not blurred, not faded, not dissolving, no wisps, no smoke, no ghosting, no transparency in the body. The panel keeps full headroom — generous empty field above the shoulders where the head would be — so the figure sits at the same scale and position in the frame as a normal full-body portrait.
+LEFT PANEL — full body front view, head cropped off cleanly above the intact neck. The body faces the camera dead-on — shoulders and hips both square to the lens and level, both sides of the figure equally visible, feet planted parallel and pointing straight at camera, weight even across both feet. This is a flat frontal view regardless of how the figure stands in the reference: no three-quarter turn, no rotation of the torso or hips away from the lens, no twist at the waist, no contrapposto, no weight shifted onto one hip, no shoulder dropped or pushed forward, no foot turned out. Show the complete solid figure from the top of the neck down to [the shoes / the hem], arms relaxed at the sides, hands open and loose. Keep the entire natural neck at its normal length, the shoulders, upper chest and all visible skin intact, matching the reference. Remove only the head and head hair immediately below the jawline, at the very top of the neck. Finish there with a clean straight image-crop edge; show no top-facing surface, exposed interior or anatomical cross-section. Above the edge is only the flat gray field. The body remains solid and normally clothed, with visible chest skin preserved wherever the outfit is open. Necklaces and chokers rest naturally against the intact neck and chest. No hollow torso, empty clothing shell, floating jewelry, dark cavity, transparency, exposed tissue or blood. Leave generous empty headroom where the head would be, and keep the front body at the same anatomical scale as the rear body.
 ```
 
-Necklace or choker: *"[The necklace] still sits around the empty collar opening, resting on the fabric."*
-
-### Variant B — clean neck cut
-
-```
-LEFT PANEL — full body front view, headless. The full figure faces the camera dead-on from the shoulders down to [the shoes / the hem] — shoulders and hips both square to the lens and level, both sides of the figure equally visible, arms relaxed at the sides, hands open and loose, feet planted parallel and pointing straight at camera, weight even across both feet. This is a flat frontal view regardless of how the figure stands in the reference: no three-quarter turn, no rotation of the torso or hips away from the lens, no twist at the waist, no contrapposto, no weight shifted onto one hip, no shoulder dropped or pushed forward, no foot turned out. There is no head and no hair — no hair falls across the chest or shoulders. The neck rises a short way from the shoulders and terminates in a clean, flat, sharply defined horizontal edge at the base of the throat, exactly like a headless dress-form mannequin — a crisp sculptural cut with a clean visible edge, not blurred, not faded, not dissolving, no wisps, no smoke, no ghosting, no transparency, no blood, no anatomy detail at the cut. Above that clean edge there is only empty field. The panel keeps full headroom — generous empty space above the shoulders where the head would be — so the figure sits in the frame at the same scale and position as a normal full-body portrait.
-```
-
-Necklace or choker: *"[The necklace] still sits around the base of the throat below that edge, resting against the skin."*
-
-**For both:** ship the block verbatim with only brackets filled — the suppression stack is why the panel comes back clean. The hair goes with the head. Full headroom always. The panel label leads the block.
+The head and head hair are absent only from the front panel. Keep the head attached in the rear panel and the full face visible in the face panel.
 
 ## 3-panel prompt
 
@@ -410,7 +388,7 @@ A three-panel character reference sheet composed as one horizontal frame, divide
 
 [Wardrobe — head to toe, every garment, footwear, jewelry. Once, for all panels.]
 
-[LEFT PANEL — Variant A or B, verbatim.]
+[LEFT PANEL — intact-neck head crop block, verbatim.]
 
 CENTER PANEL — full body rear, head attached. The complete figure from above the crown down to [the shoes / the hem], seen dead-on from directly behind — shoulders and hips square to the lens and level, the spine centered in the panel, arms relaxed at the sides, feet parallel, weight even. This is a flat rear view: no three-quarter turn, no rotation, no twist at the waist, no weight shifted onto one hip, no glance back over the shoulder. [Hair fall, back construction, hem, footwear from behind.]
 
@@ -425,7 +403,7 @@ Skin renders at its true natural tone, identical in value and hue across the fac
 
 If the user names it, say once: *"Heads up — six panels cuts the pixel budget per cell, so the face holds noticeably less detail than the 3-panel's face lock. Happy to run it."* Then proceed and never re-litigate.
 
-**Layout:** a 3×2 grid in one frame. Default panels: full body front · left profile close headshot · full body back · right profile close headshot · front face close headshot · one detail close-up (nails, a key jewelry piece, a piercing, a tattoo, or a held prop — the user picks at the check). Swap panels by name if asked, keep the grid. Every panel carries its position label (TOP LEFT, TOP CENTER, and so on). The front panel can use the headless cut on request, chosen by the same neckline test.
+**Layout:** a 3×2 grid in one frame. Default panels: full body front · left profile close headshot · full body back · right profile close headshot · front face close headshot · one detail close-up (nails, a key jewelry piece, a piercing, a tattoo, or a held prop — the user picks at the check). Swap panels by name if asked, keep the grid. Every panel carries its position label (TOP LEFT, TOP CENTER, and so on). The front panel can use the same intact-neck head crop on request.
 
 **Profiles:** state which way the face points on screen and that the ear, jaw line, and nose profile read cleanly against the field.
 
@@ -471,7 +449,7 @@ If the user names it, say once: *"Heads up — six panels cuts the pixel budget 
 - [ ] Additions carry the firewall; face-at-rest changes trigger a re-lock
 - [ ] Outfits: proposal approved first, then a direct build — no stand-in model, no preemptive plates
 - [ ] References: fewest needed, each one's role stated when more than one
-- [ ] Sheets: 3-panel unless named; identity and wardrobe once; headless variant by the neckline test, block verbatim, collar named on A; skin-tone line present
+- [ ] Sheets: 3-panel unless named; identity and wardrobe once; intact-neck head crop for every neckline, block verbatim, solid body and naturally resting jewelry; skin-tone line present
 - [ ] Sheets: every panel dead-on with its orientation clause verbatim — no three-quarter turn anywhere unless the user asked for it
 - [ ] Correct flat close for the render, all five requirements present, uniform across panels
 - [ ] Garment text written exactly with placement
@@ -494,10 +472,10 @@ If the user names it, say once: *"Heads up — six panels cuts the pixel budget 
 | Sheet mushy or averaged | Too many references — drop to the approved outfit image |
 | Panel comes back in a three-quarter turn | Orientation clause missing, trimmed, or paraphrased — ship it verbatim |
 | Figure copied the reference's angled, hip-cocked stance | The "regardless of how the figure stands in the reference" override was cut |
-| Stump or anatomy at the neck | Wrong headless variant, or the suppression stack was trimmed |
-| Hollow filled in solid | Collar not named specifically on Variant A |
+| Neck interior or cross-section visible | Keep the full natural neck; use a straight image-crop edge immediately below the jawline, with no top surface |
+| Hollow torso, empty clothes or floating necklace | Remove invisible-body wording; preserve solid chest skin, full neck and jewelry resting against the body |
 | Hair on chest with no head | Hair-goes-with-the-head clause missing |
-| Headless figure smaller than other panels | Full-headroom clause missing |
+| Front figure smaller than rear | Restore matching anatomical scale and empty headroom above the neck |
 | Animated character sliding toward photoreal | Style lock missing or paraphrased — restore it verbatim at the top of the close |
 | Animated character inconsistent across panels | Style lock not stated as applying to every panel |
 | Garment rendered in the reference's material | Material override line missing |
