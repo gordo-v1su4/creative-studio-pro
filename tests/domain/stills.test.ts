@@ -45,4 +45,9 @@ describe('the still approval step (V1S-373)', () => {
 			'nano_banana_pro', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--resolution', '2k', '--image-references', 'a.png'
 		]);
 	});
+	test('Sunburst 2.6 explicitly uses High and 2K without the older variant flag', () => {
+		expect(stillArgs({prompt:'x',references:['mara.png'],aspect_ratio:'16:9',model:'gpt_image_2_6'},'p.json')).toEqual([
+			'gpt_image_2_6','--prompt','@p.json','--aspect_ratio','16:9','--quality','high','--resolution','2k','--image-references','mara.png'
+		]);
+	});
 });

@@ -161,33 +161,33 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		if (!after.ok) throw new Error(after.message);
 		expect(after.items[0].versions).toHaveLength(2);
 	});
-	test('model selection persists, prices and sends the selected model, and rejects a stale approval', async () => {
+	test.each(['nano_banana_pro', 'gpt_image_2_6'] as const)('%s selection persists, prices and sends the selected model, and rejects a stale approval', async (model) => {
 		const { deps, projectId, submitted, estimated } = await setup();
 		const project = async () => (await deps.store.readProject(projectId))!;
 		await draftSpec(deps, await project(), 'r-mara');
 		await writePrompt(deps, await project(), 'r-mara');
 		const before = await quotePrep(deps, await project(), 'r-mara');
 		if (!before.ok) throw new Error(before.message);
-		const changed = await setImageModel(deps, await project(), 'r-mara', 'nano_banana_pro');
+		const changed = await setImageModel(deps, await project(), 'r-mara', model);
 		if (!changed.ok) throw new Error(changed.message);
 		expect(changed.prep.entries['r-mara'].prompt).toBe(PROMPT);
 		const view = await prepView(deps, await project());
 		if (!view.ok) throw new Error(view.message);
-		expect(view.items[0].state.image_model).toBe('nano_banana_pro');
+		expect(view.items[0].state.image_model).toBe(model);
 		const stale = await sendPrep(deps, await project(), 'r-mara', { approval_key: before.approval.approval_key, confirmed_credits: 2.75 });
 		expect(stale.ok).toBeFalse();
 		expect(submitted).toHaveLength(0);
 		const after = await quotePrep(deps, await project(), 'r-mara');
 		if (!after.ok) throw new Error(after.message);
-		expect(after.approval.model).toBe('Nano Banana Pro');
+		expect(after.approval.model).toBe(model === 'gpt_image_2_6' ? 'ChatGPT Image 2.6 Sunburst' : 'Nano Banana Pro');
 		expect(after.approval.aspect_ratio).toBe('16:9');
-		expect(estimated.at(-1)?.model).toBe('nano_banana_pro');
+		expect(estimated.at(-1)?.model).toBe(model);
 		expect(estimated.at(-1)?.aspect_ratio).toBe('16:9');
 		const sent = await sendPrep(deps, await project(), 'r-mara', { approval_key: after.approval.approval_key, confirmed_credits: 2.75 });
 		expect(sent.ok).toBeTrue();
-		expect(submitted[0].model).toBe('nano_banana_pro');
+		expect(submitted[0].model).toBe(model);
 		expect(submitted[0].aspect_ratio).toBe('16:9');
-		expect((await project()).production.still_sends?.[0].model).toBe('nano_banana_pro');
+		expect((await project()).production.still_sends?.[0].model).toBe(model);
 		expect((await setImageModel(deps, await project(), 'r-mara', 'gpt_image_2_5')).ok).toBeFalse();
 	});
 	test('an explicit original body omits physique facts and blocks their reintroduction, while portraits keep the design path', async () => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { IMAGE_MODEL_IDS } from './image-models';
 
 /**
  * Prep (V1S-374): the step before shots where the references an episode needs are listed, given source images
@@ -202,7 +203,7 @@ export type ScaleCheck = z.infer<typeof scaleCheckSchema>;
 export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file: z.string().min(1).max(1000), url: z.string().max(1000), added_at: z.string() });
 export const prepStateSchema = z.object({
 	workflow: z.object({ builder: z.enum(['castkit-v1', 'scenecraft-v1']), stage: z.enum(['face_lock', 'outfit', 'sheet', 'environment', 'coverage']), approved_source_url: z.string().max(1000).nullable().default(null), confirmed: z.boolean().default(false) }).optional(),
-	image_model: z.enum(['gpt_image_2_5', 'nano_banana_pro']).default('gpt_image_2_5'),
+	image_model: z.enum(IMAGE_MODEL_IDS).default('gpt_image_2_5'),
 	sources: z.array(prepSourceSchema).max(12).default([]),
 	/** Explicit source role: portraits must not silently become body references. */
 	body_source_url: z.string().max(1000).nullable().default(null),

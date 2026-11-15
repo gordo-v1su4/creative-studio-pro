@@ -3,7 +3,8 @@
 	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
 	import { factsGaps, handOffLine, identityGaps, notesOf, prepStage } from '$lib/domain/prep';
 	import type { StillApproval } from '$lib/domain/stills';
-	import { IMAGE_MODEL_IDS, IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
+	import type { ImageModelId } from '$lib/domain/image-models';
+	import ImageModelPicker from './ImageModelPicker.svelte';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 
 	/**
@@ -223,9 +224,7 @@
 							{#if ['outfit', 'sheet', 'coverage'].includes(item.state.workflow.stage)}<label class="field"><span>Approved predecessor reference</span><select value={item.state.workflow.approved_source_url ?? ''} aria-label={`Approved predecessor for ${item.entry.name}`} onchange={(event) => void call(key, 'Selecting reference…', { action: 'set_workflow', key, approved_source_url: event.currentTarget.value || null })}><option value="">Choose an attached image you have approved</option>{#each item.state.sources as source (source.url)}<option value={source.url}>{source.name}</option>{/each}</select></label>{/if}
 							<p class="muted">{item.entry.kind === 'character' ? 'Photoreal · flat 18% neutral gray · face and outfit: 3:4 · sheet: 16:9. Lock the face, then approve an outfit before making a sheet.' : 'Photoreal environment plate · motivated light · master geometry stays fixed for matching coverage.'}</p>
 						{/if}
-						<label class="field"><span>Image model</span><select class="key" aria-label={`Image model for ${item.entry.name}`} value={item.state.image_model} disabled={!!busy[key] || !!item.state.job} onchange={(event) => void changeModel(key, event.currentTarget.value as ImageModelId)}>
-							{#each IMAGE_MODEL_IDS as model (model)}<option value={model}>{IMAGE_MODELS[model].label} · 2K{model === 'gpt_image_2_5' ? ' · High' : ''}</option>{/each}
-						</select></label>
+						<div class="field"><span>Image model · Higgsfield</span><ImageModelPicker value={item.state.image_model} name={item.entry.name} disabled={!!busy[key] || !!item.state.job} onchange={(model) => void changeModel(key, model)} /></div>
 						{#if item.entry.kind === 'character' && !item.state.workflow}<p class="muted">16:9 landscape sheet · both models</p>{/if}
 						{#if jobs[key]}
 							{@const job = jobs[key]}

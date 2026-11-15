@@ -154,7 +154,8 @@ export function stillArgs(request: StillRequest, promptFile: string): string[] {
 	const model = IMAGE_MODELS[request.model ?? 'gpt_image_2_5'];
 	return [
 		model.job_type, '--prompt', `@${promptFile}`, '--aspect_ratio', request.aspect_ratio ?? '1:1',
-		...('variant' in model ? ['--variant', model.variant, '--quality', model.quality] : []), '--resolution', model.resolution,
+		...('variant' in model ? ['--variant', model.variant] : []),
+		...('quality' in model ? ['--quality', model.quality] : []), '--resolution', model.resolution,
 		...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])
 	];
 }
