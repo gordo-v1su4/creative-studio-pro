@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { characterSheetInputsSchema, CHARACTER_SHEET_TEMPLATE, type CharacterSheetInputs } from '$lib/domain/character-sheet';
 	let { value, sources, primary, busy, ondirty, onsave }: { value?: CharacterSheetInputs; sources: Array<{url:string;name:string}>; primary?: string | null; busy: boolean; ondirty: (dirty:boolean) => void; onsave: (input:CharacterSheetInputs) => Promise<boolean> } = $props();
-	let fields = $state(untrack(() => structuredClone(value ?? characterSheetInputsSchema.parse({}))));
+	let fields = $state(untrack(() => characterSheetInputsSchema.parse(value ?? {})));
 	let dirty = $state(false);
 	function changed() { dirty = true; ondirty(true); }
 	async function save() { if (await onsave($state.snapshot(fields))) { dirty = false; ondirty(false); } }
