@@ -1,11 +1,11 @@
-FROM oven/bun:1.3.14 AS build
+FROM oven/bun:1.4.4 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --ignore-scripts
 COPY . .
 RUN bun run build
 
-FROM oven/bun:1.3.14
+FROM oven/bun:1.4.4
 COPY --from=ghcr.io/astral-sh/uv:0.9.5 /uv /uvx /usr/local/bin/
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app

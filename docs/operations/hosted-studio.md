@@ -24,10 +24,23 @@ Provider, Notion and Review Room keys belong only on the origin.
 | Origin `CSP_REQUIRE_GATEWAY` | `CREATIVE_STUDIO_PRO_REQUIRE_GATEWAY` |
 | Origin `CSP_PROJECT_ROOT` | `CREATIVE_STUDIO_PRO_HOSTED_PROJECT_ROOT` |
 | Adapter-node `ORIGIN` | `CREATIVE_STUDIO_PRO_HOSTED_ORIGIN` |
+| Origin `CSP_OPERATOR_ID` | `CREATIVE_STUDIO_PRO_OPERATOR_ID` |
+| Origin `KIMI_API_BASE` | `CREATIVE_STUDIO_PRO_KIMI_API_BASE` |
+| Origin `KIMI_MODEL` | `CREATIVE_STUDIO_PRO_KIMI_MODEL` |
+| Origin `CSP_REVIEW_ROOM_URL` | `CREATIVE_STUDIO_PRO_REVIEW_ROOM_URL` |
+| Origin `CSP_SPLITTER_URL` | `CREATIVE_STUDIO_PRO_SPLITTER_URL` |
+| Origin `BODY_SIZE_LIMIT` | `CREATIVE_STUDIO_PRO_BODY_SIZE_LIMIT` |
 
 Build an exact commit with `infra/studio/Dockerfile`; exclude secrets and data.
 Do not set `VERCEL` or `CSP_PUBLIC_SITE=1` on the origin. Local behavior is
 unchanged when `CSP_REQUIRE_GATEWAY` is unset.
+
+App VM owns `/opt/creative-studio-pro/compose.yaml`, mode-600 `private.env`, and
+the dedicated `data/` bind mount. Compose project `creative-studio-pro` binds
+loopback port 18110. The Caddy edge routes the origin to that listener. This is
+a Compose-owned Docker workload, visible through the existing Hawser environment;
+do not call it a Dockhand Internal stack until it has been explicitly adopted.
+The healthcheck expects anonymous API denial, not an unprotected library.
 
 Before activation, verify copied file SHA-256, project version, Prep selections,
 anonymous origin read/write denial, custom-domain sign-in, authenticated reads,
