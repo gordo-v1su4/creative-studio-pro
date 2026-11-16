@@ -9,7 +9,7 @@ import { ProjectCommandGateway } from '../../src/lib/application/gateway';
 import { SeriesStore } from '../../src/lib/server/series';
 import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
-import { addPrepEntry, setPrepWorkflow, useCurrentAsSource, setSheetInputs, editPrompt } from '../../src/lib/server/prep';
+import { addPrepEntry, setPrepWorkflow, useCurrentAsSource, setSheetInputs, editPrompt, setPrepVersionRemoved } from '../../src/lib/server/prep';
 import { characterSheetInputsSchema, fillCharacterSheet } from '../../src/lib/domain/character-sheet';
 import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, readPrep, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
@@ -79,6 +79,21 @@ test('local location attachments retain every named image without the series sta
 	if (!selected.ok) throw new Error(selected.message);
 	expect(selected.prep.entries[gym.entry.key].result!.file).toEndWith('.webp');
 	expect(await readFile(selected.prep.entries[gym.entry.key].result!.file)).toEqual(Buffer.from(images[0].bytes));
+	const removed = await setPrepVersionRemoved(deps, project, gym.entry.key, master.id, true);
+	if (!removed.ok) throw new Error(removed.message);
+	expect(removed.prep.entries[gym.entry.key].result).toBeNull();
+	expect(existsSync(selected.prep.entries[gym.entry.key].result!.file)).toBeTrue();
+	expect((await readPrep(deps.projectRoot, project.project_id)).entries[gym.entry.key].removed_versions).toContain(master.id);
+	const afterRemoval = await prepView(deps, project);
+	if (!afterRemoval.ok) throw new Error(afterRemoval.message);
+	expect(afterRemoval.items.find(item => item.entry.key === gym.entry.key)!.versions.filter(version => !version.removed)).toHaveLength(1);
+	expect((await usePrepVersion(deps, project, gym.entry.key, master.id)).ok).toBeFalse();
+	await addPrepEntry(deps, project.project_id, 'location', 'Other room');
+	expect((await setPrepVersionRemoved(deps, project, 'location:Other room', master.id, true)).ok).toBeFalse();
+	const restored = await setPrepVersionRemoved(deps, project, gym.entry.key, master.id, false);
+	if (!restored.ok) throw new Error(restored.message);
+	expect(restored.prep.entries[gym.entry.key].removed_versions).not.toContain(master.id);
+	expect((await usePrepVersion(deps, project, gym.entry.key, master.id)).ok).toBeTrue();
 });
 
 test('a standalone trailer derives required identities and reuses a show image without modifying its source', async () => {

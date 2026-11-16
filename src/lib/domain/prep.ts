@@ -219,6 +219,7 @@ export const prepStateSchema = z.object({
 	/** Every sheet file name this entry's saved versions were made under, so a renamed reference keeps them. */
 	sheet_names: z.array(z.string().max(300)).max(20).default([]),
 	output_names: z.record(z.string(), z.string().max(300)).optional(),
+	removed_versions: z.array(z.string().max(300)).optional(),
 	result: z.object({ file: z.string(), source_file: z.string().optional(), url: z.string(), made_at: z.string(), outside: z.boolean().default(false), uploaded: z.boolean().default(false), note: z.string().max(500).default(''), scale: scaleCheckSchema.optional() }).nullable().default(null)
 });
 export type PrepState = z.infer<typeof prepStateSchema>;

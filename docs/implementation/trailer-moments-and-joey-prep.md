@@ -53,3 +53,11 @@ Seven existing cast specs were restored from Late Shift without model calls;
 Bryson had no prior spec. General Portland, blue storm-night chase and sunset run
 references were organized into separate local Prep entries at owner direction.
 Focused Prep tests: 17 pass; typecheck: zero errors, one pre-existing CSS warning.
+
+Saved-image galleries now start collapsed. Use/Remove version share a two-button
+row. Removal is per Prep entry and persisted, with a collapsed Removed versions
+list offering Restore. Removing the current version clears its local selection;
+restoring makes it available without silently selecting it. Files and published
+Review Room references are retained, including any URLs existing shots use.
+Removed versions cannot be selected until restored. Tests cover persisted removal,
+current selection clearing, restore, retained files and cross-entry rejection.

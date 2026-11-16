@@ -16,7 +16,7 @@
 	 */
 	let { project, onUpdated, onContinue }: { project: Project; onUpdated: (project: Project) => void; onContinue?: () => void } = $props();
 
-	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: Array<{ id: string; name?: string; url: string; made_at: string; outside: boolean; current: boolean }> };
+	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: Array<{ id: string; name?: string; url: string; made_at: string; outside: boolean; current: boolean; removed?: boolean }> };
 	let items = $state<View[]>([]);
 	let spent = $state(0);
 	let loading = $state(true);
@@ -360,17 +360,27 @@
 							<p class="muted">Not made yet</p>
 						{/if}
 							{#if item.versions.length}
-								<details class="versions" open>
-									<summary>Attached images & saved versions ({item.versions.length})</summary>
+								<details class="versions">
+									<summary>Attached images & saved versions ({item.versions.filter(version => !version.removed).length})</summary>
 									<p class="muted">All images stay here. Choose which one is the current reference.</p>
-									{#each item.versions as version (version.id)}
+									{#each item.versions.filter(version => !version.removed) as version (version.id)}
 										<div class="version">
 											<p class="muted">{version.name ?? version.id}</p>
 											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={version.url} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
 											<p class="muted">{new Date(version.made_at).toLocaleString()}{version.outside ? ' · uploaded' : ' · generated'}{version.current ? ' · current' : ''}</p>
-											<button type="button" class="key" disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current version' : 'Use this version'}</button>
+											<div class="version-actions">
+												<button type="button" class="key" disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current version' : 'Use this version'}</button>
+												<button type="button" class="key" disabled={!!busy[key] || !!item.state.job} title="Remove from this Prep entry; recover it under Removed versions" onclick={() => void call(key, 'Removing version…', { action: 'set_version_removed', key, version_id: version.id, removed: true })}>Remove version</button>
+											</div>
 										</div>
 									{/each}
+									{#if item.versions.some(version => version.removed)}
+										<details><summary>Removed versions ({item.versions.filter(version => version.removed).length})</summary>
+											{#each item.versions.filter(version => version.removed) as version (version.id)}
+												<div class="version"><p class="muted">{version.name ?? version.id}</p><button type="button" class="key" disabled={!!busy[key] || !!item.state.job} onclick={() => void call(key, 'Restoring version…', { action: 'set_version_removed', key, version_id: version.id, removed: false })}>Restore version</button></div>
+											{/each}
+										</details>
+									{/if}
 									</details>
 							{/if}
 						<label class="key">Attach sheets made outside<input type="file" multiple disabled={!!busy[key] || !!item.state.job} accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => void upload(key, 'attach', event.currentTarget)} /></label>
@@ -433,6 +443,7 @@
 	.versions { min-width: 0; border-top: 1px solid var(--color-nr-line-soft); padding-top: 6px; }
 	.versions summary { cursor: pointer; color: var(--color-nr-accent); font-size: 11px; }
 	.version { display: grid; gap: 4px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--color-nr-line-soft); }
+	.version-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 	.pic { display: block; border: 0; background: transparent; padding: 0; cursor: zoom-in; }
 	.pic:hover img { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); }
 	.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 8px; border: 0; background: rgb(5 7 10 / 0.92); padding: 24px; cursor: zoom-out; }

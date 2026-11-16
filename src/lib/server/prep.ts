@@ -86,7 +86,7 @@ async function update(root: string, projectId: string, key: string, change: (sta
 }
 
 // ---- the list ----
-export interface PrepVersion { id: string; name?: string; url: string; made_at: string; outside: boolean; current: boolean }
+export interface PrepVersion { id: string; name?: string; url: string; made_at: string; outside: boolean; current: boolean; removed?: boolean }
 export interface PrepView { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: PrepVersion[] }
 
 type PrepContextDeps = Pick<PrepDeps, 'projectRoot' | 'series'> & Partial<Pick<PrepDeps, 'store'>>;
@@ -122,7 +122,7 @@ export async function prepView(deps: PrepContextDeps, project: Project): Promise
 		const file = entry.reference_page_id ? record?.reference_files?.[entry.reference_page_id] : undefined;
 		// A reference renamed in Notion keeps the versions saved under its earlier names.
 		const sheetNames = new Set([sheetFileName(entry.name), ...state.sheet_names, ...(state.result?.source_file ? [sheetNameOf(state.result.source_file)] : [])]);
-		const versions = saved.filter(({ id }) => sheetNames.has(sheetNameOf(id))).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, name: state.output_names?.[version.id], url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
+		const versions = saved.filter(({ id }) => sheetNames.has(sheetNameOf(id))).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, name: state.output_names?.[version.id], removed: state.removed_versions?.includes(version.id) ?? false, url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
 		// Before version selection existed, landing always used the newest output.
 		// Identify those legacy current files only when their save time is close
 		// to (and before) the recorded landing time; otherwise leave it unknown.
@@ -555,8 +555,24 @@ export async function usePrepVersion(deps: PrepDeps, project: Project, key: stri
 	if (found.view.state.job) return fail(409, 'Wait for the current generation before choosing a saved version');
 	const version = found.view.versions.find((entry) => entry.id === versionId);
 	if (!version) return fail(404, 'That saved version does not belong to this Prep entry');
+	if (version.removed) return fail(400, 'Restore this version before using it');
 	const file = join(deps.projectRoot, project.project_id, 'files', 'prep', 'made', version.id);
 	return { ok: true, prep: await land(deps, project, found.view, file, version.outside) };
+}
+
+/** Remove only this entry's association; files used by existing shots stay intact. */
+export async function setPrepVersionRemoved(deps: PrepContextDeps, project: Project, key: string, versionId: string, removed: boolean): Promise<{ ok: true; prep: PrepFile } | Failure> {
+	const found = await findEntry(deps, project, key);
+	if (!found.ok) return found;
+	if (found.view.state.job) return fail(409, 'Wait for the current generation to finish');
+	const version = found.view.versions.find(entry => entry.id === versionId);
+	if (!version) return fail(404, 'That saved version does not belong to this Prep entry');
+	const prep = await update(deps.projectRoot, project.project_id, key, state => ({
+		...state,
+		removed_versions: removed ? [...new Set([...(state.removed_versions ?? []), versionId])] : (state.removed_versions ?? []).filter(id => id !== versionId),
+		...(removed && version.current ? { result: null } : {})
+	}));
+	return { ok: true, prep };
 }
 
 /** The scale check on a character sheet; a failure to run it never stops a sheet from landing. */
