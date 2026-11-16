@@ -50,3 +50,27 @@ Review Room template synchronization remain follow-ups. The original requirement
    location Prep must be reusable by the show's trailers and episodes, with
    production-specific choices kept explicit. A trailer can be one deliverable
    containing many planned shots without borrowing an episode's full beat sheet.
+
+## Deferred Prep follow-ups — November 16, 2026
+
+Owner requested recording these for later while completing the current trailer
+workflow; this list does not authorize starting implementation or generating media.
+
+- [ ] Keep multiple named location views (exterior, interior, reverse, additional
+  angle) under one location. Label each reference's role and let the owner choose
+  the relevant views for a scene or shot; uploading another view must not silently
+  replace the selected one.
+- [ ] Keep named character looks under one identity, with revisions within each
+  look. Allow identity plus optional wardrobe references when building a look.
+  Lock the approved look and location-view versions to a scene, with explicit
+  shot overrides, so changing the Prep default cannot silently change that scene.
+- [ ] Expose a show-level visual Bible with approved palette/lighting reference
+  frames, day/night guidance and clear inheritance into location and shot prompts.
+  Sample colors from owner-approved footage or stills and label palette-only
+  references separately from geometry and identity sources. Character identity
+  sheets retain their neutral-gray lighting contract.
+- [ ] Reconcile Blood Rush's older California location-visual-canon.md against
+  the current Portland v2.1 story and Portland film lock before reusing its campus
+  architecture. Develop daytime guidance for owner review: minimal daytime in the
+  trailer, with muted overcast/open-shade imagery rather than bright sunny campus
+  coverage. This is proposed direction, not an approved new palette.
