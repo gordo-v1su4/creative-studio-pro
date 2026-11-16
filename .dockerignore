@@ -1,0 +1,11 @@
+.git
+.env*
+.vercel
+.svelte-kit
+node_modules
+build
+data
+output
+graft
+.claude
+.cursor

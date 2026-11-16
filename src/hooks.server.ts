@@ -1,5 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { isPublicSite } from '$lib/server/public-site';
+import { env } from '$env/dynamic/private';
+import { guardStudioGateway } from '$lib/server/studio-gateway';
 
 /**
  * Public mode: the same app, deployed for visitors (on Vercel, or with CSP_PUBLIC_SITE=1), is read-only.
@@ -10,6 +12,8 @@ import { isPublicSite } from '$lib/server/public-site';
 const PUBLIC_PATHS = [/^\/watch(?:\/|$)/, /^\/api\/public(?:\/|$)/, /^\/_app\//, /^\/favicon\.[a-z]+$/, /^\/robots\.txt$/];
 
 export const handle: Handle = async ({ event, resolve }) => {
+	const denied = guardStudioGateway(event.request, env.CSP_REQUIRE_GATEWAY === '1', env.CSP_OPERATOR_TOKEN);
+	if (denied) return denied;
 	if (!isPublicSite()) return resolve(event);
 	const { pathname } = event.url;
 	if (pathname === '/') return new Response(null, { status: 302, headers: { location: '/watch' } });
