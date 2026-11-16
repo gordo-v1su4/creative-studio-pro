@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, readdir, stat, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, stat, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type { Project } from '$lib/domain/schemas';
 import {
@@ -86,7 +86,7 @@ async function update(root: string, projectId: string, key: string, change: (sta
 }
 
 // ---- the list ----
-export interface PrepVersion { id: string; url: string; made_at: string; outside: boolean; current: boolean }
+export interface PrepVersion { id: string; name?: string; url: string; made_at: string; outside: boolean; current: boolean }
 export interface PrepView { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: PrepVersion[] }
 
 type PrepContextDeps = Pick<PrepDeps, 'projectRoot' | 'series'> & Partial<Pick<PrepDeps, 'store'>>;
@@ -118,7 +118,7 @@ export async function prepView(deps: PrepContextDeps, project: Project): Promise
 		const file = entry.reference_page_id ? record?.reference_files?.[entry.reference_page_id] : undefined;
 		// A reference renamed in Notion keeps the versions saved under its earlier names.
 		const sheetNames = new Set([sheetFileName(entry.name), ...state.sheet_names, ...(state.result?.source_file ? [sheetNameOf(state.result.source_file)] : [])]);
-		const versions = saved.filter(({ id }) => sheetNames.has(sheetNameOf(id))).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
+		const versions = saved.filter(({ id }) => sheetNames.has(sheetNameOf(id))).sort((a, b) => b.made_at.localeCompare(a.made_at)).map((version) => ({ ...version, name: state.output_names?.[version.id], url: `/api/projects/${project.project_id}/files/prep/made/${encodeURIComponent(version.id)}`, outside: version.id.includes('-outside-'), current: state.result?.source_file ? basename(state.result.source_file) === version.id : false }));
 		// Before version selection existed, landing always used the newest output.
 		// Identify those legacy current files only when their save time is close
 		// to (and before) the recorded landing time; otherwise leave it unknown.
@@ -510,8 +510,13 @@ export async function sendPrep(deps: PrepDeps, project: Project, key: string, ap
 /** Land a finished sheet: stamp its exact name, upload it to `_References`, tick Name on sheet in Notion. */
 async function land(deps: PrepDeps, project: Project, view: PrepView, file: string, outside: boolean): Promise<PrepFile> {
 	const name = sheetFileName(view.entry.name);
-	const stamped = await deps.stamp(file, view.entry.name, join(deps.projectRoot, project.project_id, 'files', 'prep', 'references', `${name}.png`));
-	const url = `/api/projects/${project.project_id}/files/prep/references/${name}.png`;
+	// Local trailer references keep their original pixels and format. The name/2K
+	// publication contract belongs to series references, not local attachments.
+	const output = join(deps.projectRoot, project.project_id, 'files', 'prep', 'references', `${name}${project.series ? '.png' : extname(file)}`);
+	let stamped: string;
+	if (project.series) stamped = await deps.stamp(file, view.entry.name, output);
+	else { await mkdir(dirname(output), { recursive: true }); await copyFile(file, output); stamped = output; }
+	const url = `/api/projects/${project.project_id}/files/prep/references/${basename(stamped)}`;
 	let uploaded = false;
 	let note = '';
 	const pageId = view.entry.reference_page_id;
@@ -595,8 +600,9 @@ export async function attachOutside(deps: PrepDeps, project: Project, key: strin
 	if (!IMAGE_EXT.has(ext)) return fail(400, 'A sheet is a PNG, JPEG or WebP');
 	const folder = join(deps.projectRoot, project.project_id, 'files', 'prep', 'made');
 	await mkdir(folder, { recursive: true });
-	const file = join(folder, `${sheetFileName(found.view.entry.name)}-outside-${Date.now().toString(36)}${ext}`);
+	const file = join(folder, `${sheetFileName(found.view.entry.name)}-outside-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}${ext}`);
 	await writeFile(file, input.bytes);
+	await update(deps.projectRoot, project.project_id, key, state => ({ ...state, output_names: { ...state.output_names, [basename(file)]: input.file_name.slice(0, 300) } }));
 	try { return { ok: true, prep: await land(deps, project, found.view, file, true) }; }
 	catch (cause) { return fail(400, cause instanceof Error ? cause.message : 'Could not use that sheet'); }
 }

@@ -28,3 +28,16 @@ Review Room registration retains its existing explicit action. This change does 
 Validation covers append-only/idempotent board creation, stale moment invalidation, identity propagation across queued work, inherited reference isolation, workflow prerequisites, confirmation invalidation and selected skill loading through a fake model. Browser verification shows the fresh Blood Rush trailer's proposed moments, required cast/locations, inherited previews and Joey station controls. Actual Agent quality and generated images still need creative review; no images were generated for verification.
 
 Validation results: `bun run check`, `bun run build`, `bun run check:env` and `git diff --check` pass (one existing unused CSS warning). Full `bun test`: 442 pass, one failure because the untouched `.agents/skills/seedance-teaser-trailer/SKILL.md` differs from its current vault source. The targeted story-plan/Prep suite passes all 11 tests. No unrelated vault skill was synchronized as part of this change.
+
+November 16 attachment repair: source and outside-sheet pickers accept multiple
+files and upload them sequentially with progress and stop-on-error feedback.
+Outside uploads retain their original filenames as gallery labels. The expanded
+saved-image gallery is visible even when no upload has successfully become the
+current result. Local standalone trailer references retain their original pixels
+and file format instead of going through the series-only 2K/name-stamping gate;
+series publication requirements remain in force. Multiple attached views are
+retained together, with one explicitly current reference; named view roles and
+scene-specific selection remain deferred. Focused Prep tests (16), typecheck and
+production build pass. Live recovery verified both previously failed gym uploads
+and the current thumbnail return image/png with HTTP 200. Browser visual acceptance
+was unavailable because browser access was blocked by its URL security policy.

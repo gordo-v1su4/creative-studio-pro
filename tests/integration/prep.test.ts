@@ -55,6 +55,32 @@ async function setup() {
 	return { deps, projectId: created.data.project_id, asks, submitted, estimated, setStatus: (next: GenerationStatus) => { status = next; } };
 }
 
+test('local location attachments retain every named image without the series stamping gate', async () => {
+	const { deps } = await setup();
+	const created = await deps.gateway.createProject({ command: 'create_project', title: 'Local trailer', brief: '', creative_focus: 'full room', created_by: 'test' });
+	if (!created.ok) throw new Error(created.error.message);
+	const project = created.data;
+	await addPrepEntry(deps, project.project_id, 'location', 'Campus gym');
+	deps.stamp = async () => { throw new Error('Legacy 2K stamp must not run for local attachments'); };
+	const images = [{ file_name: 'Gym - master.webp', bytes: new Uint8Array([1, 2, 3]) }, { file_name: 'Gym - reverse.jpg', bytes: new Uint8Array([4, 5, 6]) }];
+	for (const image of images) {
+		const uploaded = await attachOutside(deps, project, 'location:Campus gym', image);
+		if (!uploaded.ok) throw new Error(uploaded.message);
+		expect(await readFile(uploaded.prep.entries['location:Campus gym'].result!.file)).toEqual(Buffer.from(image.bytes));
+	}
+	const view = await prepView(deps, project);
+	if (!view.ok) throw new Error(view.message);
+	const gym = view.items.find(item => item.entry.key === 'location:Campus gym')!;
+	expect(gym.versions).toHaveLength(2);
+	expect(new Set(gym.versions.map(version => version.id)).size).toBe(2);
+	expect(gym.versions.map(version => version.name).sort()).toEqual(images.map(image => image.file_name).sort());
+	const master = gym.versions.find(version => version.name === images[0].file_name)!;
+	const selected = await usePrepVersion(deps, project, gym.entry.key, master.id);
+	if (!selected.ok) throw new Error(selected.message);
+	expect(selected.prep.entries[gym.entry.key].result!.file).toEndWith('.webp');
+	expect(await readFile(selected.prep.entries[gym.entry.key].result!.file)).toEqual(Buffer.from(images[0].bytes));
+});
+
 test('a standalone trailer derives required identities and reuses a show image without modifying its source', async () => {
 	const { deps, projectId } = await setup();
 	const source = (await deps.store.readProject(projectId))!;

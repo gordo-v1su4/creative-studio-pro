@@ -16,7 +16,7 @@
 	 */
 	let { project, onUpdated, onContinue }: { project: Project; onUpdated: (project: Project) => void; onContinue?: () => void } = $props();
 
-	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: Array<{ id: string; url: string; made_at: string; outside: boolean; current: boolean }> };
+	type View = { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: Array<{ id: string; name?: string; url: string; made_at: string; outside: boolean; current: boolean }> };
 	let items = $state<View[]>([]);
 	let spent = $state(0);
 	let loading = $state(true);
@@ -77,12 +77,20 @@
 		finally { delete busy[key]; }
 	}
 
-	const upload = (key: string, action: 'source' | 'attach', files: FileList | null) => {
-		const file = files?.[0];
-		if (!file) return;
-		const form = new FormData();
-		form.set('action', action); form.set('key', key); form.set('file', file);
-		void call(key, action === 'source' ? 'Adding…' : 'Attaching…', form);
+	const upload = async (key: string, action: 'source' | 'attach', input: HTMLInputElement) => {
+		const files = Array.from(input.files ?? []);
+		input.value = '';
+		for (const [index, file] of files.entries()) {
+			const form = new FormData();
+			form.set('action', action); form.set('key', key); form.set('file', file);
+			const result = await call(key, `${action === 'source' ? 'Adding' : 'Attaching'} ${index + 1}/${files.length}: ${file.name}…`, form);
+			if (!result) {
+				const message = error;
+				await load();
+				error = `${file.name}: ${message ?? 'Upload failed'}. Remaining files were not uploaded.`;
+				break;
+			}
+		}
 	};
 	const specOf = (item: View): ReferenceSpec => {
 		const d = drafts[item.entry.key];
@@ -204,7 +212,7 @@
 							{/each}
 						</div>
 						<div class="row">
-							<label class="key">Add image<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'source', event.currentTarget.files)} /></label>
+							<label class="key">Add images<input type="file" multiple disabled={!!busy[key]} accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => void upload(key, 'source', event.currentTarget)} /></label>
 							{#if item.current}<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Adding…', { action: 'use_current', key })}>Use existing reference</button><button type="button" class="key" onclick={() => zoom = { src: item.current!.url, alt: item.entry.name }}>Preview existing reference</button>{/if}
 						</div>
 						{#if item.entry.kind === 'character' && item.state.workflow?.stage !== 'sheet'}
@@ -308,19 +316,6 @@
 							{@const madeAt = Date.parse(item.state.result.made_at)}
 							<p class="muted">{#if now - madeAt < 15 * 60_000}<span class="new">New</span> {/if}Made {clock(madeAt)}{item.state.result.uploaded ? ' · in the References drawer' : ''}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
-							{#if item.versions.length}
-								<details class="versions">
-									<summary>Saved versions ({item.versions.length})</summary>
-									<p class="muted">Preview an earlier image or use it as the current reference.</p>
-									{#each item.versions as version (version.id)}
-										<div class="version">
-											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={version.url} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
-											<p class="muted">{new Date(version.made_at).toLocaleString()}{version.outside ? ' · uploaded' : ' · generated'}{version.current ? ' · current' : ''}</p>
-											<button type="button" class="key" disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current version' : 'Use this version'}</button>
-										</div>
-									{/each}
-									</details>
-							{/if}
 							{#if item.entry.kind === 'character'}
 								{@const scale = item.state.result.scale}
 								<div class="node-cap sub">Proportions · original vs generated front</div>
@@ -346,7 +341,21 @@
 						{:else}
 							<p class="muted">Not made yet</p>
 						{/if}
-						<label class="key">Attach a sheet made outside<input type="file" accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => upload(key, 'attach', event.currentTarget.files)} /></label>
+							{#if item.versions.length}
+								<details class="versions" open>
+									<summary>Attached images & saved versions ({item.versions.length})</summary>
+									<p class="muted">All images stay here. Choose which one is the current reference.</p>
+									{#each item.versions as version (version.id)}
+										<div class="version">
+											<p class="muted">{version.name ?? version.id}</p>
+											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={version.url} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
+											<p class="muted">{new Date(version.made_at).toLocaleString()}{version.outside ? ' · uploaded' : ' · generated'}{version.current ? ' · current' : ''}</p>
+											<button type="button" class="key" disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current version' : 'Use this version'}</button>
+										</div>
+									{/each}
+									</details>
+							{/if}
+						<label class="key">Attach sheets made outside<input type="file" multiple disabled={!!busy[key] || !!item.state.job} accept="image/png,image/jpeg,image/webp" class="hidden-input" onchange={(event) => void upload(key, 'attach', event.currentTarget)} /></label>
 					</div>
 					<span class="edge" aria-hidden="true"></span>
 					<!-- 4. scenes -->
