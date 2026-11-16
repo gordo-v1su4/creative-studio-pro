@@ -369,8 +369,8 @@
 											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={version.url} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
 											<p class="muted">{new Date(version.made_at).toLocaleString()}{version.outside ? ' · uploaded' : ' · generated'}{version.current ? ' · current' : ''}</p>
 											<div class="version-actions">
-												<button type="button" class="key" disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current version' : 'Use this version'}</button>
-												<button type="button" class="key" disabled={!!busy[key] || !!item.state.job} title="Remove from this Prep entry; recover it under Removed versions" onclick={() => void call(key, 'Removing version…', { action: 'set_version_removed', key, version_id: version.id, removed: true })}>Remove version</button>
+												<button type="button" class="key" aria-label={version.current ? 'Current version' : 'Use this version'} disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current' : 'Use'}</button>
+												<button type="button" class="key" aria-label="Remove version" disabled={!!busy[key] || !!item.state.job} title="Remove from this Prep entry; recover it under Removed versions" onclick={() => void call(key, 'Removing version…', { action: 'set_version_removed', key, version_id: version.id, removed: true })}>Remove</button>
 											</div>
 										</div>
 									{/each}
@@ -444,6 +444,7 @@
 	.versions summary { cursor: pointer; color: var(--color-nr-accent); font-size: 11px; }
 	.version { display: grid; gap: 4px; margin-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--color-nr-line-soft); }
 	.version-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+	.version-actions .key { min-width: 0; padding: 4px 6px; font-size: 10px; line-height: 1.2; white-space: nowrap; }
 	.pic { display: block; border: 0; background: transparent; padding: 0; cursor: zoom-in; }
 	.pic:hover img { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); }
 	.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 8px; border: 0; background: rgb(5 7 10 / 0.92); padding: 24px; cursor: zoom-out; }
