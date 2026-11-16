@@ -86,6 +86,7 @@ test('a standalone trailer derives required identities and reuses a show image w
 	const source = (await deps.store.readProject(projectId))!;
 	const attached = await attachOutside(deps, source, 'r-mara', { file_name: 'mara.png', bytes: new Uint8Array([1,2,3]) });
 	if (!attached.ok) throw new Error(attached.message);
+	await saveSpec(deps, source, 'r-mara', { spec: referenceSpecSchema.parse({ ...SPEC, notes: 'Existing reviewed character facts.' }), approve: false });
 	const before = JSON.stringify(await readPrep(deps.projectRoot, projectId));
 	const created = await deps.gateway.createProject({command:'create_project',title:'Trailer',brief:'',creative_focus:'full room',created_by:'test'});
 	if (!created.ok) throw new Error(created.error.message);
@@ -95,6 +96,7 @@ test('a standalone trailer derives required identities and reuses a show image w
 	const view = await prepView(deps, trailer);
 	if (!view.ok) throw new Error(view.message);
 	expect(view.items.find(item => item.entry.key === 'r-mara')?.current).not.toBeNull();
+	expect(view.items.find(item => item.entry.key === 'r-mara')?.state.spec?.notes).toBe('Existing reviewed character facts.');
 	expect(view.items[0].state.workflow?.builder).toBe('castkit-v1');
 	const reused = await useCurrentAsSource(deps, trailer, 'r-mara');
 	if (!reused.ok) throw new Error(reused.message);
@@ -122,6 +124,23 @@ test('a standalone trailer derives required identities and reuses a show image w
 	const changed = await addSource(deps, trailer.project_id, 'r-mara', {file_name:'new.png',bytes:new Uint8Array([5,6,7])});
 	if (!changed.ok) throw new Error(changed.message);
 	expect(changed.prep.entries['r-mara'].workflow?.confirmed).toBeFalse();
+	const afterImageSwap = await prepView(deps, trailer);
+	if (!afterImageSwap.ok) throw new Error(afterImageSwap.message);
+	expect(afterImageSwap.items.find(item => item.entry.key === 'r-mara')?.state.spec?.name).toBe('Mara Voss');
+	expect(JSON.stringify(await readPrep(deps.projectRoot, projectId))).toBe(before);
+});
+
+test('empty location facts are rejected and previous notes remain saved', async () => {
+	const { deps, projectId } = await setup();
+	const project = (await deps.store.readProject(projectId))!;
+	await addPrepEntry(deps, projectId, 'location', 'Roof');
+	const key = 'location:Roof';
+	await saveSpec(deps, project, key, { spec: referenceSpecSchema.parse({ name: 'Roof', kind: 'location', template: 'W3', notes: 'Keep the known roof facts.' }), approve: false });
+	let calls = 0;
+	deps.agent = async () => ({ choice: { provider: 'kimi', model: 'test' } as never, generate: async () => { calls++; return JSON.stringify({ name: 'Roof', kind: 'location', template: 'W3', notes: '' }); } });
+	await expect(draftSpec(deps, project, key)).rejects.toThrow('non-empty');
+	expect(calls).toBe(2);
+	expect((await readPrep(deps.projectRoot, projectId)).entries[key].spec?.notes).toBe('Keep the known roof facts.');
 });
 
 test('fixed sheets need no Agent and preserve reference roles; rewritten prose is blocked before spend', async () => {

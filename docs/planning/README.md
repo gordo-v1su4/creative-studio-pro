@@ -60,6 +60,13 @@ workflow; this list does not authorize starting implementation or generating med
   angle) under one location. Label each reference's role and let the owner choose
   the relevant views for a scene or shot; uploading another view must not silently
   replace the selected one.
+  Blood Rush rooftop note: retain distinct sunset/backflip-run and blue
+  storm-night/group-chase settings. The owner has not established whether Kai's
+  backflip run belongs to the same chase as the group pursuit. Do not merge their
+  geography, lighting or story continuity. Owner subsequently identified three
+  references: the general Portland skyline, blue storm-night chase (LUMEN), and
+  Kai's sunset rooftop run for venting/letting off steam. These now have separate
+  named Prep entries and reference images. Scene/shot-specific locks remain pending.
 - [ ] Keep named character looks under one identity, with revisions within each
   look. Allow identity plus optional wardrobe references when building a look.
   Lock the approved look and location-view versions to a scene, with explicit

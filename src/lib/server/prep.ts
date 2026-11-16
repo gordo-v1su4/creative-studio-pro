@@ -113,7 +113,11 @@ export async function prepView(deps: PrepContextDeps, project: Project): Promise
 	const names = await readdir(folder).catch((cause: NodeJS.ErrnoException) => { if (cause.code === 'ENOENT') return []; throw cause; });
 	const saved = await Promise.all(names.filter((name) => IMAGE_EXT.has(extname(name).toLowerCase())).map(async (id) => ({ id, made_at: (await stat(join(folder, id))).mtime.toISOString() })));
 	const items = entries.map((entry) => {
-		const stored = prep.entries[entry.key] ?? emptyState();
+		const local = prep.entries[entry.key] ?? emptyState();
+		// Reusing a show's reference includes its reviewed facts, not just its image.
+		// A replacement image does not clear facts; local edits always take priority.
+		const inheritedSpec = inherited?.entries[entry.key]?.spec;
+		const stored = { ...local, spec: local.spec ?? (inheritedSpec ? { ...inheritedSpec, name: entry.name } : null) };
 		const state = { ...stored, ...(project.production.story_plan && entry.kind !== 'prop' && !stored.workflow ? { workflow: { builder: entry.kind === 'character' ? 'castkit-v1' as const : 'scenecraft-v1' as const, stage: entry.kind === 'character' ? 'face_lock' as const : 'environment' as const, approved_source_url: null, confirmed: false } } : {}) };
 		const file = entry.reference_page_id ? record?.reference_files?.[entry.reference_page_id] : undefined;
 		// A reference renamed in Notion keeps the versions saved under its earlier names.
@@ -302,6 +306,7 @@ export async function draftSpec(deps: PrepDeps, project: Project, key: string): 
 	const ask = view.state.workflow ? `${entryContext(view, project, found.record)}\n\nExtract proposed design facts for the selected Joey workflow. Owner canon and supplied images take priority over skill defaults. Do not invent ages, heights, powers or visual identities. Leave unsupported identity fields empty or null; list unresolved design choices in notes for the owner to decide. Return JSON {name,kind,template,notes,identity:{sex,age,height_cm,build,face,eyes,hair,marks}}. Use the exact metadata name ${JSON.stringify(view.entry.name)}, kind ${view.entry.kind}, template ${view.template}. The name belongs to metadata, not the final image prompt.` : `${entryContext(view, project, found.record)}\n\nDraft the FACTS this reference is made from: only what the pictures cannot say. Do not describe the pictures; the prompt writer looks at them itself. Return only JSON:\n{"name": "${view.entry.name}", "kind": "${view.entry.kind}", "template": "${view.template}"${character ? IDENTITY_FIELDS : ', "notes": "two or three plain sentences: what this place or thing is in the story, its era and where it stands; sizes in metres"'}}\nUse the exact name as given. Never use the word "neon".${character ? IDENTITY_RULES : ''}`;
 	const parse = (value: unknown) => {
 		const spec = referenceSpecSchema.parse(value);
+		if (!character && !spec.notes.trim()) throw new Error('Return non-empty location or prop facts in notes; an empty answer is not a completed draft');
 		const notes = character && !view.state.workflow ? (view.state.spec?.notes ?? '') : spec.notes;
 		return { ...spec, notes, description: '', must_hold: [], from_sources: '', name: view.entry.name, kind: view.entry.kind, template: view.template as ReferenceSpec['template'] };
 	};

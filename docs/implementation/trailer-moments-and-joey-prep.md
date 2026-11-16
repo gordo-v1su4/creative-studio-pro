@@ -41,3 +41,15 @@ scene-specific selection remain deferred. Focused Prep tests (16), typecheck and
 production build pass. Live recovery verified both previously failed gym uploads
 and the current thumbnail return image/png with HTTP 200. Browser visual acceptance
 was unavailable because browser access was blocked by its URL security policy.
+
+November 16 facts repair: Prep reads the reference project's saved facts when a
+local entry has none, preserving local overrides and normalizing the metadata
+name to the current entry. Replacing a reference image retains facts. Empty
+location/prop notes are rejected before saving. The UI labels static workflow
+guidance, shows elapsed drafting time, and reports completion/errors alongside
+the entry. A live rooftop draft returned valid saved notes after 150.6 seconds;
+the UI previously supplied only generic waiting text and a page-top error area.
+Seven existing cast specs were restored from Late Shift without model calls;
+Bryson had no prior spec. General Portland, blue storm-night chase and sunset run
+references were organized into separate local Prep entries at owner direction.
+Focused Prep tests: 17 pass; typecheck: zero errors, one pre-existing CSS warning.

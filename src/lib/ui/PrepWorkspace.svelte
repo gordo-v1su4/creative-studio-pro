@@ -21,6 +21,9 @@
 	let spent = $state(0);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+	let entryErrors = $state<Record<string, string>>({});
+	let factsStarted = $state<Record<string, number>>({});
+	let factsStatus = $state<Record<string, string>>({});
 	let busy = $state<Record<string, string>>({});
 	let approvals = $state<Record<string, StillApproval>>({});
 	let comparisonErrors = $state<Record<string, string>>({});
@@ -66,15 +69,27 @@
 	$effect(() => { void project.project_id; void load().then(() => { for (const item of items) if (item.state.job) void watch(item.entry.key); }); });
 
 	async function call(key: string, label: string, payload: Record<string, unknown> | FormData) {
-		busy[key] = label; error = null;
+		busy[key] = label; error = null; delete entryErrors[key];
 		try {
 			const init: RequestInit = payload instanceof FormData ? { method: 'POST', body: payload } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) };
 			const body = await (await fetch(base, init)).json();
 			if (!body.ok) throw new Error([body.error?.message, ...(body.error?.reasons ?? [])].filter(Boolean).join(' — '));
 			take(body);
 			return body;
-		} catch (cause) { error = cause instanceof Error ? cause.message : 'That did not work'; return null; }
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'That did not work'; entryErrors[key] = error; return null; }
 		finally { delete busy[key]; }
+	}
+
+	async function draftFacts(key: string) {
+		factsStarted[key] = Date.now(); delete factsStatus[key];
+		try {
+			const body = await call(key, 'The Agent is drafting the facts…', { action: 'draft_spec', key });
+			if (body) {
+				const spec = items.find(item => item.entry.key === key)?.state.spec;
+				if (!spec) entryErrors[key] = 'The request finished without saved facts. Please retry; no draft was accepted.';
+				else factsStatus[key] = 'Facts returned and saved. Review the fields below.';
+			}
+		} finally { delete factsStarted[key]; }
 	}
 
 	const upload = async (key: string, action: 'source' | 'attach', input: HTMLInputElement) => {
@@ -233,7 +248,7 @@
 							{#if item.entry.kind === 'character'}<option value="face_lock">Face lock · establish identity</option><option value="outfit">Outfit · requires approved face lock</option><option value="sheet">Three-panel sheet · fixed template from references</option>{:else}<option value="environment">Environment master · establish location</option><option value="coverage">Matching coverage · requires approved master</option>{/if}
 							</select></label>
 							{#if ['outfit', 'sheet', 'coverage'].includes(item.state.workflow.stage)}<label class="field"><span>{item.state.workflow.stage === 'sheet' ? 'Identity reference · first attachment' : 'Approved predecessor reference'}</span><select value={item.state.workflow.approved_source_url ?? ''} aria-label={`Approved predecessor for ${item.entry.name}`} onchange={(event) => void call(key, 'Selecting reference…', { action: 'set_workflow', key, approved_source_url: event.currentTarget.value || null })}><option value="">Choose an attached image you have approved</option>{#each item.state.sources as source (source.url)}<option value={source.url}>{source.name}</option>{/each}</select></label>{/if}
-							<p class="muted">{item.entry.kind === 'character' ? 'Photoreal · flat 18% neutral gray · face and outfit: 3:4 · sheet: 16:9. Sheets use reviewed references and fixed template fields.' : 'Photoreal environment plate · motivated light · master geometry stays fixed for matching coverage.'}</p>
+							<p class="muted">Workflow guidance: {item.entry.kind === 'character' ? 'Photoreal · flat 18% neutral gray · face and outfit: 3:4 · sheet: 16:9. Sheets use reviewed references and fixed template fields.' : 'Photoreal environment plate · motivated light · master geometry stays fixed for matching coverage.'}</p>
 							{#if item.state.workflow.stage === 'sheet'}
 								{#key JSON.stringify(item.state.sheet_inputs)}<SheetTemplateFields value={item.state.sheet_inputs} sources={item.state.sources} primary={item.state.workflow.approved_source_url} busy={!!busy[key] || !!item.state.job} ondirty={(dirty) => sheetDirty[key] = dirty} onsave={async (inputs) => !!(await call(key, 'Saving template fields…', { action:'set_sheet_inputs',key,inputs }))} />{/key}
 							{/if}
@@ -254,7 +269,9 @@
 								{/if}
 							</div>
 						{/if}
-						{#if busy[key] && !(jobs[key] && (jobs[key].phase === 'making' || jobs[key].phase === 'sending'))}<p class="working"><span class="pulse" aria-hidden="true"></span>{busy[key]}{busy[key].startsWith('The Agent') ? ' This takes about a minute.' : ''}</p>{/if}
+						{#if busy[key] && !(jobs[key] && (jobs[key].phase === 'making' || jobs[key].phase === 'sending'))}<p class="working" role="status"><span class="pulse" aria-hidden="true"></span>{busy[key]}{#if factsStarted[key]} Waiting for the Agent · {Math.max(0, Math.floor((now - factsStarted[key]) / 1000))}s elapsed.{/if}</p>{/if}
+						{#if entryErrors[key]}<p class="error" role="alert">{entryErrors[key]}</p>{/if}
+						{#if factsStatus[key]}<p class="note" role="status">{factsStatus[key]}</p>{/if}
 						{#if item.state.workflow?.stage !== 'sheet'}
 						{#if drafts[key]}
 							{#if item.entry.kind === 'character'}
@@ -282,10 +299,10 @@
 							<label class="field"><span>{item.entry.kind === 'character' ? 'Notes · only changes from the pictures (e.g. dry hair, teal plaid instead of the hoodie)' : 'Notes · what it is, its era, sizes in metres'}</span><textarea rows="3" bind:value={drafts[key].notes}></textarea></label>
 							<div class="row">
 								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'Saving…', { action: 'save_spec', key, spec: specOf(item), approve: false })}>Save facts</button>
-								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting the facts…', { action: 'draft_spec', key })}>Redraft facts</button>
+								<button type="button" class="key" disabled={!!busy[key]} onclick={() => void draftFacts(key)}>Redraft facts</button>
 							</div>
 						{:else}
-							<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is drafting the facts…', { action: 'draft_spec', key })}>Draft facts</button>
+							<button type="button" class="key on" disabled={!!busy[key]} onclick={() => void draftFacts(key)}>Draft facts</button>
 						{/if}
 						{/if}
 						{#if drafts[key] || item.state.workflow?.stage === 'sheet'}
