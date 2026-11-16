@@ -1,11 +1,13 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { storyPlanSchema, planShotSchema, appendPlannedShots, reconcileMomentEdits } from '$lib/domain/story-plan';
-import { getGateway, getProjectStore, resolveProjectModel } from '$lib/server/config';
+import { storyPlanSchema, planShotSchema, reconcileMomentEdits } from '$lib/domain/story-plan';
+import { getGateway, getProjectStore, resolveProjectModel, getReviewRoomConfig } from '$lib/server/config';
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient, generateStructured } from '$lib/server/model-provider';
 import { readAgentSkill } from '$lib/server/agent-skills';
+import { savePlannedBoard } from '$lib/server/planned-board';
+import { createReviewRoomClient } from '$lib/server/review-room';
 
 const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('moments'), expected_version: z.number().int().nonnegative(), target_s: z.number().int().min(15).max(600) }),
@@ -43,7 +45,15 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			production={...production,story_plan:plan};
 		} catch(cause) {return json({ok:false,error:{message:cause instanceof Error?cause.message:'Could not draft moments'}},{status:502});}
 	}
-	if (input.action === 'board') production = appendPlannedShots(production, new Date().toISOString());
+	if (input.action === 'board') {
+		try {
+			const config = getReviewRoomConfig();
+			const outcome = await savePlannedBoard(project, getGateway(), config ? createReviewRoomClient(config) : undefined);
+			return json(outcome, { status: outcome.ok ? 200 : commandStatus(outcome.error) });
+		} catch (cause) {
+			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : 'Review Room folder sync failed' } }, { status: 502 });
+		}
+	}
 	if (input.action === 'approve' || input.action === 'breakdown') {
 		const plan = structuredClone(project.production.story_plan!);
 		const moment = plan.sections.flatMap(section => section.moments).find(entry => entry.id === input.moment_id);

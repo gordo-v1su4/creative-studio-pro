@@ -273,7 +273,7 @@ export class ProjectCommandGateway {
 		}
 	}
 
-	async saveProduction(raw: unknown): Promise<CommandOutcome<Project>> {
+	async saveProduction(raw: unknown, syncedReviewRoom?: Project['review_room']): Promise<CommandOutcome<Project>> {
 		const parsed = saveProductionCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'Invalid production workspace');
 		try {
@@ -281,7 +281,7 @@ export class ProjectCommandGateway {
 				parsed.data.project_id,
 				parsed.data.expected_version,
 				// Cuts change only through cut commands: a whole-production save keeps the stored ones.
-				(current) => ({ ...current, production: { ...keepStoredCuts(parsed.data.production, current.production), updated_at: new Date().toISOString() } }),
+				(current) => ({ ...current, ...(syncedReviewRoom ? { review_room: syncedReviewRoom } : {}), production: { ...keepStoredCuts(parsed.data.production, current.production), updated_at: new Date().toISOString() } }),
 				'project.production_updated.v1'
 			);
 			return { ok: true, data: project };
