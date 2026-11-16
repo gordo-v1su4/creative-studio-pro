@@ -277,22 +277,23 @@
 							{#if item.entry.kind === 'character'}
 								{@const id = drafts[key].identity}
 								<div class="identity" aria-label="Identity">
-									<label><span>Sex</span><input bind:value={id.sex} placeholder="female" /></label>
-									<label><span>Age</span><input type="number" min="1" max="120" bind:value={id.age} placeholder="19" /></label>
+									<label><span>Sex</span><input bind:value={id.sex} placeholder="Not set" /></label>
+									<label><span>Age</span><input type="number" min="1" max="120" bind:value={id.age} placeholder="Not set" /></label>
 									{#if !item.state.body_source_url}
-										<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="168" /></label>
-										<label class="wide"><span>Build</span><input bind:value={id.build} placeholder="slim, lightly athletic" /></label>
+										<label><span>Height (cm)</span><input type="number" min="50" max="250" bind:value={id.height_cm} placeholder="Not set" /></label>
+										<label class="wide"><span>Build</span><input bind:value={id.build} placeholder="Not set" /></label>
 									{/if}
-									<label class="wide"><span>Face</span><input bind:value={id.face} placeholder="pale, watchful, straight dark brows" /></label>
-									<label><span>Eyes</span><input bind:value={id.eyes} placeholder="amber-gold eyes" /></label>
-									<label class="wide"><span>Hair</span><input bind:value={id.hair} placeholder="dark chin-length bob, centre part" /></label>
-									<label class="wide"><span>Marks</span><input bind:value={id.marks} placeholder="cross choker" /></label>
+									<label class="wide"><span>Face</span><input bind:value={id.face} placeholder="Not set" /></label>
+									<label><span>Eyes</span><input bind:value={id.eyes} placeholder="Not set" /></label>
+									<label class="wide"><span>Hair</span><input bind:value={id.hair} placeholder="Not set" /></label>
+									<label class="wide"><span>Marks</span><input bind:value={id.marks} placeholder="Not set" /></label>
 									<label class="wide"><span>Owned element</span><input bind:value={drafts[key].owned_element} placeholder="night-blood vampirism" /></label>
 									<label><span>Owned colour</span><input bind:value={drafts[key].colour_name} placeholder="amber" /></label>
 									<label><span>Hex</span><input bind:value={drafts[key].colour_hex} placeholder="#D98A2B" /></label>
 									<label class="wide"><span>Powers (comma)</span><input bind:value={drafts[key].powers} placeholder="wall-run, blur-step" /></label>
 									<label class="full"><span>Ownership lock</span><input bind:value={drafts[key].ownership_lock} placeholder="How it shows physically, never as…" /></label>
 								</div>
+								{#if item.state.spec?.description}<details><summary>Previously saved character description</summary><p class="muted">{item.state.spec.description}</p></details>{/if}
 								{#if !item.state.workflow}<p class="handoff" title="The CHARACTER hand-off line (ONE SHOT): every sheet ends with it and every Ghost shot uses it">{handOffLine(specOf(item), !!item.state.body_source_url)}</p>
 								{#if identityGaps(specOf(item), !!item.state.body_source_url).length}<p class="note">Still needs: {identityGaps(specOf(item), !!item.state.body_source_url).join(', ')}. <button type="button" class="key" disabled={!!busy[key]} onclick={() => void call(key, 'The Agent is filling the identity…', { action: 'fill_identity', key })}>Fill identity</button></p>{/if}{/if}
 							{/if}
