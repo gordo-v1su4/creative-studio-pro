@@ -65,7 +65,7 @@ export function loadClipMetadata(url: string): Promise<{ duration: number; fps: 
 
 /** Bytes a decoded bank would need, from container metadata (no GPU upload). */
 export async function estimateBankBytes(url: string, maxHeight: number): Promise<number> {
-	const blob = await blobFor(url);
+	const blob = await loadClipBlob(url);
 	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
 	try {
 		const track = await input.getPrimaryVideoTrack();
@@ -88,7 +88,8 @@ onSharedWebGpuDeviceLost(() => {
 	pipelines = new WeakMap();
 });
 
-function blobFor(url: string): Promise<Blob> {
+/** Share compressed media between the frame bank and seekable local media elements. */
+export function loadClipBlob(url: string): Promise<Blob> {
 	let blob = blobs.get(url);
 	if (!blob) {
 		blob = fetch(url).then((response) => {
@@ -131,7 +132,7 @@ export function loadBank(url: string, maxHeight: number, progress: (p: BankProgr
 	entry.ready = (async () => {
 		const device = await requireDevice();
 		budget ??= new ResidentMemoryBudget(BUDGET_BYTES);
-		const blob = await blobFor(url);
+		const blob = await loadClipBlob(url);
 		for (;;) {
 			const bank = new ResidentFrameBank(device, budget);
 			entry.bank = bank;
@@ -154,7 +155,7 @@ export function loadPoster(url: string, at = 0.3): Promise<Poster> {
 	if (!poster) {
 		poster = (async () => {
 			const device = await requireDevice();
-			const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await blobFor(url)) });
+			const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await loadClipBlob(url)) });
 			try {
 				const track = await input.getPrimaryVideoTrack();
 				if (!track) throw new Error('The clip has no video track');

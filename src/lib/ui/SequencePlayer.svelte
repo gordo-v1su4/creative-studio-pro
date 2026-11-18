@@ -12,7 +12,7 @@
 	import { onMount, untrack } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
-	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipMetadata, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
+	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipBlob, loadClipMetadata, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
@@ -41,8 +41,11 @@
 	let previewVisible = $state(false);
 	let previewSource = '';
 	let previewTarget = -1;
+	let previewEpoch = 0;
+	let previewObjectUrl = '';
 	const LOOK_AHEAD = 3;
-	const voices = new Map<string, { audio: HTMLAudioElement; src: string; target: number }>();
+	type Voice = { audio: HTMLAudioElement; src: string; target: number; objectUrl: string };
+	const voices = new Map<string, Voice>();
 	/** id is the beat for a selection, the cut entry for a cut. */
 	type Clip = TimelineClip & { src: string; assetId: string; cardId: string; fps: number; hasAudio: boolean };
 	let clips = $state<Clip[]>([]);
@@ -123,10 +126,11 @@
 		}
 	}
 
-	function releaseVoice(voice: HTMLAudioElement) {
-		voice.pause();
-		voice.removeAttribute('src');
-		voice.load();
+	function releaseVoice(voice: Voice) {
+		voice.audio.pause();
+		voice.audio.removeAttribute('src');
+		voice.audio.load();
+		if (voice.objectUrl) URL.revokeObjectURL(voice.objectUrl);
 	}
 
 	/** Set the incoming trim while the previous shot is still playing. */
@@ -134,15 +138,21 @@
 		if (mixUrl || !clip.hasAudio) return;
 		let voice = voices.get(clip.id);
 		if (voice?.src !== clip.src) {
-			if (voice) releaseVoice(voice.audio);
+			if (voice) releaseVoice(voice);
 			const audio = new Audio();
 			audio.preload = 'auto';
-			const staged = { audio, src: clip.src, target: NaN };
+			const staged: Voice = { audio, src: clip.src, target: NaN, objectUrl: '' };
 			audio.addEventListener('loadedmetadata', () => {
 				if (Number.isFinite(staged.target)) seekVoice(staged);
 			}, { once: true });
 			voices.set(clip.id, staged);
-			audio.src = clip.src;
+			void loadClipBlob(clip.src).then((blob) => {
+				if (voices.get(clip.id) !== staged) return;
+				staged.objectUrl = URL.createObjectURL(blob);
+				audio.src = staged.objectUrl;
+			}).catch(() => {
+				if (voices.get(clip.id) === staged) audio.src = clip.src;
+			});
 			voice = staged;
 		}
 		if (voice.target !== target) {
@@ -260,10 +270,15 @@
 
 	function previewSeek(clip: Clip) {
 		if (clip.src !== previewSource) {
-			previewVisible = false;
+			clearSeekPreview();
 			previewSource = clip.src;
 			previewTarget = -1;
-			seekPreview.src = clip.src;
+			const epoch = previewEpoch;
+			void loadClipBlob(clip.src).then((blob) => {
+				if (epoch !== previewEpoch) return;
+				previewObjectUrl = URL.createObjectURL(blob);
+				seekPreview.src = previewObjectUrl;
+			}).catch(() => {});
 		}
 		if (Math.abs(previewTarget - playhead) < 0.02) return;
 		previewTarget = playhead;
@@ -281,9 +296,12 @@
 
 	function clearSeekPreview() {
 		if (!previewSource) return;
+		previewEpoch++;
 		previewSource = '';
 		seekPreview.removeAttribute('src');
 		seekPreview.load();
+		if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+		previewObjectUrl = '';
 		previewVisible = false;
 	}
 
@@ -293,7 +311,7 @@
 		const staged = new Set([current?.id, ...next.map((clip) => clip.id)]);
 		for (const [id, voice] of voices) {
 			if (staged.has(id)) continue;
-			releaseVoice(voice.audio);
+			releaseVoice(voice);
 			voices.delete(id);
 		}
 		for (const clip of next) armVoice(clip, clip.in);
@@ -453,7 +471,7 @@
 			const bank = await loadBank(asset.url, MAX_HEIGHT);
 			const out = Math.min(clip.out, bank.duration);
 			const voice = voices.get(clip.id);
-			if (voice) { releaseVoice(voice.audio); voices.delete(clip.id); }
+			if (voice) { releaseVoice(voice); voices.delete(clip.id); }
 			clips[i] = { ...clip, ...metadata, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.max(0, Math.min(clip.in, out - MIN_SPAN)) };
 			// Suggestions were for the old take.
 			const { [clip.id]: _stale, ...rest } = suggestions;
@@ -472,7 +490,7 @@
 		if (clips.length < 2) return;
 		const [gone] = clips.splice(i, 1);
 		const voice = voices.get(gone.id);
-		if (voice) { releaseVoice(voice.audio); voices.delete(gone.id); }
+		if (voice) { releaseVoice(voice); voices.delete(gone.id); }
 		startClip(Math.min(i, clips.length - 1));
 		scheduleSave();
 	}
@@ -792,7 +810,7 @@
 		return () => {
 			disposed = true;
 			cancelAnimationFrame(frame);
-			for (const { audio } of voices.values()) releaseVoice(audio);
+			for (const voice of voices.values()) releaseVoice(voice);
 			voices.clear();
 			clearSeekPreview();
 			if (saveTimer) clearTimeout(saveTimer);

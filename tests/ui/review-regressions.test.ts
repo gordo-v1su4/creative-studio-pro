@@ -157,7 +157,10 @@ test('an armed incoming voice keeps its decoded trim at the cut', () => {
 		get currentTime() { return this.time; }
 		set currentTime(value: number) { this.time = value; seeks.push(value); }
 	}
-	const { armVoice } = handlers(player, ['armVoice', 'seekVoice'], { Audio, mixUrl: undefined, voices: new Map(), HTMLMediaElement: { HAVE_METADATA: 1 } });
+	const { armVoice } = handlers(player, ['armVoice', 'seekVoice'], {
+		Audio, mixUrl: undefined, voices: new Map(), HTMLMediaElement: { HAVE_METADATA: 1 },
+		loadClipBlob: () => new Promise(() => {})
+	});
 	const clip = { id: 'next', src: 'take.mp4', hasAudio: true };
 	const staged = armVoice(clip, 3);
 	expect(seeks).toEqual([]);
@@ -193,8 +196,9 @@ test('cold scrubbing seeks to the latest pointer position when metadata arrives'
 	const current = { src: 'cold.mp4' };
 	const seekPreview = { src: '', readyState: 0, currentTime: 0 };
 	const { previewSeek, seekPreviewAfterMetadata, setTime } = handlers(player, ['previewSeek', 'seekPreviewAfterMetadata'], {
-		current, seekPreview, HTMLMediaElement: { HAVE_METADATA: 1 }
-	}, 'let previewSource = "", previewTarget = -1, previewVisible = false, playhead = 3;', 'setTime: (s) => { playhead = s; }');
+		current, seekPreview, HTMLMediaElement: { HAVE_METADATA: 1 },
+		clearSeekPreview: () => {}, loadClipBlob: () => new Promise(() => {})
+	}, 'let previewSource = "", previewTarget = -1, previewEpoch = 0, playhead = 3;', 'setTime: (s) => { playhead = s; }');
 	previewSeek(current);
 	setTime(4);
 	previewSeek(current);
