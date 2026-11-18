@@ -137,15 +137,23 @@
 			if (voice) releaseVoice(voice.audio);
 			const audio = new Audio();
 			audio.preload = 'auto';
+			const staged = { audio, src: clip.src, target: NaN };
+			audio.addEventListener('loadedmetadata', () => {
+				if (Number.isFinite(staged.target)) seekVoice(staged);
+			}, { once: true });
+			voices.set(clip.id, staged);
 			audio.src = clip.src;
-			voice = { audio, src: clip.src, target: NaN };
-			voices.set(clip.id, voice);
+			voice = staged;
 		}
 		if (voice.target !== target) {
 			voice.target = target;
-			if (Math.abs(voice.audio.currentTime - target) > 0.025) voice.audio.currentTime = target;
+			seekVoice(voice);
 		}
 		return voice.audio;
+	}
+
+	function seekVoice({ audio, target }: { audio: HTMLAudioElement; target: number }) {
+		if (audio.readyState >= HTMLMediaElement.HAVE_METADATA && Math.abs(audio.currentTime - target) > 0.025) audio.currentTime = target;
 	}
 
 	function readyAudio(audio: HTMLAudioElement | undefined) {
@@ -259,7 +267,11 @@
 		}
 		if (Math.abs(previewTarget - playhead) < 0.02) return;
 		previewTarget = playhead;
-		seekPreview.currentTime = playhead;
+		if (seekPreview.readyState >= HTMLMediaElement.HAVE_METADATA) seekPreview.currentTime = previewTarget;
+	}
+
+	function seekPreviewAfterMetadata() {
+		if (previewSource && current?.src === previewSource) seekPreview.currentTime = previewTarget;
 	}
 
 	function showSeekPreview() {
@@ -853,7 +865,7 @@
 		     fits on one screen in both modes. -->
 		<div class="relative mx-auto w-fit max-w-full">
 			<canvas bind:this={canvas} class="block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - ${source.kind === 'cut' ? 430 : 330}px))`} onclick={togglePause}></canvas>
-			<video bind:this={seekPreview} muted playsinline preload="auto" aria-hidden="true" class="pointer-events-none absolute inset-0 h-full w-full rounded-[3px] bg-black object-contain" style:visibility={previewVisible ? 'visible' : 'hidden'} onseeked={showSeekPreview} onloadeddata={showSeekPreview}></video>
+			<video bind:this={seekPreview} muted playsinline preload="auto" aria-hidden="true" class="pointer-events-none absolute inset-0 h-full w-full rounded-[3px] bg-black object-contain" style:visibility={previewVisible ? 'visible' : 'hidden'} onloadedmetadata={seekPreviewAfterMetadata} onseeked={showSeekPreview} onloadeddata={showSeekPreview}></video>
 		</div>
 
 		<div class="transport mt-2" role="group" aria-label="Transport">

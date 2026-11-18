@@ -151,12 +151,18 @@ test('an armed incoming voice keeps its decoded trim at the cut', () => {
 	const seeks: number[] = [];
 	class Audio {
 		private time = 0;
+		readyState = 0;
+		metadataLoaded?: () => void;
+		addEventListener(_name: string, listener: () => void) { this.metadataLoaded = listener; }
 		get currentTime() { return this.time; }
 		set currentTime(value: number) { this.time = value; seeks.push(value); }
 	}
-	const { armVoice } = handlers(player, ['armVoice'], { Audio, mixUrl: undefined, voices: new Map() });
+	const { armVoice } = handlers(player, ['armVoice', 'seekVoice'], { Audio, mixUrl: undefined, voices: new Map(), HTMLMediaElement: { HAVE_METADATA: 1 } });
 	const clip = { id: 'next', src: 'take.mp4', hasAudio: true };
 	const staged = armVoice(clip, 3);
+	expect(seeks).toEqual([]);
+	staged.readyState = 1;
+	staged.metadataLoaded();
 	expect(armVoice(clip, 3)).toBe(staged);
 	expect(seeks).toEqual([3]);
 });
@@ -181,6 +187,21 @@ test('ready picture holds the cut while the incoming audio is still seeking', ()
 	syncAudio();
 	expect(starts).toBe(1);
 	expect(isBuffering()).toBe(false);
+});
+
+test('cold scrubbing seeks to the latest pointer position when metadata arrives', () => {
+	const current = { src: 'cold.mp4' };
+	const seekPreview = { src: '', readyState: 0, currentTime: 0 };
+	const { previewSeek, seekPreviewAfterMetadata, setTime } = handlers(player, ['previewSeek', 'seekPreviewAfterMetadata'], {
+		current, seekPreview, HTMLMediaElement: { HAVE_METADATA: 1 }
+	}, 'let previewSource = "", previewTarget = -1, previewVisible = false, playhead = 3;', 'setTime: (s) => { playhead = s; }');
+	previewSeek(current);
+	setTime(4);
+	previewSeek(current);
+	expect(seekPreview.currentTime).toBe(0);
+	seekPreview.readyState = 1;
+	seekPreviewAfterMetadata();
+	expect(seekPreview.currentTime).toBe(4);
 });
 
 test('Refs prefers a local replacement and rejects an aborted response', async () => {
