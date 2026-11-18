@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * References in the right-hand drawer (V1S-326): the series' reference images by kind. Characters show only the
-	 * headshot, three across: the left panel of a ONE SHOT sheet (the straight-on face close-up, a third of the
+	 * headshot, three across: the right panel of a character sheet (the straight-on face close-up, a third of the
 	 * width), cropped to the same frame for every character. Places and props show their picture two across.
 	 * Click a picture to see the whole sheet big. Drag one onto a shot to attach it (a chip appears on the
 	 * shot), or attach it to the selected shot. "Upload" sends one vetted image to the series' Review Room
@@ -108,9 +108,9 @@
 	li { display: grid; gap: 4px; align-content: start; min-width: 0; border: 1px solid var(--color-border-subtle); padding: 4px; cursor: grab; }
 	li:hover { border-color: var(--color-border-default); }
 	.thumb { display: block; width: 100%; overflow: hidden; border: 0; padding: 0; background: var(--color-surface-base); cursor: zoom-in; }
-	/* The headshot: the whole left panel of the sheet (its left third, top to bottom), same frame for everyone. */
+	/* Front / rear / portrait sheets: show the whole right third, same frame for every character. */
 	.thumb.head { aspect-ratio: 9 / 16; }
-	.thumb.head img { display: block; width: 300%; max-width: none; height: auto; }
+	.thumb.head img { display: block; width: 300%; max-width: none; height: auto; margin-left: -200%; }
 	.thumb.wide { aspect-ratio: 16 / 9; }
 	.thumb.wide img { display: block; width: 100%; height: 100%; object-fit: cover; }
 	.thumb.empty { aspect-ratio: 9 / 16; display: grid; place-items: center; color: var(--color-text-dim); font: 600 8px var(--font-mono); text-transform: uppercase; text-align: center; cursor: grab; }
