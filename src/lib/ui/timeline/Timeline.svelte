@@ -79,7 +79,7 @@
 	/** Most a clip block may be stretched: one second of program as wide as the view. */
 	const MAX_PX_PER_S = 900;
 	/** A long cut opens zoomed in enough that an average clip is about this wide. */
-	const OPEN_CLIP_PX = 60;
+	const OPEN_CLIP_PX = 86;
 	let host = $state<HTMLDivElement>();
 	let scroller = $state<HTMLDivElement>();
 	let width = $state(900);
@@ -228,19 +228,19 @@
 	<div bind:this={host} class="relative">
 		<!-- Ruler -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="ruler relative h-[26px] cursor-ew-resize touch-none border-b border-nr-line-soft" onpointerdown={seekDown}>
+		<div class="ruler relative h-[38px] cursor-ew-resize touch-none border-b border-nr-line-soft" onpointerdown={seekDown}>
 			{#each beats.filter((b) => b <= total) as b, i (i)}
 				<div class="pointer-events-none absolute bottom-0 h-[5px] w-px bg-nr-mark/70" style:left={`${b * scale}px`}></div>
 			{/each}
 			{#each ticks as t (t)}
 				{@const major = Math.abs(t / tickStep - Math.round(t / tickStep)) < 1e-6}
-				<div class={['absolute bottom-0 w-px', major ? 'h-[7px] bg-nr-faint' : 'h-[4px] bg-nr-line']} style:left={`${t * scale}px`}></div>
-				{#if major}<span class="absolute top-[3px] font-mono text-[9px] text-nr-faint" style:left={`${t * scale + 3}px`}>{fmt(t)}</span>{/if}
+				<div class={['absolute bottom-0 w-px', major ? 'h-[10px] bg-nr-faint' : 'h-[5px] bg-nr-line']} style:left={`${t * scale}px`}></div>
+				{#if major}<span class="absolute top-[8px] font-mono text-[11px] text-nr-muted" style:left={`${t * scale + 5}px`}>{fmt(t)}</span>{/if}
 			{/each}
 		</div>
 
 		<!-- Video track -->
-		<div class="relative mt-[6px] h-[76px]">
+		<div class="relative mt-2 h-[96px]">
 			{#each clips as clip, i (clip.id)}
 				{@const left = starts[i] * scale}
 				{@const w = Math.max(6, lengths[i] * scale - 2)}
@@ -264,7 +264,7 @@
 						<!-- The take's own audio, as it plays in the cut: line its peaks up with the song lane below. -->
 						<div class="pointer-events-none absolute inset-x-0 bottom-0 h-[16px] bg-black/55"><Waveform peaks={clip.wave} from={clip.in} to={clip.out} speed={clip.speed} color="var(--color-nr-accent)" mirror={false} /></div>
 					{/if}
-					<div class="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-1 bg-gradient-to-b from-black/75 to-transparent px-1.5 pb-2 pt-[3px] font-mono text-[9px] text-nr-ink">
+					<div class="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-1.5 bg-gradient-to-b from-black/80 to-transparent px-2 pb-2.5 pt-1.5 font-mono text-[10px] text-nr-ink">
 						<span class="text-nr-accent">{i + 1}</span>
 						<span class="truncate">{clip.title.split(' — ').slice(1).join(' — ') || clip.title}</span>
 						<span class="grow"></span>
@@ -296,7 +296,7 @@
 		<!-- Playhead -->
 		<div class="pointer-events-none absolute inset-y-0 z-30" style:left={`${programTime * scale}px`}>
 			<div class="absolute left-0 top-0 bottom-0 w-[2px] -translate-x-1/2 bg-nr-accent"></div>
-			<div class="playhead-tip absolute left-0 top-0 h-[8px] w-[12px] -translate-x-1/2 bg-nr-accent"></div>
+			<div class="playhead-tip absolute left-0 top-0 h-[10px] w-[14px] -translate-x-1/2 bg-nr-accent"></div>
 		</div>
 	</div>
 
@@ -319,9 +319,9 @@
 	.playhead-tip { clip-path: polygon(0 0, 100% 0, 50% 100%); }
 	.scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 	.content { position: relative; }
-	.zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: 4px; font: 9px var(--font-mono); color: var(--color-nr-faint); }
-	.zoombar button { min-width: 20px; height: 18px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; color: var(--color-nr-muted); font: 600 10px/16px var(--font-mono); }
-	.zoombar button.fit { padding: 0 6px; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+	.zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 6px; font: 10px var(--font-mono); color: var(--color-nr-muted); }
+	.zoombar button { min-width: 30px; height: 28px; border: 1px solid var(--color-nr-line); border-radius: 3px; background: transparent; color: var(--color-nr-muted); font: 600 12px/20px var(--font-mono); }
+	.zoombar button.fit { padding: 0 9px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
 	.zoombar button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
 	.zoombar button:disabled { opacity: .35; }
 	.zoombar .readout { min-width: 34px; text-align: center; }

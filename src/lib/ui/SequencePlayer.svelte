@@ -820,9 +820,9 @@
 
 <svelte:window onkeydown={key} />
 
-<div class="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-nr-deep/95 px-6 pb-6 pt-8" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
-	<div class="w-full max-w-[1180px]">
-		<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[10px] text-nr-muted">
+<div class="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-nr-deep/95 px-4 pb-6 pt-5 sm:px-6" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
+	<div class="w-full max-w-[1320px]">
+		<div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] text-nr-muted">
 			{#if source.kind === 'cut'}
 				<span class="tracking-[.14em] text-nr-accent">CUT</span>
 				<span class="text-nr-ink">{cut?.name ?? ''}</span>
@@ -882,11 +882,11 @@
 		     a song lane and an entry row under the timeline, so its picture leaves room for them: the whole player
 		     fits on one screen in both modes. -->
 		<div class="relative mx-auto w-fit max-w-full">
-			<canvas bind:this={canvas} class="block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - ${source.kind === 'cut' ? 430 : 330}px))`} onclick={togglePause}></canvas>
+			<canvas bind:this={canvas} class="block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((100vw - 48px) * 0.5625), clamp(220px, calc(100dvh - ${source.kind === 'cut' ? 515 : 410}px), 670px))`} onclick={togglePause}></canvas>
 			<video bind:this={seekPreview} muted playsinline preload="auto" aria-hidden="true" class="pointer-events-none absolute inset-0 h-full w-full rounded-[3px] bg-black object-contain" style:visibility={previewVisible ? 'visible' : 'hidden'} onloadedmetadata={seekPreviewAfterMetadata} onseeked={showSeekPreview} onloadeddata={showSeekPreview}></video>
 		</div>
 
-		<div class="transport mt-2" role="group" aria-label="Transport">
+		<div class="transport mt-3" role="group" aria-label="Transport">
 			<button type="button" class="tkey" onclick={() => startClip(index - 1)} disabled={clips.length < 2} aria-label="Previous clip" title="Previous clip (↑)"><span class="ico skip back" aria-hidden="true"></span></button>
 			<button type="button" class="tkey" onclick={() => step(-1)} disabled={!current} aria-label="Back one frame" title="Back one frame (←)"><span class="ico step back" aria-hidden="true"></span></button>
 			<button type="button" class={['tkey play', !paused && 'on']} onclick={togglePause} disabled={!clips.length} aria-label={paused ? 'Play' : 'Pause'} title="Play / pause (Space)">{#if paused}<span class="ico tri" aria-hidden="true"></span>{:else}<span class="ico bars" aria-hidden="true"></span>{/if}</button>
@@ -901,7 +901,7 @@
 			{/if}
 		</div>
 
-		<div class="mt-3 rounded-[3px] border border-nr-line-soft bg-nr-deep p-2">
+		<div class="mt-4 rounded-[3px] border border-nr-line-soft bg-nr-deep p-3">
 			{#if clips.length}
 				<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} onseekstart={beginSeek} onseekend={endSeek} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} beats={cut?.music?.beats ?? []} song={cut?.music ? songPeaks : null} />
 			{:else}
@@ -965,12 +965,12 @@
 	.ctl { border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 8px; color: var(--color-nr-muted); font: 600 9px/20px var(--font-sans); letter-spacing: .12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
 	.ctl:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
 	.ctl:disabled { opacity: .45; }
-	.transport { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; font: 10px var(--font-mono); color: var(--color-nr-muted); }
-	.tkey { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 26px; height: 22px; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; color: var(--color-nr-muted); transition: border-color 140ms ease, color 140ms ease; }
+	.transport { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 8px; font: 11px var(--font-mono); color: var(--color-nr-muted); }
+	.tkey { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 34px; height: 32px; border: 1px solid var(--color-nr-line); border-radius: 3px; background: transparent; color: var(--color-nr-muted); transition: border-color 140ms ease, color 140ms ease; }
 	.tkey:hover:not(:disabled), .tkey.on { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-accent); }
 	.tkey:disabled { opacity: .35; }
-	.tkey.play { width: 34px; margin-inline: 2px; }
-	.readout { flex: none; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 5px; color: var(--color-nr-muted); line-height: 18px; }
+	.tkey.play { width: 44px; }
+	.readout { flex: none; border: 1px solid var(--color-nr-line-soft); border-radius: 3px; padding: 0 7px; color: var(--color-nr-muted); line-height: 22px; }
 	.readout b { color: var(--color-nr-ink); font-weight: 500; }
 	.readout i { margin: 0 3px; color: var(--color-nr-faint); font-style: normal; }
 	.readout.first { margin-left: 8px; }
