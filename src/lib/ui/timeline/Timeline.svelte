@@ -36,6 +36,8 @@
 		programTime,
 		phase = 0,
 		onseek,
+		onseekstart,
+		onseekend,
 		ontrim,
 		ontrimend,
 		onmove,
@@ -51,6 +53,8 @@
 		/** Playing clip's position through its kept span, 0..1. */
 		phase?: number;
 		onseek: (programSeconds: number) => void;
+		onseekstart?: () => void;
+		onseekend?: () => void;
 		ontrim: (clip: number, edge: 'in' | 'out', seconds: number) => void;
 		ontrimend: () => void;
 		onmove: (from: number, to: number) => void;
@@ -156,7 +160,9 @@
 	}
 
 	function seekDown(event: PointerEvent) {
+		if (event.button !== 0) return;
 		gesture = { kind: 'seek' };
+		onseekstart?.();
 		onseek(programAt(event.clientX));
 	}
 
@@ -166,7 +172,7 @@
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const offset = event.clientX - rect.left;
 		focusId = clips[clip].id;
-		if (locked) { gesture = { kind: 'seek' }; onseek(programAt(event.clientX)); return; }
+		if (locked) { seekDown(event); return; }
 		if (offset < EDGE || rect.right - event.clientX < EDGE) {
 			const edge = offset < EDGE ? 'in' : 'out';
 			gesture = { kind: 'trim', clip, edge, startX: event.clientX, start: clips[clip][edge], scale, starts: [...liveStarts] };
@@ -190,7 +196,8 @@
 		const done = gesture;
 		const target = dropIndex;
 		gesture = null;
-		if (done.kind === 'trim') ontrimend();
+		if (done.kind === 'seek') onseekend?.();
+		else if (done.kind === 'trim') ontrimend();
 		else if (done.kind === 'move') {
 			if (done.moved && target !== null && target !== done.clip) onmove(done.clip, target);
 			else if (!done.moved) onseek(programAt(event.clientX));
@@ -206,7 +213,7 @@
 	});
 </script>
 
-<svelte:window onpointermove={windowMove} onpointerup={windowUp} />
+<svelte:window onpointermove={windowMove} onpointerup={windowUp} onpointercancel={windowUp} />
 
 <div class="timeline select-none">
 	<div class="zoombar" aria-label="Timeline zoom">
@@ -221,7 +228,7 @@
 	<div bind:this={host} class="relative">
 		<!-- Ruler -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="ruler relative h-[20px] cursor-text border-b border-nr-line-soft" onpointerdown={seekDown}>
+		<div class="ruler relative h-[26px] cursor-ew-resize touch-none border-b border-nr-line-soft" onpointerdown={seekDown}>
 			{#each beats.filter((b) => b <= total) as b, i (i)}
 				<div class="pointer-events-none absolute bottom-0 h-[5px] w-px bg-nr-mark/70" style:left={`${b * scale}px`}></div>
 			{/each}
@@ -233,7 +240,7 @@
 		</div>
 
 		<!-- Video track -->
-		<div class="relative mt-[6px] h-[54px]">
+		<div class="relative mt-[6px] h-[76px]">
 			{#each clips as clip, i (clip.id)}
 				{@const left = starts[i] * scale}
 				{@const w = Math.max(6, lengths[i] * scale - 2)}
@@ -288,8 +295,8 @@
 		{/if}
 		<!-- Playhead -->
 		<div class="pointer-events-none absolute inset-y-0 z-30" style:left={`${programTime * scale}px`}>
-			<div class="absolute -left-[4px] top-0 h-0 w-0 border-x-[4px] border-t-[6px] border-x-transparent border-t-nr-ink"></div>
-			<div class="absolute top-0 bottom-0 w-px bg-nr-ink/90"></div>
+			<div class="absolute left-0 top-0 bottom-0 w-[2px] -translate-x-1/2 bg-nr-accent"></div>
+			<div class="playhead-tip absolute left-0 top-0 h-[8px] w-[12px] -translate-x-1/2 bg-nr-accent"></div>
 		</div>
 	</div>
 
@@ -309,6 +316,7 @@
 </div>
 
 <style>
+	.playhead-tip { clip-path: polygon(0 0, 100% 0, 50% 100%); }
 	.scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
 	.content { position: relative; }
 	.zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-bottom: 4px; font: 9px var(--font-mono); color: var(--color-nr-faint); }

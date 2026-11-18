@@ -38,6 +38,9 @@ _Avoid_: Story beats (for this), breakdown, beat-by-beat
 A scene's spoken lines in order, each with its speaker and delivery; every line is spoken in exactly one shot, word for word.
 _Avoid_: Script, screenplay, lines (alone)
 
+**Voiceover**:
+A spoken line heard over the picture that the speaker does not deliver within the depicted scene. Narration is voiceover that tells or comments on the story.
+
 **Episode outline**:
 An episode's main story points in order, each marked with its section, written before its scenes are fleshed out.
 _Avoid_: Synopsis, treatment
@@ -104,6 +107,9 @@ _Avoid_: Asset, alternate, version
 One generated clip that holds several shots joined by hard cuts (a hyper-cut teaser or moment); it lands on its scene and can be split into separate shots later.
 _Avoid_: Multi-shot clip, cut-up take, sequence
 
+**Scene split**:
+The division of a montage take at detected shot boundaries. The resulting takes cover the source in order, with every source frame appearing exactly once. Removing frames is a trim.
+
 **Pick**:
 The take currently chosen to represent its shot.
 _Avoid_: Selected take, active take
@@ -145,6 +151,12 @@ _Avoid_: Final cut, frozen cut, published cut
 **Score**:
 The project's song: the music the Agent's first cut is made to. The Agent chooses the shots, their order and how many beats each holds; code puts every cut on a beat.
 _Avoid_: Soundtrack, track, music bed (in prose)
+
+**Temp score**:
+An existing song used to audition the pacing and mood of a cut before its score is decided.
+
+**Song cue**:
+A chosen passage of a song placed at a specific point in a cut. The same passage can return later as a separate cue.
 
 ### Agent
 

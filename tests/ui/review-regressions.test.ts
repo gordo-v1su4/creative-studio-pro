@@ -57,12 +57,12 @@ test('a valid reload preserves edits made while decoding', async () => {
 test('an oversized prefetch is probed once and never uploaded', async () => {
 	let probes = 0, loads = 0;
 	const clips = [
-		{ id: 'playing', src: 'a', bank: { stats: { ready: true }, frameAt: () => ({}) } },
+		{ id: 'playing', src: 'a', bank: { stats: { ready: true, bytes: 60 }, frameAt: () => ({}) } },
 		{ id: 'next', src: 'b', assetId: 'b', in: 0 }
 	];
 	const { ensureBank } = handlers(player, ['ensureBank'], {
 		clips, index: 0, MAX_HEIGHT: 288,
-		getResidentBudget: () => ({ available: 40 }),
+		getResidentBudget: () => ({ limit: 100, available: 40 }),
 		estimateBankBytes: async () => { probes++; return 60; },
 		startBankLoad: () => { loads++; }
 	}, "const reloading = new Set<string>(); let prefetchFor = '';");
@@ -75,12 +75,12 @@ test('prefetch rechecks capacity after its async metadata probe', async () => {
 	const pending = deferred<number>();
 	let available = 100, loads = 0;
 	const clips = [
-		{ id: 'playing', src: 'a', bank: { stats: { ready: true } } },
+		{ id: 'playing', src: 'a', bank: { stats: { ready: true, bytes: 40 } } },
 		{ id: 'next', src: 'b', assetId: 'b', in: 0 }
 	];
 	const { ensureBank } = handlers(player, ['ensureBank'], {
 		clips, index: 0, MAX_HEIGHT: 288,
-		getResidentBudget: () => ({ available }), estimateBankBytes: () => pending.promise,
+		getResidentBudget: () => ({ limit: available + 40, available }), estimateBankBytes: () => pending.promise,
 		startBankLoad: () => { loads++; }
 	}, "const reloading = new Set<string>(); let prefetchFor = '';");
 	ensureBank(1);
@@ -88,6 +88,35 @@ test('prefetch rechecks capacity after its async metadata probe', async () => {
 	pending.resolve(60);
 	await settled();
 	expect(loads).toBe(0);
+});
+
+test('prefetch can reclaim old unpinned clips when the playing and next banks fit together', async () => {
+	let loads = 0;
+	const clips = [
+		{ id: 'playing', src: 'a', bank: { stats: { ready: true, bytes: 40 } } },
+		{ id: 'next', src: 'b', assetId: 'b', in: 0 }
+	];
+	const { ensureBank } = handlers(player, ['ensureBank'], {
+		clips, index: 0, MAX_HEIGHT: 288,
+		getResidentBudget: () => ({ limit: 100, available: 0 }),
+		estimateBankBytes: async () => 40,
+		startBankLoad: () => { loads++; }
+	}, "const reloading = new Set<string>(); let prefetchFor = '';");
+	ensureBank(1);
+	await settled();
+	expect(loads).toBe(1);
+});
+
+test('the next clip starts prefetching at the beginning, not halfway through a short shot', () => {
+	const prefetched: number[] = [];
+	const clip = { id: 'entry', in: 0, out: 2, bank: { duration: 2, frameAt: () => ({ view: {} }) } };
+	const { tick } = handlers(player, ['tick'], {
+		clips: [clip, { ...clip, id: 'next' }], index: 0, paused: false, scrubbing: false, rate: 1,
+		voices: new Map(), song: null, draw: null,
+		ensureBank: (i: number) => prefetched.push(i), pauseAll: () => {}, syncAudio: () => {}, requestAnimationFrame: () => 1
+	}, 'let buffering = false, playhead = 0, lastTick = 1000, frame = 0;');
+	tick(1016);
+	expect(prefetched).toContain(1);
 });
 
 test('a missing bank holds picture time and sound until decoding finishes', () => {

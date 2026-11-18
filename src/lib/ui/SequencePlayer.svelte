@@ -50,7 +50,7 @@
 	let error = $state('');
 	let saveState = $state<'' | 'saving' | 'saved'>('');
 	let scrubbing = false;
-	let buffering = false;
+	let buffering = $state(false);
 	/** Push: the name being typed (null = closed), and the last pushed cut's name. */
 	let pushName = $state<string | null>(null);
 	let pushing = $state(false);
@@ -120,7 +120,7 @@
 	}
 
 	function syncAudio(play = !paused) {
-		play = play && !!current?.bank?.frameAt(playhead);
+		play = play && !scrubbing && !!current?.bank?.frameAt(playhead);
 		syncSong(play);
 		// Playing the built mix: the takes' own sound is already in it.
 		if (mixUrl) { for (const voice of voices.values()) voice.pause(); return; }
@@ -180,7 +180,10 @@
 				void estimateBankBytes(clip.src, MAX_HEIGHT)
 					.then((needed) => {
 						if (clips[index]?.id !== playing.id || clips[index]?.src !== playing.src) return;
-						if (needed > (getResidentBudget()?.available ?? 0)) return;
+						// Full cache does not mean both clips cannot fit: loadBank can reclaim
+						// older unpinned banks. Reserve the playing bank, not the entire LRU.
+						const live = getResidentBudget();
+						if (!live || needed > live.limit - playing.bank!.stats.bytes) return;
 						const again = clips[i];
 						if (!again || again.src !== clip.src || again.assetId !== clip.assetId || reloading.has(again.id) || again.bank?.frameAt(again.in)) return;
 						startBankLoad(again);
@@ -201,8 +204,8 @@
 			if (!buffering) pauseAll();
 			buffering = true;
 		}
-		// Halfway through a clip, make sure the next one is decoded.
-		else if (clip && clips.length > 1 && playhead - clip.in > (clip.out - clip.in) / 2) ensureBank((index + 1) % clips.length);
+		// Short shots may end before a halfway-through decode can finish.
+		else if (clip && clips.length > 1) ensureBank((index + 1) % clips.length);
 		if (ready && buffering) { buffering = false; syncAudio(!paused && !scrubbing); }
 		if (clip && ready && !paused && !scrubbing) {
 			playhead += ((now - lastTick) / 1000) * rate;
@@ -211,7 +214,8 @@
 			if (playhead >= clip.out) startClip(index + 1);
 			else if (song && songOn && !song.paused && Math.abs(song.currentTime - programTime) > 0.25) song.currentTime = programTime;
 		}
-		const resident = clip?.bank?.frameAt(Math.min(playhead, clip.bank.duration - 1e-3));
+		const visible = clips[index]?.bank;
+		const resident = visible?.frameAt(Math.min(playhead, visible.duration - 1e-3));
 		if (draw && resident) draw(resident.view);
 		lastTick = now;
 		frame = requestAnimationFrame(tick);
@@ -240,6 +244,17 @@
 		index = i;
 		const span = clip.out - clip.in;
 		playhead = Math.min(clip.out - 0.02, clip.in + fractionAtProgram(clip.speed, span, seconds - starts[i]) * span);
+		if (!scrubbing) syncAudio();
+	}
+
+	function beginSeek() {
+		scrubbing = true;
+		pauseAll();
+	}
+
+	function endSeek() {
+		scrubbing = false;
+		lastTick = performance.now();
 		syncAudio();
 	}
 
@@ -643,7 +658,7 @@
 
 <svelte:window onkeydown={key} />
 
-<div class="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-nr-deep/95 px-6 py-4" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
+<div class="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-nr-deep/95 px-6 pb-6 pt-8" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
 	<div class="w-full max-w-[1180px]">
 		<div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[10px] text-nr-muted">
 			{#if source.kind === 'cut'}
@@ -654,6 +669,7 @@
 				<span class="tracking-[.14em] text-nr-accent">SEQUENCE</span>
 			{/if}
 			<span>{clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"} · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
+			{#if buffering && !paused}<span role="status" class="text-nr-mark">Buffering…</span>{/if}
 			<span class="text-nr-faint" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and shots are untouched' : 'Trims and ramps save to the takes'}>
 				{source.kind === 'cut' ? (frozen ? 'picture locked · read-only' : readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
 			</span>
@@ -722,7 +738,7 @@
 
 		<div class="mt-3 rounded-[3px] border border-nr-line-soft bg-nr-deep p-2">
 			{#if clips.length}
-				<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} beats={cut?.music?.beats ?? []} song={cut?.music ? songPeaks : null} />
+				<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} onseekstart={beginSeek} onseekend={endSeek} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} beats={cut?.music?.beats ?? []} song={cut?.music ? songPeaks : null} />
 			{:else}
 				<div class="h-[170px]"></div>
 			{/if}
