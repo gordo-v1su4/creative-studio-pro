@@ -1,4 +1,4 @@
-import { ALL_FORMATS, BlobSource, Input, VideoSampleSink } from 'mediabunny';
+import { ALL_FORMATS, BlobSource, Input, UrlSource, VideoSampleSink } from 'mediabunny';
 import { ResidentCapacityError, ResidentFrameBank, ResidentMemoryBudget, residentDimensions, type BankProgress } from './ResidentFrameBank';
 import { getPreferredCanvasFormat, getSharedWebGpuDevice, onSharedWebGpuDeviceLost } from './SharedGpuDevice';
 
@@ -14,6 +14,7 @@ interface BankEntry { ready: Promise<ResidentFrameBank>; bank: ResidentFrameBank
 export interface Poster { texture: GPUTexture; view: GPUTextureView; duration: number }
 
 const blobs = new Map<string, Promise<Blob>>();
+const clipMetadata = new Map<string, Promise<{ duration: number; fps: number; hasAudio: boolean }>>();
 const banks = new Map<string, BankEntry>();
 const posters = new Map<string, Promise<Poster>>();
 /** Keys pinned while on screen — never chosen by {@link evictOldest}. */
@@ -38,6 +39,28 @@ export function pinBank(url: string, maxHeight: number): void {
 
 export function unpinBank(url: string, maxHeight: number): void {
 	pinned.delete(bankKey(url, maxHeight));
+}
+
+/** Read timeline bounds without decoding or uploading frames. */
+export function loadClipMetadata(url: string): Promise<{ duration: number; fps: number; hasAudio: boolean }> {
+	let pending = clipMetadata.get(url);
+	if (!pending) {
+		pending = (async () => {
+			const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(new URL(url, location.href)) });
+			try {
+				const [track, audio] = await Promise.all([input.getPrimaryVideoTrack(), input.getPrimaryAudioTrack()]);
+				if (!track) throw new Error('The clip has no video track');
+				const [duration, packets] = await Promise.all([track.computeDuration(), track.computePacketStats(120)]);
+				if (!Number.isFinite(duration) || duration <= 0) throw new Error('The clip has no finite duration');
+				return { duration, fps: packets.averagePacketRate, hasAudio: !!audio };
+			} finally {
+				input.dispose();
+			}
+		})();
+		pending.catch(() => clipMetadata.delete(url));
+		clipMetadata.set(url, pending);
+	}
+	return pending;
 }
 
 /** Bytes a decoded bank would need, from container metadata (no GPU upload). */

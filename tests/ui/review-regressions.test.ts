@@ -61,7 +61,7 @@ test('an oversized prefetch is probed once and never uploaded', async () => {
 		{ id: 'next', src: 'b', assetId: 'b', in: 0 }
 	];
 	const { ensureBank } = handlers(player, ['ensureBank'], {
-		clips, index: 0, MAX_HEIGHT: 288,
+		clips, index: 0, MAX_HEIGHT: 288, upcoming: () => [clips[1]],
 		getResidentBudget: () => ({ limit: 100, available: 40 }),
 		estimateBankBytes: async () => { probes++; return 60; },
 		startBankLoad: () => { loads++; }
@@ -79,7 +79,7 @@ test('prefetch rechecks capacity after its async metadata probe', async () => {
 		{ id: 'next', src: 'b', assetId: 'b', in: 0 }
 	];
 	const { ensureBank } = handlers(player, ['ensureBank'], {
-		clips, index: 0, MAX_HEIGHT: 288,
+		clips, index: 0, MAX_HEIGHT: 288, upcoming: () => [clips[1]],
 		getResidentBudget: () => ({ limit: available + 40, available }), estimateBankBytes: () => pending.promise,
 		startBankLoad: () => { loads++; }
 	}, "const reloading = new Set<string>(); let prefetchFor = '';");
@@ -97,7 +97,7 @@ test('prefetch can reclaim old unpinned clips when the playing and next banks fi
 		{ id: 'next', src: 'b', assetId: 'b', in: 0 }
 	];
 	const { ensureBank } = handlers(player, ['ensureBank'], {
-		clips, index: 0, MAX_HEIGHT: 288,
+		clips, index: 0, MAX_HEIGHT: 288, upcoming: () => [clips[1]],
 		getResidentBudget: () => ({ limit: 100, available: 0 }),
 		estimateBankBytes: async () => 40,
 		startBankLoad: () => { loads++; }
@@ -107,27 +107,33 @@ test('prefetch can reclaim old unpinned clips when the playing and next banks fi
 	expect(loads).toBe(1);
 });
 
-test('the next clip starts prefetching at the beginning, not halfway through a short shot', () => {
+test('the first cold bank is prefetched even when the next shot is ready', () => {
 	const prefetched: number[] = [];
-	const clip = { id: 'entry', in: 0, out: 2, bank: { duration: 2, frameAt: () => ({ view: {} }) } };
-	const { tick } = handlers(player, ['tick'], {
-		clips: [clip, { ...clip, id: 'next' }], index: 0, paused: false, scrubbing: false, rate: 1,
-		voices: new Map(), song: null, draw: null,
-		ensureBank: (i: number) => prefetched.push(i), pauseAll: () => {}, syncAudio: () => {}, requestAnimationFrame: () => 1
-	}, 'let buffering = false, playhead = 0, lastTick = 1000, frame = 0;');
-	tick(1016);
-	expect(prefetched).toContain(1);
+	const armed: string[] = [];
+	const current = { id: 'entry', in: 0, bank: { frameAt: () => ({}) } };
+	const next = { ...current, id: 'next' };
+	const cold = { id: 'cold', in: 0 };
+	const { stageUpcoming } = handlers(player, ['stageUpcoming'], {
+		current, clips: [current, next, cold], scrubbing: false,
+		voices: new Map(), upcoming: () => [next, cold],
+		armVoice: (clip: { id: string }) => armed.push(clip.id), ensureBank: (i: number) => prefetched.push(i)
+	});
+	stageUpcoming();
+	expect(armed).toEqual(['next', 'cold']);
+	expect(prefetched).toEqual([2]);
 });
 
 test('a missing bank holds picture time and sound until decoding finishes', () => {
 	let ready = false, pauses = 0, resumes = 0;
 	const clip = { id: 'entry', in: 0, out: 10, bank: { duration: 10, frameAt: () => ready ? { view: {} } : null } };
-	const { tick, time } = handlers(player, ['tick'], {
+	const { tick, time } = handlers(player, ['tick', 'holdPlayback'], {
 		clips: [clip], index: 0, paused: false, scrubbing: false, rate: 1,
-		voices: new Map(), song: null, draw: null,
-		ensureBank: () => {}, pauseAll: () => { pauses++; },
-		syncAudio: () => { resumes++; }, requestAnimationFrame: () => 1
-	}, 'let buffering = false, playhead = 1, lastTick = 1000, frame = 0;', 'time: () => playhead');
+		voices: new Map(), song: null, songOn: false, draw: null,
+		starts: [0], lengths: [10], programTime: 1,
+		sourceTime: (_clip: unknown, s: number) => s,
+		ensureBank: () => {}, pauseAll: () => { pauses++; }, stageUpcoming: () => {}, armVoice: () => {}, warmPeaks: () => {},
+		resumed: () => { resumes++; }, readyAudio: () => true, requestAnimationFrame: () => 1
+	}, 'let buffering = false, playhead = 1, lastTick = 1000, frame = 0; function syncAudio() { buffering = false; resumed(); }', 'time: () => playhead');
 	tick(1100);
 	tick(1200);
 	expect(time()).toBe(1);
@@ -135,8 +141,46 @@ test('a missing bank holds picture time and sound until decoding finishes', () =
 	expect(resumes).toBe(0);
 	ready = true;
 	tick(1300);
-	expect(time()).toBeCloseTo(1.1);
+	expect(time()).toBe(1);
 	expect(resumes).toBe(1);
+	tick(1316);
+	expect(time()).toBeCloseTo(1.016);
+});
+
+test('an armed incoming voice keeps its decoded trim at the cut', () => {
+	const seeks: number[] = [];
+	class Audio {
+		private time = 0;
+		get currentTime() { return this.time; }
+		set currentTime(value: number) { this.time = value; seeks.push(value); }
+	}
+	const { armVoice } = handlers(player, ['armVoice'], { Audio, mixUrl: undefined, voices: new Map() });
+	const clip = { id: 'next', src: 'take.mp4', hasAudio: true };
+	const staged = armVoice(clip, 3);
+	expect(armVoice(clip, 3)).toBe(staged);
+	expect(seeks).toEqual([3]);
+});
+
+test('ready picture holds the cut while the incoming audio is still seeking', () => {
+	const take = { seeking: true, paused: true, readyState: 4, currentTime: 2, play: () => Promise.resolve() };
+	const voice = { audio: take, target: 2 };
+	let holds = 0, starts = 0;
+	const { syncAudio, isBuffering } = handlers(player, ['syncAudio', 'readyAudio'], {
+		current: { id: 'next', bank: { frameAt: () => ({}) } },
+		paused: false, scrubbing: false, playhead: 2, rate: 1,
+		song: null, songOn: true, mixUrl: undefined, cut: null, programTime: 10,
+		armVoice: () => take, voices: new Map([['next', voice]]),
+		HTMLMediaElement: { HAVE_FUTURE_DATA: 3 }, pauseAll: () => {},
+		held: () => { holds++; }, syncSong: () => { starts++; }
+	}, 'let buffering = false; function holdPlayback() { buffering = true; held(); }', 'isBuffering: () => buffering');
+	syncAudio();
+	expect(holds).toBe(1);
+	expect(starts).toBe(0);
+	expect(isBuffering()).toBe(true);
+	take.seeking = false;
+	syncAudio();
+	expect(starts).toBe(1);
+	expect(isBuffering()).toBe(false);
 });
 
 test('Refs prefers a local replacement and rejects an aborted response', async () => {

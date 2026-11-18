@@ -9,10 +9,10 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
-	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
+	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipMetadata, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
@@ -37,10 +37,14 @@
 	const MIN_SPAN = 0.2;
 
 	let canvas = $state<HTMLCanvasElement>();
-	/** One preloaded audio element per clip, so a cut switches sound instantly instead of reloading. */
-	const voices = new Map<string, HTMLAudioElement>();
+	let seekPreview: HTMLVideoElement;
+	let previewVisible = $state(false);
+	let previewSource = '';
+	let previewTarget = -1;
+	const LOOK_AHEAD = 3;
+	const voices = new Map<string, { audio: HTMLAudioElement; src: string; target: number }>();
 	/** id is the beat for a selection, the cut entry for a cut. */
-	type Clip = TimelineClip & { src: string; assetId: string; cardId: string };
+	type Clip = TimelineClip & { src: string; assetId: string; cardId: string; fps: number; hasAudio: boolean };
 	let clips = $state<Clip[]>([]);
 	let index = $state(0);
 	let playhead = $state(0);
@@ -76,7 +80,7 @@
 	const programTime = $derived(current ? starts[index] + programElapsed(current.speed, current.out - current.in, fraction) : 0);
 	const rate = $derived(current ? rateAt(current.speed, fraction) : 1);
 	/** Frames per second of the playing take (from its decoded frames), for frame stepping. */
-	const fps = $derived(current?.bank?.fps && current.bank.fps > 0 ? current.bank.fps : 24);
+	const fps = $derived(current?.fps || 24);
 	const frameNumber = $derived(current ? Math.floor(playhead * fps + 1e-6) : 0);
 	const frameTotal = $derived(current ? Math.round(current.duration * fps) : 0);
 
@@ -90,7 +94,7 @@
 		const audio = new Audio(url);
 		audio.preload = 'auto';
 		song = audio;
-		syncSong();
+		untrack(() => syncSong(!paused && !scrubbing && !buffering));
 		return () => { audio.pause(); audio.removeAttribute('src'); audio.load(); if (song === audio) song = null; };
 	});
 
@@ -102,56 +106,101 @@
 		songPeaks = null;
 		if (url) void loadPeaks(url).then((peaks) => { if (cut?.music?.url === url) songPeaks = peaks; });
 	});
-	$effect(() => {
-		for (const src of new Set(clips.map((clip) => clip.src))) {
-			if (src in takePeaks) continue;
-			takePeaks[src] = null;
-			void loadPeaks(src).then((peaks) => { takePeaks[src] = peaks; });
-		}
-	});
+	function warmPeaks(clip: Clip) {
+		if (!clip.hasAudio || clip.src in takePeaks) return;
+		takePeaks[clip.src] = null;
+		void loadPeaks(clip.src).then((peaks) => { takePeaks[clip.src] = peaks; });
+	}
 	const timelineClips = $derived(clips.map((clip) => ({ ...clip, wave: takePeaks[clip.src] ?? null })));
 
-	function syncSong(play = !paused) {
+	function syncSong(play = !paused && !scrubbing && !buffering) {
 		if (!song) return;
 		if (!songOn || !clips.length || programTime >= (mixUrl ? Infinity : cut?.music?.duration_s ?? Infinity)) { song.pause(); return; }
-		if (Math.abs(song.currentTime - programTime) > 0.12) song.currentTime = programTime;
-		if (play) void song.play().catch(() => {});
-		else song.pause();
+		if (!play) { song.pause(); return; }
+		if (song.paused) {
+			if (Math.abs(song.currentTime - programTime) > 0.06) song.currentTime = programTime;
+			void song.play().catch(() => {});
+		}
+	}
+
+	function releaseVoice(voice: HTMLAudioElement) {
+		voice.pause();
+		voice.removeAttribute('src');
+		voice.load();
+	}
+
+	/** Set the incoming trim while the previous shot is still playing. */
+	function armVoice(clip: Clip, target: number): HTMLAudioElement | undefined {
+		if (mixUrl || !clip.hasAudio) return;
+		let voice = voices.get(clip.id);
+		if (voice?.src !== clip.src) {
+			if (voice) releaseVoice(voice.audio);
+			const audio = new Audio();
+			audio.preload = 'auto';
+			audio.src = clip.src;
+			voice = { audio, src: clip.src, target: NaN };
+			voices.set(clip.id, voice);
+		}
+		if (voice.target !== target) {
+			voice.target = target;
+			if (Math.abs(voice.audio.currentTime - target) > 0.025) voice.audio.currentTime = target;
+		}
+		return voice.audio;
+	}
+
+	function readyAudio(audio: HTMLAudioElement | undefined) {
+		return !audio || audio.ended || !!audio.error || (!audio.seeking && audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA);
 	}
 
 	function syncAudio(play = !paused) {
-		play = play && !scrubbing && !!current?.bank?.frameAt(playhead);
-		syncSong(play);
-		// Playing the built mix: the takes' own sound is already in it.
-		if (mixUrl) { for (const voice of voices.values()) voice.pause(); return; }
-		const audio = current ? voices.get(current.id) : undefined;
-		for (const [id, other] of voices) if (id !== current?.id) other.pause();
-		if (!audio || !current) return;
-		audio.currentTime = playhead;
+		if (!play || scrubbing || !current) { pauseAll(); return; }
+		const audio = armVoice(current, playhead);
+		const music = songOn && programTime < (mixUrl ? Infinity : cut?.music?.duration_s ?? Infinity) ? song ?? undefined : undefined;
+		if (music?.paused && !music.seeking && Math.abs(music.currentTime - programTime) > 0.06) {
+			music.currentTime = programTime;
+		}
+		if (!current.bank?.frameAt(playhead) || !readyAudio(audio) || !readyAudio(music)) { holdPlayback(); return; }
+		buffering = false;
+		syncSong();
+		if (!audio || audio.error) return;
 		audio.playbackRate = rate;
-		if (play) void audio.play().catch(() => {});
-		else audio.pause();
+		if (audio.paused) {
+			voices.get(current.id)!.target = NaN;
+			void audio.play().catch(() => {});
+		}
 	}
 
 	function startClip(next: number) {
 		if (!clips.length) return;
+		pauseAll();
 		index = (next + clips.length) % clips.length;
 		playhead = clips[index].in;
+		lastTick = performance.now();
 		syncAudio();
 	}
 
-	/** Pin the playing take so LRU eviction cannot drop its bank mid-playback. */
+	/** Keep the playing take and the consecutive ready takes it can cut to. */
 	$effect(() => {
-		const clip = clips[index];
-		if (!clip) return;
-		pinBank(clip.src, MAX_HEIGHT);
-		return () => unpinBank(clip.src, MAX_HEIGHT);
+		if (!current) return;
+		const urls = new Set([current.src]);
+		if (current.bank?.stats.ready) {
+			for (const clip of upcoming()) {
+				if (!clip.bank?.stats.ready) break;
+				urls.add(clip.src);
+			}
+		}
+		for (const src of urls) pinBank(src, MAX_HEIGHT);
+		return () => { for (const src of urls) unpinBank(src, MAX_HEIGHT); };
 	});
+
+	function upcoming() {
+		return Array.from({ length: Math.min(LOOK_AHEAD, clips.length - 1) }, (_, offset) => clips[(index + offset + 1) % clips.length]);
+	}
 
 	/**
 	 * Long cuts can outgrow the GPU frame budget, so the least-recently-used clips are
-	 * evicted (their banks stop returning frames). Re-decode when needed. Prefetch the
-	 * next clip only when it fits alongside the pinned playing bank.
+	 * evicted (their banks stop returning frames). Warm the next cold bank in order,
+	 * if it fits alongside the banks already staged for playback.
 	 */
 	const reloading = new Set<string>();
 	function startBankLoad(clip: Clip) {
@@ -168,7 +217,7 @@
 	let prefetchFor = '';
 	function ensureBank(i: number) {
 		const clip = clips[i];
-		if (!clip || reloading.has(clip.id) || clip.bank?.frameAt(clip.in)) return;
+		if (!clip || reloading.size || clip.bank?.frameAt(clip.in)) return;
 		if (i !== index) {
 			const playing = clips[index];
 			if (!playing?.bank?.stats.ready) return;
@@ -180,12 +229,12 @@
 				void estimateBankBytes(clip.src, MAX_HEIGHT)
 					.then((needed) => {
 						if (clips[index]?.id !== playing.id || clips[index]?.src !== playing.src) return;
-						// Full cache does not mean both clips cannot fit: loadBank can reclaim
-						// older unpinned banks. Reserve the playing bank, not the entire LRU.
 						const live = getResidentBudget();
-						if (!live || needed > live.limit - playing.bank!.stats.bytes) return;
+						const banks = new Set([playing.bank, ...upcoming().flatMap((entry) => entry.bank?.stats.ready ? [entry.bank] : [])]);
+						const stagedBytes = [...banks].reduce((sum, bank) => sum + (bank?.stats.bytes ?? 0), 0);
+						if (!live || needed > live.limit - stagedBytes) return;
 						const again = clips[i];
-						if (!again || again.src !== clip.src || again.assetId !== clip.assetId || reloading.has(again.id) || again.bank?.frameAt(again.in)) return;
+						if (!again || again.src !== clip.src || again.assetId !== clip.assetId || reloading.size || again.bank?.frameAt(again.in)) return;
 						startBankLoad(again);
 					})
 					.catch(() => {});
@@ -196,38 +245,116 @@
 		startBankLoad(clip);
 	}
 
+	function holdPlayback() {
+		if (!buffering) pauseAll();
+		buffering = true;
+	}
+
+	function previewSeek(clip: Clip) {
+		if (clip.src !== previewSource) {
+			previewVisible = false;
+			previewSource = clip.src;
+			previewTarget = -1;
+			seekPreview.src = clip.src;
+		}
+		if (Math.abs(previewTarget - playhead) < 0.02) return;
+		previewTarget = playhead;
+		seekPreview.currentTime = playhead;
+	}
+
+	function showSeekPreview() {
+		if (current?.src === previewSource && !current.bank?.frameAt(playhead) &&
+			!seekPreview.seeking && Math.abs(seekPreview.currentTime - playhead) < 0.06) previewVisible = true;
+	}
+
+	function clearSeekPreview() {
+		if (!previewSource) return;
+		previewSource = '';
+		seekPreview.removeAttribute('src');
+		seekPreview.load();
+		previewVisible = false;
+	}
+
+	function stageUpcoming() {
+		if (scrubbing) return;
+		const next = upcoming();
+		const staged = new Set([current?.id, ...next.map((clip) => clip.id)]);
+		for (const [id, voice] of voices) {
+			if (staged.has(id)) continue;
+			releaseVoice(voice.audio);
+			voices.delete(id);
+		}
+		for (const clip of next) armVoice(clip, clip.in);
+		const cold = next.find((clip) => !clip.bank?.frameAt(clip.in));
+		if (cold) ensureBank(clips.indexOf(cold));
+	}
+
 	function tick(now: number) {
 		const clip = clips[index];
 		const ready = !!clip?.bank?.frameAt(playhead);
 		if (clip && !ready) {
-			ensureBank(index);
-			if (!buffering) pauseAll();
-			buffering = true;
+			if (scrubbing) previewSeek(clip);
+			else ensureBank(index);
+			if (!paused && !scrubbing) armVoice(clip, playhead);
+			if (!paused && !scrubbing) holdPlayback();
 		}
-		// Short shots may end before a halfway-through decode can finish.
-		else if (clip && clips.length > 1) ensureBank((index + 1) % clips.length);
-		if (ready && buffering) { buffering = false; syncAudio(!paused && !scrubbing); }
+		else if (clip) stageUpcoming();
 		if (clip && ready && !paused && !scrubbing) {
-			playhead += ((now - lastTick) / 1000) * rate;
-			const audio = voices.get(clip.id);
-			if (audio && Math.abs(audio.playbackRate - rate) > 0.01) audio.playbackRate = rate;
-			if (playhead >= clip.out) startClip(index + 1);
-			else if (song && songOn && !song.paused && Math.abs(song.currentTime - programTime) > 0.25) song.currentTime = programTime;
+			const audio = voices.get(clip.id)?.audio;
+			const music = songOn && programTime < (mixUrl ? Infinity : cut?.music?.duration_s ?? Infinity) ? song ?? undefined : undefined;
+			if (buffering) syncAudio();
+			else if (!readyAudio(audio) || !readyAudio(music)) holdPlayback();
+			else {
+				const elapsed = Math.min(100, Math.max(0, now - lastTick)) / 1000;
+				const nextTime = programTime + elapsed;
+				if (nextTime >= starts[index] + lengths[index]) advanceClip(nextTime);
+				else {
+					playhead = sourceTime(clip, nextTime - starts[index]);
+					if (audio && !audio.paused && !audio.ended) {
+						if (Math.abs(audio.playbackRate - rate) > 0.01) audio.playbackRate = rate;
+						if (Math.abs(audio.currentTime - playhead) > 0.15) audio.currentTime = playhead;
+					}
+					if (music && !music.paused && Math.abs(music.currentTime - programTime) > 0.18) music.currentTime = programTime;
+				}
+			}
 		}
 		const visible = clips[index]?.bank;
 		const resident = visible?.frameAt(Math.min(playhead, visible.duration - 1e-3));
-		if (draw && resident) draw(resident.view);
+		if (draw && resident && (!buffering || paused || scrubbing)) {
+			draw(resident.view);
+			clearSeekPreview();
+		}
+		if (clip && ready) warmPeaks(clip);
 		lastTick = now;
 		frame = requestAnimationFrame(tick);
 	}
 
+	function sourceTime(clip: Clip, elapsed: number) {
+		const span = clip.out - clip.in;
+		return clip.in + fractionAtProgram(clip.speed, span, elapsed) * span;
+	}
+
+	function advanceClip(nextTime: number) {
+		voices.get(current.id)?.audio.pause();
+		const next = (index + 1) % clips.length;
+		if (next === 0) { startClip(0); return; }
+		index = next;
+		const clip = clips[next];
+		// Use the pre-armed trim for audio. Video-only shots can carry the fractional tick.
+		const audio = voices.get(clip.id)?.audio;
+		const ready = clip.bank?.frameAt(clip.in) && readyAudio(audio);
+		playhead = ready && !audio ? sourceTime(clip, nextTime - starts[next]) : clip.in;
+		syncAudio();
+	}
+
 	function pauseAll() {
-		for (const audio of voices.values()) audio.pause();
+		for (const { audio } of voices.values()) audio.pause();
 		song?.pause();
 	}
 
 	function togglePause() {
 		paused = !paused;
+		lastTick = performance.now();
 		syncAudio();
 	}
 
@@ -241,9 +368,10 @@
 		const i = Math.max(0, starts.findLastIndex((start) => start <= seconds + 1e-9));
 		const clip = clips[i];
 		if (!clip) return;
+		if (!scrubbing) pauseAll();
 		index = i;
-		const span = clip.out - clip.in;
-		playhead = Math.min(clip.out - 0.02, clip.in + fractionAtProgram(clip.speed, span, seconds - starts[i]) * span);
+		playhead = Math.max(clip.in, Math.min(clip.out - 0.02, sourceTime(clip, seconds - starts[i])));
+		if (!clip.bank?.frameAt(playhead)) previewSeek(clip);
 		if (!scrubbing) syncAudio();
 	}
 
@@ -309,13 +437,12 @@
 		if (!clip || !asset || asset.asset_id === clip.assetId || swapping) return;
 		swapping = true; error = '';
 		try {
+			const metadata = await loadClipMetadata(asset.url);
 			const bank = await loadBank(asset.url, MAX_HEIGHT);
 			const out = Math.min(clip.out, bank.duration);
-			voices.get(clip.id)?.pause();
-			const voice = new Audio(asset.url);
-			voice.preload = 'auto';
-			voices.set(clip.id, voice);
-			clips[i] = { ...clip, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.min(clip.in, out - MIN_SPAN) };
+			const voice = voices.get(clip.id);
+			if (voice) { releaseVoice(voice.audio); voices.delete(clip.id); }
+			clips[i] = { ...clip, ...metadata, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.max(0, Math.min(clip.in, out - MIN_SPAN)) };
 			// Suggestions were for the old take.
 			const { [clip.id]: _stale, ...rest } = suggestions;
 			suggestions = rest;
@@ -333,7 +460,7 @@
 		if (clips.length < 2) return;
 		const [gone] = clips.splice(i, 1);
 		const voice = voices.get(gone.id);
-		if (voice) { voice.pause(); voice.removeAttribute('src'); voice.load(); voices.delete(gone.id); }
+		if (voice) { releaseVoice(voice.audio); voices.delete(gone.id); }
 		startClip(Math.min(i, clips.length - 1));
 		scheduleSave();
 	}
@@ -487,11 +614,11 @@
 		let target = Math.floor(playhead * fps + 1e-6) + frames;
 		for (;;) {
 			const clip = clips[i];
-			const clipFps = clip.bank?.fps && clip.bank.fps > 0 ? clip.bank.fps : 24;
+			const clipFps = clip.fps || 24;
 			const first = Math.ceil(clip.in * clipFps - 1e-6);
 			const last = Math.ceil(clip.out * clipFps - 1e-6) - 1;
-			if (target > last && i < clips.length - 1) { target = target - last - 1; i += 1; target += Math.ceil(clips[i].in * (clips[i].bank?.fps || 24) - 1e-6); continue; }
-			if (target < first && i > 0) { const over = first - target; i -= 1; const prev = clips[i]; const prevFps = prev.bank?.fps || 24; target = Math.ceil(prev.out * prevFps - 1e-6) - over; continue; }
+			if (target > last && i < clips.length - 1) { target = target - last - 1; i += 1; target += Math.ceil(clips[i].in * (clips[i].fps || 24) - 1e-6); continue; }
+			if (target < first && i > 0) { const over = first - target; i -= 1; const prev = clips[i]; const prevFps = prev.fps || 24; target = Math.ceil(prev.out * prevFps - 1e-6) - over; continue; }
 			index = i;
 			// Land in the middle of the frame so the frame bank picks exactly that frame.
 			playhead = (Math.min(last, Math.max(first, target)) + 0.5) / clipFps;
@@ -625,19 +752,23 @@
 				const ratio = window.devicePixelRatio || 1;
 				canvas!.width = Math.round(canvas!.clientWidth * ratio);
 				canvas!.height = Math.round(canvas!.clientHeight * ratio);
-				const loaded: typeof clips = [];
 				const items = sources();
 				expected = items.length;
-				for (const item of items) {
-					const bank = await loadBank(item.src, MAX_HEIGHT);
-					if (disposed) return;
-					loading = loaded.length + 1;
-					const out = Math.min(item.out ?? bank.duration, bank.duration);
-					const voice = new Audio(item.src);
-					voice.preload = 'auto';
-					voices.set(item.id, voice);
-					loaded.push({ id: item.id, title: item.title, src: item.src, assetId: item.assetId, cardId: item.cardId, bank, duration: bank.duration, in: Math.min(item.in ?? 0, out - MIN_SPAN), out, speed: item.speed });
-				}
+				const loaded: Clip[] = new Array(items.length);
+				let nextItem = 0;
+				const readMetadata = async () => {
+					while (!disposed && nextItem < items.length) {
+						const at = nextItem++;
+						const item = items[at];
+						const metadata = await loadClipMetadata(item.src);
+						if (disposed) return;
+						const out = Math.min(item.out ?? metadata.duration, metadata.duration);
+						loaded[at] = { ...item, ...metadata, speed: item.speed, bank: null, in: Math.max(0, Math.min(item.in ?? 0, out - MIN_SPAN)), out };
+						loading++;
+					}
+				};
+				await Promise.all(Array.from({ length: Math.min(6, items.length) }, readMetadata));
+				if (disposed) return;
 				clips = loaded;
 				startClip(0);
 				lastTick = performance.now();
@@ -649,8 +780,9 @@
 		return () => {
 			disposed = true;
 			cancelAnimationFrame(frame);
-			for (const voice of voices.values()) { voice.pause(); voice.removeAttribute('src'); voice.load(); }
+			for (const { audio } of voices.values()) releaseVoice(audio);
 			voices.clear();
+			clearSeekPreview();
 			if (saveTimer) clearTimeout(saveTimer);
 		};
 	});
@@ -719,7 +851,10 @@
 		<!-- The picture gives way to the timeline on short windows: height is capped, width follows 16:9. A cut has
 		     a song lane and an entry row under the timeline, so its picture leaves room for them: the whole player
 		     fits on one screen in both modes. -->
-		<canvas bind:this={canvas} class="mx-auto block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - ${source.kind === 'cut' ? 430 : 330}px))`} onclick={togglePause}></canvas>
+		<div class="relative mx-auto w-fit max-w-full">
+			<canvas bind:this={canvas} class="block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((min(100vw, 1180px) - 48px) * 0.5625), calc(100vh - ${source.kind === 'cut' ? 430 : 330}px))`} onclick={togglePause}></canvas>
+			<video bind:this={seekPreview} muted playsinline preload="auto" aria-hidden="true" class="pointer-events-none absolute inset-0 h-full w-full rounded-[3px] bg-black object-contain" style:visibility={previewVisible ? 'visible' : 'hidden'} onseeked={showSeekPreview} onloadeddata={showSeekPreview}></video>
+		</div>
 
 		<div class="transport mt-2" role="group" aria-label="Transport">
 			<button type="button" class="tkey" onclick={() => startClip(index - 1)} disabled={clips.length < 2} aria-label="Previous clip" title="Previous clip (↑)"><span class="ico skip back" aria-hidden="true"></span></button>
