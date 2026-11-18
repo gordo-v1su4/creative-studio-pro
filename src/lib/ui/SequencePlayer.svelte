@@ -105,7 +105,7 @@
 		for (const src of new Set(clips.map((clip) => clip.src))) {
 			if (src in takePeaks) continue;
 			takePeaks[src] = null;
-			void loadPeaks(src).then((peaks) => (takePeaks[src] = peaks));
+			void loadPeaks(src).then((peaks) => { takePeaks[src] = peaks; });
 		}
 	});
 	const timelineClips = $derived(clips.map((clip) => ({ ...clip, wave: takePeaks[clip.src] ?? null })));
@@ -138,8 +138,33 @@
 		syncAudio();
 	}
 
+	/**
+	 * Long cuts can outgrow the GPU frame budget, so the least-recently-used clips are
+	 * evicted (their banks stop returning frames). Re-decode a clip when it is needed,
+	 * touching the playing clip first so the reload never evicts what is on screen.
+	 */
+	const reloading = new Set<string>();
+	function ensureBank(i: number) {
+		const clip = clips[i];
+		if (!clip || reloading.has(clip.id) || clip.bank?.frameAt(clip.in)) return;
+		reloading.add(clip.id);
+		const playing = clips[index];
+		const touch = playing && playing.id !== clip.id ? loadBank(playing.src, MAX_HEIGHT).catch(() => null) : Promise.resolve(null);
+		void touch
+			.then(() => loadBank(clip.src, MAX_HEIGHT))
+			.then((bank) => {
+				const at = clips.findIndex((entry) => entry.id === clip.id);
+				if (at >= 0) clips[at] = { ...clips[at], bank };
+			})
+			.catch(() => { /* a later tick retries */ })
+			.finally(() => reloading.delete(clip.id));
+	}
+
 	function tick(now: number) {
 		const clip = clips[index];
+		if (clip && !clip.bank?.frameAt(clip.in)) ensureBank(index);
+		// Halfway through a clip, make sure the next one is decoded.
+		else if (clip && clips.length > 1 && playhead - clip.in > (clip.out - clip.in) / 2) ensureBank((index + 1) % clips.length);
 		if (clip && !paused && !scrubbing) {
 			playhead += ((now - lastTick) / 1000) * rate;
 			const audio = voices.get(clip.id);

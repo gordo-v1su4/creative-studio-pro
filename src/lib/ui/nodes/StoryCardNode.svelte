@@ -149,7 +149,7 @@
 		if (card && story.series && pageId) { event.preventDefault(); event.stopPropagation(); story.onDropReference?.(pageId); }
 	}}
 	class={[
-		'story-node w-[240px] overflow-hidden border bg-nr-card',
+		'story-node w-[240px] overflow-hidden rounded-md border bg-nr-card',
 		benched && 'benched',
 		dropping && 'dropping',
 		referenceOver && 'dropping',

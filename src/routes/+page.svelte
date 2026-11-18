@@ -100,6 +100,31 @@
 	// The left panel collapses inward to a slim tab on the edge (remembered).
 	let railCollapsed = $state(false);
 	$effect(() => { try { railCollapsed = localStorage.getItem('csp.rail-collapsed') === '1'; } catch { /* private mode */ } });
+	// Layers panel width: drag its right edge; remembered per browser.
+	const RAIL_MIN = 184, RAIL_MAX = 520;
+	let railWidth = $state(260);
+	let railResizing = $state(false);
+	$effect(() => { try { const saved = Number(localStorage.getItem('csp.rail-width')); if (saved >= RAIL_MIN && saved <= RAIL_MAX) railWidth = saved; } catch { /* private mode */ } });
+	function startRailResize(event: PointerEvent) {
+		event.preventDefault();
+		const startX = event.clientX, startWidth = railWidth;
+		railResizing = true;
+		const move = (e: PointerEvent) => { railWidth = Math.round(Math.min(RAIL_MAX, Math.max(RAIL_MIN, startWidth + e.clientX - startX))); };
+		const up = () => {
+			railResizing = false;
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			try { localStorage.setItem('csp.rail-width', String(railWidth)); } catch { /* private mode */ }
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+	}
+	function nudgeRail(event: KeyboardEvent) {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		event.preventDefault();
+		railWidth = Math.min(RAIL_MAX, Math.max(RAIL_MIN, railWidth + (event.key === 'ArrowRight' ? 16 : -16)));
+		try { localStorage.setItem('csp.rail-width', String(railWidth)); } catch { /* private mode */ }
+	}
 	function setRailCollapsed(collapsed: boolean) {
 		railCollapsed = collapsed;
 		try { localStorage.setItem('csp.rail-collapsed', collapsed ? '1' : '0'); } catch { /* private mode */ }
@@ -1035,10 +1060,14 @@
 
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
-		class="work-area relative grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
-		style={`--inspector-width: ${inspectorOpen ? '400px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? '184px' : '0px'}`}
+		class={['work-area relative grid min-h-0 min-w-0', !railResizing && 'transition-[grid-template-columns] duration-300 ease-out']}
+		style={`--inspector-width: ${inspectorOpen ? '400px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? `${railWidth}px` : '0px'}`}
 	>
-		<aside class={['rail hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
+		<aside class={['rail relative hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
+			{#if canvasOpen && !railCollapsed}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<div class={['rail-resize', railResizing && 'active']} role="separator" aria-orientation="vertical" aria-label="Resize the layers panel" aria-valuemin={RAIL_MIN} aria-valuemax={RAIL_MAX} aria-valuenow={railWidth} tabindex="0" title="Drag to resize" onpointerdown={startRailResize} onkeydown={nudgeRail} ondblclick={() => { railWidth = 260; try { localStorage.setItem('csp.rail-width', '260'); } catch { /* private mode */ } }}></div>
+			{/if}
 			{#if canvasOpen && !railCollapsed}
 			<div class="min-h-0 grow overflow-y-auto overflow-x-hidden p-3">
 				<div class="meta-label">Canvas layers</div>
@@ -1060,7 +1089,7 @@
 									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
 								{:else}
 									<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every shot not in a group' : 'Show this group · double-click to rename'}>
-										<b class="min-w-0 grow truncate">{group.name}</b>
+										<b class="min-w-0 grow truncate" title={group.name}>{group.name}</b>
 										<small>{group.count}</small>
 									</button>
 								{/if}
@@ -1390,6 +1419,10 @@
 	.seq-item { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 6px; color: var(--color-nr-muted); font: 10px/20px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 	.seq-item b { color: var(--color-nr-accent); font-weight: 500; }
 	.rail { overflow: hidden; }
+	.rail-resize { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 30; width: 7px; cursor: col-resize; touch-action: none; }
+	.rail-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background 120ms ease; }
+	.rail-resize:hover::after, .rail-resize.active::after, .rail-resize:focus-visible::after { background: #4ee8d2; }
+	.rail-resize:focus-visible { outline: none; }
 	.rail-collapse { margin: 0 8px 8px; border: 0; border-top: 1px solid #1d2226; background: transparent; padding: 8px 4px 2px; color: #55626a; font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-align: left; text-transform: uppercase; }
 	.rail-collapse:hover { color: #9eeee3; }
 	.rail-handle { position: absolute; left: 0; bottom: 156px; z-index: 40; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; width: 26px; padding: 9px 4px 8px; border: 1px solid #22282d; border-left: 0; border-radius: 0 3px 3px 0; background: rgba(17, 17, 19, 0.92); color: #7b878f; }
