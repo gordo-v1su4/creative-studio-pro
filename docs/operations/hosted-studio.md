@@ -83,6 +83,38 @@ a reversible write and a real browser session. Stop the hosted writer before
 restoring data; never overwrite a newer hosted ledger with a workstation copy.
 Roll back the image without replacing its persistent data volume.
 
+## Project data is separate from a code release
+
+The hosted App VM store is authoritative for production work. Git branches,
+commits and Vercel deployments carry application code, not the ignored workstation
+`data/projects/` directory. A local dev session writes a separate ledger and media
+tree; it does not synchronize those changes to the hosted store. Use the hosted
+app for production story, Board, shot, take and cut edits. Local development must
+use disposable fixtures unless a specific local project workflow is requested.
+
+Never report local creative work as available in production based on a Git push.
+Before closing work that changes project content, compare the actual hosted
+project ID, story revision, cards, assets, cuts and media availability with the
+intended result, then open the public app and verify the story, populated Board
+and real clip playback. A deployment check alone does not pass this gate.
+
+For existing workstation-only work, compare ledger ancestry and hosted changes
+first. Back up both stores; stop the hosted writer for activation. Copy and verify
+each referenced media file before appending the reconciled project snapshot to
+the hosted ledger. Refuse differing destination bytes or a changed target ledger.
+Preserve hosted Prep and other independent files rather than replacing the whole
+project directory. Keep the original local ledger and a migration receipt for
+recovery. Preserve source-project media, picks, cuts and Review Room IDs.
+
+On 2026-11-18, TR105's local version 60 was reconciled into hosted version 61:
+story v2.3, 25 approved moments, 146 cards (including 61 retired planned cards),
+85 video assets and five cuts. All 85 missing files (118,082,264 bytes) were
+SHA-256 verified and their hosted HTTP media reads passed. The existing hosted
+ledger was retained and the new snapshot appended; hosted Prep was unchanged.
+The pre-migration backup and receipt are under the origin data directory at
+`migration-backups/tr105-2026-11-18T21-45-33.225Z/`. The older hosted version 19
+contained no cards or assets and the v2.1 story; it was not the current local work.
+
 TR105 is `01a1df26-166b-7701-b799-3b43c3d1d318`; its Review Room root is
 `kh7ayapj8a971qb8bb52m063798jbqs7` under Blood Rush. Preserve TR100's shots,
 picks and cuts. Shot creation follows moment review, breakdown and board creation,
