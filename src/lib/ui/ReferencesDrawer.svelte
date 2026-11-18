@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	/**
 	 * References in the right-hand drawer (V1S-326): the series' reference images by kind. Characters show only the
 	 * headshot, three across: the right panel of a character sheet (the straight-on face close-up, a third of the
@@ -71,7 +72,7 @@
 				>
 					{#if file}
 						<button type="button" class={['thumb', group.kind === 'Character' ? 'head' : 'wide']} onclick={() => (zoom = { src: src(ref.page_id), alt: ref.name })} aria-label={`Show ${ref.name}'s sheet big`}>
-							<img src={src(ref.page_id)} alt={ref.name} loading="lazy" draggable="false" />
+							<img src={referenceImageUrl(src(ref.page_id), group.kind === 'Character' ? 'medium' : 'small')} alt={ref.name} loading="lazy" draggable="false" />
 						</button>
 					{:else}
 						<span class="thumb empty">no image</span>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	import { onMount } from 'svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import Pick from '$lib/ui/controls/Pick.svelte';
@@ -109,7 +110,7 @@
 		{:else}
 			<div class="mt-3 grid gap-3 md:grid-cols-[220px_1fr]">
 				<div>
-					<img src={prepared.still.url} alt={`${prepared.title} start frame`} class="w-full border border-[#26383f] object-contain" />
+					<img src={referenceImageUrl(prepared.still.url)} alt={`${prepared.title} start frame`} class="w-full border border-[#26383f] object-contain" />
 					<p class="mt-1 font-mono text-[10px] text-[#668d98]">@Image_1 · {prepared.still.name}{prepared.still.width ? ` · ${prepared.still.width}×${prepared.still.height}` : ''}</p>
 					{#if stillUnder2K}<p class="mt-1 font-mono text-[10px] text-gate-failed">Under 2K: sends are blocked until the still is at least {MIN_LONG_EDGE}px on the long edge.</p>{/if}
 				</div>

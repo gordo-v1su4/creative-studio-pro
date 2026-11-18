@@ -30,6 +30,30 @@ Provider, Notion and Review Room keys belong only on the origin.
 | Origin `CSP_REVIEW_ROOM_URL` | `CREATIVE_STUDIO_PRO_REVIEW_ROOM_URL` |
 | Origin `CSP_SPLITTER_URL` | `CREATIVE_STUDIO_PRO_SPLITTER_URL` |
 | Origin `BODY_SIZE_LIMIT` | `CREATIVE_STUDIO_PRO_BODY_SIZE_LIMIT` |
+| Origin/local `CSP_MEDIA_GATEWAY_URL` | existing `PROXMOX_HOME_MEDIA_API_PUBLIC_BASE_URL` |
+| Origin/local `CSP_MEDIA_GATEWAY_TOKEN` | existing `PROXMOX_HOME_MEDIA_API_TOKEN` |
+| Origin/local `CSP_MEDIA_GATEWAY_BUCKET` | `CREATIVE_STUDIO_PRO_MEDIA_GATEWAY_BUCKET` |
+
+Reference uploads, attachments and generated Prep sheets use the existing RustFS
+Sharp `/process-image` service. The Studio bucket keeps the same layout as
+Pindeck: `media-uploads/YYYY/MM_DD/<content-sha256>/original/`, `preview/`,
+`low/` (320px WebP), and `high/` (1280px and 1920px WebP). Originals retain
+their bytes. New versions use new content keys, never overwrite another project's
+images, and do not change source take selections or Review Room ownership.
+
+Compact views request `?variant=small|medium|large` through the authenticated
+Studio file/reference route. Full-size preview and generation URLs stay original.
+Existing references backfill on the first variant request. Manifests and downloaded
+variants are a disposable cache beside the project root in `reference-variants/`;
+the cache checks source size/mtime and shares in-flight conversions. A service
+outage keeps an import but leaves variants pending for a later read to retry.
+Local instances without gateway configuration retain original-image behavior.
+
+To warm an existing project's current sheets, run inside the configured Studio
+container: `bun scripts/warm-reference-thumbnails.ts <project-id> <origin-url>`.
+Use that container's internal listener as the origin URL. This reads reference
+files and prepares the disposable cache; it does not edit the project or its Prep
+selections. The script reports original and medium-thumbnail byte totals.
 
 Build an exact commit with `infra/studio/Dockerfile`; exclude secrets and data.
 Do not set `VERCEL` or `CSP_PUBLIC_SITE=1` on the origin. Local behavior is

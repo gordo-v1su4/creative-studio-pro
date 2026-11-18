@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
@@ -476,7 +477,7 @@
 									<textarea value={card.beat} oninput={(event) => updateCard(card.card_id, { beat: event.currentTarget.value })} rows="5" aria-label={`Card ${card.order + 1} beat`}></textarea>
 									<p class="mt-2 text-[11px] text-[#668d98]"><b class="text-[#5bd9d0]">PURPOSE</b> · {card.purpose}</p>
 								{:else if face === 'image'}
-									<div class="card-result">{#if image}<img src={image.url} alt={`${card.title} image result`} />{:else}<div><b>IMAGE PROMPT</b><p>{card.image_prompt}</p></div>{/if}</div>
+									<div class="card-result">{#if image}<img src={referenceImageUrl(image.url)} alt={`${card.title} image result`} />{:else}<div><b>IMAGE PROMPT</b><p>{card.image_prompt}</p></div>{/if}</div>
 								{:else}
 									<div class="card-result">{#if video}<ClipHoverPlayer src={video.url} label={card.title} maxHeight={270} inS={video.in_s} outS={video.out_s} speed={video.speed} />{:else}<div><b>VIDEO PROMPT</b><p>{card.video_prompt}</p></div>{/if}</div>
 								{/if}
@@ -573,7 +574,7 @@
 				{#if draft.cards.length === 0}<span>No cards to preview.</span>{:else}
 					{@const leadVideo = previewCard ? assetFor(previewCard.card_id, 'video') : null}
 					{@const leadImage = previewCard ? assetFor(previewCard.card_id, 'image') : null}
-					{#if leadVideo}<!-- svelte-ignore a11y_media_has_caption --><video src={leadVideo.url} controls class="h-full w-full object-contain"></video>{:else if leadImage && previewCard}<img src={leadImage.url} alt={previewCard.title} class="h-full w-full object-contain" />{:else if previewCard}<div><b>{previewCard.title}</b><p>{previewCard.beat}</p></div>{/if}
+					{#if leadVideo}<!-- svelte-ignore a11y_media_has_caption --><video src={leadVideo.url} controls class="h-full w-full object-contain"></video>{:else if leadImage && previewCard}<img src={referenceImageUrl(leadImage.url)} alt={previewCard.title} class="h-full w-full object-contain" />{:else if previewCard}<div><b>{previewCard.title}</b><p>{previewCard.beat}</p></div>{/if}
 				{/if}
 			</div>
 			<div class="mt-4 flex gap-2 overflow-x-auto pb-2">

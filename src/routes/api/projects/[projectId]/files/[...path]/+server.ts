@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
-import { getProjectRoot } from '$lib/server/config';
+import { getProjectRoot, getReferenceVariants } from '$lib/server/config';
+import { referenceImageSize } from '$lib/server/reference-variants';
+import { createHash } from 'node:crypto';
 
 const MIME: Record<string, string> = {
 	'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif',
@@ -16,7 +18,7 @@ const MIME: Record<string, string> = {
  * ledger in `<root>/<projectId>/files/`. Production assets reference these by
  * same-origin URL; paths outside that folder are refused.
  */
-export const GET: RequestHandler = async ({ params, request }) => {
+export const GET: RequestHandler = async ({ params, request, url }) => {
 	const projectId = idSchema.safeParse(params.projectId);
 	if (!projectId.success) error(400, 'Invalid project id');
 	const type = MIME[extname(params.path).toLowerCase()];
@@ -24,6 +26,16 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	const base = resolve(join(getProjectRoot(), projectId.data, 'files'));
 	const target = resolve(join(base, params.path));
 	if (!target.startsWith(base + sep)) error(403, 'Path escapes project files');
+	const variant = referenceImageSize(url.searchParams.get('variant'));
+	const variants = type.startsWith('image/') && variant ? getReferenceVariants() : null;
+	if (variants && variant) {
+		try {
+			const bytes = await variants.read(target, variant);
+			const etag = `"${createHash('sha256').update(bytes).digest('hex')}"`;
+			const headers = { 'content-type': 'image/webp', 'cache-control': 'private, max-age=3600', etag };
+			return new Response(request.headers.get('if-none-match') === etag ? null : new Uint8Array(bytes), { status: request.headers.get('if-none-match') === etag ? 304 : 200, headers });
+		} catch { error(503, 'Reference thumbnail is not ready; retry shortly'); }
+	}
 	let body: Buffer;
 	try { body = await readFile(target); }
 	catch { error(404, 'File not found'); }

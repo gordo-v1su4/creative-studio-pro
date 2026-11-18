@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	import type { NodeProps } from '@xyflow/svelte';
 	import { Handle, Position } from '@xyflow/svelte';
 	import { untrack } from 'svelte';
@@ -207,7 +208,7 @@
 							{#if shown.kind === 'video'}
 								<ClipHoverPlayer src={shown.url} label={card.title} inS={shown.in_s} outS={shown.out_s} speed={shown.speed} />
 							{:else}
-								<img src={shown.url} alt={`${card.title} take`} class="h-full w-full object-contain" />
+								<img src={referenceImageUrl(shown.url)} alt={`${card.title} take`} class="h-full w-full object-contain" />
 							{/if}
 						</div>
 					{/key}
@@ -243,7 +244,7 @@
 		<div class="nodrag flex flex-wrap items-center gap-1 border-t border-nr-line px-1.5 py-1" aria-label={`References on ${card.title}`}>
 			{#each story.references ?? [] as reference (reference.key)}
 				<span class={['ref-chip', reference.kind === 'previous_frame' && 'prev', reference.label === 'Missing reference' && 'missing']} title={reference.kind === 'previous_frame' ? "The previous shot's last frame, attached after the other references" : reference.label}>
-					{#if reference.url}<img src={reference.url} alt="" class="h-3 w-5 object-cover" />{/if}
+					{#if reference.url}<img src={referenceImageUrl(reference.url, 'small')} alt="" class="h-3 w-5 object-cover" />{/if}
 					<span class="max-w-[120px] truncate">{reference.label}</span>
 					<button type="button" onclick={(event) => { event.stopPropagation(); story.onRemoveReference?.(reference.key); }} aria-label={`Remove ${reference.label} from ${card.title}`}>×</button>
 				</span>

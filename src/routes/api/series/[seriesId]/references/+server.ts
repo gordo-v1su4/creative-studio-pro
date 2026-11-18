@@ -3,8 +3,9 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import type { RequestHandler } from './$types';
-import { getReferenceCacheDir, getReferenceFileDeps, getSeriesStore } from '$lib/server/config';
+import { getReferenceCacheDir, getReferenceFileDeps, getSeriesStore, getReferenceVariants } from '$lib/server/config';
 import { cachedReference, uploadReference } from '$lib/server/reference-files';
+import { referenceImageSize } from '$lib/server/reference-variants';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'references' } }, { status });
 
@@ -33,6 +34,18 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	if (!file) return fail(404, 'No image uploaded for that reference yet');
 	// A copy already cached on this machine is served without Review Room; only a missing one is fetched.
 	const cached = join(getReferenceCacheDir(), `${file.version_id}${extname(file.file_name).toLowerCase() || '.png'}`);
+	const variant = referenceImageSize(url.searchParams.get('variant'));
+	const variants = variant ? getReferenceVariants() : null;
+	if (variants && variant) {
+		try {
+			if (!existsSync(cached)) {
+				const deps = getReferenceFileDeps();
+				if (!deps) return fail(503, 'Review Room is not configured');
+				await cachedReference(deps, file);
+			}
+			return new Response(new Uint8Array(await variants.read(cached, variant)), { headers: { 'content-type': 'image/webp', 'cache-control': 'private, max-age=3600' } });
+		} catch { return fail(503, 'Reference thumbnail is not ready; retry shortly'); }
+	}
 	if (existsSync(cached)) return new Response(await readFile(cached), { headers: { 'content-type': file.mime_type, 'cache-control': 'private, max-age=3600' } });
 	const deps = getReferenceFileDeps();
 	if (!deps) return fail(503, 'Review Room is not configured');

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	import type { Project } from '$lib/domain/schemas';
 	import type { PrepEntry, PrepState, ReferenceSpec } from '$lib/domain/prep';
 	import { factsGaps, handOffLine, identityGaps, notesOf, prepStage } from '$lib/domain/prep';
@@ -221,7 +222,7 @@
 						<div class="node-cap">Source images · what you feed in</div>
 						<div class="thumbs">
 							{#each item.state.sources as source, i (source.url)}
-								<figure><button type="button" class="remove" disabled={!!busy[key]} onclick={() => void call(key, 'Removing…', { action: 'remove_source', key, url: source.url })} title={`Remove ${source.name} (the prompt is rewritten without it)`} aria-label={`Remove ${source.name}`}>×</button><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={source.url} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
+								<figure><button type="button" class="remove" disabled={!!busy[key]} onclick={() => void call(key, 'Removing…', { action: 'remove_source', key, url: source.url })} title={`Remove ${source.name} (the prompt is rewritten without it)`} aria-label={`Remove ${source.name}`}>×</button><button type="button" class="pic" onclick={() => (zoom = { src: source.url, alt: source.name })} aria-label={`Show ${source.name} big`}><img src={referenceImageUrl(source.url, 'small')} alt={source.name} loading="lazy" /></button><figcaption>image {i + 1}</figcaption></figure>
 							{:else}
 								<p class="muted">None yet: {item.template === 'T1' || item.template === 'W3' ? 'made from the facts alone' : ''}</p>
 							{/each}
@@ -330,7 +331,7 @@
 					<div class="node">
 						<div class="node-cap">Reference · what comes back</div>
 						{#if item.state.result}
-							<button type="button" class="pic" onclick={() => (zoom = { src: item.state.result!.url, alt: `${item.entry.name} reference` })} aria-label={`Show ${item.entry.name}'s reference big`}><img class="sheet" src={item.state.result.url} alt={`${item.entry.name} reference`} loading="lazy" /></button>
+							<button type="button" class="pic" onclick={() => (zoom = { src: item.state.result!.url, alt: `${item.entry.name} reference` })} aria-label={`Show ${item.entry.name}'s reference big`}><img class="sheet" src={referenceImageUrl(item.state.result.url)} alt={`${item.entry.name} reference`} loading="lazy" /></button>
 							{@const madeAt = Date.parse(item.state.result.made_at)}
 							<p class="muted">{#if now - madeAt < 15 * 60_000}<span class="new">New</span> {/if}Made {clock(madeAt)}{item.state.result.uploaded ? ' · in the References drawer' : ''}{item.state.result.outside ? ' · made outside' : ''}</p>
 							{#if item.state.result.note}<p class="note">{item.state.result.note}</p>{/if}
@@ -340,7 +341,7 @@
 								{#if busy[key] === 'Preparing original comparison…'}<p class="working" role="status">Preparing original comparison…</p>{/if}
 								{#if comparisonErrors[key]}<p class="error" role="alert">{comparisonErrors[key]}</p>{/if}
 								{#if scale?.method === 'original-front-v1'}
-									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% opacity over generated. Opacity means transparency, not enlargement. Same body width; feet aligned; uniform scaling only.` })} aria-label={`Show ${item.entry.name}'s original comparison big`}><img class="overlay" src={scale.overlay_url} alt={`${item.entry.name}: original and generated front comparison`} loading="lazy" /></button>
+									<button type="button" class="pic" onclick={() => (zoom = { src: scale.overlay_url, alt: `${item.entry.name}: original cutout, generated front, and original at 50% opacity over generated. Opacity means transparency, not enlargement. Same body width; feet aligned; uniform scaling only.` })} aria-label={`Show ${item.entry.name}'s original comparison big`}><img class="overlay" src={referenceImageUrl(scale.overlay_url)} alt={`${item.entry.name}: original and generated front comparison`} loading="lazy" /></button>
 									<p class="muted">{scale.verdict}</p>
 									<p class="muted">The overlay shows the original at 50% opacity so both images are visible. This is not a size measurement.</p>
 								{:else}
@@ -354,7 +355,7 @@
 								</div>
 							{/if}
 						{:else if item.current}
-							<button type="button" class="pic" onclick={() => (zoom = { src: item.current!.url, alt: `${item.entry.name}, current sheet` })} aria-label={`Show ${item.entry.name}'s current sheet big`}><img class="sheet old" src={item.current.url} alt={`${item.entry.name}, current sheet`} loading="lazy" /></button>
+							<button type="button" class="pic" onclick={() => (zoom = { src: item.current!.url, alt: `${item.entry.name}, current sheet` })} aria-label={`Show ${item.entry.name}'s current sheet big`}><img class="sheet old" src={referenceImageUrl(item.current.url)} alt={`${item.entry.name}, current sheet`} loading="lazy" /></button>
 							<p class="muted">Existing reference · available to reuse</p>
 						{:else}
 							<p class="muted">Not made yet</p>
@@ -366,7 +367,7 @@
 									{#each item.versions.filter(version => !version.removed) as version (version.id)}
 										<div class="version">
 											<p class="muted">{version.name ?? version.id}</p>
-											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={version.url} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
+											<button type="button" class="pic" aria-label={`Preview ${item.entry.name} version ${version.id}`} onclick={() => (zoom = { src: version.url, alt: `${item.entry.name} · saved version · ${new Date(version.made_at).toLocaleString()}` })}><img class="sheet" src={referenceImageUrl(version.url, 'small')} alt={`${item.entry.name} saved version`} loading="lazy" /></button>
 											<p class="muted">{new Date(version.made_at).toLocaleString()}{version.outside ? ' · uploaded' : ' · generated'}{version.current ? ' · current' : ''}</p>
 											<div class="version-actions">
 												<button type="button" class="key" aria-label={version.current ? 'Current version' : 'Use this version'} disabled={!!busy[key] || !!item.state.job || version.current} onclick={() => void call(key, 'Switching saved version…', { action: 'use_version', key, version_id: version.id })}>{version.current ? 'Current' : 'Use'}</button>

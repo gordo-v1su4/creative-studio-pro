@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	import type { Project } from '$lib/domain/schemas';
 	import { DEFAULT_TARGET, SEEDANCE_TARGETS, SEEDANCE_TARGET_IDS, checkTarget, type SeedanceTarget, type TeaserTarget } from '$lib/domain/trailer-house';
 	import Pick from '$lib/ui/controls/Pick.svelte';
@@ -203,7 +204,7 @@
 						{#if house?.character_image}
 							{@const ref = house.character_image}
 							<figure class="ref" title={`${ref.name} · ${ref.width}×${ref.height}: the Agent sees this as the main character`}>
-								<img src={ref.url} alt={`Main character reference: ${ref.name}`} />
+								<img src={referenceImageUrl(ref.url)} alt={`Main character reference: ${ref.name}`} />
 								<figcaption><span>{ref.width}×{ref.height}</span><button type="button" onclick={() => void imageRequest('DELETE')} disabled={!!busy} aria-label="Remove the character image">×</button></figcaption>
 							</figure>
 						{:else}

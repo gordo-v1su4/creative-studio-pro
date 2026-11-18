@@ -96,6 +96,19 @@ test('local location attachments retain every named image without the series sta
 	expect((await usePrepVersion(deps, project, gym.entry.key, master.id)).ok).toBeTrue();
 });
 
+test('source uploads and landed sheets automatically prepare variants, retaining original bytes', async () => {
+	const { deps } = await setup();
+	const made = await deps.gateway.createProject({ command: 'create_project', title: 'Thumbnail import', brief: '', creative_focus: 'full room', created_by: 'test' });
+	if (!made.ok) throw new Error(made.error.message);
+	await addPrepEntry(deps, made.data.project_id, 'character', 'Mara');
+	const prepared: string[] = [];
+	deps.prepareReference = async (file) => { prepared.push(file); expect(await readFile(file, 'utf8')).toBe('source pixels'); };
+	const input = { file_name: 'Mara.png', bytes: new TextEncoder().encode('source pixels') };
+	expect((await addSource(deps, made.data.project_id, 'character:Mara', input)).ok).toBe(true);
+	expect((await attachOutside(deps, made.data, 'character:Mara', input)).ok).toBe(true);
+	expect(prepared).toHaveLength(3); // source, landed sheet, saved version
+});
+
 test('a standalone trailer derives required identities and reuses a show image without modifying its source', async () => {
 	const { deps, projectId } = await setup();
 	const source = (await deps.store.readProject(projectId))!;

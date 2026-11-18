@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { referenceImageUrl } from '$lib/media/reference-images';
 	import type { StillApproval } from '$lib/domain/stills';
 
 	/**
@@ -31,7 +32,7 @@
 		<ol class="refs" aria-label="References in attach order">
 			{#each approval.references as ref (ref.order)}
 				<li>
-					{#if ref.url}<img src={ref.url} alt={ref.name} loading="lazy" />{:else}<span class="noimg" aria-hidden="true"></span>{/if}
+					{#if ref.url}<img src={referenceImageUrl(ref.url, 'small')} alt={ref.name} loading="lazy" />{:else}<span class="noimg" aria-hidden="true"></span>{/if}
 					<span class="n">image {ref.order}</span>
 					<span class="name" title={ref.name}>{ref.name}</span>
 				</li>

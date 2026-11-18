@@ -27,6 +27,7 @@ import { dirname, join as joinPath } from 'node:path';
 import { createSplitter } from '$lib/server/splitter';
 import { uvScaleCheck, uvStamper, type PrepDeps } from '$lib/server/prep';
 import { createNotionApi } from '$lib/server/notion';
+import { ReferenceVariantCache } from '$lib/server/reference-variants';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -35,6 +36,18 @@ import { createNotionApi } from '$lib/server/notion';
 
 let cachedStore: ProjectStore | null = null;
 let cachedSettings: AppSettingsStore | null = null;
+let referenceVariants: ReferenceVariantCache | null = null;
+
+export function getReferenceVariants(): ReferenceVariantCache | null {
+	if (!env.CSP_MEDIA_GATEWAY_URL || !env.CSP_MEDIA_GATEWAY_TOKEN || !env.CSP_MEDIA_GATEWAY_BUCKET) return null;
+	return referenceVariants ??= new ReferenceVariantCache({ url: env.CSP_MEDIA_GATEWAY_URL, token: env.CSP_MEDIA_GATEWAY_TOKEN, bucket: env.CSP_MEDIA_GATEWAY_BUCKET }, joinPath(dirname(getProjectRoot()), 'reference-variants'));
+}
+
+/** An unavailable thumbnail service must not discard an otherwise successful import. Reads retry it. */
+async function prepareReferenceVariants(file: string): Promise<void> {
+	const cache = getReferenceVariants();
+	if (cache) await cache.prepare(file).catch(() => { console.warn('Reference variants pending; the media service will be retried on thumbnail read.'); });
+}
 
 export function getProjectRoot(): string {
 	const root = env.CSP_PROJECT_ROOT;
@@ -172,7 +185,8 @@ export async function getPrepDeps(): Promise<PrepDeps> {
 		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(), series: getSeriesStore(),
 		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null, download: animate.download,
 		agent: async (project) => { const resolved = await resolveProjectModel(project); return resolved.ok ? createOpenAICompatibleClient(resolved.connection) : null; },
-		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd()), scaleCheck: uvScaleCheck(process.cwd())
+		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd()), scaleCheck: uvScaleCheck(process.cwd()),
+		prepareReference: prepareReferenceVariants
 	};
 }
 
@@ -199,7 +213,8 @@ export function getReferenceFileDeps(): ReferenceFileDeps | null {
 	if (!config) return null;
 	return {
 		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: getReferenceCacheDir(), probe: probeMedia,
-		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output])
+		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output]),
+		prepareReference: prepareReferenceVariants
 	};
 }
 

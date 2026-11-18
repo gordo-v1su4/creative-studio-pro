@@ -14,6 +14,7 @@ import type { SeriesRecord, SeriesStore } from './series';
  */
 
 export interface ReferenceFileDeps {
+	prepareReference?: (file: string) => Promise<void>;
 	client: ReviewRoomClient;
 	store: SeriesStore;
 	/** Where cached copies live (beside the series records, never inside a project). */
@@ -65,7 +66,9 @@ export async function uploadReference(deps: ReferenceFileDeps, seriesId: string,
 		metadata: { reference: reference.name, kind: reference.kind, notion_page_id: reference.page_id, handles: reference.handles }, makeCurrent: true
 	});
 	// The staged upload becomes the cache entry for this version, so the first send needs no download.
-	await writeFile(join(deps.cacheDir, `${uploaded.versionId}${extname(input.file_name).toLowerCase()}`), input.bytes);
+	const cached = join(deps.cacheDir, `${uploaded.versionId}${extname(input.file_name).toLowerCase()}`);
+	await writeFile(cached, input.bytes);
+	await deps.prepareReference?.(cached);
 	const fresh = (await deps.store.read(seriesId)) ?? record;
 	const saved = await deps.store.write({
 		...fresh,

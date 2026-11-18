@@ -26,6 +26,8 @@ import { characterSheetInputsSchema, fillCharacterSheet, type CharacterSheetInpu
  */
 
 export interface PrepDeps extends StillDeps {
+	/** Stores image renditions through the shared RustFS image service after an import or generation. */
+	prepareReference?: (file: string) => Promise<void>;
 	series: SeriesStore;
 	/** The Agent's model for this project; null when none is configured. */
 	agent: (project: Project) => Promise<AgentModelClient | null>;
@@ -207,13 +209,14 @@ export async function setBodySource(deps: Pick<PrepDeps, 'projectRoot'>, project
 }
 
 /** A source image dropped onto an entry; kept under files/prep/sources, never attached to shots. */
-export async function addSource(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, key: string, input: { file_name: string; bytes: Uint8Array }): Promise<{ ok: true; prep: PrepFile } | Failure> {
+export async function addSource(deps: Pick<PrepDeps, 'projectRoot'> & Partial<Pick<PrepDeps, 'prepareReference'>>, projectId: string, key: string, input: { file_name: string; bytes: Uint8Array }): Promise<{ ok: true; prep: PrepFile } | Failure> {
 	const ext = extname(input.file_name).toLowerCase();
 	if (!IMAGE_EXT.has(ext)) return fail(400, 'A source image is a PNG, JPEG or WebP');
 	const folder = join(deps.projectRoot, projectId, 'files', 'prep', 'sources', safe(key));
 	await mkdir(folder, { recursive: true });
 	const name = `${Date.now().toString(36)}-${safe(input.file_name.replace(/\.[^.]+$/, ''))}${ext}`;
 	await writeFile(join(folder, name), input.bytes);
+	await deps.prepareReference?.(join(folder, name));
 	const url = `/api/projects/${projectId}/files/prep/sources/${safe(key)}/${name}`;
 	const prep = await update(deps.projectRoot, projectId, key, (state) => ({
 		...state, sources: [...state.sources, { name: input.file_name.slice(0, 300), file: join(folder, name), url, added_at: new Date().toISOString() }].slice(-12),
@@ -521,6 +524,8 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 	let stamped: string;
 	if (project.series) stamped = await deps.stamp(file, view.entry.name, output);
 	else { await mkdir(dirname(output), { recursive: true }); await copyFile(file, output); stamped = output; }
+	await deps.prepareReference?.(stamped);
+	if (file !== stamped) await deps.prepareReference?.(file);
 	const url = `/api/projects/${project.project_id}/files/prep/references/${basename(stamped)}`;
 	let uploaded = false;
 	let note = '';
