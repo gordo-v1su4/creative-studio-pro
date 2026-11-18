@@ -98,19 +98,25 @@
 	type PrepRef = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean; url: string | null };
 	let prepRefs = $state<PrepRef[]>([]);
 	let prepRefsFor = $state<string | null>(null);
-	function loadPrepRefs(projectId: string) {
+	function loadPrepRefs(projectId: string, signal: AbortSignal) {
 		type Item = { entry: { key: string; name: string; kind: string }; current?: { url?: string } | null; state: { result?: { url?: string } | null } };
-		void fetch(`/api/projects/${projectId}/prep`).then((response) => response.json()).then((body: { ok: boolean; data?: { items: Item[] } | null }) => {
-			if (!body.ok || prepRefsFor !== projectId) return;
-			prepRefs = (body.data?.items ?? []).map((item) => ({ page_id: item.entry.key, name: item.entry.name, kind: item.entry.kind, handles: [], file_name: '', name_on_sheet: true, url: item.current?.url ?? item.state.result?.url ?? null }));
+		void fetch(`/api/projects/${projectId}/prep`, { signal }).then((response) => response.json()).then((body: { ok: boolean; data?: { items: Item[] } | null }) => {
+			if (signal.aborted || !body.ok || prepRefsFor !== projectId) return;
+			prepRefs = (body.data?.items ?? []).map((item) => ({ page_id: item.entry.key, name: item.entry.name, kind: item.entry.kind, handles: [], file_name: '', name_on_sheet: true, url: item.state.result?.url ?? item.current?.url ?? null }));
 		}).catch(() => {});
 	}
 	$effect(() => {
 		const id = activeProject && !activeProject.series ? activeProject.project_id : null;
-		if (id === prepRefsFor) return;
-		prepRefsFor = id;
-		prepRefs = [];
-		if (id) loadPrepRefs(id);
+		const boardOpen = canvasOpen;
+		const refsOpen = inspectorOpen;
+		if (id !== prepRefsFor) {
+			prepRefsFor = id;
+			prepRefs = [];
+		}
+		// Prep writes its own state: refresh on returning to Board or reopening Refs.
+		const controller = new AbortController();
+		if (id && (boardOpen || refsOpen)) loadPrepRefs(id, controller.signal);
+		return () => controller.abort();
 	});
 	/** The selected shot on the board, for "Attach" in the References drawer. */
 	let selectedCard = $derived(activeProject?.production.cards.find((card) => card.card_id === selectedNodeId) ?? null);
