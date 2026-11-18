@@ -12,7 +12,7 @@
 	import { onMount } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
-	import { attachCanvas, loadBank } from '$lib/media/gpu/clipBanks';
+	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
@@ -138,26 +138,50 @@
 		syncAudio();
 	}
 
+	/** Pin the playing take so LRU eviction cannot drop its bank mid-playback. */
+	$effect(() => {
+		const clip = clips[index];
+		if (!clip) return;
+		pinBank(clip.src, MAX_HEIGHT);
+		return () => unpinBank(clip.src, MAX_HEIGHT);
+	});
+
 	/**
 	 * Long cuts can outgrow the GPU frame budget, so the least-recently-used clips are
-	 * evicted (their banks stop returning frames). Re-decode a clip when it is needed,
-	 * touching the playing clip first so the reload never evicts what is on screen.
+	 * evicted (their banks stop returning frames). Re-decode when needed. Prefetch the
+	 * next clip only when it fits alongside the pinned playing bank.
 	 */
 	const reloading = new Set<string>();
-	function ensureBank(i: number) {
-		const clip = clips[i];
-		if (!clip || reloading.has(clip.id) || clip.bank?.frameAt(clip.in)) return;
+	function startBankLoad(i: number, clip: Clip) {
 		reloading.add(clip.id);
-		const playing = clips[index];
-		const touch = playing && playing.id !== clip.id ? loadBank(playing.src, MAX_HEIGHT).catch(() => null) : Promise.resolve(null);
-		void touch
-			.then(() => loadBank(clip.src, MAX_HEIGHT))
+		void loadBank(clip.src, MAX_HEIGHT)
 			.then((bank) => {
 				const at = clips.findIndex((entry) => entry.id === clip.id);
 				if (at >= 0) clips[at] = { ...clips[at], bank };
 			})
 			.catch(() => { /* a later tick retries */ })
 			.finally(() => reloading.delete(clip.id));
+	}
+	function ensureBank(i: number) {
+		const clip = clips[i];
+		if (!clip || reloading.has(clip.id) || clip.bank?.frameAt(clip.in)) return;
+		if (i !== index) {
+			const playing = clips[index];
+			if (!playing?.bank?.stats.ready) return;
+			const budget = getResidentBudget();
+			if (budget) {
+				void estimateBankBytes(clip.src, MAX_HEIGHT)
+					.then((needed) => {
+						if (needed > budget.available) return;
+						const again = clips[i];
+						if (!again || reloading.has(again.id) || again.bank?.frameAt(again.in)) return;
+						startBankLoad(i, again);
+					})
+					.catch(() => {});
+				return;
+			}
+		}
+		startBankLoad(i, clip);
 	}
 
 	function tick(now: number) {

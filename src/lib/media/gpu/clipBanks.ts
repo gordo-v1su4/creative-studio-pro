@@ -1,5 +1,5 @@
 import { ALL_FORMATS, BlobSource, Input, VideoSampleSink } from 'mediabunny';
-import { ResidentCapacityError, ResidentFrameBank, ResidentMemoryBudget, type BankProgress } from './ResidentFrameBank';
+import { ResidentCapacityError, ResidentFrameBank, ResidentMemoryBudget, residentDimensions, type BankProgress } from './ResidentFrameBank';
 import { getPreferredCanvasFormat, getSharedWebGpuDevice, onSharedWebGpuDeviceLost } from './SharedGpuDevice';
 
 /**
@@ -16,7 +16,46 @@ export interface Poster { texture: GPUTexture; view: GPUTextureView; duration: n
 const blobs = new Map<string, Promise<Blob>>();
 const banks = new Map<string, BankEntry>();
 const posters = new Map<string, Promise<Poster>>();
+/** Keys pinned while on screen — never chosen by {@link evictOldest}. */
+const pinned = new Set<string>();
 let budget: ResidentMemoryBudget | null = null;
+
+function bankKey(url: string, maxHeight: number): string {
+	return `${url}@${maxHeight}`;
+}
+
+export function getResidentBudget(): { limit: number; used: number; available: number } | null {
+	if (!budget) return null;
+	return { limit: budget.limit, used: budget.used, available: budget.available };
+}
+
+/** Keep this clip resident while it is playing; eviction skips pinned banks. */
+export function pinBank(url: string, maxHeight: number): void {
+	pinned.add(bankKey(url, maxHeight));
+	const hit = banks.get(bankKey(url, maxHeight));
+	if (hit) hit.usedAt = performance.now();
+}
+
+export function unpinBank(url: string, maxHeight: number): void {
+	pinned.delete(bankKey(url, maxHeight));
+}
+
+/** Bytes a decoded bank would need, from container metadata (no GPU upload). */
+export async function estimateBankBytes(url: string, maxHeight: number): Promise<number> {
+	const blob = await blobFor(url);
+	const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(blob) });
+	try {
+		const track = await input.getPrimaryVideoTrack();
+		if (!track) return 0;
+		const [width, height, packets] = await Promise.all([
+			track.getDisplayWidth(), track.getDisplayHeight(), track.computePacketStats()
+		]);
+		const size = residentDimensions(width, height, maxHeight);
+		return size.width * size.height * 4 * packets.packetCount;
+	} finally {
+		input.dispose();
+	}
+}
 
 onSharedWebGpuDeviceLost(() => {
 	// Everything below was built on the lost device.
@@ -48,7 +87,8 @@ async function requireDevice(): Promise<GPUDevice> {
 function evictOldest(except: string): boolean {
 	let oldest: [string, BankEntry] | null = null;
 	for (const entry of banks) {
-		if (entry[0] !== except && entry[1].bank?.stats.ready && (!oldest || entry[1].usedAt < oldest[1].usedAt)) oldest = entry;
+		if (entry[0] === except || pinned.has(entry[0]) || !entry[1].bank?.stats.ready) continue;
+		if (!oldest || entry[1].usedAt < oldest[1].usedAt) oldest = entry;
 	}
 	if (!oldest) return false;
 	oldest[1].bank?.dispose();
@@ -58,7 +98,7 @@ function evictOldest(except: string): boolean {
 
 /** Decode a whole clip into GPU textures (once per url and size). */
 export function loadBank(url: string, maxHeight: number, progress: (p: BankProgress) => void = () => {}): Promise<ResidentFrameBank> {
-	const key = `${url}@${maxHeight}`;
+	const key = bankKey(url, maxHeight);
 	const hit = banks.get(key);
 	if (hit) {
 		hit.usedAt = performance.now();
