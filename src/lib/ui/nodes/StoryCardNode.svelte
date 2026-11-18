@@ -229,7 +229,8 @@
 						</form>
 					{/if}
 				{:else}
-					<div class="flex h-full flex-col justify-end bg-nr-deep p-3">
+					<div class="no-take flex h-full flex-col justify-end p-3">
+						<span class="no-take-badge">No take yet</span>
 						<span class="font-mono text-[9px] text-nr-blue">VIDEO PROMPT</span>
 						<p class="mt-2 line-clamp-6 text-[10px] leading-4 text-nr-dim">{card.video_prompt}</p>
 					</div>
@@ -286,7 +287,7 @@
 					disabled={!!story.splitting}
 					aria-label={armedSplit === shown.asset_id ? `Confirm: split this take of ${card.title} into shots` : `Split this take of ${card.title} into shots`}
 					title="Split this take into shots by scene detection: a new group, one card per shot"
-				>{story.splitting === shown.asset_id ? 'Splitting…' : armedSplit === shown.asset_id ? 'Split?' : 'Shots'}</button>
+				>{story.splitting === shown.asset_id ? 'Splitting…' : armedSplit === shown.asset_id ? 'Split?' : 'Split'}</button>
 			{/if}
 			{#if rejectedCount > 0}
 				<button type="button" class="take-btn" class:active={showRejected} onclick={() => (showRejected = !showRejected)} aria-pressed={showRejected}>{rejectedCount} rejected</button>
@@ -325,4 +326,7 @@
 	.card-face { animation: face-in 140ms ease-out; }
 	@keyframes face-in { from { opacity: .35; transform: translateX(4px); } }
 	@media (prefers-reduced-motion: reduce) { .card-face { animation: none; } }
+	/* A shot with no take yet: slate stripes, never black (black reads as a fade from black). */
+	.no-take { position: relative; background: repeating-linear-gradient(135deg, #1b2830 0 8px, #16212a 8px 16px); }
+	.no-take-badge { position: absolute; left: 8px; top: 8px; border-radius: 3px; background: rgb(10 12 14 / .7); padding: 1px 5px; color: #84cbd0; font: 600 8px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
 </style>

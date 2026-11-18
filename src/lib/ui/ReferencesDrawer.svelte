@@ -7,12 +7,13 @@
 	 * shot), or attach it to the selected shot. "Upload" sends one vetted image to the series' Review Room
 	 * `_References`; nothing is copied anywhere else.
 	 */
-	type Ref = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean };
+	type Ref = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean; url?: string | null };
 	type RefFile = { width: number; height: number; file_name: string; version_id: string };
 	let {
 		seriesId, references, files, selectedTitle = null, onAttach, onUploaded
 	}: {
-		seriesId: string;
+		/** The series, when the project belongs to one; without it (a trailer) the drawer shows Prep's sheets read-only. */
+		seriesId: string | null;
 		references: Ref[];
 		files: Record<string, RefFile>;
 		/** The selected shot, if any: "Attach" adds the reference to it. */
@@ -29,7 +30,7 @@
 	/** The sheet shown big (click a card's picture; Esc or a click closes it). */
 	let zoom = $state<{ src: string; alt: string } | null>(null);
 	// The URL names the version, so a new sheet is fetched fresh instead of served from the browser's cache.
-	const src = (pageId: string) => `/api/series/${seriesId}/references?page_id=${pageId}&v=${files[pageId]?.version_id ?? ''}`;
+	const src = (pageId: string) => references.find((ref) => ref.page_id === pageId)?.url ?? `/api/series/${seriesId}/references?page_id=${pageId}&v=${files[pageId]?.version_id ?? ''}`;
 	let error = $state<string | null>(null);
 
 	async function upload(ref: Ref, file: File) {
@@ -56,15 +57,15 @@
 <section class="refs" aria-label="References">
 	<div class="meta-label">References</div>
 	{#if references.length === 0}
-		<p class="hint">No references in this series yet. Add them to the References database in Notion, then re-check the series.</p>
+		<p class="hint">{seriesId ? 'No references in this series yet. Add them to the References database in Notion, then re-check the series.' : 'No Prep sheets yet. Make them in the Prep tab.'}</p>
 	{/if}
 	{#each groups as group (group.kind)}
 		<div class="kind">{group.kind === 'Other' ? 'No kind' : `${group.kind}s`}</div>
 		<ul class={group.kind === 'Character' ? 'faces' : 'places'}>
 			{#each group.items as ref (ref.page_id)}
-				{@const file = files[ref.page_id]}
+				{@const file = ref.url ? { file_name: ref.file_name } : files[ref.page_id]}
 				<li
-					draggable="true"
+					draggable={!!seriesId}
 					ondragstart={(event) => { event.dataTransfer?.setData(REFERENCE_DRAG, ref.page_id); event.dataTransfer!.effectAllowed = 'copy'; }}
 					title={`${ref.name}${ref.handles.length ? ` · ${ref.handles.join(' ')}` : ''} — drag onto a shot`}
 				>
@@ -77,17 +78,17 @@
 					{/if}
 					<span class="info">
 						<b>{ref.name}</b>
-						<span class="sub">{ref.handles.join(' ') || 'no handle'}</span>
-						{#if !ref.name_on_sheet}<span class="warn" title="The send gate refuses it until the name is printed on the sheet and ticked in Notion">name not on sheet</span>{/if}
+						{#if seriesId}<span class="sub">{ref.handles.join(' ') || 'no handle'}</span>{/if}
+						{#if seriesId && !ref.name_on_sheet}<span class="warn" title="The send gate refuses it until the name is printed on the sheet and ticked in Notion">name not on sheet</span>{/if}
 					</span>
 					<span class="actions">
-						{#if selectedTitle && onAttach}
+						{#if seriesId && selectedTitle && onAttach}
 							<button type="button" class="mini" onclick={() => onAttach?.(ref.page_id)} title={`Attach to ${selectedTitle}`}>Attach</button>
 						{/if}
-						<label class="mini" title="Upload the vetted image to Review Room _References (file name must contain the exact name; at least 2K)">
+						{#if seriesId}<label class="mini" title="Upload the vetted image to Review Room _References (file name must contain the exact name; at least 2K)">
 							{uploading === ref.page_id ? '…' : file ? 'Replace' : 'Upload'}
 							<input type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" disabled={uploading !== null} onchange={(event) => { const input = event.currentTarget as HTMLInputElement; const chosen = input.files?.[0]; input.value = ''; if (chosen) void upload(ref, chosen); }} />
-						</label>
+						</label>{/if}
 					</span>
 				</li>
 			{/each}
@@ -113,6 +114,7 @@
 	.thumb.wide { aspect-ratio: 16 / 9; }
 	.thumb.wide img { display: block; width: 100%; height: 100%; object-fit: cover; }
 	.thumb.empty { aspect-ratio: 9 / 16; display: grid; place-items: center; color: var(--color-text-dim); font: 600 8px var(--font-mono); text-transform: uppercase; text-align: center; cursor: grab; }
+	.places .thumb.empty { aspect-ratio: 16 / 9; }
 	.info { display: grid; min-width: 0; }
 	.info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--color-text-primary); }
 	.zoom { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; gap: 8px; border: 0; background: rgb(5 7 10 / 0.92); padding: 24px; cursor: zoom-out; }
