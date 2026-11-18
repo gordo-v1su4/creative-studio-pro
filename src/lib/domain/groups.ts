@@ -57,23 +57,49 @@ export function applyMoveBeats(production: ProductionState, cardIds: string[], g
 export interface SplitterManifest {
 	job_id: string;
 	frame_rate: number;
-	segments: Array<{ index: number; start_seconds: number; end_seconds: number; duration_seconds: number; clip_path: string; label?: string }>;
+	frame_count: number;
+	segment_count: number;
+	segments: Array<{ index: number; start_frame: number; end_frame: number; frame_count: number; clip_path: string }>;
 }
 
 export interface SplitShot { index: number; in_s: number; out_s: number; clip_path: string; file_name: string }
+export interface SplitFrameRange { start_frame: number; end_frame: number; frame_count: number }
 
-/** The shots a manifest describes, in order, with file names for their downloaded clips. */
-export function shotsOf(manifest: SplitterManifest): SplitShot[] {
-	return [...manifest.segments]
-		.sort((a, b) => a.start_seconds - b.start_seconds)
-		.filter((segment) => segment.end_seconds - segment.start_seconds > 0.04)
-		.map((segment, i) => ({
-			index: i + 1,
-			in_s: Math.round(segment.start_seconds * 1000) / 1000,
-			out_s: Math.round(segment.end_seconds * 1000) / 1000,
-			clip_path: segment.clip_path,
-			file_name: `${String(i + 1).padStart(2, '0')}-shot.mp4`
-		}));
+/** Validate the splitter's ordered, zero-based, end-exclusive source ranges. */
+export function shotsOf(manifest: SplitterManifest, source: { fps: number; frames: number }): Array<SplitShot & SplitFrameRange> {
+	if (!manifest || !Array.isArray(manifest.segments) || !manifest.segments.length || manifest.segment_count !== manifest.segments.length) {
+		throw new Error('The splitter returned a missing or incomplete segment list');
+	}
+	if (manifest.frame_count !== source.frames || !Number.isFinite(manifest.frame_rate) || Math.abs(manifest.frame_rate - source.fps) > 0.0001) {
+		throw new Error(`The splitter manifest does not match the source (${source.frames} decoded frames at ${source.fps} fps)`);
+	}
+
+	const paths = new Set<string>();
+	let nextFrame = 0;
+	const shots = manifest.segments.map((segment, offset) => {
+		const index = offset + 1;
+		if (!segment || segment.index !== index || segment.start_frame !== nextFrame ||
+			!Number.isSafeInteger(segment.end_frame) || segment.end_frame <= nextFrame || segment.end_frame > source.frames ||
+			segment.frame_count !== segment.end_frame - nextFrame) {
+			throw new Error(`Split segment ${index} has an invalid or out-of-order frame range; expected frame ${nextFrame}`);
+		}
+		const { start_frame, end_frame, frame_count, clip_path } = segment;
+		if (typeof clip_path !== 'string' || !clip_path.split('/').every((part) => part && part !== '.' && part !== '..' && !part.includes('\\')) || paths.has(clip_path)) {
+			throw new Error(`Split segment ${index} has a missing, invalid or repeated clip path`);
+		}
+		paths.add(clip_path);
+		nextFrame = end_frame;
+		return {
+			index, start_frame, end_frame, frame_count, clip_path,
+			in_s: start_frame / source.fps,
+			out_s: end_frame / source.fps,
+			file_name: `${String(index).padStart(2, '0')}-shot.mp4`
+		};
+	});
+	if (nextFrame !== source.frames) {
+		throw new Error(`The split ends at frame ${nextFrame}, before the source end at ${source.frames}`);
+	}
+	return shots;
 }
 
 /**

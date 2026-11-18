@@ -25,7 +25,7 @@ describe('splitter client (fake service)', () => {
 			}
 			if (path === '/api/jobs') return Response.json({ job: { job_id: 'job42' } });
 			if (path === '/api/jobs/job42') return Response.json({ status: ++polls < 2 ? 'processing' : 'completed', stage: 'detecting' });
-			if (path === '/api/jobs/job42/result') return Response.json({ manifest: { job_id: 'job42', frame_rate: 24, segments: [{ index: 1, start_seconds: 0, end_seconds: 2, duration_seconds: 2, clip_path: 'clips/seg 1.mp4' }] } });
+			if (path === '/api/jobs/job42/result') return Response.json({ manifest: { job_id: 'job42', frame_rate: 24, frame_count: 48, segment_count: 1, segments: [{ index: 1, start_frame: 0, end_frame: 48, frame_count: 48, clip_path: 'clips/seg 1.mp4' }] } });
 			if (path === '/api/jobs/job42/assets/clips/seg%201.mp4') return new Response(new Uint8Array([9, 9]));
 			return new Response('nope', { status: 404 });
 		}) as typeof fetch;

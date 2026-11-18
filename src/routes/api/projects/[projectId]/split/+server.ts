@@ -1,15 +1,14 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { uuid7ish } from '$lib/domain/ids';
-import { shotsOf } from '$lib/domain/groups';
 import { getGateway, getProjectRoot, getProjectStore } from '$lib/server/config';
 import { commandStatus } from '$lib/server/http';
-import { probeMedia } from '$lib/server/media-probe';
+import { saveVerifiedSplit } from '$lib/server/split-shots';
 import { createSplitter } from '$lib/server/splitter';
 
 const requestSchema = z.object({ take_id: idSchema, name: z.string().trim().min(1).max(120).optional() });
@@ -28,32 +27,33 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!project) return fail(404, 'Project not found');
 	const take = project.production.assets.find((asset) => asset.asset_id === parsed.data.take_id);
 	if (!take || take.kind !== 'video') return fail(400, 'Only a video take can be split into shots');
-	const files = resolve(join(getProjectRoot(), projectId.data, 'files'));
+	const projectDir = resolve(getProjectRoot(), projectId.data);
+	const files = join(projectDir, 'files');
 	const prefix = `/api/projects/${projectId.data}/files/`;
 	const source = take.url.startsWith(prefix) ? resolve(join(files, decodeURIComponent(take.url.slice(prefix.length)))) : null;
 	if (!source || !source.startsWith(files + sep)) return fail(400, 'The take is not a file in the project folder');
 
 	const splitter = createSplitter({ url: env.CSP_SPLITTER_URL || 'https://splitter.serving.cloud', pin: env.SPLITTER_APP_ACCESS_PIN || null });
-	let result;
-	try { result = await splitter.split(source); }
-	catch (cause) { return fail(502, cause instanceof Error ? cause.message : 'The splitter failed'); }
-	const shots = shotsOf(result.manifest);
-	if (!shots.length) return fail(422, 'The splitter found no shots in that take');
-
-	const folderName = `${take.asset_id.slice(-8)}-${result.manifest.job_id.slice(0, 8)}`;
-	const folder = join(files, 'shots', folderName);
-	await mkdir(folder, { recursive: true });
-	const saved = [];
-	for (const shot of shots) {
-		await writeFile(join(folder, shot.file_name), await result.download(shot.clip_path));
-		const probe = await probeMedia(join(folder, shot.file_name));
-		saved.push({ ...shot, url: `${prefix}shots/${folderName}/${shot.file_name}`, width: probe.width, height: probe.height });
+	const groupId = uuid7ish();
+	let split;
+	try {
+		split = await saveVerifiedSplit({ source, splitter, projectDir, groupId, filePrefix: prefix });
+	} catch (cause) {
+		return fail(502, cause instanceof Error ? cause.message : 'The splitter failed');
 	}
 	// Re-read: the project may have moved on while the splitter worked.
 	const current = await getProjectStore().readProject(projectId.data);
-	if (!current) return fail(404, 'Project not found');
-	const groupId = uuid7ish();
+	const currentTake = current?.production.assets.find((asset) => asset.asset_id === take.asset_id && asset.url === take.url);
+	if (!current || !currentTake) {
+		await rm(split.folder, { recursive: true, force: true });
+		return fail(404, 'The source take is no longer in the project');
+	}
 	const name = parsed.data.name ?? `${take.name.replace(/\.[^.]+$/, '')} — shots`;
-	const outcome = await getGateway().splitIntoShots(projectId.data, current.version, { group_id: groupId, name, source: take, shots: saved, ids: uuid7ish });
-	return outcome.ok ? json({ ok: true, data: outcome.data, group_id: groupId, shots: saved.length }) : json(outcome, { status: commandStatus(outcome.error) });
+	const outcome = await getGateway().splitIntoShots(projectId.data, current.version, { group_id: groupId, name, source: currentTake, shots: split.saved, ids: uuid7ish });
+	if (!outcome.ok) {
+		const status = commandStatus(outcome.error);
+		if (status < 500) await rm(split.folder, { recursive: true, force: true });
+		return json(outcome, { status });
+	}
+	return json({ ok: true, data: outcome.data, group_id: groupId, shots: split.saved.length, coverage: split.coverage });
 };

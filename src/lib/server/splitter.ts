@@ -69,7 +69,10 @@ export function createSplitter(config: { url: string; pin: string | null; fetch?
 				if (i === 299) throw new Error('The splitter took too long');
 				await wait(2000);
 			}
-			const result = (await (await http(`${base}/api/jobs/${jobId}/result`, { headers })).json()) as { manifest: SplitterManifest };
+			const response = await http(`${base}/api/jobs/${jobId}/result`, { headers });
+			if (!response.ok) throw new Error(`Reading the split result failed (${response.status})`);
+			const result = (await response.json()) as { manifest?: SplitterManifest } | null;
+			if (result?.manifest?.job_id !== jobId) throw new Error('The splitter returned a manifest for a different job');
 			return {
 				manifest: result.manifest,
 				download: async (clipPath) => {

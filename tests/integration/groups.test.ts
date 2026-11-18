@@ -51,29 +51,41 @@ describe('board groups', () => {
 });
 
 describe('split into shots (fake splitter manifest)', () => {
-	const manifest: SplitterManifest = { job_id: 'job1', frame_rate: 24, segments: [
-		{ index: 2, start_seconds: 4.25, end_seconds: 9.5, duration_seconds: 5.25, clip_path: 'clips/seg_002.mp4' },
-		{ index: 1, start_seconds: 0, end_seconds: 4.25, duration_seconds: 4.25, clip_path: 'clips/seg_001.mp4' },
-		{ index: 3, start_seconds: 9.5, end_seconds: 9.52, duration_seconds: 0.02, clip_path: 'clips/seg_003.mp4' }
+	const source = { fps: 24, frames: 229 };
+	const manifest: SplitterManifest = { job_id: 'job1', frame_rate: 24, frame_count: 229, segment_count: 3, segments: [
+		{ index: 1, start_frame: 0, end_frame: 102, frame_count: 102, clip_path: 'clips/seg_001.mp4' },
+		{ index: 2, start_frame: 102, end_frame: 228, frame_count: 126, clip_path: 'clips/seg_002.mp4' },
+		{ index: 3, start_frame: 228, end_frame: 229, frame_count: 1, clip_path: 'clips/seg_003.mp4' }
 	] };
 
-	test('segments become ordered shots; a sliver under two frames is dropped', () => {
-		expect(shotsOf(manifest)).toEqual([
-			{ index: 1, in_s: 0, out_s: 4.25, clip_path: 'clips/seg_001.mp4', file_name: '01-shot.mp4' },
-			{ index: 2, in_s: 4.25, out_s: 9.5, clip_path: 'clips/seg_002.mp4', file_name: '02-shot.mp4' }
-		]);
+	test('segments keep every frame, including a one-frame tail', () => {
+		expect(shotsOf(manifest, source).map(({ start_frame, end_frame, frame_count }) => [start_frame, end_frame, frame_count]))
+			.toEqual([[0, 102, 102], [102, 228, 126], [228, 229, 1]]);
+	});
+
+	test('rejects gaps, overlaps, reordering, repeated clips and a missing tail', () => {
+		const [first, second, last] = manifest.segments;
+		for (const segments of [
+			[first, { ...second, start_frame: 103, frame_count: 125 }, last],
+			[first, { ...second, start_frame: 101, frame_count: 127 }, last],
+			[second, first, last],
+			[first, { ...second, clip_path: first.clip_path }, last],
+			[first, second]
+		]) {
+			expect(() => shotsOf({ ...manifest, segment_count: segments.length, segments }, source)).toThrow();
+		}
 	});
 
 	test('a split makes a new group of shot beats, each slice remembering its source take and in/out; they stay off the spine', async () => {
 		const { gateway, project } = await setup();
 		let n = 0;
-		const shots = shotsOf(manifest).map((shot) => ({ ...shot, url: `/files/shots/${shot.file_name}`, width: 854, height: 480 }));
+		const shots = shotsOf(manifest, source).map((shot) => ({ ...shot, url: `/files/shots/${shot.file_name}`, width: 854, height: 480 }));
 		const split = ok(await gateway.splitIntoShots(project.project_id, project.version, { group_id: 'v6', name: 'V6 trailer — shots', source: project.production.assets[0], shots, ids: () => `id${++n}` }));
-		expect(groupsOf(split.production).map((g) => [g.name, g.count])).toEqual([['Main', 2], ['V6 trailer — shots', 2]]);
+		expect(groupsOf(split.production).map((g) => [g.name, g.count])).toEqual([['Main', 2], ['V6 trailer — shots', 3]]);
 		const shotBeats = split.production.cards.filter((c) => c.group_id === 'v6');
-		expect(shotBeats.map((c) => [c.title, c.duration_ms])).toEqual([['V6 trailer — shots — shot 1', 4250], ['V6 trailer — shots — shot 2', 5250]]);
+		expect(shotBeats.map((c) => [c.title, c.duration_ms])).toEqual([['V6 trailer — shots — shot 1', 4250], ['V6 trailer — shots — shot 2', 5250], ['V6 trailer — shots — shot 3', 42]]);
 		const slices = split.production.assets.filter((a) => a.source_take);
-		expect(slices.map((a) => a.source_take)).toEqual([{ asset_id: 'trailer', in_s: 0, out_s: 4.25 }, { asset_id: 'trailer', in_s: 4.25, out_s: 9.5 }]);
+		expect(slices.map((a) => a.source_take)).toEqual([{ asset_id: 'trailer', in_s: 0, out_s: 4.25 }, { asset_id: 'trailer', in_s: 4.25, out_s: 9.5 }, { asset_id: 'trailer', in_s: 9.5, out_s: 229 / 24 }]);
 		expect(shotBeats.every((c) => c.pick_take_id && slices.some((a) => a.asset_id === c.pick_take_id))).toBeTrue();
 		expect((split.production.links ?? []).some((l) => shotBeats.some((c) => c.card_id === l.to))).toBeFalse();
 	});
