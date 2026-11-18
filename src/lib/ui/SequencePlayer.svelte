@@ -12,7 +12,7 @@
 	import { onMount } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
-	import { attachCanvas, loadBank } from '$lib/media/gpu/clipBanks';
+	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
@@ -50,6 +50,7 @@
 	let error = $state('');
 	let saveState = $state<'' | 'saving' | 'saved'>('');
 	let scrubbing = false;
+	let buffering = false;
 	/** Push: the name being typed (null = closed), and the last pushed cut's name. */
 	let pushName = $state<string | null>(null);
 	let pushing = $state(false);
@@ -105,7 +106,7 @@
 		for (const src of new Set(clips.map((clip) => clip.src))) {
 			if (src in takePeaks) continue;
 			takePeaks[src] = null;
-			void loadPeaks(src).then((peaks) => (takePeaks[src] = peaks));
+			void loadPeaks(src).then((peaks) => { takePeaks[src] = peaks; });
 		}
 	});
 	const timelineClips = $derived(clips.map((clip) => ({ ...clip, wave: takePeaks[clip.src] ?? null })));
@@ -119,6 +120,7 @@
 	}
 
 	function syncAudio(play = !paused) {
+		play = play && !!current?.bank?.frameAt(playhead);
 		syncSong(play);
 		// Playing the built mix: the takes' own sound is already in it.
 		if (mixUrl) { for (const voice of voices.values()) voice.pause(); return; }
@@ -138,9 +140,71 @@
 		syncAudio();
 	}
 
+	/** Pin the playing take so LRU eviction cannot drop its bank mid-playback. */
+	$effect(() => {
+		const clip = clips[index];
+		if (!clip) return;
+		pinBank(clip.src, MAX_HEIGHT);
+		return () => unpinBank(clip.src, MAX_HEIGHT);
+	});
+
+	/**
+	 * Long cuts can outgrow the GPU frame budget, so the least-recently-used clips are
+	 * evicted (their banks stop returning frames). Re-decode when needed. Prefetch the
+	 * next clip only when it fits alongside the pinned playing bank.
+	 */
+	const reloading = new Set<string>();
+	function startBankLoad(clip: Clip) {
+		reloading.add(clip.id);
+		void loadBank(clip.src, MAX_HEIGHT)
+			.then((bank) => {
+				const at = clips.findIndex((entry) => entry.id === clip.id && entry.src === clip.src && entry.assetId === clip.assetId);
+				if (at >= 0) clips[at] = { ...clips[at], bank };
+			})
+			.catch(() => { /* a later tick retries */ })
+			.finally(() => reloading.delete(clip.id));
+	}
+	// One metadata probe per candidate and playing take, including candidates that do not fit.
+	let prefetchFor = '';
+	function ensureBank(i: number) {
+		const clip = clips[i];
+		if (!clip || reloading.has(clip.id) || clip.bank?.frameAt(clip.in)) return;
+		if (i !== index) {
+			const playing = clips[index];
+			if (!playing?.bank?.stats.ready) return;
+			const budget = getResidentBudget();
+			if (budget) {
+				const request = JSON.stringify([playing.id, playing.src, clip.id, clip.src]);
+				if (prefetchFor === request) return;
+				prefetchFor = request;
+				void estimateBankBytes(clip.src, MAX_HEIGHT)
+					.then((needed) => {
+						if (clips[index]?.id !== playing.id || clips[index]?.src !== playing.src) return;
+						if (needed > (getResidentBudget()?.available ?? 0)) return;
+						const again = clips[i];
+						if (!again || again.src !== clip.src || again.assetId !== clip.assetId || reloading.has(again.id) || again.bank?.frameAt(again.in)) return;
+						startBankLoad(again);
+					})
+					.catch(() => {});
+				return;
+			}
+		}
+		prefetchFor = '';
+		startBankLoad(clip);
+	}
+
 	function tick(now: number) {
 		const clip = clips[index];
-		if (clip && !paused && !scrubbing) {
+		const ready = !!clip?.bank?.frameAt(playhead);
+		if (clip && !ready) {
+			ensureBank(index);
+			if (!buffering) pauseAll();
+			buffering = true;
+		}
+		// Halfway through a clip, make sure the next one is decoded.
+		else if (clip && clips.length > 1 && playhead - clip.in > (clip.out - clip.in) / 2) ensureBank((index + 1) % clips.length);
+		if (ready && buffering) { buffering = false; syncAudio(!paused && !scrubbing); }
+		if (clip && ready && !paused && !scrubbing) {
 			playhead += ((now - lastTick) / 1000) * rate;
 			const audio = voices.get(clip.id);
 			if (audio && Math.abs(audio.playbackRate - rate) > 0.01) audio.playbackRate = rate;

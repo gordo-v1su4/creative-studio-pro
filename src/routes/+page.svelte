@@ -59,6 +59,8 @@
 	let edges = $state<Edge[]>([]);
 	let viewport = $state<Viewport>({ x: 0, y: 0, zoom: 1 });
 	let fitRequest = $state<string | null>(null);
+	/** A shot to frame on the board (a click in the Bin): its card id. */
+	let focusRequest = $state<string | null>(null);
 	let selectedNodeId = $state<string | null>(null);
 	let savingLayout = $state(false);
 	let loadError = $state<string | null>(null);
@@ -92,6 +94,30 @@
 		seriesRefFiles = {};
 		if (id) loadSeriesRefs(id);
 	});
+	// A trailer has no series: the drawer shows its Prep sheets instead (characters, places, props), read-only.
+	type PrepRef = { page_id: string; name: string; kind: string; handles: string[]; file_name: string; name_on_sheet: boolean; url: string | null };
+	let prepRefs = $state<PrepRef[]>([]);
+	let prepRefsFor = $state<string | null>(null);
+	function loadPrepRefs(projectId: string, signal: AbortSignal) {
+		type Item = { entry: { key: string; name: string; kind: string }; current?: { url?: string } | null; state: { result?: { url?: string } | null } };
+		void fetch(`/api/projects/${projectId}/prep`, { signal }).then((response) => response.json()).then((body: { ok: boolean; data?: { items: Item[] } | null }) => {
+			if (signal.aborted || !body.ok || prepRefsFor !== projectId) return;
+			prepRefs = (body.data?.items ?? []).map((item) => ({ page_id: item.entry.key, name: item.entry.name, kind: item.entry.kind, handles: [], file_name: '', name_on_sheet: true, url: item.state.result?.url ?? item.current?.url ?? null }));
+		}).catch(() => {});
+	}
+	$effect(() => {
+		const id = activeProject && !activeProject.series ? activeProject.project_id : null;
+		const boardOpen = canvasOpen;
+		const refsOpen = inspectorOpen;
+		if (id !== prepRefsFor) {
+			prepRefsFor = id;
+			prepRefs = [];
+		}
+		// Prep writes its own state: refresh on returning to Board or reopening Refs.
+		const controller = new AbortController();
+		if (id && (boardOpen || refsOpen)) loadPrepRefs(id, controller.signal);
+		return () => controller.abort();
+	});
 	/** The selected shot on the board, for "Attach" in the References drawer. */
 	let selectedCard = $derived(activeProject?.production.cards.find((card) => card.card_id === selectedNodeId) ?? null);
 	let creating = $state(false);
@@ -100,6 +126,31 @@
 	// The left panel collapses inward to a slim tab on the edge (remembered).
 	let railCollapsed = $state(false);
 	$effect(() => { try { railCollapsed = localStorage.getItem('csp.rail-collapsed') === '1'; } catch { /* private mode */ } });
+	// Layers panel width: drag its right edge; remembered per browser.
+	const RAIL_MIN = 184, RAIL_MAX = 520;
+	let railWidth = $state(260);
+	let railResizing = $state(false);
+	$effect(() => { try { const saved = Number(localStorage.getItem('csp.rail-width')); if (saved >= RAIL_MIN && saved <= RAIL_MAX) railWidth = saved; } catch { /* private mode */ } });
+	function startRailResize(event: PointerEvent) {
+		event.preventDefault();
+		const startX = event.clientX, startWidth = railWidth;
+		railResizing = true;
+		const move = (e: PointerEvent) => { railWidth = Math.round(Math.min(RAIL_MAX, Math.max(RAIL_MIN, startWidth + e.clientX - startX))); };
+		const up = () => {
+			railResizing = false;
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			try { localStorage.setItem('csp.rail-width', String(railWidth)); } catch { /* private mode */ }
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+	}
+	function nudgeRail(event: KeyboardEvent) {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		event.preventDefault();
+		railWidth = Math.min(RAIL_MAX, Math.max(RAIL_MIN, railWidth + (event.key === 'ArrowRight' ? 16 : -16)));
+		try { localStorage.setItem('csp.rail-width', String(railWidth)); } catch { /* private mode */ }
+	}
 	function setRailCollapsed(collapsed: boolean) {
 		railCollapsed = collapsed;
 		try { localStorage.setItem('csp.rail-collapsed', collapsed ? '1' : '0'); } catch { /* private mode */ }
@@ -676,6 +727,24 @@
 		sendBoardCommand({ command: benched ? 'bench_beat' : 'unbench_beat', card_id: cardId });
 	}
 
+	/** Jump to a shot: show its group, select it, and frame it on the board. */
+	function jumpToShot(cardId: string) {
+		const card = activeProject?.production.cards.find((item) => item.card_id === cardId);
+		if (!card) return;
+		openWorkspace('canvas');
+		if (groupOf(card) !== activeGroup) showGroup(groupOf(card));
+		fitRequest = null;
+		nodes = nodes.map((node) => (node.id === cardId ? { ...node, selected: true } : node.selected ? { ...node, selected: false } : node));
+		selectedNodeId = cardId;
+		focusRequest = cardId;
+	}
+
+	/** The Bin tile's picture: the shot's pick, or nothing yet. */
+	function binMedia(card: Parameters<typeof pickFor>[1]): { kind: 'image' | 'video'; url: string } | null {
+		const pick = activeProject ? pickFor(activeProject.production, card) : null;
+		return pick && pick.url ? { kind: pick.kind === 'video' ? 'video' : 'image', url: pick.url } : null;
+	}
+
 	async function loadProjects() {
 		try {
 			const response = await fetch('/api/projects');
@@ -1026,19 +1095,23 @@
 			type="button"
 			class="bar-key"
 			onclick={() => (inspectorOpen = !inspectorOpen)}
-			title={inspectorOpen ? 'Hide the seed and voice details' : 'Show the seed and voice details'}
+			title={inspectorOpen ? 'Hide the References drawer (headshots, places, seed, voices)' : 'Show the References drawer: character headshots, places, seed and voices'}
 			aria-pressed={inspectorOpen}
 		>
-			{inspectorOpen ? '▸' : '◂'}
+			{inspectorOpen ? 'Refs ▸' : '◂ Refs'}
 		</button>
 	</div>
 
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
-		class="work-area relative grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300 ease-out"
-		style={`--inspector-width: ${inspectorOpen ? '400px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? '184px' : '0px'}`}
+		class={['work-area relative grid min-h-0 min-w-0', !railResizing && 'transition-[grid-template-columns] duration-300 ease-out']}
+		style={`--inspector-width: ${inspectorOpen ? '400px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? `${railWidth}px` : '0px'}`}
 	>
-		<aside class={['rail hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
+		<aside class={['rail relative hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
+			{#if canvasOpen && !railCollapsed}
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+				<div class={['rail-resize', railResizing && 'active']} role="separator" aria-orientation="vertical" aria-label="Resize the layers panel" aria-valuemin={RAIL_MIN} aria-valuemax={RAIL_MAX} aria-valuenow={railWidth} tabindex="0" title="Drag to resize" onpointerdown={startRailResize} onkeydown={nudgeRail} ondblclick={() => { railWidth = 260; try { localStorage.setItem('csp.rail-width', '260'); } catch { /* private mode */ } }}></div>
+			{/if}
 			{#if canvasOpen && !railCollapsed}
 			<div class="min-h-0 grow overflow-y-auto overflow-x-hidden p-3">
 				<div class="meta-label">Canvas layers</div>
@@ -1060,7 +1133,7 @@
 									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
 								{:else}
 									<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every shot not in a group' : 'Show this group · double-click to rename'}>
-										<b class="min-w-0 grow truncate">{group.name}</b>
+										<b class="min-w-0 grow truncate" title={group.name}>{group.name}</b>
 										<small>{group.count}</small>
 									</button>
 								{/if}
@@ -1079,12 +1152,23 @@
 					{#if bin.length === 0}
 						<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">Benched shots land here. They keep their place and are skipped when the story plays.</p>
 					{:else}
-						<ul class="mt-2 grid gap-1" aria-label="Benched beats">
+						<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">Benched shots sit out of the story. Click one to jump to it on the board; Put back makes it play in the story again.</p>
+						<ul class="bin-grid mt-2" aria-label="Benched beats">
 							{#each bin as card (card.card_id)}
-								<li class="bin-row">
-									<span class="font-mono text-[9px] text-text-dim">{String(card.order + 1).padStart(2, '0')}</span>
-									<b class="min-w-0 grow truncate" title={card.title}>{card.title}</b>
-									<button type="button" onclick={() => benchBeat(card.card_id, false)} aria-label={`Restore ${card.title} from the bin`}>Restore</button>
+								{@const media = binMedia(card)}
+								<li class={['bin-tile', selectedNodeId === card.card_id && 'active']}>
+									<button type="button" class="bin-jump" onclick={() => jumpToShot(card.card_id)} title={`${card.title} · jump to it on the board`} aria-label={`Jump to ${card.title} on the board`}>
+										{#if media?.kind === 'video'}
+											<video src={`${media.url}#t=0.5`} preload="metadata" muted playsinline tabindex="-1"></video>
+										{:else if media}
+											<img src={media.url} alt="" loading="lazy" />
+										{:else}
+											<span class="bin-empty" aria-hidden="true">No take yet</span>
+										{/if}
+										<span class="bin-num">{String(card.order + 1).padStart(2, '0')}</span>
+										<span class="bin-title">{card.title}</span>
+									</button>
+									<button type="button" class="bin-back" onclick={() => benchBeat(card.card_id, false)} title="Put back: take it off the bench so it plays in the story again" aria-label={`Put ${card.title} back in the story`}>Put back</button>
 								</li>
 							{/each}
 						</ul>
@@ -1155,7 +1239,7 @@
 							patternColor="#3a3a40"
 						/>
 						<Controls showLock={false} position="bottom-left" />
-						<FitOnOpen request={fitRequest} done={() => (fitRequest = null)} />
+						<FitOnOpen request={fitRequest} focus={focusRequest} done={() => { fitRequest = null; focusRequest = null; }} />
 						<FrameKey />
 					</SvelteFlow>
 					{#if selectedBeats.length > 1 && activeProject}
@@ -1234,6 +1318,8 @@
 						onAttach={(pageId) => selectedCard && setShotReferences(selectedCard.card_id, [...(selectedCard.references ?? []).filter((reference) => reference.kind === 'series'), { kind: 'series', page_id: pageId }, ...(selectedCard.references ?? []).filter((reference) => reference.kind !== 'series')])}
 						onUploaded={() => activeProject?.series && loadSeriesRefs(activeProject.series.series_id)}
 					/>
+				{:else if activeProject}
+					<ReferencesDrawer seriesId={null} references={prepRefs} files={{}} />
 				{/if}
 				{#if activeProject}
 					<div class="meta-label">Seed</div>
@@ -1390,6 +1476,10 @@
 	.seq-item { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 6px; color: var(--color-nr-muted); font: 10px/20px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
 	.seq-item b { color: var(--color-nr-accent); font-weight: 500; }
 	.rail { overflow: hidden; }
+	.rail-resize { position: absolute; top: 0; right: -3px; bottom: 0; z-index: 30; width: 7px; cursor: col-resize; touch-action: none; }
+	.rail-resize::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background 120ms ease; }
+	.rail-resize:hover::after, .rail-resize.active::after, .rail-resize:focus-visible::after { background: #4ee8d2; }
+	.rail-resize:focus-visible { outline: none; }
 	.rail-collapse { margin: 0 8px 8px; border: 0; border-top: 1px solid #1d2226; background: transparent; padding: 8px 4px 2px; color: #55626a; font: 600 9px var(--font-sans); letter-spacing: 0.14em; text-align: left; text-transform: uppercase; }
 	.rail-collapse:hover { color: #9eeee3; }
 	.rail-handle { position: absolute; left: 0; bottom: 156px; z-index: 40; display: inline-flex; flex-direction: column; align-items: center; gap: 8px; width: 26px; padding: 9px 4px 8px; border: 1px solid #22282d; border-left: 0; border-radius: 0 3px 3px 0; background: rgba(17, 17, 19, 0.92); color: #7b878f; }
@@ -1410,8 +1500,17 @@
 	.group-add:hover { color: #84cbd0; }
 	.group-name { margin-top: 4px; width: 100%; border: 1px solid #22282d; border-radius: 2px; background: #0a0c0e; padding: 3px 6px; color: #cfe9ea; font: 11px var(--font-sans); outline: none; }
 	.group-name:focus { border-color: rgba(78, 232, 210, 0.5); }
-	.bin-row { display: flex; align-items: center; gap: 6px; padding: 5px 7px; background: #151519; color: #8d9ca1; }
-	.bin-row b { font-size: 11px; font-weight: 500; }
-	.bin-row button { border: 0; background: transparent; padding: 2px 4px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.bin-row button:hover { background: #14232a; color: #84cbd0; }
+	.bin-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+	.bin-tile { position: relative; }
+	.bin-jump { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border: 1px solid #22262b; border-radius: 6px; background: #151519; padding: 0; cursor: pointer; }
+	.bin-jump:hover { border-color: #3d6a74; }
+	.bin-tile.active .bin-jump { border-color: #84cbd0; box-shadow: 0 0 0 1px #84cbd0; }
+	.bin-jump video, .bin-jump img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+	/* No take yet: a slate stripe, never black (black reads as a fade). */
+	.bin-empty { position: absolute; inset: 0; display: grid; place-items: center; background: repeating-linear-gradient(135deg, #1d2a33 0 6px, #18222a 6px 12px); color: #6f93a0; font: 600 8px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+	.bin-num { position: absolute; left: 4px; top: 3px; padding: 0 3px; border-radius: 3px; background: rgb(10 12 14 / .7); color: #9fb4ba; font: 600 8px var(--font-mono); }
+	.bin-title { position: absolute; inset: auto 0 0 0; padding: 10px 5px 3px; background: linear-gradient(transparent, rgb(8 9 11 / .9)); color: #e6eef0; font-size: 9px; line-height: 1.2; text-align: left; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+	.bin-back { position: absolute; right: 3px; top: 3px; border: 0; border-radius: 3px; background: rgb(10 12 14 / .78); padding: 1px 4px; color: #84cbd0; font: 600 8px var(--font-mono); text-transform: uppercase; opacity: 0; transition: opacity .12s; }
+	.bin-tile:hover .bin-back, .bin-back:focus-visible { opacity: 1; }
+	.bin-back:hover { background: #14232a; color: #bfeff1; }
 </style>
