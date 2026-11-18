@@ -4,8 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import type { RequestHandler } from './$types';
 import { getReferenceCacheDir, getReferenceFileDeps, getSeriesStore, getReferenceVariants } from '$lib/server/config';
-import { cachedReference, uploadReference } from '$lib/server/reference-files';
+import { cachedReference, uploadReference, referenceWorkingCopy } from '$lib/server/reference-files';
 import { referenceImageSize } from '$lib/server/reference-variants';
+import { normalizeReferenceSheet } from '$lib/server/reference-sheet';
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 409 ? 'CONFLICT' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'references' } }, { status });
 
@@ -36,22 +37,16 @@ export const GET: RequestHandler = async ({ params, url }) => {
 	const cached = join(getReferenceCacheDir(), `${file.version_id}${extname(file.file_name).toLowerCase() || '.png'}`);
 	const variant = referenceImageSize(url.searchParams.get('variant'));
 	const variants = variant ? getReferenceVariants() : null;
-	if (variants && variant) {
-		try {
-			if (!existsSync(cached)) {
-				const deps = getReferenceFileDeps();
-				if (!deps) return fail(503, 'Review Room is not configured');
-				await cachedReference(deps, file);
-			}
-			return new Response(new Uint8Array(await variants.read(cached, variant)), { headers: { 'content-type': 'image/webp', 'cache-control': 'private, max-age=3600' } });
-		} catch { return fail(503, 'Reference thumbnail is not ready; retry shortly'); }
-	}
-	if (existsSync(cached)) return new Response(await readFile(cached), { headers: { 'content-type': file.mime_type, 'cache-control': 'private, max-age=3600' } });
-	const deps = getReferenceFileDeps();
-	if (!deps) return fail(503, 'Review Room is not configured');
 	try {
-		const path = await cachedReference(deps, file);
-		return new Response(await readFile(path), { headers: { 'content-type': file.mime_type, 'cache-control': 'private, max-age=3600' } });
+		if (!existsSync(cached)) {
+			const deps = getReferenceFileDeps();
+			if (!deps) return fail(503, 'Review Room is not configured');
+			await cachedReference(deps, file);
+		}
+		const kind = record?.references?.items.find(item => item.page_id === url.searchParams.get('page_id'))?.kind ?? '';
+		const path = await referenceWorkingCopy(cached, kind, file, normalizeReferenceSheet);
+		if (variants && variant) return new Response(new Uint8Array(await variants.read(path, variant)), { headers: { 'content-type': 'image/webp', 'cache-control': 'private, max-age=3600' } });
+		return new Response(await readFile(path), { headers: { 'content-type': path === cached ? file.mime_type : 'image/png', 'cache-control': 'private, max-age=3600' } });
 	} catch (cause) {
 		return fail(502, cause instanceof Error ? cause.message : 'Could not fetch the image from Review Room');
 	}

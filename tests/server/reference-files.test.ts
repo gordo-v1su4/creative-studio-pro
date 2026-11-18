@@ -35,6 +35,19 @@ async function setup(folders: Record<string, string> = { 'refs:characters': 'f-c
 }
 
 describe('reference images in Review Room', () => {
+	test('legacy large sheets resolve to a PNG working copy while retaining the stored version', async () => {
+		const { deps, store } = await setup();
+		const out = await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana.png', bytes: new Uint8Array([1, 2]) });
+		expect(out.ok).toBe(true);
+		let conversions = 0, original = '';
+		deps.normalizeSheet = async (input, output) => { conversions++; original = input; await writeFile(output, '2K PNG'); return output; };
+		const path = await reviewRoomReferenceFiles(deps)(kai);
+		expect(await readFile(path!, 'utf8')).toBe('2K PNG');
+		expect(new Uint8Array(await readFile(original))).toEqual(new Uint8Array([1, 2]));
+		await reviewRoomReferenceFiles(deps)(kai);
+		expect(conversions).toBe(1);
+		expect((await store.read('s1'))!.reference_files!.r1.version_id).toBe('v1');
+	});
 	test('a vetted image goes to _References/Characters under a stable code and is recorded on the series', async () => {
 		const { deps, store, calls } = await setup();
 		const out = await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana_sheet.png', bytes: new Uint8Array([1, 2]) });

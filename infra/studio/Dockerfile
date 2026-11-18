@@ -15,6 +15,9 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/agent-skills ./agent-skills
 COPY --from=build /app/.agents/skills ./.agents/skills
 COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/src/lib/server/reference-sheet.ts ./src/lib/server/reference-sheet.ts
+COPY --from=build /app/src/lib/server/ffmpeg.ts ./src/lib/server/ffmpeg.ts
+COPY --from=build /app/src/lib/server/media-probe.ts ./src/lib/server/media-probe.ts
 COPY --from=build /app/prompts ./prompts
 USER bun
 EXPOSE 3000

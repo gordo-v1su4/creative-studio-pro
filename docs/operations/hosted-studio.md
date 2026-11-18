@@ -35,7 +35,18 @@ Provider, Notion and Review Room keys belong only on the origin.
 | Origin/local `CSP_MEDIA_GATEWAY_BUCKET` | `CREATIVE_STUDIO_PRO_MEDIA_GATEWAY_BUCKET` |
 
 Reference uploads, attachments and generated Prep sheets use the existing RustFS
-Sharp `/process-image` service. The Studio bucket keeps the same layout as
+image pipeline. Character and location working sheets are PNG, downscaled to a
+maximum long edge of 2048px without upscaling. Imported/generated source versions
+remain intact. The optional existing-sheet migration keeps SHA-256-verified
+backups under `files/prep/originals/` and updates only the working file and its
+cache version: `bun scripts/normalize-reference-sheets.ts <project-id> <origin-url>`.
+Run it before thumbnail warming for an existing project. For maintenance, capture
+identities first with `bun scripts/snapshot-reference-sheets.ts <origin-url>`,
+stop the hosted writer, then pass each saved JSON path as the normalizer's third
+argument in a one-off container with the same data mount and private environment.
+The normalizer also backs up Prep metadata before changing working-file pointers.
+
+The existing RustFS Sharp `/process-image` service keeps the same layout as
 Pindeck: `media-uploads/YYYY/MM_DD/<content-sha256>/original/`, `preview/`,
 `low/` (320px WebP), and `high/` (1280px and 1920px WebP). Originals retain
 their bytes. New versions use new content keys, never overwrite another project's

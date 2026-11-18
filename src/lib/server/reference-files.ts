@@ -15,6 +15,7 @@ import type { SeriesRecord, SeriesStore } from './series';
 
 export interface ReferenceFileDeps {
 	prepareReference?: (file: string) => Promise<void>;
+	normalizeSheet?: (file: string, output: string) => Promise<string>;
 	client: ReviewRoomClient;
 	store: SeriesStore;
 	/** Where cached copies live (beside the series records, never inside a project). */
@@ -42,7 +43,7 @@ export async function uploadReference(deps: ReferenceFileDeps, seriesId: string,
 	if (!record) return fail(404, 'Series not found');
 	const reference = record.references?.items.find((item) => item.page_id === input.page_id);
 	if (!reference) return fail(404, 'That reference is not in the series (re-check the series after adding it in Notion)');
-	const type = IMAGE_TYPES[extname(input.file_name).toLowerCase()];
+	let type = IMAGE_TYPES[extname(input.file_name).toLowerCase()];
 	if (!type) return fail(400, 'A reference is a PNG, JPEG or WebP image');
 	if (!fileNameHasName(input.file_name, reference.name)) return fail(400, `The file name "${input.file_name}" must contain the reference's exact name, "${reference.name}"`);
 	const folderKey = referenceFolderKey(reference.kind);
@@ -51,8 +52,13 @@ export async function uploadReference(deps: ReferenceFileDeps, seriesId: string,
 	if (!record.review_room || !folderId) return fail(409, 'The series has no _References folders in Review Room yet: run the Review Room sync on the Series page first');
 
 	await mkdir(deps.cacheDir, { recursive: true });
-	const staged = join(deps.cacheDir, `upload-${input.page_id}${extname(input.file_name).toLowerCase()}`);
+	let staged = join(deps.cacheDir, `upload-${input.page_id}${extname(input.file_name).toLowerCase()}`);
 	await writeFile(staged, input.bytes);
+	if (deps.normalizeSheet && (folderKey === 'refs:characters' || folderKey === 'refs:locations')) {
+		staged = await deps.normalizeSheet(staged, `${staged}.2k.png`);
+		input = { ...input, file_name: input.file_name.replace(/\.[^.]+$/, '.png'), bytes: new Uint8Array(await readFile(staged)) };
+		type = 'image/png';
+	}
 	const probed = await deps.probe(staged);
 	if (!probed.width || !probed.height) return fail(400, 'Could not read the image size');
 	if (Math.max(probed.width, probed.height) < MIN_LONG_EDGE) return fail(400, `The image is ${probed.width}×${probed.height}; references must be at least ${MIN_LONG_EDGE} px on the long edge`);
@@ -92,11 +98,19 @@ export async function cachedReference(deps: Pick<ReferenceFileDeps, 'client' | '
 }
 
 /** The send's resolver: a reference's file to attach, from whichever series holds it. */
-export function reviewRoomReferenceFiles(deps: Pick<ReferenceFileDeps, 'client' | 'cacheDir' | 'store'>): ReferenceFiles {
+export async function referenceWorkingCopy(path: string, kind: string, file: { width: number; height: number; mime_type: string }, normalize?: ReferenceFileDeps['normalizeSheet']): Promise<string> {
+	const folder = referenceFolderKey(kind);
+	if (!normalize || (folder !== 'refs:characters' && folder !== 'refs:locations') || (file.mime_type === 'image/png' && Math.max(file.width, file.height) <= 2048)) return path;
+	const output = `${path}.2k.png`;
+	if (!await stat(output).then(() => true, () => false)) await normalize(path, output);
+	return output;
+}
+
+export function reviewRoomReferenceFiles(deps: Pick<ReferenceFileDeps, 'client' | 'cacheDir' | 'store'> & Partial<Pick<ReferenceFileDeps, 'normalizeSheet'>>): ReferenceFiles {
 	return async (reference: SeriesReferenceItem) => {
 		for (const record of await deps.store.list()) {
 			const file = record.reference_files?.[reference.page_id];
-			if (file) return cachedReference(deps, file).catch(() => null);
+			if (file) return cachedReference(deps, file).then(path => referenceWorkingCopy(path, reference.kind, file, deps.normalizeSheet)).catch(() => null);
 		}
 		return null;
 	};

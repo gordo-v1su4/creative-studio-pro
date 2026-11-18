@@ -28,6 +28,7 @@ import { createSplitter } from '$lib/server/splitter';
 import { uvScaleCheck, uvStamper, type PrepDeps } from '$lib/server/prep';
 import { createNotionApi } from '$lib/server/notion';
 import { ReferenceVariantCache } from '$lib/server/reference-variants';
+import { normalizeReferenceSheet } from '$lib/server/reference-sheet';
 
 /**
  * Runtime configuration (AD-14): environment-injected, explicit schema at
@@ -186,7 +187,7 @@ export async function getPrepDeps(): Promise<PrepDeps> {
 		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null, download: animate.download,
 		agent: async (project) => { const resolved = await resolveProjectModel(project); return resolved.ok ? createOpenAICompatibleClient(resolved.connection) : null; },
 		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd()), scaleCheck: uvScaleCheck(process.cwd()),
-		prepareReference: prepareReferenceVariants
+		prepareReference: prepareReferenceVariants, normalizeSheet: normalizeReferenceSheet
 	};
 }
 
@@ -214,7 +215,7 @@ export function getReferenceFileDeps(): ReferenceFileDeps | null {
 	return {
 		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: getReferenceCacheDir(), probe: probeMedia,
 		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output]),
-		prepareReference: prepareReferenceVariants
+		prepareReference: prepareReferenceVariants, normalizeSheet: normalizeReferenceSheet
 	};
 }
 
