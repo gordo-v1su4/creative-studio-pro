@@ -7,7 +7,7 @@ if (!origin || !root || !token) throw new Error('Run in the configured runtime a
 const headers = { 'x-csp-gateway': token };
 const catalog = await fetch(new URL('/api/projects', origin), { headers });
 if (!catalog.ok) throw new Error(`Project lookup returned ${catalog.status}`);
-const projects = (await catalog.json() as { data: Array<{ project_id: string }> }).data;
+const projects = (await catalog.json() as { projects: Array<{ project_id: string }> }).projects;
 if (!Array.isArray(projects)) throw new Error('Invalid project catalog');
 const directory = join(dirname(root), 'reference-normalization-snapshots');
 await mkdir(directory, { recursive: true });
