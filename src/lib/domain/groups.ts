@@ -20,6 +20,34 @@ export function groupsOf(production: ProductionState): BoardGroup[] {
 	return [{ group_id: MAIN_GROUP, name: 'Main', count: count(MAIN_GROUP) }, ...(production.groups ?? []).map((g) => ({ group_id: g.group_id, name: g.name, count: count(g.group_id) }))];
 }
 
+/**
+ * Cut views: the board can also show the shots of a cut, wherever their groups are, in the order the cut
+ * first plays them. A view never moves a beat; it is `cut:<cut_id>` in place of a group id.
+ */
+export const CUT_VIEW = 'cut:';
+export const isCutView = (id: string) => id.startsWith(CUT_VIEW);
+
+/** The shots a cut uses, once each, in the order they first play. */
+export function cutShots(production: ProductionState, cutId: string): StoryCard[] {
+	const cut = (production.cuts ?? []).find((entry) => entry.cut_id === cutId);
+	if (!cut) return [];
+	const seen = new Set<string>();
+	const shots: StoryCard[] = [];
+	for (const entry of cut.entries) {
+		if (seen.has(entry.card_id)) continue;
+		seen.add(entry.card_id);
+		const card = production.cards.find((c) => c.card_id === entry.card_id);
+		if (card) shots.push(card);
+	}
+	return shots;
+}
+
+/** Cuts worth opening on the board: edits of more than one clip (a single finished render is not an edit), newest first. */
+export function cutViews(production: ProductionState): BoardGroup[] {
+	return (production.cuts ?? []).filter((cut) => cut.entries.length > 1).toReversed()
+		.map((cut) => ({ group_id: `${CUT_VIEW}${cut.cut_id}`, name: cut.name, count: cutShots(production, cut.cut_id).length }));
+}
+
 const exists = (production: ProductionState, groupId: string) => groupId === MAIN_GROUP || (production.groups ?? []).some((g) => g.group_id === groupId);
 
 export function applyCreateGroup(production: ProductionState, group: { group_id: string; name: string }, now: string): TakeResult {

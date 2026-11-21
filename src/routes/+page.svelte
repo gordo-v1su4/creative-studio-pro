@@ -32,7 +32,7 @@
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
-	import { groupOf, groupsOf, MAIN_GROUP } from '$lib/domain/groups';
+	import { CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isCutView, MAIN_GROUP } from '$lib/domain/groups';
 	import { readingOrder } from '$lib/domain/board-order';
 	import Pick from '$lib/ui/controls/Pick.svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
@@ -225,12 +225,14 @@
 				ariaLabel: `Model Voice, ${voice.label}, ${voiceSurfaceStatus(voice).toLowerCase()}`
 			};
 		});
+		// A cut view shows the cut's shots in play order, laid out fresh in reading order so "play in order" gives the edit.
+		const cutView = isCutView(activeGroup);
 		const cardRecords = project.production.cards.length > 0
-			? project.production.cards.filter((card) => groupOf(card) === activeGroup).map((card) => ({ id: card.card_id, card }))
+			? (cutView ? cutShots(project.production, activeGroup.slice(CUT_VIEW.length)) : project.production.cards.filter((card) => groupOf(card) === activeGroup)).map((card) => ({ id: card.card_id, card }))
 			: Array.from({ length: 6 }, (_, order) => ({ id: `story-placeholder-${order}`, card: null }));
 		const chain = spineOf(project.production).chain.map((card) => card.card_id);
 		const storyNodes: Node[] = cardRecords.map(({ id, card }, index) => {
-			const savedNode = saved?.nodes.find((n) => n.node_id === id);
+			const savedNode = cutView ? undefined : saved?.nodes.find((n) => n.node_id === id);
 			const takes = card ? takesFor(project.production, card.card_id, true) : [];
 			const pick = card ? pickFor(project.production, card) : null;
 			const spineIndex = card ? chain.indexOf(card.card_id) : index;
@@ -409,7 +411,7 @@
 		groupLoadedFor = project.project_id;
 		let saved: string | null = null;
 		try { saved = localStorage.getItem(groupKey(project.project_id)); } catch { /* private mode */ }
-		const known = groupsOf(project.production).some((g) => g.group_id === saved);
+		const known = [...groupsOf(project.production), ...cutViews(project.production)].some((g) => g.group_id === saved);
 		if (known && saved !== activeGroup) { activeGroup = saved!; adoptProject(project); fitRequest = `${project.project_id}:${saved}`; }
 	});
 
@@ -624,7 +626,7 @@
 		const cardId = nodeId && activeProject.production.cards.some((card) => card.card_id === nodeId) ? nodeId : null;
 		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const at = { x: (event.clientX - box.left - viewport.x) / viewport.zoom, y: (event.clientY - box.top - viewport.y) / viewport.zoom };
-		void droppedFiles(event.dataTransfer).then((files) => importFiles(files, cardId ? { cardId } : { at, groupId: activeGroup }));
+		void droppedFiles(event.dataTransfer).then((files) => importFiles(files, cardId ? { cardId } : { at, groupId: isCutView(activeGroup) ? MAIN_GROUP : activeGroup }));
 	}
 
 	/**
@@ -841,7 +843,8 @@
 	let layoutSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	async function persistLayout() {
-		if (!activeProject) return;
+		// A cut view lays shots out in play order for the moment; their places in their own groups stay as saved.
+		if (!activeProject || isCutView(activeGroup)) return;
 		savingLayout = true;
 		try {
 			const next: CanvasLayout = {
@@ -1143,6 +1146,20 @@
 							</li>
 						{/each}
 					</ul>
+					{@const cuts = cutViews(activeProject.production)}
+					{#if cuts.length}
+						<div class="meta-label mt-4">Cuts</div>
+						<ul class="mt-2 grid grid-cols-[minmax(0,1fr)] gap-px" aria-label="Cuts on the board">
+							{#each cuts as cut (cut.group_id)}
+								<li class={['group-row', cut.group_id === activeGroup && 'active']}>
+									<button type="button" class="group-pick" onclick={() => showGroup(cut.group_id)} aria-pressed={cut.group_id === activeGroup} title="Show this cut's shots in play order (each once). Select them and play in order to rework the edit; their own groups don't change.">
+										<b class="min-w-0 grow truncate" title={cut.name}>✂ {cut.name}</b>
+										<small>{cut.count}</small>
+									</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 					{#if newGroupName !== null}
 						<input class="group-name" bind:this={groupInput} bind:value={newGroupName} placeholder={selectedBeats.length ? `Name for ${beatsLabel(selectedBeats)}` : 'Group name'} aria-label="New group name" onkeydown={(event) => { if (event.key === 'Enter') createGroup(); else if (event.key === 'Escape') newGroupName = null; }} onblur={() => (newGroupName?.trim() ? createGroup() : (newGroupName = null))} />
 					{/if}

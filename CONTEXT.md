@@ -27,7 +27,7 @@ The running time an episode is being made to, set per episode and defaulting to 
 _Avoid_: Runtime, episode length, duration (in prose)
 
 **Scene**:
-A run of shots in one place and time, belonging to one episode; it is titled by name only, and its order and scene code are kept beside the name.
+A run of shots in one place and time, belonging to one episode; it is titled by name only, and its order and scene code are kept beside the name. In a trailer, a scene is one story chunk (TR110 01 · The sealed drop and the hood) and may cross places; it still gets a scene code and its own Review Room folder (`010 DRP`).
 _Avoid_: Sequence, group (in prose), P01-style titles
 
 **Action**:
@@ -123,8 +123,16 @@ A shot that keeps its place on the spine but is skipped wherever the spine is pl
 _Avoid_: Deactivated, disabled, hidden
 
 **Selection**:
-The shots shift-clicked on the board, in click order, previewed together before anything is kept.
+The shots picked on the board (clicked or boxed), played in reading order of where they sit (rows top to bottom, left to right, whatever order they were clicked in), previewed together before anything is kept.
 _Avoid_: Sequence, playlist
+
+**Assembly**:
+A saved, named, ordered set of scenes laid out together on the board, each scene a frame holding its shots in story order (benched shots greyed and skipped); selecting its shots and pushing makes a cut. It never moves a shot out of its scene.
+_Avoid_: Composite, comp, pre-comp, sequence, cut (it holds scenes, not takes)
+
+**Cut view**:
+A cut opened on the board: its shots, each once, laid out in the order the cut first plays them, so the edit can be reworked and pushed again. It never moves a shot out of its scene, and positions in it are not saved.
+_Avoid_: Cut group, selects
 
 ### Cuts
 
