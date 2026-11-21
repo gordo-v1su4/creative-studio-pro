@@ -18,8 +18,8 @@ test('an assembly is made empty, takes scenes with their places, and plays them 
 	if (!placed.ok) throw new Error(placed.message);
 	expect(assemblyViews(placed.production)).toEqual([{ group_id: 'asm:x', name: 'Act 1', count: 2 }]);
 	// Scene order is the caller's (reading order of the nodes); shots in story order, benched "c" skipped.
-	expect(assemblyPlay(placed.production, ['s1', 's2'])).toEqual(['a', 'b', 'd', 'e']);
-	expect(assemblyPlay(placed.production, ['s2', 's1'])).toEqual(['d', 'e', 'a', 'b']);
+	expect(assemblyPlay(placed.production, [{ kind: 'scene', id: 's1' }, { kind: 'scene', id: 's2' }])).toEqual(['a', 'b', 'd', 'e']);
+	expect(assemblyPlay(placed.production, [{ kind: 'scene', id: 's2' }, { kind: 'scene', id: 's1' }])).toEqual(['d', 'e', 'a', 'b']);
 });
 
 test('a scene is in an assembly once, must exist, and names stay unique', () => {
@@ -35,4 +35,16 @@ test('a scene is in an assembly once, must exist, and names stay unique', () => 
 test('a scene glimpse spreads over the scene, first and last included', () => {
 	expect(sceneGlimpse([1, 2, 3])).toEqual([1, 2, 3]);
 	expect(sceneGlimpse([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])).toEqual([1, 4, 7, 10]);
+});
+
+test("single shots sit in an assembly by reference: once each, real shots only, played as picked", () => {
+	const made = applyCreateAssembly(production, { assembly_id: "x", name: "Swim club" }, now);
+	if (!made.ok) throw new Error(made.message);
+	const placed = applyUpdateAssembly(made.production, { assembly_id: "x", shots: [{ card_id: "d", x: 0, y: 0 }, { card_id: "c", x: 300, y: 0 }] });
+	if (!placed.ok) throw new Error(placed.message);
+	expect(placed.production.cards.find((c) => c.card_id === "d")?.group_id).toBe("s2");
+	expect(assemblyViews(placed.production)[0].count).toBe(2);
+	expect(assemblyPlay(placed.production, [{ kind: "shot", id: "c" }, { kind: "scene", id: "s2" }])).toEqual(["c", "d", "e"]);
+	expect(applyUpdateAssembly(made.production, { assembly_id: "x", shots: [{ card_id: "d", x: 0, y: 0 }, { card_id: "d", x: 1, y: 1 }] })).toMatchObject({ ok: false });
+	expect(applyUpdateAssembly(made.production, { assembly_id: "x", shots: [{ card_id: "nope", x: 0, y: 0 }] })).toMatchObject({ ok: false });
 });

@@ -34,7 +34,7 @@
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
-	import { ASSEMBLY_VIEW, assemblyPlay, assemblyViews, CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isAssemblyView, isBoardView, isCutView, MAIN_GROUP, sceneGlimpse, sceneShots } from '$lib/domain/groups';
+	import { ASSEMBLY_VIEW, assemblyPlay, assemblyViews, type AssemblyItem, CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isAssemblyView, isBoardView, isCutView, MAIN_GROUP, sceneGlimpse, sceneShots } from '$lib/domain/groups';
 	import { readingOrder } from '$lib/domain/board-order';
 	import Pick from '$lib/ui/controls/Pick.svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
@@ -229,12 +229,16 @@
 		});
 		// A cut view shows the cut's shots in play order, laid out fresh in reading order so "play in order" gives the edit.
 		const cutView = isCutView(activeGroup);
+		// An assembly shows its single shots as the real shot cards, at the places the assembly keeps for them.
+		const asm = isAssemblyView(activeGroup) ? (project.production.assemblies ?? []).find((a) => `${ASSEMBLY_VIEW}${a.assembly_id}` === activeGroup) ?? null : null;
+		const asmPlace = (cardId: string) => asm?.shots?.find((s) => s.card_id === cardId);
 		const cardRecords = project.production.cards.length > 0
-			? (cutView ? cutShots(project.production, activeGroup.slice(CUT_VIEW.length)) : project.production.cards.filter((card) => groupOf(card) === activeGroup)).map((card) => ({ id: card.card_id, card }))
+			? (asm ? (asm.shots ?? []).flatMap((s) => project.production.cards.filter((card) => card.card_id === s.card_id))
+				: cutView ? cutShots(project.production, activeGroup.slice(CUT_VIEW.length)) : project.production.cards.filter((card) => groupOf(card) === activeGroup)).map((card) => ({ id: card.card_id, card }))
 			: Array.from({ length: 6 }, (_, order) => ({ id: `story-placeholder-${order}`, card: null }));
 		const chain = spineOf(project.production).chain.map((card) => card.card_id);
 		const storyNodes: Node[] = cardRecords.map(({ id, card }, index) => {
-			const savedNode = cutView ? undefined : saved?.nodes.find((n) => n.node_id === id);
+			const savedNode = asm ? asmPlace(id) : cutView ? undefined : saved?.nodes.find((n) => n.node_id === id);
 			const takes = card ? takesFor(project.production, card.card_id, true) : [];
 			const pick = card ? pickFor(project.production, card) : null;
 			const spineIndex = card ? chain.indexOf(card.card_id) : index;
@@ -267,7 +271,7 @@
 					: `Story card ${index + 1}, awaiting draft`
 			};
 		});
-		if (isAssemblyView(activeGroup)) return sceneNodesFor(project, activeGroup.slice(ASSEMBLY_VIEW.length));
+		if (asm) return [...sceneNodesFor(project, asm.assembly_id), ...storyNodes];
 		return [seedNode, ...voiceNodes, ...storyNodes];
 	}
 
@@ -315,10 +319,51 @@
 		const placed = nodes.filter((node) => node.id.startsWith(SCENE_NODE)).map((node) => ({ id: node.id.slice(SCENE_NODE.length), x: Math.round(node.position.x), y: Math.round(node.position.y) }));
 		return readingOrder(placed).map(({ id, x, y }) => ({ group_id: id, x, y }));
 	}
+	/** Where the single shots sit on the open assembly now. */
+	function placedShots(): Array<{ card_id: string; x: number; y: number }> {
+		const ids = new Set((activeAssembly?.shots ?? []).map((s) => s.card_id));
+		return nodes.filter((node) => ids.has(node.id)).map((node) => ({ card_id: node.id, x: Math.round(node.position.x), y: Math.round(node.position.y) }));
+	}
+	/**
+	 * Add shots to an assembly by reference (they stay in their scenes), in a row under what is already there,
+	 * in the order given. Shots already in it are skipped.
+	 */
+	function addShotsToAssembly(assemblyId: string, cardIds: string[]) {
+		const project = activeProject;
+		const assembly = project?.production.assemblies?.find((a) => a.assembly_id === assemblyId);
+		if (!project || !assembly) return;
+		const have = new Set((assembly.shots ?? []).map((s) => s.card_id));
+		const adding = cardIds.filter((id) => !have.has(id));
+		if (!adding.length) { notify('Those shots are already in that assembly.'); return; }
+		const bottom = Math.max(-400, ...assembly.scenes.map((s) => s.y + 260), ...(assembly.shots ?? []).map((s) => s.y + 300));
+		const shots = [...(assembly.shots ?? []), ...adding.map((card_id, i) => ({ card_id, x: (i % 6) * 280, y: bottom + 100 + Math.floor(i / 6) * 330 }))];
+		sendBoardCommand({ command: 'update_assembly', assembly_id: assemblyId, shots });
+		notify(`${adding.length} ${adding.length === 1 ? 'shot' : 'shots'} added to ${assembly.name}. They stay in their scenes.`);
+	}
+	/** Take the selected scenes and shots out of the open assembly (nothing leaves its scene). */
+	function removeSelectedFromAssembly() {
+		if (!activeAssembly) return;
+		const sceneIds = new Set(selectedItems.filter((i) => i.kind === 'scene').map((i) => i.id));
+		const shotIds = new Set(selectedItems.filter((i) => i.kind === 'shot').map((i) => i.id));
+		sendBoardCommand({ command: 'update_assembly', assembly_id: activeAssembly.assembly_id,
+			scenes: placedScenes().filter((s) => !sceneIds.has(s.group_id)), shots: placedShots().filter((s) => !shotIds.has(s.card_id)) });
+	}
 	function addSceneAt(groupId: string, at: { x: number; y: number }) {
 		if (!activeAssembly) return;
 		if (activeAssembly.scenes.some((s) => s.group_id === groupId)) { notify('That scene is already in this assembly.'); return; }
 		saveAssemblyScenes([...placedScenes(), { group_id: groupId, x: Math.round(at.x), y: Math.round(at.y) }]);
+	}
+	/** A new assembly holding these shots by reference, then open it. */
+	function createAssemblyWith(cardIds: string[]) {
+		const project = activeProject;
+		if (!project || !cardIds.length) return;
+		const taken = new Set((project.production.assemblies ?? []).map((a) => a.name.toLowerCase()));
+		let n = (project.production.assemblies ?? []).length + 1;
+		while (taken.has(`assembly ${n}`)) n++;
+		const id = crypto.randomUUID();
+		sendBoardCommand({ command: 'create_assembly', assembly_id: id, name: `Assembly ${n}` });
+		sendBoardCommand({ command: 'update_assembly', assembly_id: id, shots: cardIds.map((card_id, i) => ({ card_id, x: (i % 6) * 280, y: Math.floor(i / 6) * 330 })) });
+		showGroup(`${ASSEMBLY_VIEW}${id}`);
 	}
 	function createAssembly() {
 		const project = activeProject;
@@ -476,8 +521,10 @@
 	let activeGroup = $state<string>(MAIN_GROUP);
 	const activeAssembly = $derived(activeProject && isAssemblyView(activeGroup) ? (activeProject.production.assemblies ?? []).find((a) => `${ASSEMBLY_VIEW}${a.assembly_id}` === activeGroup) ?? null : null);
 	/** Selected scene nodes in reading order, and the shots they play (story order within, benched skipped). */
-	const selectedScenes = $derived(readingOrder(nodes.filter((node) => node.selected && node.id.startsWith(SCENE_NODE)).map((node) => ({ id: node.id.slice(SCENE_NODE.length), x: node.position.x, y: node.position.y }))).map((item) => item.id));
-	const selectedSceneShots = $derived(activeProject ? assemblyPlay(activeProject.production, selectedScenes) : []);
+	/** Selected assembly items (scenes and single shots) in reading order. */
+	const selectedItems = $derived<AssemblyItem[]>(activeAssembly ? readingOrder(nodes.filter((node) => node.selected && (node.id.startsWith(SCENE_NODE) || node.type === 'story_card')).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y })))
+		.map(({ id }) => (id.startsWith(SCENE_NODE) ? { kind: 'scene' as const, id: id.slice(SCENE_NODE.length) } : { kind: 'shot' as const, id })) : []);
+	const selectedSceneShots = $derived(activeProject ? assemblyPlay(activeProject.production, selectedItems) : []);
 	let newGroupName = $state<string | null>(null);
 	let groupInput = $state<HTMLInputElement>();
 	// Focus the name box as soon as it opens, so typing goes straight in.
@@ -571,7 +618,8 @@
 		autoPanDrag = !(point && canvasOpen && !railCollapsed && point.clientX < left + 48);
 	}
 	function onNodeDragStop({ nodes: dragged, event }: { nodes: Node[]; event: MouseEvent | TouchEvent }) {
-		const target = draggingBeats ? groupUnder(event) : null;
+		// Dropping on a group moves shots home; never from an assembly, where shots are only placed by reference.
+		const target = draggingBeats && !activeAssembly ? groupUnder(event) : null;
 		dropGroup = null;
 		draggingBeats = false;
 		autoPanDrag = true;
@@ -584,7 +632,11 @@
 			return;
 		}
 		// An assembly keeps where its scene nodes sit (their reading order is the scene order).
-		if (activeAssembly && dragged.some((node) => node.id.startsWith(SCENE_NODE))) { saveAssemblyScenes(placedScenes()); return; }
+		// An assembly keeps where its scenes and shots sit (their reading order is the play order).
+		if (activeAssembly) {
+			if (dragged.some((node) => node.id.startsWith(SCENE_NODE) || node.type === 'story_card')) sendBoardCommand({ command: 'update_assembly', assembly_id: activeAssembly.assembly_id, scenes: placedScenes(), shots: placedShots() });
+			return;
+		}
 		scheduleLayoutSave();
 	}
 
@@ -1379,19 +1431,23 @@
 						{@const backTo = assemblyViews(activeProject.production).find((a) => a.group_id === cameFrom)}
 						{#if backTo}<button type="button" class="bar-key absolute left-3 top-3 z-[6]" onclick={() => showGroup(backTo.group_id)} title="Back to the assembly">← back to {backTo.name}</button>{/if}
 					{/if}
-					{#if selectedScenes.length && activeProject}
-						<div class="sel-bar" role="group" aria-label="Selected scenes">
-							<span class="seq-cap">{selectedScenes.length} {selectedScenes.length === 1 ? 'scene' : 'scenes'} · {selectedSceneShots.length} shots</span>
-							<button type="button" class="bar-key agent" onclick={() => playSelection(selectedSceneShots)} title="Play the scenes in reading order, each scene's shots in story order (benched skipped)">▶ Play in order</button>
+					{#if activeAssembly && selectedItems.length && activeProject}
+						{@const sceneCount = selectedItems.filter((i) => i.kind === 'scene').length}
+						<div class="sel-bar" role="group" aria-label="Selected in the assembly">
+							<span class="seq-cap">{sceneCount ? `${sceneCount} ${sceneCount === 1 ? 'scene' : 'scenes'} · ` : ''}{selectedSceneShots.length} shots</span>
+							<button type="button" class="bar-key agent" onclick={() => playSelection(selectedSceneShots)} title="Play in reading order: a scene plays its shots in story order (benched skipped), a single shot plays itself">▶ Play in order</button>
+							<button type="button" class="bar-key" onclick={removeSelectedFromAssembly} title="Take them out of this assembly (they stay in their scenes)">Remove from assembly</button>
 							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>
 						</div>
 					{/if}
-					{#if selectedBeats.length > 1 && activeProject}
+					{#if selectedBeats.length >= 1 && activeProject && !activeAssembly}
 						{@const moveTargets = groupsOf(activeProject.production).filter((g) => g.group_id !== activeGroup)}
+						{@const assemblyTargets = (activeProject.production.assemblies ?? []).map((a) => ({ value: a.assembly_id, label: a.name, hint: String((a.shots ?? []).length + a.scenes.length) }))}
 						<div class="sel-bar" role="group" aria-label="Selected beats">
-							<span class="seq-cap">{selectedBeats.length} shots</span>
-							<button type="button" class="bar-key agent" onclick={() => playSelection()} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>
-							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and move these shots into it">New group…</button>
+							<span class="seq-cap">{selectedBeats.length} {selectedBeats.length === 1 ? 'shot' : 'shots'}</span>
+							{#if selectedBeats.length > 1}<button type="button" class="bar-key agent" onclick={() => playSelection()} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>{/if}
+							<Pick label="Add the selected shots to an assembly (they stay in their scenes)" placeholder="+ Add to assembly…" options={[...assemblyTargets, { value: '__new', label: '+ New assembly', hint: '' }]} onchange={(id) => (id === '__new' ? createAssemblyWith([...selectedBeats]) : addShotsToAssembly(id, [...selectedBeats]))} />
+							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and MOVE these shots into it (they leave their current scene)">Move to new group…</button>
 							{#if moveTargets.length}<Pick label="Move the selected shots to a group" placeholder="Move to…" options={moveTargets.map((g) => ({ value: g.group_id, label: g.name, hint: String(g.count) }))} onchange={(groupId) => moveSelectedTo(groupId)} />{/if}
 							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>
 						</div>

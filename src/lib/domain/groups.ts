@@ -72,14 +72,25 @@ export function sceneGlimpse<T>(shots: T[], count = 4): T[] {
 	return Array.from({ length: count }, (_, i) => shots[Math.round((i * (shots.length - 1)) / (count - 1))]);
 }
 
-/** The assemblies as board views, each counting the scenes still on the project. */
+const cardExists = (production: ProductionState, cardId: string) => production.cards.some((c) => c.card_id === cardId);
+
+/** The assemblies as board views, each counting its scenes and single shots still on the project. */
 export function assemblyViews(production: ProductionState): BoardGroup[] {
-	return (production.assemblies ?? []).map((a) => ({ group_id: `${ASSEMBLY_VIEW}${a.assembly_id}`, name: a.name, count: a.scenes.filter((s) => sceneExists(production, s.group_id)).length }));
+	return (production.assemblies ?? []).map((a) => ({ group_id: `${ASSEMBLY_VIEW}${a.assembly_id}`, name: a.name,
+		count: a.scenes.filter((s) => sceneExists(production, s.group_id)).length + (a.shots ?? []).filter((s) => cardExists(production, s.card_id)).length }));
 }
 
-/** The shots selected scene nodes play, scene by scene in the order given, story order within, benched skipped. */
-export function assemblyPlay(production: ProductionState, sceneIds: string[]): string[] {
-	return sceneIds.flatMap((groupId) => sceneShots(production, groupId).filter((card) => !card.benched).map((card) => card.card_id));
+/** An assembly item on its canvas: a whole scene, or one shot by reference. */
+export type AssemblyItem = { kind: 'scene'; id: string } | { kind: 'shot'; id: string };
+
+/**
+ * What selected assembly items play, in the order given (their reading order): a scene plays its shots in story
+ * order with benched shots skipped; a single shot plays itself (it was picked on purpose).
+ */
+export function assemblyPlay(production: ProductionState, items: AssemblyItem[]): string[] {
+	return items.flatMap((item) => item.kind === 'scene'
+		? sceneShots(production, item.id).filter((card) => !card.benched).map((card) => card.card_id)
+		: cardExists(production, item.id) ? [item.id] : []);
 }
 
 export function applyCreateAssembly(production: ProductionState, input: { assembly_id: string; name: string }, now: string): TakeResult {
@@ -90,7 +101,7 @@ export function applyCreateAssembly(production: ProductionState, input: { assemb
 }
 
 /** Rename an assembly or set its scenes and their places; each scene at most once, and only real scenes. */
-export function applyUpdateAssembly(production: ProductionState, input: { assembly_id: string; name?: string; scenes?: AssemblyScene[] }): TakeResult {
+export function applyUpdateAssembly(production: ProductionState, input: { assembly_id: string; name?: string; scenes?: AssemblyScene[]; shots?: Array<{ card_id: string; x: number; y: number }> }): TakeResult {
 	const assemblies = production.assemblies ?? [];
 	const current = assemblies.find((a) => a.assembly_id === input.assembly_id);
 	if (!current) return { ok: false, message: `Assembly ${input.assembly_id} not found` };
@@ -101,7 +112,13 @@ export function applyUpdateAssembly(production: ProductionState, input: { assemb
 		const unknown = ids.find((id) => !sceneExists(production, id));
 		if (unknown) return { ok: false, message: `Scene ${unknown} not found` };
 	}
-	const next = { ...current, ...(input.name !== undefined ? { name: input.name.trim() } : {}), ...(input.scenes ? { scenes: input.scenes.map((s) => ({ ...s })) } : {}) };
+	if (input.shots) {
+		const ids = input.shots.map((s) => s.card_id);
+		if (new Set(ids).size !== ids.length) return { ok: false, message: 'A shot can be in an assembly only once' };
+		const unknown = ids.find((id) => !cardExists(production, id));
+		if (unknown) return { ok: false, message: `Shot ${unknown} not found` };
+	}
+	const next = { ...current, ...(input.name !== undefined ? { name: input.name.trim() } : {}), ...(input.scenes ? { scenes: input.scenes.map((s) => ({ ...s })) } : {}), ...(input.shots ? { shots: input.shots.map((s) => ({ ...s })) } : {}) };
 	return { ok: true, production: { ...production, assemblies: assemblies.map((a) => (a.assembly_id === input.assembly_id ? next : a)) } };
 }
 

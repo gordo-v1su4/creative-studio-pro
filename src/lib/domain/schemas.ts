@@ -523,7 +523,9 @@ export const productionStateSchema = z.object({
 	/** Assemblies: scenes dropped on their own canvas as one node each; reading order of the nodes is the scene order. */
 	assemblies: z.array(z.object({
 		assembly_id: idSchema, name: nonBlank(120), created_at: rfc3339Schema,
-		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100)
+		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100),
+		/** Single shots placed by reference (never moved out of their scene). */
+		shots: z.array(z.object({ card_id: idSchema, x: z.number(), y: z.number() })).max(300).optional()
 	})).max(100).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
@@ -1162,7 +1164,8 @@ export const groupCommandSchema = z.discriminatedUnion('command', [
 	z.object({ command: z.literal('move_beats'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, card_ids: z.array(idSchema).min(1).max(200) }),
 	z.object({ command: z.literal('create_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema, name: nonBlank(120) }),
 	z.object({ command: z.literal('update_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema, name: nonBlank(120).optional(),
-		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100).optional() }),
+		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100).optional(),
+		shots: z.array(z.object({ card_id: idSchema, x: z.number(), y: z.number() })).max(300).optional() }),
 	z.object({ command: z.literal('remove_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema })
 ]);
 
