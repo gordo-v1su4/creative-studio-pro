@@ -27,7 +27,7 @@ export interface PushDeps {
  * Store an exported cut as a deliverable (V1S-280): `BLR_EP101_EPC` in the episode's `_Deliverables`, or
  * `BLR_S1_TRL01` in the series-level one. Each export of the same deliverable becomes its next version.
  */
-export async function pushDeliverable(deps: PushDeps, projectId: string, input: { file: string; name: string; kind: DeliverableKind; index?: number; scope: 'episode' | 'series' }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
+export async function pushDeliverable(deps: PushDeps, projectId: string, input: { file: string; name: string; kind: DeliverableKind; index?: number; scope: 'episode' | 'series'; cut?: string }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
 	const project = await deps.store.readProject(projectId);
 	if (project?.review_room && !project.series) {
 		// Review Room refusals (a bad code, a locked folder) come back as a message, not a server error.
@@ -63,7 +63,7 @@ export async function pushDeliverable(deps: PushDeps, projectId: string, input: 
  * A connected trailer's deliverable: `BLR_TR110_TRL01` in the trailer's own `_Deliverables` folder (made on the
  * first send), so every exported cut of the trailer lands as that asset's next version.
  */
-async function pushTrailerDeliverable(deps: PushDeps, project: Project, input: { file: string; name: string; kind: DeliverableKind; index?: number }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
+async function pushTrailerDeliverable(deps: PushDeps, project: Project, input: { file: string; name: string; kind: DeliverableKind; index?: number; cut?: string }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
 	const room = project.review_room!;
 	const kind: DeliverableKind = input.kind === 'EPC' ? 'TRL' : input.kind;
 	let folderId = room.deliverables_folder_id;
@@ -83,7 +83,7 @@ async function pushTrailerDeliverable(deps: PushDeps, project: Project, input: {
 			projectId: room.project_id, folderId, assetCode: code, name: input.name, type: 'video/mp4',
 			bytes: new Uint8Array(await readFile(input.file)), poster: new Uint8Array(await readFile(posterPath)),
 			durationSec: probed.duration_s ?? 0, width: probed.width ?? 0, height: probed.height ?? 0,
-			metadata: { sourceLabel: 'Creative Studio Pro', notes: `${DELIVERABLE_KINDS[kind]} · ${project.title}` }, makeCurrent: true
+			metadata: { sourceLabel: 'Creative Studio Pro', notes: [input.cut, DELIVERABLE_KINDS[kind], project.title, probed.duration_s ? `${probed.duration_s.toFixed(1)} s` : null].filter(Boolean).join(' · '), ...(input.cut ? { cut: input.cut } : {}), project: project.title, ...(probed.duration_s ? { length: `${probed.duration_s.toFixed(1)} s` } : {}) }, makeCurrent: true
 		});
 		return { ok: true, code, version: stored.version };
 	} finally {

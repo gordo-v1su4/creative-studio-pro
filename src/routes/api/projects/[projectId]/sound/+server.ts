@@ -90,7 +90,9 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		let deliverable: { code: string; version: number } | { error: string } | null = null;
 		const push = body.deliverable && (exported.project.series || exported.project.review_room) ? await getPushDeps() : null;
 		if (body.deliverable && push) {
-			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable });
+			// The cut it came from goes into Review Room's fields, so any version traces back to its cut.
+			const cutName = exported.project.production.cuts?.find((c) => c.cut_id === body.cut_id)?.name;
+			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable, ...(cutName ? { cut: `${cutName} v${body.version}` } : {}) });
 			deliverable = stored.ok ? { code: stored.code, version: stored.version } : { error: stored.message };
 		}
 		// Storing a trailer's first deliverable saves its folder id, so hand back the project as it is now.

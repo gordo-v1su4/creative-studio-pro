@@ -17,7 +17,7 @@ const bodySchema = z.discriminatedUnion('action', [
 	// Store one series take in Review Room (V1S-276): the shot's next version, current when it is the pick.
 	z.object({ action: z.literal('push'), take_id: idSchema }),
 	// Store a finished cut that is already a video in the project (a render made outside Export) as a deliverable.
-	z.object({ action: z.literal('push_deliverable'), take_id: idSchema, kind: z.enum(['EPC', 'TSR', 'TRL']).default('TRL'), index: z.number().int().min(1).max(99).optional() }),
+	z.object({ action: z.literal('push_deliverable'), take_id: idSchema, kind: z.enum(['EPC', 'TSR', 'TRL']).default('TRL'), index: z.number().int().min(1).max(99).optional(), cut: z.string().trim().min(1).max(120).optional() }),
 	// Store every take of this episode that isn't in Review Room yet.
 	z.object({ action: z.literal('push_all') }),
 	// Pull takes added in Review Room, follow its current version as the pick, report misfiled drops.
@@ -55,7 +55,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return pulled.ok ? json({ ok: true, data: pulled.project, added: pulled.added, picked: pulled.picked, misfiled: pulled.misfiled }) : fail(pulled.status, pulled.message);
 	}
 	if (body.data.action === 'push_deliverable') {
-		const { take_id, kind, index } = body.data;
+		const { take_id, kind, index, cut } = body.data;
 		const project = await deps.store.readProject(projectId.data);
 		const take = project?.production.assets.find((asset) => asset.asset_id === take_id);
 		if (!project || !take || take.kind !== 'video') return fail(404, 'Video not found in this project');
@@ -63,7 +63,9 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const prefix = `/api/projects/${projectId.data}/files/`;
 		const file = take.url.startsWith(prefix) ? resolve(join(files, decodeURIComponent(take.url.slice(prefix.length)))) : '';
 		if (!file.startsWith(files + sep)) return fail(400, 'The video is not stored in the project folder');
-		const stored = await pushDeliverable(deps, projectId.data, { file, name: take.name, kind, index, scope: 'episode' });
+		// "TR110 Rough cut 18 (2-17) exact mix.mp4" → "Rough cut 18" when no cut name is given.
+		const cutName = cut ?? (take.name.replace(/\.[^.]+$/, '').replace(/^TR\d{3}\s+/, '').replace(/\s*\(.*$/, '') || undefined);
+		const stored = await pushDeliverable(deps, projectId.data, { file, name: take.name, kind, index, scope: 'episode', cut: cutName });
 		return stored.ok ? json({ ok: true, code: stored.code, version: stored.version }) : fail(stored.status, stored.message);
 	}
 	if (body.data.action === 'push') {
