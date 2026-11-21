@@ -119,6 +119,7 @@ describe('deliverable codes', () => {
 		expect(formatDeliverableCode({ show: 'BLR', scope: 'EP101', kind: 'EPC' })).toBe('BLR_EP101_EPC');
 		expect(formatDeliverableCode({ show: 'BLR', scope: 'EP101', kind: 'TSR', index: 1 })).toBe('BLR_EP101_TSR01');
 		expect(formatDeliverableCode({ show: 'BLR', scope: 'S1', kind: 'TRL', index: 2 })).toBe('BLR_S1_TRL02');
+		expect(formatDeliverableCode({ show: 'BLR', scope: 'TR110', kind: 'TRL' })).toBe('BLR_TR110_TRL01');
 		expect(() => formatDeliverableCode({ show: 'BLR', scope: 'E1', kind: 'EPC' })).toThrow();
 	});
 });

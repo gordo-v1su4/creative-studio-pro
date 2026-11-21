@@ -106,7 +106,7 @@ export type DeliverableKind = keyof typeof DELIVERABLE_KINDS;
  */
 export function formatDeliverableCode(input: { show: string; scope: string; kind: DeliverableKind; index?: number }): string {
 	if (!CODE_PATTERN.test(input.show)) throw new Error('The show code must be three capital letters');
-	if (!/^(EP\d{3}|S\d)$/.test(input.scope)) throw new Error(`"${input.scope}" is not an episode (EP101) or a season (S1)`);
+	if (!/^(EP\d{3}|S\d|TR\d{3})$/.test(input.scope)) throw new Error(`"${input.scope}" is not an episode (EP101), a season (S1) or a trailer (TR110)`);
 	const index = input.kind === 'EPC' && input.index === undefined ? '' : String(Math.max(1, Math.min(99, Math.trunc(input.index ?? 1)))).padStart(2, '0');
 	return `${input.show}_${input.scope}_${input.kind}${index}`;
 }

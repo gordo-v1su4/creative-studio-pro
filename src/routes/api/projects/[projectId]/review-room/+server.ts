@@ -4,7 +4,8 @@ import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { getProjectStore, getPushDeps } from '$lib/server/config';
 import { connectTrailer } from '$lib/server/review-room-trailer';
-import { pullTakes, pushTake } from '$lib/server/review-room-takes';
+import { join, resolve, sep } from 'node:path';
+import { pullTakes, pushDeliverable, pushTake } from '$lib/server/review-room-takes';
 import { reviewTake } from '$lib/server/review-room-review';
 
 const bodySchema = z.discriminatedUnion('action', [
@@ -15,6 +16,8 @@ const bodySchema = z.discriminatedUnion('action', [
 		scenes: z.array(z.object({ group_id: idSchema, code: z.string().regex(/^[A-Z]{3}$/) })).max(99).optional() }),
 	// Store one series take in Review Room (V1S-276): the shot's next version, current when it is the pick.
 	z.object({ action: z.literal('push'), take_id: idSchema }),
+	// Store a finished cut that is already a video in the project (a render made outside Export) as a deliverable.
+	z.object({ action: z.literal('push_deliverable'), take_id: idSchema, kind: z.enum(['EPC', 'TSR', 'TRL']).default('TRL'), index: z.number().int().min(1).max(99).optional() }),
 	// Store every take of this episode that isn't in Review Room yet.
 	z.object({ action: z.literal('push_all') }),
 	// Pull takes added in Review Room, follow its current version as the pick, report misfiled drops.
@@ -50,6 +53,18 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (body.data.action === 'pull') {
 		const pulled = await pullTakes(deps, projectId.data);
 		return pulled.ok ? json({ ok: true, data: pulled.project, added: pulled.added, picked: pulled.picked, misfiled: pulled.misfiled }) : fail(pulled.status, pulled.message);
+	}
+	if (body.data.action === 'push_deliverable') {
+		const { take_id, kind, index } = body.data;
+		const project = await deps.store.readProject(projectId.data);
+		const take = project?.production.assets.find((asset) => asset.asset_id === take_id);
+		if (!project || !take || take.kind !== 'video') return fail(404, 'Video not found in this project');
+		const files = resolve(join(deps.projectRoot, projectId.data, 'files'));
+		const prefix = `/api/projects/${projectId.data}/files/`;
+		const file = take.url.startsWith(prefix) ? resolve(join(files, decodeURIComponent(take.url.slice(prefix.length)))) : '';
+		if (!file.startsWith(files + sep)) return fail(400, 'The video is not stored in the project folder');
+		const stored = await pushDeliverable(deps, projectId.data, { file, name: take.name, kind, index, scope: 'episode' });
+		return stored.ok ? json({ ok: true, code: stored.code, version: stored.version }) : fail(stored.status, stored.message);
 	}
 	if (body.data.action === 'push') {
 		const pushed = await pushTake(deps, projectId.data, body.data.take_id);

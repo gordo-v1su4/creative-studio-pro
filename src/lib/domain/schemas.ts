@@ -624,6 +624,8 @@ export const projectSchema = z.object({
 		shots: z.record(z.string(), z.object({ code: z.string(), folder_id: idSchema })),
 		/** Story sequences as scene folders (board group id → three-letter code + its folder); absent on flat SHT trailers. */
 		scenes: z.record(z.string(), z.object({ code: z.string().regex(/^[A-Z]{3}$/), folder_id: idSchema })).optional(),
+		/** The trailer's own _Deliverables folder: each cut sent there is the next version of BLR_TR110_TRL01. */
+		deliverables_folder_id: idSchema.optional(),
 		cursor: z.union([z.string(), z.number()]).optional()
 	}).optional(),
 	/** An episode imported from a Notion series: which one, and its scene outline (one board group per scene). */

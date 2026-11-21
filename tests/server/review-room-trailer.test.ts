@@ -90,3 +90,33 @@ test('a reconnect without scenes (new planned shots) keeps the scene tree', asyn
 	expect(again.scenes).toEqual(project.review_room.scenes);
 	expect(folders).toHaveLength(3);
 });
+
+test('a connected trailer stores exported cuts as versions of BLR_TR110_TRL01 in its own _Deliverables', async () => {
+	const { pushDeliverable } = await import('../../src/lib/server/review-room-takes');
+	const { mkdtemp, writeFile } = await import('node:fs/promises');
+	const { tmpdir } = await import('node:os');
+	const { join } = await import('node:path');
+	const dir = await mkdtemp(join(tmpdir(), 'csp-deliv-'));
+	const file = join(dir, 'cut.mp4'); await writeFile(file, 'mp4');
+	const folders = [{ id: 'trailer', title: 'TR110 — Teaser Trailer', parentFolderId: null as string | null, ownedByCaller: true }];
+	const uploads: Array<{ folderId: string; assetCode: string }> = [];
+	let saved: unknown = null;
+	const project = { project_id: 'p', version: 3, title: 'TR110', review_room: { project_id: 'room', folder_id: 'trailer', code: 'TR110', show_code: 'BLR', shots: {} } };
+	const client = {
+		folders: async () => folders,
+		createFolder: async (_: string, title: string, parentFolderId: string) => { const f = { id: 'deliv', title, parentFolderId, ownedByCaller: true }; folders.push(f); return f; },
+		beginUpload: async (input: { folderId: string; assetCode: string }) => { uploads.push(input); return { sessionId: 's', url: 'u', posterUrl: 'pu' }; },
+		putSigned: async () => {}, completeUpload: async () => ({ assetId: 'a' }),
+		changes: async () => ({ cursor: '1', assets: [], removedAssets: [], versions: [{ versionId: 'v', assetId: 'a', version: uploads.length, isCurrent: true }] }),
+		setCurrentVersion: async () => {}, putMetadata: async () => {}
+	};
+	const deps = {
+		store: { readProject: async () => project, updateProject: async (_: string, __: number, fn: (p: unknown) => unknown) => { saved = fn(project); return saved; } },
+		client, probe: async () => ({ duration_s: 137, width: 1920, height: 1080 }), poster: async (_: string, out: string) => { await writeFile(out, 'jpg'); }
+	} as never;
+	const stored = await pushDeliverable(deps, 'p', { file, name: 'rough-cut-18.mp4', kind: 'TRL', scope: 'episode' });
+	expect(stored.ok && stored.code).toBe('BLR_TR110_TRL01');
+	expect(folders.at(-1)).toMatchObject({ title: '_Deliverables', parentFolderId: 'trailer' });
+	expect(uploads[0]).toMatchObject({ folderId: 'deliv', assetCode: 'BLR_TR110_TRL01' });
+	expect((saved as { review_room: { deliverables_folder_id: string } }).review_room.deliverables_folder_id).toBe('deliv');
+});

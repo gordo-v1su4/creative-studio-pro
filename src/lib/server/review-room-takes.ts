@@ -8,7 +8,7 @@ import type { Project } from '$lib/domain/schemas';
 import { DELIVERABLE_KINDS, episodeCode, formatDeliverableCode, formatShotCode, parseShotCode, type DeliverableKind } from '$lib/domain/shot-codes';
 import { applyRejectTake, applyRestoreTake, pickFor } from '$lib/domain/takes';
 import type { SeriesStore } from './series';
-import { uploadTake, type ReviewRoomClient } from './review-room';
+import { idempotencyKey, uploadTake, type ReviewRoomClient } from './review-room';
 import type { MediaProbe } from './media-probe';
 
 /**
@@ -29,7 +29,8 @@ export interface PushDeps {
  */
 export async function pushDeliverable(deps: PushDeps, projectId: string, input: { file: string; name: string; kind: DeliverableKind; index?: number; scope: 'episode' | 'series' }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
 	const project = await deps.store.readProject(projectId);
-	if (!project?.series) return { ok: false, status: 400, message: 'Only a series episode has deliverables' };
+	if (project?.review_room && !project.series) return pushTrailerDeliverable(deps, project, input);
+	if (!project?.series) return { ok: false, status: 400, message: 'Only a series episode or a connected trailer has deliverables' };
 	const record = await deps.series.read(project.series.series_id);
 	if (!record?.review_room || !record.show_code) return { ok: false, status: 400, message: 'Link the series to Review Room and set its show code first (Series page)' };
 	const folderKey = input.scope === 'series' ? 'deliverables' : `ep:${project.series.episode_page_id}:deliverables`;
@@ -47,6 +48,38 @@ export async function pushDeliverable(deps: PushDeps, projectId: string, input: 
 			bytes: new Uint8Array(await readFile(input.file)), poster: new Uint8Array(await readFile(posterPath)),
 			durationSec: probed.duration_s ?? 0, width: probed.width ?? 0, height: probed.height ?? 0,
 			metadata: { sourceLabel: 'Creative Studio Pro', notes: `${DELIVERABLE_KINDS[input.kind]} · ${project.series.episode_title}` }, makeCurrent: true
+		});
+		return { ok: true, code, version: stored.version };
+	} finally {
+		await rm(work, { recursive: true, force: true });
+	}
+}
+
+/**
+ * A connected trailer's deliverable: `BLR_TR110_TRL01` in the trailer's own `_Deliverables` folder (made on the
+ * first send), so every exported cut of the trailer lands as that asset's next version.
+ */
+async function pushTrailerDeliverable(deps: PushDeps, project: Project, input: { file: string; name: string; kind: DeliverableKind; index?: number }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
+	const room = project.review_room!;
+	const kind: DeliverableKind = input.kind === 'EPC' ? 'TRL' : input.kind;
+	let folderId = room.deliverables_folder_id;
+	if (!folderId) {
+		const existing = (await deps.client.folders(room.project_id)).find((f) => f.parentFolderId === room.folder_id && f.ownedByCaller && f.title === '_Deliverables');
+		folderId = existing?.id ?? (await deps.client.createFolder(room.project_id, '_Deliverables', room.folder_id, idempotencyKey('trailer-deliverables', project.project_id))).id;
+		const id = folderId;
+		await deps.store.updateProject(project.project_id, project.version, (current) => ({ ...current, review_room: current.review_room && { ...current.review_room, deliverables_folder_id: id } }));
+	}
+	const code = formatDeliverableCode({ show: room.show_code, scope: room.code, kind, index: input.index });
+	const work = await mkdtemp(join(tmpdir(), 'csp-poster-'));
+	try {
+		const posterPath = join(work, 'poster.jpg');
+		await deps.poster(input.file, posterPath);
+		const probed = await deps.probe(input.file);
+		const stored = await uploadTake(deps.client, {
+			projectId: room.project_id, folderId, assetCode: code, name: input.name, type: 'video/mp4',
+			bytes: new Uint8Array(await readFile(input.file)), poster: new Uint8Array(await readFile(posterPath)),
+			durationSec: probed.duration_s ?? 0, width: probed.width ?? 0, height: probed.height ?? 0,
+			metadata: { sourceLabel: 'Creative Studio Pro', notes: `${DELIVERABLE_KINDS[kind]} · ${project.title}` }, makeCurrent: true
 		});
 		return { ok: true, code, version: stored.version };
 	} finally {

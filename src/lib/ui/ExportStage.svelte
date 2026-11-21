@@ -22,7 +22,7 @@
 		take: project.production.assets.find((asset) => asset.asset_id === entry.asset_id)
 	}))) : []);
 	// Series episodes (V1S-280): the MP4 is also stored as a deliverable in Review Room's _Deliverables.
-	let kind = $state<'EPC' | 'TSR' | 'TRL' | 'none'>('EPC');
+	let kind = $state<'EPC' | 'TSR' | 'TRL' | 'none'>('EPC'); // a connected trailer stores any cut kind as its TRL deliverable
 	let index = $state(1);
 	let scope = $state<'episode' | 'series'>('episode');
 	let stored = $state<string | null>(null);
@@ -33,7 +33,7 @@
 		if (!selected) return;
 		exporting = true; error = null;
 		try {
-			const response = await fetch(`/api/projects/${project.project_id}/sound`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'export', cut_id: selected.cut.cut_id, version: selected.v.version, ...(project.series && kind !== 'none' ? { deliverable: { kind, scope, ...(kind === 'EPC' ? {} : { index }) } } : {}) }) });
+			const response = await fetch(`/api/projects/${project.project_id}/sound`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'export', cut_id: selected.cut.cut_id, version: selected.v.version, ...((project.series || project.review_room) && kind !== 'none' ? { deliverable: { kind, scope, ...(kind === 'EPC' ? {} : { index }) } } : {}) }) });
 			const result = (await response.json()) as { ok: true; data: Project; deliverable?: { code: string; version: number } | { error: string } | null } | { ok: false; error: { message: string } };
 			if (!result.ok) throw new Error(result.error.message);
 			onUpdated(result.data);
@@ -57,6 +57,8 @@
 				<Pick label="Deliverable kind" value={kind} options={[{ value: 'EPC', label: 'Episode cut' }, { value: 'TSR', label: 'Teaser' }, { value: 'TRL', label: 'Trailer' }, { value: 'none', label: 'Not a deliverable' }]} onchange={(v) => (kind = v as typeof kind)} />
 				{#if kind === 'TSR' || kind === 'TRL'}<Pick label="Deliverable number" value={String(index)} options={[1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: `#${n}` }))} onchange={(v) => (index = Number(v))} />{/if}
 				{#if kind !== 'none'}<Pick label="Deliverable level" value={scope} options={[{ value: 'episode', label: 'This episode' }, { value: 'series', label: 'Season' }]} onchange={(v) => (scope = v as typeof scope)} />{/if}
+			{:else if project.review_room}
+				<Pick label="Deliverable" value={kind === 'none' ? 'none' : 'TRL'} options={[{ value: 'TRL', label: `${project.review_room.code} cut → _Deliverables` }, { value: 'none', label: 'Not a deliverable' }]} onchange={(v) => (kind = v as typeof kind)} />
 			{/if}
 			<span class="grow"></span>
 			{#if !mixed}<span class="text-[11px] text-[#5b6b70]">build its mix in Sound first</span>{/if}

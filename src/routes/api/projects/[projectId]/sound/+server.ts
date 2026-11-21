@@ -86,9 +86,9 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 	if (body.action === 'export') {
 		const exported = await exportCut(deps, projectId.data, body.cut_id, body.version);
 		if (!exported.ok) return fail(exported.status, exported.message);
-		// Series episodes (V1S-280): the MP4 also becomes a deliverable in Review Room's _Deliverables.
+		// Series episodes (V1S-280) and connected trailers: the MP4 also becomes a deliverable in Review Room's _Deliverables.
 		let deliverable: { code: string; version: number } | { error: string } | null = null;
-		const push = body.deliverable && exported.project.series ? await getPushDeps() : null;
+		const push = body.deliverable && (exported.project.series || exported.project.review_room) ? await getPushDeps() : null;
 		if (body.deliverable && push) {
 			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable });
 			deliverable = stored.ok ? { code: stored.code, version: stored.version } : { error: stored.message };
