@@ -1286,6 +1286,9 @@
 										<small>{group.count}</small>
 									</button>
 								{/if}
+								{#if group.count === 0 && group.group_id !== MAIN_GROUP && !selectedBeats.length}
+									<button type="button" class="group-move" onclick={() => { if (activeGroup === group.group_id) showGroup(MAIN_GROUP); sendBoardCommand({ command: 'remove_group', group_id: group.group_id }); }} title="Delete this empty group" aria-label={`Delete the empty group ${group.name}`}>×</button>
+								{/if}
 								{#if selectedBeats.length && group.group_id !== activeGroup}
 									<button type="button" class="group-move" onclick={() => moveSelectedTo(group.group_id)} title={`Move ${beatsLabel(selectedBeats)} here`} aria-label={`Move ${beatsLabel(selectedBeats)} to ${group.name}`}>→</button>
 								{/if}

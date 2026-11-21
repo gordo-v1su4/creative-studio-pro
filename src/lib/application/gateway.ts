@@ -48,7 +48,7 @@ import { z } from 'zod';
 import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setScoreCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
-import { applyCreateAssembly, applyCreateGroup, applyMoveBeats, applyRemoveAssembly, applyRenameGroup, applySplitIntoShots, applyUpdateAssembly, MAIN_GROUP } from '$lib/domain/groups';
+import { applyCreateAssembly, applyCreateGroup, applyMoveBeats, applyRemoveAssembly, applyRemoveGroup, applyRenameGroup, applySplitIntoShots, applyUpdateAssembly, MAIN_GROUP } from '$lib/domain/groups';
 import { applyPushCut, applyEditCut, applyRenameCut, applyLockCut, applyUnlockCut, applySetCutMusic, applySetScore, applySetSoundPlan, keepStoredCuts } from '$lib/domain/cuts';
 
 type LedgerEventType = LedgerEvent['type'];
@@ -195,6 +195,7 @@ export class ProjectCommandGateway {
 			case 'create_assembly':
 			case 'update_assembly':
 			case 'remove_assembly':
+			case 'remove_group':
 				return this.changeGroups(raw);
 			case 'set_cut_music':
 				return this.setCutMusic(raw);
@@ -591,6 +592,7 @@ export class ProjectCommandGateway {
 			if (command.command === 'create_assembly') return applyCreateAssembly(production, command, new Date().toISOString());
 			if (command.command === 'update_assembly') return applyUpdateAssembly(production, command);
 			if (command.command === 'remove_assembly') return applyRemoveAssembly(production, command.assembly_id);
+			if (command.command === 'remove_group') return applyRemoveGroup(production, command.group_id);
 			return applyMoveBeats(production, command.card_ids, command.group_id);
 		}, 'project.group_changed.v1');
 	}

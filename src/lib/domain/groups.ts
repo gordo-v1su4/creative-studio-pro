@@ -128,6 +128,18 @@ export function applyRemoveAssembly(production: ProductionState, assemblyId: str
 	return { ok: true, production: { ...production, assemblies: assemblies.filter((a) => a.assembly_id !== assemblyId) } };
 }
 
+/** Delete an empty group (Main stays). It also leaves any assembly it was placed in. Shots are never deleted with it. */
+export function applyRemoveGroup(production: ProductionState, groupId: string): TakeResult {
+	if (groupId === MAIN_GROUP) return { ok: false, message: 'Main stays' };
+	const group = (production.groups ?? []).find((g) => g.group_id === groupId);
+	if (!group) return { ok: false, message: `Group ${groupId} not found` };
+	const inside = production.cards.filter((card) => card.group_id === groupId).length;
+	if (inside) return { ok: false, message: `${group.name} still has ${inside} ${inside === 1 ? 'shot' : 'shots'}; move them out first` };
+	return { ok: true, production: { ...production,
+		groups: (production.groups ?? []).filter((g) => g.group_id !== groupId),
+		...(production.assemblies ? { assemblies: production.assemblies.map((a) => ({ ...a, scenes: a.scenes.filter((s) => s.group_id !== groupId) })) } : {}) } };
+}
+
 const exists = (production: ProductionState, groupId: string) => groupId === MAIN_GROUP || (production.groups ?? []).some((g) => g.group_id === groupId);
 
 export function applyCreateGroup(production: ProductionState, group: { group_id: string; name: string }, now: string): TakeResult {

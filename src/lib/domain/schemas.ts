@@ -1166,7 +1166,8 @@ export const groupCommandSchema = z.discriminatedUnion('command', [
 	z.object({ command: z.literal('update_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema, name: nonBlank(120).optional(),
 		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100).optional(),
 		shots: z.array(z.object({ card_id: idSchema, x: z.number(), y: z.number() })).max(300).optional() }),
-	z.object({ command: z.literal('remove_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema })
+	z.object({ command: z.literal('remove_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema }),
+	z.object({ command: z.literal('remove_group'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema })
 ]);
 
 export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;

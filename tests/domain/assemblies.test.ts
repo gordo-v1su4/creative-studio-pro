@@ -48,3 +48,15 @@ test("single shots sit in an assembly by reference: once each, real shots only, 
 	expect(applyUpdateAssembly(made.production, { assembly_id: "x", shots: [{ card_id: "d", x: 0, y: 0 }, { card_id: "d", x: 1, y: 1 }] })).toMatchObject({ ok: false });
 	expect(applyUpdateAssembly(made.production, { assembly_id: "x", shots: [{ card_id: "nope", x: 0, y: 0 }] })).toMatchObject({ ok: false });
 });
+
+test('only an empty group can be deleted, and it leaves any assembly it was in', async () => {
+	const { applyRemoveGroup } = await import('../../src/lib/domain/groups');
+	expect(applyRemoveGroup(production, 's1')).toMatchObject({ ok: false });
+	expect(applyRemoveGroup(production, 'main')).toMatchObject({ ok: false });
+	const empty = { ...production, groups: [...production.groups!, { group_id: 'e', name: 'Empty', created_at: now }], assemblies: [{ assembly_id: 'x', name: 'A', created_at: now, scenes: [{ group_id: 'e', x: 0, y: 0 }] }] } as unknown as ProductionState;
+	const removed = applyRemoveGroup(empty, 'e');
+	if (!removed.ok) throw new Error(removed.message);
+	expect(removed.production.groups!.map((g) => g.group_id)).toEqual(['s1', 's2']);
+	expect(removed.production.assemblies![0].scenes).toEqual([]);
+	expect(removed.production.cards).toHaveLength(production.cards.length);
+});
