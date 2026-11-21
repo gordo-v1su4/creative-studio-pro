@@ -299,7 +299,7 @@
 				data: {
 					name: group.name, shots: shots.length, benched: shots.filter((card) => card.benched).length, seconds, glimpses,
 					onRemove: () => saveAssemblyScenes(assembly.scenes.filter((s) => s.group_id !== group.group_id)),
-					onOpen: () => showGroup(group.group_id)
+					onOpen: () => { const from = activeGroup; showGroup(group.group_id); cameFrom = from; }
 				},
 				ariaLabel: `Scene ${group.name}`
 			} satisfies Node];
@@ -494,7 +494,10 @@
 		if (known && saved !== activeGroup) { activeGroup = saved!; adoptProject(project); fitRequest = `${project.project_id}:${saved}`; }
 	});
 
+	/** The assembly a scene was opened from (double-click on its node), for ← back; any other switch forgets it. */
+	let cameFrom = $state<string | null>(null);
 	function showGroup(groupId: string) {
+		cameFrom = null;
 		activeGroup = groupId;
 		try { if (activeProject) localStorage.setItem(groupKey(activeProject.project_id), groupId); } catch { /* private mode */ }
 		selectedNodeId = null;
@@ -1370,6 +1373,10 @@
 						<FitOnOpen request={fitRequest} focus={focusRequest} done={() => { fitRequest = null; focusRequest = null; }} />
 						<FrameKey />
 					</SvelteFlow>
+					{#if cameFrom && activeProject}
+						{@const backTo = assemblyViews(activeProject.production).find((a) => a.group_id === cameFrom)}
+						{#if backTo}<button type="button" class="bar-key absolute left-3 top-3 z-[6]" onclick={() => showGroup(backTo.group_id)} title="Back to the assembly">← back to {backTo.name}</button>{/if}
+					{/if}
 					{#if selectedScenes.length && activeProject}
 						<div class="sel-bar" role="group" aria-label="Selected scenes">
 							<span class="seq-cap">{selectedScenes.length} {selectedScenes.length === 1 ? 'scene' : 'scenes'} · {selectedSceneShots.length} shots</span>

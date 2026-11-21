@@ -22,11 +22,13 @@
 	const time = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 </script>
 
-<article class={['scene-node', selected && 'selected']} aria-label={`Scene ${data.name}, ${data.shots} shots`}>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<article class={['scene-node', selected && 'selected']} aria-label={`Scene ${data.name}, ${data.shots} shots`} ondblclick={() => data.onOpen?.()} title="Double-click to go inside this scene">
+	<!-- The scene's own shot graph is one double-click away; ← back returns to the assembly. -->
 	<header>
 		<b class="min-w-0 grow truncate" title={data.name}>{data.name}</b>
 		<small>{data.shots - data.benched} shots · {time(data.seconds)}{data.benched ? ` · ${data.benched} benched` : ''}</small>
-		{#if data.onOpen}<button type="button" class="nodrag" onclick={data.onOpen} title="Open this scene on the board">open</button>{/if}
+		{#if data.onOpen}<button type="button" class="nodrag" onclick={data.onOpen} title="Go inside this scene (or double-click the node)">open ↘</button>{/if}
 		{#if data.onRemove}<button type="button" class="nodrag" onclick={data.onRemove} title="Take this scene out of the assembly (its shots stay in the scene)" aria-label={`Remove ${data.name} from the assembly`}>×</button>{/if}
 	</header>
 	<div class="glimpses">
@@ -47,7 +49,7 @@
 </article>
 
 <style>
-	.scene-node { width: 880px; display: grid; gap: 8px; padding: 10px; border: 1px solid #29434a; background: #0b1114; color: #cfe3e6; }
+	.scene-node { width: 1120px; display: grid; gap: 10px; padding: 14px 14px 16px; border: 1px solid #29434a; background: #0b1114; color: #cfe3e6; }
 	.scene-node.selected { border-color: #59d9cf; box-shadow: 0 0 0 1px #59d9cf; background: #0d1719; }
 	header { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
 	header b { font-size: 15px; font-weight: 600; color: #e6f4f5; }
