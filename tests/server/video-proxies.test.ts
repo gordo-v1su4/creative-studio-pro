@@ -30,3 +30,18 @@ test('only project video files get proxy and poster URLs', () => {
 	expect(proxyUrl('blob:abc')).toBe('blob:abc');
 	expect(posterUrl('/api/projects/p1/files/board/a.png')).toBeNull();
 });
+
+test('one proxy and one poster per video, overwritten in place when the video or the frame changes', async () => {
+	const { readdir, utimes } = await import('node:fs/promises');
+	const dir = await mkdtemp(join(tmpdir(), 'csp-overwrite-'));
+	const source = join(dir, 'take.mp4');
+	execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=24:duration=1', '-c:v', 'libx264', source]);
+	const count = async (sub: string) => (await readdir(join(dir, sub), { recursive: true })).filter((f) => /\.(jpg|mp4)$/.test(String(f))).length;
+	await videoPoster(source, join(dir, 'posters'), 0);
+	await videoPoster(source, join(dir, 'posters'), 0.5);
+	const first = await videoProxy(source, join(dir, 'proxies'));
+	await utimes(source, new Date(), new Date(Date.now() + 5000));
+	expect(await videoProxy(source, join(dir, 'proxies'))).toBe(first);
+	expect(await count('posters')).toBe(1);
+	expect(await count('proxies')).toBe(1);
+});
