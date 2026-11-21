@@ -25,6 +25,8 @@ vite.config.ts.timestamp-*
 data/projects/
 data/series/
 data/published/
+data/video-posters/
+data/video-proxies/
 # App settings hold provider keys (Settings → Agent model); never commit.
 app-settings.json
 app-settings.json.*.tmp
