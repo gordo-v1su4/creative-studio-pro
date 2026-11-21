@@ -2,7 +2,9 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { storyPlanSchema, planShotSchema, reconcileMomentEdits } from '$lib/domain/story-plan';
-import { getGateway, getProjectStore, resolveProjectModel, getReviewRoomConfig } from '$lib/server/config';
+import { getGateway, getProjectStore, resolveProjectModel, getReviewRoomConfig, getSeriesStore, getNotionToken } from '$lib/server/config';
+import { createNotionApi, pageTitle } from '$lib/server/notion';
+import { connectSeries } from '$lib/server/series';
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient, generateStructured } from '$lib/server/model-provider';
 import { readAgentSkill } from '$lib/server/agent-skills';
@@ -14,7 +16,9 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('approve'), expected_version: z.number().int().nonnegative(), moment_id: z.string() }),
 	z.object({ action: z.literal('breakdown'), expected_version: z.number().int().nonnegative(), moment_id: z.string() }),
 	z.object({ action: z.literal('save'), expected_version: z.number().int().nonnegative(), plan: storyPlanSchema }),
-	z.object({ action: z.literal('board'), expected_version: z.number().int().nonnegative() })
+	z.object({ action: z.literal('board'), expected_version: z.number().int().nonnegative() }),
+	// Re-read the linked Notion series and replace the Bible snapshot (Notion stays the story master).
+	z.object({ action: z.literal('refresh_source'), expected_version: z.number().int().nonnegative() })
 ]);
 export const POST: RequestHandler = async ({ params, request }) => {
 	const parsed = requestSchema.safeParse(await request.json().catch(() => null));
@@ -24,6 +28,25 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!project) return json({ ok: false, error: { message: 'Project not found' } }, { status: 404 });
 	const input = parsed.data;
 	if (project.version !== input.expected_version) return json({ ok: false, error: { message: 'Project changed. Reload before continuing.' } }, { status: 409 });
+	if (input.action === 'refresh_source') {
+		const plan = project.production.story_plan;
+		const seriesId = plan?.source?.series_id;
+		if (!plan?.source || !seriesId) return json({ ok: false, error: { message: 'This story was not imported from a Notion series' } }, { status: 400 });
+		const token = getNotionToken();
+		if (!token) return json({ ok: false, error: { message: 'Connect Notion in Settings first' } }, { status: 503 });
+		const record = await getSeriesStore().read(seriesId);
+		if (!record) return json({ ok: false, error: { message: 'The linked Notion series is no longer connected' } }, { status: 404 });
+		try {
+			const fresh = await connectSeries(createNotionApi(token), getSeriesStore(), record.notion_root_id, await pageTitle(token, record.notion_root_id));
+			if (!fresh.story) return json({ ok: false, error: { message: 'No story page in the Notion series' } }, { status: 400 });
+			const source = { ...plan.source, title: fresh.story.title, text: fresh.story.text, url: `https://www.notion.so/${fresh.story.page_id}`, imported_at: new Date().toISOString(),
+				references: fresh.references?.items.map((ref) => ({ key: ref.page_id, name: ref.name, kind: ref.kind })) ?? plan.source.references };
+			const saved = await getGateway().saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version, production: { ...project.production, story_plan: { ...plan, source } } });
+			return saved.ok ? json({ ok: true, data: saved.data, source: { title: source.title, imported_at: source.imported_at } }) : json({ ok: false, error: saved.error }, { status: 409 });
+		} catch (cause) {
+			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : 'Notion could not be read' } }, { status: 502 });
+		}
+	}
 	if (input.action === 'save') {
 		const source = input.plan.prep_source_project_id;
 		if (source && (source === project.project_id || !(await store.readProject(source)))) return json({ ok: false, error: { message: 'Choose an existing reference project other than this project' } }, { status: 400 });

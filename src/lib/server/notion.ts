@@ -143,7 +143,9 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 	}
 	const checks = { episodes: checkDatabase('episodes', schemas.episodes), scenes: checkDatabase('scenes', schemas.scenes), shots: checkDatabase('shots', schemas.shots) };
 	// "Story" as a word: the season story, never a "Storyboard" page.
-	const storyPage = pages.find((page) => /\bstory\b/i.test(page.title)) ?? null;
+	// Versioned bibles sit side by side ("… (v2.5 · CURRENT)", "… (v2.4 · ARCHIVED …)"): the CURRENT one wins, an ARCHIVED one never.
+	const stories = pages.filter((page) => /\bstory\b/i.test(page.title));
+	const storyPage = stories.find((page) => /\bcurrent\b/i.test(page.title)) ?? stories.find((page) => !/\barchived\b/i.test(page.title)) ?? null;
 	const story = storyPage ? { page_id: bareId(storyPage.id), title: storyPage.title, text: await pageText(api, storyPage.id) } : null;
 	const episodes = sources.episodes && checks.episodes.ok
 		? (await all((cursor) => api.query(sources.episodes!, cursor))).map(toEpisode).map((episode) => ({ ...episode, scene_count: episode.scene_ids.length })).sort((a, b) => a.number - b.number)

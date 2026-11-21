@@ -23,14 +23,14 @@
 	const stamp = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 	const total = (section: StoryPlan['sections'][number]) => section.moments.reduce((sum, moment) => sum + moment.duration_s, 0);
 	const start = (index: number) => plan?.sections.slice(0, index).reduce((sum, section) => sum + total(section), 0) ?? 0;
-	async function send(action: 'save' | 'board' | 'approve' | 'breakdown' | 'moments', moment_id?: string) {
+	async function send(action: 'save' | 'board' | 'approve' | 'breakdown' | 'moments' | 'refresh_source', moment_id?: string) {
 		busy = true; error = ''; note = '';
 		try {
 			const response = await fetch(`/api/projects/${project.project_id}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, expected_version: project.version, ...(action === 'save' ? { plan } : {}), ...(action === 'moments' ? { target_s:targetSeconds } : {}), ...(moment_id ? { moment_id } : {}) }) });
 			const result = await response.json();
 			if (!result.ok) throw new Error(result.error?.message ?? 'Could not save the plan');
 			onUpdated(result.data); dirty = false;
-			note = action === 'moments' ? 'Moments proposed for your review. No shots or media were created.' : action === 'save' ? 'Moment plan saved.' : action === 'approve' ? 'Moment approved. You can now draft its shots.' : action === 'breakdown' ? 'Shot breakdown drafted for review; no media was generated.' : 'Planned shots added in new board groups. They stay benched until you choose to use them.';
+			note = action === 'refresh_source' ? `Bible refreshed from Notion: ${result.source?.title ?? 'current story'}.` : action === 'moments' ? 'Moments proposed for your review. No shots or media were created.' : action === 'save' ? 'Moment plan saved.' : action === 'approve' ? 'Moment approved. You can now draft its shots.' : action === 'breakdown' ? 'Shot breakdown drafted for review; no media was generated.' : 'Planned shots added in new board groups. They stay benched until you choose to use them.';
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Could not save the plan'; }
 		finally { busy = false; }
 	}
@@ -43,7 +43,7 @@
 		<div class="metrics"><strong>{stamp(seconds)}</strong><span>{moments.length} moments · {moments.filter(moment => moment.approved).length} approved<br />{shots.length} shots drafted · {added} on board</span></div>
 	</header>
 	{#if plan.footage_source_project_id}<p class="hint"><a href={`/?project=${plan.footage_source_project_id}&tab=beats`} target="_blank" rel="noreferrer">Review the original test footage</a> · The existing project remains the source pool.</p>{/if}
-	{#if plan.source}<details class="act"><summary>Source Bible · {plan.source.title}</summary><p class="hint">Imported {new Date(plan.source.imported_at).toLocaleDateString()}. The trailer plan follows this source; its proposals do not change canon.</p>{#if plan.source.url}<a href={plan.source.url} target="_blank" rel="noreferrer">Open Bible in Notion</a>{/if}<pre class="bible">{plan.source.text}</pre></details>{/if}
+	{#if plan.source}<details class="act"><summary>Source Bible · {plan.source.title}</summary><p class="hint">Imported {new Date(plan.source.imported_at).toLocaleDateString()}. The trailer plan follows this source; its proposals do not change canon.</p>{#if plan.source.url}<a href={plan.source.url} target="_blank" rel="noreferrer">Open Bible in Notion</a>{/if}{#if plan.source.series_id}<button type="button" class="agent-mini" disabled={busy || dirty} onclick={() => send('refresh_source')} title={dirty ? 'Save your plan edits first' : 'Read the current Bible from Notion again (the page marked CURRENT)'}>Refresh from Notion</button>{/if}<pre class="bible">{plan.source.text}</pre></details>{/if}
 	<div class="actions">
 		{#if !moments.length}<label>Trailer target (seconds)<input type="number" min="15" max="600" step="1" bind:value={targetSeconds} /></label><button type="button" class="primary" disabled={busy || dirty} onclick={() => void send('moments')}>{busy ? 'Proposing moments…' : 'Draft proposed moments from Bible'}</button>{/if}
 		<button type="button" class="primary" onclick={onPrep} disabled={dirty || busy}>Continue to Prep</button>
