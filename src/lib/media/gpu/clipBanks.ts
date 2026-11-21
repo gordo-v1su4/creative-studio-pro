@@ -20,7 +20,8 @@ export interface Poster { texture: GPUTexture; view: GPUTextureView; duration: n
 const PROJECT_VIDEO = /^(?:https?:\/\/[^/]+)?\/api\/projects\/[^/]+\/files\/[^?#]+\.(?:mp4|mov|webm)(?:[?#]|$)/i;
 const withParam = (url: string, param: string) => (PROJECT_VIDEO.test(url) ? `${url}${url.includes('?') ? '&' : '?'}${param}=1` : url);
 export const proxyUrl = (url: string) => withParam(url, 'proxy');
-export const posterUrl = (url: string) => (PROJECT_VIDEO.test(url) ? withParam(url, 'poster') : null);
+/** The server still at `at` seconds (default the first frame), or null for a URL that isn't a project video. */
+export const posterUrl = (url: string, at = 0) => (PROJECT_VIDEO.test(url) ? `${withParam(url, 'poster')}${at > 0 ? `&t=${Math.round(at * 100) / 100}` : ''}` : null);
 
 const blobs = new Map<string, Promise<Blob>>();
 const clipMetadata = new Map<string, Promise<{ duration: number; fps: number; hasAudio: boolean }>>();
@@ -158,14 +159,15 @@ export function loadBank(url: string, maxHeight: number, progress: (p: BankProgr
 	return entry.ready;
 }
 
-/** One decoded frame at a fraction of the clip, shown before the bank is resident. */
-export function loadPoster(url: string, at = 0.3): Promise<Poster> {
-	let poster = posters.get(url);
+/** The frame at `at` seconds (the clip's in-point: where hover playback starts), shown before the bank is resident. */
+export function loadPoster(url: string, at = 0): Promise<Poster> {
+	const key = `${url}#${Math.round(at * 100) / 100}`;
+	let poster = posters.get(key);
 	if (!poster) {
 		poster = (async () => {
 			const device = await requireDevice();
 			// A project video: the server's small still, no clip download. Falls back to decoding a frame.
-			const still = posterUrl(url);
+			const still = posterUrl(url, at);
 			if (still) {
 				try {
 					const response = await fetch(still);
@@ -184,7 +186,7 @@ export function loadPoster(url: string, at = 0.3): Promise<Poster> {
 				const track = await input.getPrimaryVideoTrack();
 				if (!track) throw new Error('The clip has no video track');
 				const duration = await track.computeDuration();
-				const sample = await new VideoSampleSink(track).getSample(duration * at);
+				const sample = await new VideoSampleSink(track).getSample(Math.min(at, Math.max(0, duration - 0.05)));
 				if (!sample) throw new Error('No frame at the poster time');
 				const frame = sample.toVideoFrame();
 				try {
@@ -200,8 +202,8 @@ export function loadPoster(url: string, at = 0.3): Promise<Poster> {
 				input.dispose();
 			}
 		})();
-		poster.catch(() => posters.delete(url));
-		posters.set(url, poster);
+		poster.catch(() => posters.delete(key));
+		posters.set(key, poster);
 	}
 	return poster;
 }

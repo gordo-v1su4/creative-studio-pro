@@ -26,6 +26,7 @@ test('only project video files get proxy and poster URLs', () => {
 	expect(proxyUrl('/api/projects/p1/files/board/a.mp4')).toBe('/api/projects/p1/files/board/a.mp4?proxy=1');
 	expect(proxyUrl('/api/projects/p1/files/board/a.mp4?v=2')).toBe('/api/projects/p1/files/board/a.mp4?v=2&proxy=1');
 	expect(posterUrl('/api/projects/p1/files/board/a.mp4')).toBe('/api/projects/p1/files/board/a.mp4?poster=1');
+	expect(posterUrl('/api/projects/p1/files/board/a.mp4', 1.234)).toBe('/api/projects/p1/files/board/a.mp4?poster=1&t=1.23');
 	expect(proxyUrl('blob:abc')).toBe('blob:abc');
 	expect(posterUrl('/api/projects/p1/files/board/a.png')).toBeNull();
 });

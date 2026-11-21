@@ -43,7 +43,9 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 	// ?poster=1 on a video: a small cached JPEG still, so boards don't download whole clips for one frame.
 	if (type.startsWith('video/') && url.searchParams.get('poster') === '1') {
 		try {
-			const bytes = await videoPoster(target, join(dirname(getProjectRoot()), 'video-posters'));
+			// The still is the frame playback starts on: the first frame, or the in-point a trimmed clip passes as t=.
+			const at = Math.min(3600, Math.max(0, Math.round(Number(url.searchParams.get('t') ?? 0) * 100) / 100 || 0));
+			const bytes = await videoPoster(target, join(dirname(getProjectRoot()), 'video-posters'), at);
 			const etag = `"${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}"`;
 			const headers = { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400', etag };
 			return new Response(request.headers.get('if-none-match') === etag ? null : new Uint8Array(bytes), { status: request.headers.get('if-none-match') === etag ? 304 : 200, headers });

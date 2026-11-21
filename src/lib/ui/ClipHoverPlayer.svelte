@@ -118,16 +118,20 @@
 			if (hovering && bank) showPlayhead();
 			else showPoster();
 		});
+		let posterRetries = 0;
 		const visible = new IntersectionObserver(async ([entry]) => {
 			if (!entry?.isIntersecting || poster) return;
 			visible.disconnect();
 			try {
-				poster = await loadPoster(src);
+				// The still is the frame playback starts on (the in-point), so hovering never jumps back.
+				poster = await loadPoster(src, spanIn);
 				if (disposed) return;
 				duration ||= poster.duration;
 				if (!hovering) showPoster();
 			} catch {
+				// A blip (the server restarting) shouldn't leave a dead card: look again shortly, a few times.
 				// The bank load on hover reports its own error.
+				if (!disposed && posterRetries++ < 3) setTimeout(() => { if (!disposed) visible.observe(host); }, 4000 * posterRetries);
 			}
 		});
 		attachCanvas(canvas!)

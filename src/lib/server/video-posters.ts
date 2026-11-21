@@ -11,7 +11,7 @@ import { runFfmpeg } from './ffmpeg';
 const WIDTH = 640;
 const inFlight = new Map<string, Promise<Buffer>>();
 
-export async function videoPoster(file: string, cacheDir: string, at = 0.3): Promise<Buffer> {
+export async function videoPoster(file: string, cacheDir: string, at = 0): Promise<Buffer> {
 	const info = await stat(file);
 	const key = createHash('sha256').update(`${file}|${info.size}|${info.mtimeMs}|${at}|${WIDTH}`).digest('hex');
 	const target = join(cacheDir, key.slice(0, 2), `${key}.jpg`);
