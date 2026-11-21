@@ -272,6 +272,8 @@
 			};
 		});
 		if (asm) return [...sceneNodesFor(project, asm.assembly_id), ...storyNodes];
+		// The seed and voices are project-level: they live on Main, not on every scene's canvas.
+		if (activeGroup !== MAIN_GROUP && project.production.cards.length > 0) return storyNodes;
 		return [seedNode, ...voiceNodes, ...storyNodes];
 	}
 
