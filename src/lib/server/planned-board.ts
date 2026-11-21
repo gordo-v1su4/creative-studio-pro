@@ -9,7 +9,7 @@ export async function savePlannedBoard(project: Project, gateway: ProjectCommand
 	const production = appendPlannedShots(project.production, new Date().toISOString());
 	if (project.review_room && !client) throw new Error('Review Room must be configured before adding this trailer’s shots');
 	const connection = project.review_room && client
-		? await connectTrailer(client, { ...project, production }, project.review_room)
+		? await connectTrailer(client, { ...project, production }, { ...project.review_room, scenes: undefined })
 		: undefined;
 	return gateway.saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version, production }, connection);
 }

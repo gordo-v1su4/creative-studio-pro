@@ -622,6 +622,8 @@ export const projectSchema = z.object({
 		project_id: idSchema, folder_id: idSchema, code: z.string().regex(/^TR\d{3}$/),
 		show_code: z.string().regex(/^[A-Z]{3}$/), reference_series_id: idSchema.optional(),
 		shots: z.record(z.string(), z.object({ code: z.string(), folder_id: idSchema })),
+		/** Story sequences as scene folders (board group id → three-letter code + its folder); absent on flat SHT trailers. */
+		scenes: z.record(z.string(), z.object({ code: z.string().regex(/^[A-Z]{3}$/), folder_id: idSchema })).optional(),
 		cursor: z.union([z.string(), z.number()]).optional()
 	}).optional(),
 	/** An episode imported from a Notion series: which one, and its scene outline (one board group per scene). */

@@ -37,3 +37,56 @@ test('ordinary folders and changing an existing connection are rejected', async 
 	const own = setup(); own.project.review_room = { ...input, shots: {}, code: 'TR101' };
 	await expect(connectTrailer(own.client, own.project, input)).rejects.toThrow('different connection');
 });
+
+function sceneSetup() {
+	const folders = [{ id: 'trailer', title: 'TR110 — Teaser Trailer', parentFolderId: null as string | null, ownedByCaller: true }];
+	const client = { folders: async () => folders, createFolder: async (_: string, title: string, parentFolderId: string) => {
+		const folder = { id: `folder-${folders.length}`, title, parentFolderId, ownedByCaller: true }; folders.push(folder); return folder;
+	} } as unknown as ReviewRoomClient;
+	const project = { project_id: 'local', production: {
+		groups: [{ group_id: 'g1', name: 'TR110 01 · The sealed drop and the hood' }, { group_id: 'g2', name: 'TR110 02 · The shadow and the morning after' }, { group_id: 'src', name: 'Sources' }],
+		cards: [
+			{ card_id: 'a', order: 0, title: 'TR110-01-01 · Down the service stairs', group_id: 'g1' },
+			{ card_id: 'b', order: 1, title: 'TR110-01-02 · The silver chain', group_id: 'g1' },
+			{ card_id: 'c', order: 2, title: 'TR110-02-01 · Kai pulls back', group_id: 'g2' },
+			{ card_id: 'd', order: 3, title: 'TR110-02-01a · Bryson in the chapel arcade', group_id: 'g2' },
+			{ card_id: 'e', order: 4, title: 'TR110-02-02 · The grate is empty', group_id: 'g2' },
+			{ card_id: 's', order: 5, title: 'A whole-sequence render', group_id: 'src' }
+		]
+	} } as unknown as Project;
+	const input = { project_id: 'room', folder_id: 'trailer', show_code: 'BLR', code: 'TR110', scenes: [{ group_id: 'g1', code: 'DRP' }, { group_id: 'g2', code: 'MRN' }] };
+	return { client, project, folders, input };
+}
+test('story sequences become scene folders and shots take their planned numbers', async () => {
+	const { client, project, folders, input } = sceneSetup();
+	const tree = await connectTrailer(client, project, input);
+	expect(folders.map((f) => f.title)).toEqual(['TR110 — Teaser Trailer', '010 DRP — The sealed drop and the hood', '020 MRN — The shadow and the morning after']);
+	expect(tree.shots.a).toEqual({ code: 'BLR_TR110_DRP_0010', folder_id: 'folder-1' });
+	expect(tree.shots.b.code).toBe('BLR_TR110_DRP_0020');
+	expect([tree.shots.c.code, tree.shots.d.code, tree.shots.e.code]).toEqual(['BLR_TR110_MRN_0010', 'BLR_TR110_MRN_0015', 'BLR_TR110_MRN_0020']);
+	expect(tree.shots.s).toBeUndefined();
+	expect(tree.scenes?.g2).toEqual({ code: 'MRN', folder_id: 'folder-2' });
+});
+test('a shot added later takes the gap and nothing already coded moves', async () => {
+	const { client, project, folders, input } = sceneSetup();
+	project.review_room = await connectTrailer(client, project, input);
+	const before = structuredClone(project.review_room.shots);
+	project.production.cards.splice(1, 0, { card_id: 'x', order: 0.5, title: 'Unplanned insert', group_id: 'g1' } as never);
+	project.production.cards.push({ card_id: 'y', order: 9, title: 'Late addition', group_id: 'g1' } as never);
+	const again = await connectTrailer(client, project, input);
+	for (const [id, shot] of Object.entries(before)) expect(again.shots[id]).toEqual(shot);
+	expect(again.shots.x.code).toBe('BLR_TR110_DRP_0015');
+	expect(again.shots.y.code).toBe('BLR_TR110_DRP_0030');
+	expect(folders).toHaveLength(3);
+	await expect(connectTrailer(client, project, { ...input, scenes: [{ group_id: 'g1', code: 'XXX' }] })).rejects.toThrow('already uses scene code DRP');
+});
+test('a reconnect without scenes (new planned shots) keeps the scene tree', async () => {
+	const { client, project, folders, input } = sceneSetup();
+	project.review_room = await connectTrailer(client, project, input);
+	project.production.cards.push({ card_id: 'z', order: 9, title: 'TR110-02-03 · Outside in the rain', group_id: 'g2' } as never);
+	const { scenes: _, ...plain } = input;
+	const again = await connectTrailer(client, project, plain);
+	expect(again.shots.z.code).toBe('BLR_TR110_MRN_0030');
+	expect(again.scenes).toEqual(project.review_room.scenes);
+	expect(folders).toHaveLength(3);
+});

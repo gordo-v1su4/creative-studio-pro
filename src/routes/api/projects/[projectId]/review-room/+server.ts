@@ -10,7 +10,9 @@ import { reviewTake } from '$lib/server/review-room-review';
 const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('review'), take_id: idSchema, expected_version: z.number().int(), status: z.enum(['awaiting_review', 'in_progress', 'needs_changes', 'approved']).optional(), excluded: z.boolean().optional() }),
 	z.object({ action: z.literal('connect_trailer'), expected_version: z.number().int(), project_id: idSchema, folder_id: idSchema,
-		show_code: z.string().regex(/^[A-Z]{3}$/), code: z.string().regex(/^TR\d{3}$/), reference_series_id: idSchema.optional() }),
+		show_code: z.string().regex(/^[A-Z]{3}$/), code: z.string().regex(/^TR\d{3}$/), reference_series_id: idSchema.optional(),
+		// Story sequences in story order, each a scene folder with its code (010 DRP, 020 MRN…); omit for flat SHT folders.
+		scenes: z.array(z.object({ group_id: idSchema, code: z.string().regex(/^[A-Z]{3}$/) })).max(99).optional() }),
 	// Store one series take in Review Room (V1S-276): the shot's next version, current when it is the pick.
 	z.object({ action: z.literal('push'), take_id: idSchema }),
 	// Store every take of this episode that isn't in Review Room yet.
