@@ -14,6 +14,7 @@
 	import VoiceNode from '$lib/ui/nodes/VoiceNode.svelte';
 	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
 	import SceneNode from '$lib/ui/nodes/SceneNode.svelte';
+	import { posterUrl } from '$lib/media/gpu/clipBanks';
 	import SpineEdge from '$lib/ui/edges/SpineEdge.svelte';
 	import FitOnOpen from '$lib/ui/FitOnOpen.svelte';
 	import FrameKey from '$lib/ui/FrameKey.svelte';
@@ -1290,7 +1291,8 @@
 								<li class={['bin-tile', selectedNodeId === card.card_id && 'active']}>
 									<button type="button" class="bin-jump" onclick={() => jumpToShot(card.card_id)} title={`${card.title} · jump to it on the board`} aria-label={`Jump to ${card.title} on the board`}>
 										{#if media?.kind === 'video'}
-											<video src={`${media.url}#t=0.5`} preload="metadata" muted playsinline tabindex="-1"></video>
+											{@const still = posterUrl(media.url)}
+											{#if still}<img src={still} alt="" loading="lazy" />{:else}<video src={`${media.url}#t=0.5`} preload="metadata" muted playsinline tabindex="-1"></video>{/if}
 										{:else if media}
 											<img src={media.url} alt="" loading="lazy" />
 										{:else}

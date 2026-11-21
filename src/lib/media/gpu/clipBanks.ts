@@ -13,6 +13,15 @@ const BUDGET_BYTES = 1.5 * 2 ** 30;
 interface BankEntry { ready: Promise<ResidentFrameBank>; bank: ResidentFrameBank | null; usedAt: number }
 export interface Poster { texture: GPUTexture; view: GPUTextureView; duration: number }
 
+/**
+ * Project video files are previewed from the server's 480p editing proxy (`?proxy=1`) and shown at rest as a
+ * small server-made still (`?poster=1`); Export and Review Room use the originals. Other URLs load as given.
+ */
+const PROJECT_VIDEO = /^(?:https?:\/\/[^/]+)?\/api\/projects\/[^/]+\/files\/[^?#]+\.(?:mp4|mov|webm)(?:[?#]|$)/i;
+const withParam = (url: string, param: string) => (PROJECT_VIDEO.test(url) ? `${url}${url.includes('?') ? '&' : '?'}${param}=1` : url);
+export const proxyUrl = (url: string) => withParam(url, 'proxy');
+export const posterUrl = (url: string) => (PROJECT_VIDEO.test(url) ? withParam(url, 'poster') : null);
+
 const blobs = new Map<string, Promise<Blob>>();
 const clipMetadata = new Map<string, Promise<{ duration: number; fps: number; hasAudio: boolean }>>();
 const banks = new Map<string, BankEntry>();
@@ -46,7 +55,7 @@ export function loadClipMetadata(url: string): Promise<{ duration: number; fps: 
 	let pending = clipMetadata.get(url);
 	if (!pending) {
 		pending = (async () => {
-			const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(new URL(url, location.href)) });
+			const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(new URL(proxyUrl(url), location.href)) });
 			try {
 				const [track, audio] = await Promise.all([input.getPrimaryVideoTrack(), input.getPrimaryAudioTrack()]);
 				if (!track) throw new Error('The clip has no video track');
@@ -92,7 +101,7 @@ onSharedWebGpuDeviceLost(() => {
 export function loadClipBlob(url: string): Promise<Blob> {
 	let blob = blobs.get(url);
 	if (!blob) {
-		blob = fetch(url).then((response) => {
+		blob = fetch(proxyUrl(url)).then((response) => {
 			if (!response.ok) throw new Error(`Could not load ${url}: ${response.status}`);
 			return response.blob();
 		});
@@ -155,6 +164,21 @@ export function loadPoster(url: string, at = 0.3): Promise<Poster> {
 	if (!poster) {
 		poster = (async () => {
 			const device = await requireDevice();
+			// A project video: the server's small still, no clip download. Falls back to decoding a frame.
+			const still = posterUrl(url);
+			if (still) {
+				try {
+					const response = await fetch(still);
+					if (!response.ok) throw new Error(`poster ${response.status}`);
+					const image = await createImageBitmap(await response.blob());
+					try {
+						const size: [number, number] = [image.width, image.height];
+						const texture = device.createTexture({ size, format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
+						device.queue.copyExternalImageToTexture({ source: image }, { texture }, size);
+						return { texture, view: texture.createView(), duration: 0 };
+					} finally { image.close(); }
+				} catch { /* decode a frame below */ }
+			}
 			const input = new Input({ formats: ALL_FORMATS, source: new BlobSource(await loadClipBlob(url)) });
 			try {
 				const track = await input.getPrimaryVideoTrack();

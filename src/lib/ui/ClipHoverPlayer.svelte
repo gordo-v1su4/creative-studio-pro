@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { ResidentFrameBank } from '$lib/media/gpu/ResidentFrameBank';
-	import { attachCanvas, loadBank, loadPoster, type Poster } from '$lib/media/gpu/clipBanks';
+	import { attachCanvas, loadBank, loadPoster, proxyUrl, type Poster } from '$lib/media/gpu/clipBanks';
 	import { rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 
 	/**
@@ -162,7 +162,7 @@
 >
 	{#if phase === 'unsupported'}
 		<!-- svelte-ignore a11y_media_has_caption -->
-		<video {src} controls preload="metadata" class="h-full w-full object-contain" title={message}></video>
+		<video src={proxyUrl(src)} controls preload="metadata" class="h-full w-full object-contain" title={message}></video>
 	{:else}
 		<canvas bind:this={canvas} class={['clip-canvas block h-full w-full', shown && 'shown']}></canvas>
 		{#if !shown && phase !== 'error'}<span class="clip-wait" aria-hidden="true"></span>{/if}

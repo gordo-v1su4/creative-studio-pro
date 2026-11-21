@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { referenceImageUrl } from '$lib/media/reference-images';
+	import { proxyUrl } from '$lib/media/gpu/clipBanks';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
@@ -574,7 +575,7 @@
 				{#if draft.cards.length === 0}<span>No cards to preview.</span>{:else}
 					{@const leadVideo = previewCard ? assetFor(previewCard.card_id, 'video') : null}
 					{@const leadImage = previewCard ? assetFor(previewCard.card_id, 'image') : null}
-					{#if leadVideo}<!-- svelte-ignore a11y_media_has_caption --><video src={leadVideo.url} controls class="h-full w-full object-contain"></video>{:else if leadImage && previewCard}<img src={referenceImageUrl(leadImage.url)} alt={previewCard.title} class="h-full w-full object-contain" />{:else if previewCard}<div><b>{previewCard.title}</b><p>{previewCard.beat}</p></div>{/if}
+					{#if leadVideo}<!-- svelte-ignore a11y_media_has_caption --><video src={proxyUrl(leadVideo.url)} controls class="h-full w-full object-contain"></video>{:else if leadImage && previewCard}<img src={referenceImageUrl(leadImage.url)} alt={previewCard.title} class="h-full w-full object-contain" />{:else if previewCard}<div><b>{previewCard.title}</b><p>{previewCard.beat}</p></div>{/if}
 				{/if}
 			</div>
 			<div class="mt-4 flex gap-2 overflow-x-auto pb-2">
