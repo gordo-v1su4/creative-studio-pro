@@ -29,7 +29,11 @@ export interface PushDeps {
  */
 export async function pushDeliverable(deps: PushDeps, projectId: string, input: { file: string; name: string; kind: DeliverableKind; index?: number; scope: 'episode' | 'series' }): Promise<{ ok: true; code: string; version: number } | { ok: false; status: number; message: string }> {
 	const project = await deps.store.readProject(projectId);
-	if (project?.review_room && !project.series) return pushTrailerDeliverable(deps, project, input);
+	if (project?.review_room && !project.series) {
+		// Review Room refusals (a bad code, a locked folder) come back as a message, not a server error.
+		try { return await pushTrailerDeliverable(deps, project, input); }
+		catch (cause) { return { ok: false, status: 502, message: cause instanceof Error ? cause.message : "Review Room did not store the cut" }; }
+	}
 	if (!project?.series) return { ok: false, status: 400, message: 'Only a series episode or a connected trailer has deliverables' };
 	const record = await deps.series.read(project.series.series_id);
 	if (!record?.review_room || !record.show_code) return { ok: false, status: 400, message: 'Link the series to Review Room and set its show code first (Series page)' };

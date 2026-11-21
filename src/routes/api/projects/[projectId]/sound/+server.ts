@@ -93,7 +93,9 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable });
 			deliverable = stored.ok ? { code: stored.code, version: stored.version } : { error: stored.message };
 		}
-		return json({ ok: true, data: exported.project, folder: exported.folder, deliverable });
+		// Storing a trailer's first deliverable saves its folder id, so hand back the project as it is now.
+		const project = deliverable ? (await getProjectStore().readProject(projectId.data)) ?? exported.project : exported.project;
+		return json({ ok: true, data: project, folder: exported.folder, deliverable });
 	}
 	if (body.action === 'quote_effect') {
 		const quoted = await quoteEffect(getSfxGenerator(), body);

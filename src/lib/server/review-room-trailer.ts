@@ -48,6 +48,19 @@ export function plannedShot(title: string): number | null {
 	return match[2] ? base + (match[2] === 'a' ? 5 : match[2] === 'b' ? 7 : 8) : base;
 }
 
+/** The next step of 10 above `n` (12 → 20, 20 → 30). */
+const nextStep = (n: number) => Math.floor(n / SHOT_STEP) * SHOT_STEP + SHOT_STEP;
+
+/** A free number strictly between two shots, nearest their midpoint; `last` when there is none (the caller refuses it). */
+function freeBetween(last: number, after: number, used: Set<number>): number {
+	const mid = Math.floor((last + after) / 2);
+	for (let d = 0; mid - d > last || mid + d < after; d++) {
+		if (mid - d > last && !used.has(mid - d)) return mid - d;
+		if (mid + d < after && !used.has(mid + d)) return mid + d;
+	}
+	return last;
+}
+
 async function sceneTree(
 	client: ReviewRoomClient, project: Project,
 	input: { project_id: string; show_code: string; code: string },
@@ -62,6 +75,9 @@ async function sceneTree(
 		const scene = scenes[group.group_id];
 		if (scene && scene.code !== want.code) throw new Error(`${group.name} already uses scene code ${scene.code}`);
 		if (codes.has(want.code)) throw new Error(`Scene code ${want.code} is used twice`);
+		// A scene code names one sequence for good, including sequences not in this request.
+		const owner = Object.entries(scenes).find(([groupId, stored]) => stored.code === want.code && groupId !== group.group_id);
+		if (owner) throw new Error(`Scene code ${want.code} already belongs to another sequence`);
 		codes.add(want.code);
 		let folderId = scene?.folder_id;
 		if (!folderId) {
@@ -75,15 +91,17 @@ async function sceneTree(
 		// Shot numbers: kept when given; new ones take their planned number, else the gap after the shot before.
 		const cards = project.production.cards.filter((card) => card.group_id === group.group_id).toSorted((a, b) => a.order - b.order);
 		const numberOf = (cardId: string) => { const code = shots[cardId]?.code; return code ? Number(code.split('_').at(-1)) : null; };
-		const used = new Set(cards.map((card) => numberOf(card.card_id)).filter((n): n is number => n !== null));
+		// Every number this scene ever gave stays taken, even for shots since removed or moved: its code still names a Review Room asset.
+		const scenePrefix = `${input.show_code}_${input.code}_${want.code}_`;
+		const used = new Set(Object.values(shots).filter((shot) => shot.code.startsWith(scenePrefix)).map((shot) => Number(shot.code.slice(scenePrefix.length))));
 		let last = 0;
 		for (const [at, card] of cards.entries()) {
 			const have = numberOf(card.card_id);
 			if (have !== null) { last = have; continue; }
 			const after = cards.slice(at + 1).map((c) => numberOf(c.card_id)).find((n): n is number => n !== null);
 			const planned = plannedShot(card.title);
-			let shot = planned !== null && planned > last && (after === undefined || planned < after) && !used.has(planned) ? planned
-				: after === undefined ? Math.floor(last / SHOT_STEP) * SHOT_STEP + SHOT_STEP : Math.floor((last + after) / 2);
+			const shot = planned !== null && planned > last && (after === undefined || planned < after) && !used.has(planned) ? planned
+				: after === undefined ? nextStep(Math.max(last, ...used)) : freeBetween(last, after, used);
 			if (shot <= last || used.has(shot) || shot > SHOT_MAX) throw new Error(`No free shot number after ${shotNumberText(last)} in ${group.name}`);
 			used.add(shot); last = shot;
 			shots[card.card_id] = { code: `${input.show_code}_${input.code}_${want.code}_${shotNumberText(shot)}`, folder_id: folderId };

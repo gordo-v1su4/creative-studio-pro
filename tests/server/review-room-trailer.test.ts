@@ -120,3 +120,19 @@ test('a connected trailer stores exported cuts as versions of BLR_TR110_TRL01 in
 	expect(uploads[0]).toMatchObject({ folderId: 'deliv', assetCode: 'BLR_TR110_TRL01' });
 	expect((saved as { review_room: { deliverables_folder_id: string } }).review_room.deliverables_folder_id).toBe('deliv');
 });
+test('a removed shot keeps its number: a replacement never reuses its code', async () => {
+	const { client, project, input } = sceneSetup();
+	project.review_room = await connectTrailer(client, project, input);
+	// Remove "The silver chain" (DRP_0020) and add a new shot at the end of the sequence.
+	project.production.cards = project.production.cards.filter((card) => card.card_id !== 'b');
+	project.production.cards.push({ card_id: 'n', order: 9, title: 'A new shot', group_id: 'g1' } as never);
+	const again = await connectTrailer(client, project, input);
+	expect(again.shots.b.code).toBe('BLR_TR110_DRP_0020');
+	expect(again.shots.n.code).toBe('BLR_TR110_DRP_0030');
+});
+test('a scene code stays with its sequence even when that sequence is left out of a reconnect', async () => {
+	const { client, project, input } = sceneSetup();
+	project.review_room = await connectTrailer(client, project, input);
+	project.production.groups!.push({ group_id: 'g3', name: 'TR110 03 · Everybody knows Kai' } as never);
+	await expect(connectTrailer(client, project, { ...input, scenes: [{ group_id: 'g3', code: 'DRP' }] })).rejects.toThrow('already belongs to another sequence');
+});
