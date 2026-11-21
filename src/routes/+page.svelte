@@ -378,6 +378,8 @@
 		showGroup(`${ASSEMBLY_VIEW}${id}`);
 	}
 	let renamingAssembly = $state<{ id: string; name: string } | null>(null);
+	/** The "+ Add to assembly" menu on the selection bar. */
+	let addMenuOpen = $state(false);
 	function renameAssembly() {
 		const editing = renamingAssembly;
 		renamingAssembly = null;
@@ -1451,7 +1453,18 @@
 						<div class="sel-bar" role="group" aria-label="Selected beats">
 							<span class="seq-cap">{selectedBeats.length} {selectedBeats.length === 1 ? 'shot' : 'shots'}</span>
 							{#if selectedBeats.length > 1}<button type="button" class="bar-key agent" onclick={() => playSelection()} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>{/if}
-							<Pick label="Add the selected shots to an assembly (they stay in their scenes)" placeholder="+ Add to assembly…" options={[...assemblyTargets, { value: '__new', label: '+ New assembly', hint: '' }]} onchange={(id) => (id === '__new' ? createAssemblyWith([...selectedBeats]) : addShotsToAssembly(id, [...selectedBeats]))} />
+							<!-- A menu anchored under its button (the bar is centred with a transform, which threw the shared picker off-screen). -->
+							<div class="asm-add" onfocusout={(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as globalThis.Node | null)) addMenuOpen = false; }}>
+								<button type="button" class="bar-key" aria-haspopup="menu" aria-expanded={addMenuOpen} onclick={() => (addMenuOpen = !addMenuOpen)} onkeydown={(event) => { if (event.key === 'Escape') addMenuOpen = false; }} title="Add the selected shots to an assembly (they stay in their scenes)">+ Add to assembly ▾</button>
+								{#if addMenuOpen}
+									<ul class="asm-menu" role="menu" aria-label="Add to which assembly">
+										{#each assemblyTargets as target (target.value)}
+											<li role="none"><button type="button" role="menuitem" onclick={() => { addMenuOpen = false; addShotsToAssembly(target.value, [...selectedBeats]); }}><span>▦ {target.label}</span><small>{target.hint}</small></button></li>
+										{/each}
+										<li role="none"><button type="button" role="menuitem" class="new" onclick={() => { addMenuOpen = false; createAssemblyWith([...selectedBeats]); }}>+ New assembly</button></li>
+									</ul>
+								{/if}
+							</div>
 							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and MOVE these shots into it (they leave their current scene)">Move to new group…</button>
 							{#if moveTargets.length}<Pick label="Move the selected shots to a group" placeholder="Move to…" options={moveTargets.map((g) => ({ value: g.group_id, label: g.name, hint: String(g.count) }))} onchange={(groupId) => moveSelectedTo(groupId)} />{/if}
 							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>
@@ -1676,6 +1689,12 @@
 	.seq-bar { position: absolute; bottom: 12px; left: 50%; z-index: 10; display: flex; max-width: calc(100% - 120px); align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid var(--color-nr-line); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
 	.sel-bar { position: absolute; top: 12px; left: 50%; z-index: 10; display: flex; align-items: center; gap: 6px; transform: translateX(-50%); border: 1px solid color-mix(in srgb, var(--color-nr-accent) 35%, var(--color-nr-line)); border-radius: 3px; background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 5px 6px 5px 10px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
 	.sel-bar .bar-key { height: 22px; padding: 0 8px; font-size: 9px; }
+	.asm-add { position: relative; }
+	.asm-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; display: grid; min-width: 220px; max-height: 280px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; border: 1px solid color-mix(in srgb, var(--color-nr-accent) 35%, var(--color-nr-line)); border-radius: 3px; background: var(--color-nr-deep); box-shadow: 0 10px 28px rgb(0 0 0 / 0.55); }
+	.asm-menu button { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: 12px; border: 0; border-radius: 2px; background: transparent; padding: 6px 8px; color: var(--color-nr-muted); font: 11px var(--font-sans); text-align: left; cursor: pointer; }
+	.asm-menu button:hover, .asm-menu button:focus-visible { background: color-mix(in srgb, var(--color-nr-accent) 14%, transparent); color: var(--color-nr-text, #e6f4f5); outline: none; }
+	.asm-menu small { color: var(--color-nr-dim, #5b6b70); font: 10px var(--font-mono); }
+	.asm-menu .new { color: var(--color-nr-accent); }
 	.seq-bar .bar-key { height: 22px; padding: 0 8px; font-size: 9px; }
 	.seq-cap { margin-right: 4px; color: var(--color-nr-accent); font: 600 9px var(--font-sans); letter-spacing: 0.16em; text-transform: uppercase; }
 	.seq-item { display: inline-flex; min-width: 0; max-width: 180px; align-items: center; gap: 5px; overflow: hidden; border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 0 6px; color: var(--color-nr-muted); font: 10px/20px var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
