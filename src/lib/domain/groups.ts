@@ -48,6 +48,69 @@ export function cutViews(production: ProductionState): BoardGroup[] {
 		.map((cut) => ({ group_id: `${CUT_VIEW}${cut.cut_id}`, name: cut.name, count: cutShots(production, cut.cut_id).length }));
 }
 
+/**
+ * Assemblies: scenes dropped on their own canvas, one node per scene. The reading order of the scene nodes
+ * (rows top to bottom, left to right) is the scene order; playing them runs each scene's shots in story order,
+ * benched shots skipped. An assembly never moves a shot; it is `asm:<assembly_id>` in place of a group id.
+ */
+export const ASSEMBLY_VIEW = 'asm:';
+export const isAssemblyView = (id: string) => id.startsWith(ASSEMBLY_VIEW);
+/** A board view that is not a group: its shots stay in their own scenes and its positions are not shot places. */
+export const isBoardView = (id: string) => isCutView(id) || isAssemblyView(id);
+
+type AssemblyScene = { group_id: string; x: number; y: number };
+const sceneExists = (production: ProductionState, groupId: string) => (production.groups ?? []).some((g) => g.group_id === groupId);
+
+/** A scene's shots in story order (their board order). */
+export function sceneShots(production: ProductionState, groupId: string): StoryCard[] {
+	return production.cards.filter((card) => card.group_id === groupId).toSorted((a, b) => a.order - b.order);
+}
+
+/** Up to `count` shots spread over a scene, first and last included (how it opens, develops and ends). */
+export function sceneGlimpse<T>(shots: T[], count = 4): T[] {
+	if (shots.length <= count) return shots;
+	return Array.from({ length: count }, (_, i) => shots[Math.round((i * (shots.length - 1)) / (count - 1))]);
+}
+
+/** The assemblies as board views, each counting the scenes still on the project. */
+export function assemblyViews(production: ProductionState): BoardGroup[] {
+	return (production.assemblies ?? []).map((a) => ({ group_id: `${ASSEMBLY_VIEW}${a.assembly_id}`, name: a.name, count: a.scenes.filter((s) => sceneExists(production, s.group_id)).length }));
+}
+
+/** The shots selected scene nodes play, scene by scene in the order given, story order within, benched skipped. */
+export function assemblyPlay(production: ProductionState, sceneIds: string[]): string[] {
+	return sceneIds.flatMap((groupId) => sceneShots(production, groupId).filter((card) => !card.benched).map((card) => card.card_id));
+}
+
+export function applyCreateAssembly(production: ProductionState, input: { assembly_id: string; name: string }, now: string): TakeResult {
+	const assemblies = production.assemblies ?? [];
+	if (assemblies.some((a) => a.assembly_id === input.assembly_id)) return { ok: false, message: `Assembly ${input.assembly_id} already exists` };
+	if (assemblies.some((a) => a.name.toLowerCase() === input.name.trim().toLowerCase())) return { ok: false, message: `There is already an assembly called ${input.name.trim()}` };
+	return { ok: true, production: { ...production, assemblies: [...assemblies, { assembly_id: input.assembly_id, name: input.name.trim(), created_at: now, scenes: [] }] } };
+}
+
+/** Rename an assembly or set its scenes and their places; each scene at most once, and only real scenes. */
+export function applyUpdateAssembly(production: ProductionState, input: { assembly_id: string; name?: string; scenes?: AssemblyScene[] }): TakeResult {
+	const assemblies = production.assemblies ?? [];
+	const current = assemblies.find((a) => a.assembly_id === input.assembly_id);
+	if (!current) return { ok: false, message: `Assembly ${input.assembly_id} not found` };
+	if (input.name !== undefined && assemblies.some((a) => a.assembly_id !== input.assembly_id && a.name.toLowerCase() === input.name!.trim().toLowerCase())) return { ok: false, message: `There is already an assembly called ${input.name.trim()}` };
+	if (input.scenes) {
+		const ids = input.scenes.map((s) => s.group_id);
+		if (new Set(ids).size !== ids.length) return { ok: false, message: 'A scene can be in an assembly only once' };
+		const unknown = ids.find((id) => !sceneExists(production, id));
+		if (unknown) return { ok: false, message: `Scene ${unknown} not found` };
+	}
+	const next = { ...current, ...(input.name !== undefined ? { name: input.name.trim() } : {}), ...(input.scenes ? { scenes: input.scenes.map((s) => ({ ...s })) } : {}) };
+	return { ok: true, production: { ...production, assemblies: assemblies.map((a) => (a.assembly_id === input.assembly_id ? next : a)) } };
+}
+
+export function applyRemoveAssembly(production: ProductionState, assemblyId: string): TakeResult {
+	const assemblies = production.assemblies ?? [];
+	if (!assemblies.some((a) => a.assembly_id === assemblyId)) return { ok: false, message: `Assembly ${assemblyId} not found` };
+	return { ok: true, production: { ...production, assemblies: assemblies.filter((a) => a.assembly_id !== assemblyId) } };
+}
+
 const exists = (production: ProductionState, groupId: string) => groupId === MAIN_GROUP || (production.groups ?? []).some((g) => g.group_id === groupId);
 
 export function applyCreateGroup(production: ProductionState, group: { group_id: string; name: string }, now: string): TakeResult {

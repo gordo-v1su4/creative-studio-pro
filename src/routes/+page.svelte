@@ -13,6 +13,7 @@
 	import SeedNode from '$lib/ui/nodes/SeedNode.svelte';
 	import VoiceNode from '$lib/ui/nodes/VoiceNode.svelte';
 	import StoryCardNode from '$lib/ui/nodes/StoryCardNode.svelte';
+	import SceneNode from '$lib/ui/nodes/SceneNode.svelte';
 	import SpineEdge from '$lib/ui/edges/SpineEdge.svelte';
 	import FitOnOpen from '$lib/ui/FitOnOpen.svelte';
 	import FrameKey from '$lib/ui/FrameKey.svelte';
@@ -32,7 +33,7 @@
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
-	import { CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isCutView, MAIN_GROUP } from '$lib/domain/groups';
+	import { ASSEMBLY_VIEW, assemblyPlay, assemblyViews, CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isAssemblyView, isBoardView, isCutView, MAIN_GROUP, sceneGlimpse, sceneShots } from '$lib/domain/groups';
 	import { readingOrder } from '$lib/domain/board-order';
 	import Pick from '$lib/ui/controls/Pick.svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
@@ -46,7 +47,7 @@
 	import { prepEntries } from '$lib/domain/prep';
 	import ReferencesDrawer from '$lib/ui/ReferencesDrawer.svelte';
 
-	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode };
+	const nodeTypes = { seed: SeedNode, voice: VoiceNode, story_card: StoryCardNode, scene: SceneNode };
 	const edgeTypes = { spine: SpineEdge };
 
 	let projects = $state<ProjectSummary[]>([]);
@@ -265,7 +266,81 @@
 					: `Story card ${index + 1}, awaiting draft`
 			};
 		});
+		if (isAssemblyView(activeGroup)) return sceneNodesFor(project, activeGroup.slice(ASSEMBLY_VIEW.length));
 		return [seedNode, ...voiceNodes, ...storyNodes];
+	}
+
+	// --- Assemblies: scenes dropped on their own canvas, one big node each; reading order of the nodes is the scene order.
+	const SCENE_NODE = 'scene:';
+	function sceneNodesFor(project: Project, assemblyId: string): Node[] {
+		const assembly = (project.production.assemblies ?? []).find((a) => a.assembly_id === assemblyId);
+		if (!assembly) return [];
+		return assembly.scenes.flatMap((place) => {
+			const group = (project.production.groups ?? []).find((g) => g.group_id === place.group_id);
+			if (!group) return [];
+			const shots = sceneShots(project.production, group.group_id);
+			const pickOf = (card: (typeof shots)[number]) => {
+				const pick = pickFor(project.production, card);
+				return pick ? takesFor(project.production, card.card_id, true).find((take) => take.asset_id === pick.asset_id) ?? null : null;
+			};
+			const seconds = shots.filter((card) => !card.benched).reduce((sum, card) => {
+				const take = pickOf(card);
+				const full = take?.duration_s ?? card.duration_ms / 1000;
+				return sum + Math.max(0, (take?.out_s ?? full) - (take?.in_s ?? 0));
+			}, 0);
+			const glimpses = sceneGlimpse(shots.filter((card) => !card.benched), 4).map((card) => {
+				const take = pickOf(card);
+				return { card_id: card.card_id, title: card.title, kind: take ? (take.kind === 'video' ? 'video' as const : take.kind === 'image' ? 'image' as const : null) : null, url: take?.url ?? null, in_s: take?.in_s ?? null, out_s: take?.out_s ?? null };
+			});
+			return [{
+				id: `${SCENE_NODE}${group.group_id}`,
+				type: 'scene',
+				position: { x: place.x, y: place.y },
+				data: {
+					name: group.name, shots: shots.length, benched: shots.filter((card) => card.benched).length, seconds, glimpses,
+					onRemove: () => saveAssemblyScenes(assembly.scenes.filter((s) => s.group_id !== group.group_id)),
+					onOpen: () => showGroup(group.group_id)
+				},
+				ariaLabel: `Scene ${group.name}`
+			} satisfies Node];
+		});
+	}
+	function saveAssemblyScenes(scenes: Array<{ group_id: string; x: number; y: number }>) {
+		if (!activeAssembly) return;
+		sendBoardCommand({ command: 'update_assembly', assembly_id: activeAssembly.assembly_id, scenes });
+	}
+	/** Where the scene nodes sit now: their places, in reading order. */
+	function placedScenes(): Array<{ group_id: string; x: number; y: number }> {
+		const placed = nodes.filter((node) => node.id.startsWith(SCENE_NODE)).map((node) => ({ id: node.id.slice(SCENE_NODE.length), x: Math.round(node.position.x), y: Math.round(node.position.y) }));
+		return readingOrder(placed).map(({ id, x, y }) => ({ group_id: id, x, y }));
+	}
+	function addSceneAt(groupId: string, at: { x: number; y: number }) {
+		if (!activeAssembly) return;
+		if (activeAssembly.scenes.some((s) => s.group_id === groupId)) { notify('That scene is already in this assembly.'); return; }
+		saveAssemblyScenes([...placedScenes(), { group_id: groupId, x: Math.round(at.x), y: Math.round(at.y) }]);
+	}
+	function createAssembly() {
+		const project = activeProject;
+		if (!project) return;
+		const taken = new Set((project.production.assemblies ?? []).map((a) => a.name.toLowerCase()));
+		let n = (project.production.assemblies ?? []).length + 1;
+		while (taken.has(`assembly ${n}`)) n++;
+		const id = crypto.randomUUID();
+		sendBoardCommand({ command: 'create_assembly', assembly_id: id, name: `Assembly ${n}` });
+		showGroup(`${ASSEMBLY_VIEW}${id}`);
+	}
+	let renamingAssembly = $state<{ id: string; name: string } | null>(null);
+	function renameAssembly() {
+		const editing = renamingAssembly;
+		renamingAssembly = null;
+		const project = activeProject;
+		if (!editing || !project || !editing.name.trim()) return;
+		const current = (project.production.assemblies ?? []).find((a) => `${ASSEMBLY_VIEW}${a.assembly_id}` === editing.id);
+		if (current && current.name !== editing.name.trim()) sendBoardCommand({ command: 'update_assembly', assembly_id: current.assembly_id, name: editing.name.trim() });
+	}
+	function removeAssembly(viewId: string) {
+		if (viewId === activeGroup) showGroup(MAIN_GROUP);
+		sendBoardCommand({ command: 'remove_assembly', assembly_id: viewId.slice(ASSEMBLY_VIEW.length) });
 	}
 
 	function projectToEdges(project: Project): Edge[] {
@@ -398,6 +473,10 @@
 
 	// --- Board groups (V1S-131): which set of shots the board shows (remembered per project).
 	let activeGroup = $state<string>(MAIN_GROUP);
+	const activeAssembly = $derived(activeProject && isAssemblyView(activeGroup) ? (activeProject.production.assemblies ?? []).find((a) => `${ASSEMBLY_VIEW}${a.assembly_id}` === activeGroup) ?? null : null);
+	/** Selected scene nodes in reading order, and the shots they play (story order within, benched skipped). */
+	const selectedScenes = $derived(readingOrder(nodes.filter((node) => node.selected && node.id.startsWith(SCENE_NODE)).map((node) => ({ id: node.id.slice(SCENE_NODE.length), x: node.position.x, y: node.position.y }))).map((item) => item.id));
+	const selectedSceneShots = $derived(activeProject ? assemblyPlay(activeProject.production, selectedScenes) : []);
 	let newGroupName = $state<string | null>(null);
 	let groupInput = $state<HTMLInputElement>();
 	// Focus the name box as soon as it opens, so typing goes straight in.
@@ -411,7 +490,7 @@
 		groupLoadedFor = project.project_id;
 		let saved: string | null = null;
 		try { saved = localStorage.getItem(groupKey(project.project_id)); } catch { /* private mode */ }
-		const known = [...groupsOf(project.production), ...cutViews(project.production)].some((g) => g.group_id === saved);
+		const known = [...groupsOf(project.production), ...cutViews(project.production), ...assemblyViews(project.production)].some((g) => g.group_id === saved);
 		if (known && saved !== activeGroup) { activeGroup = saved!; adoptProject(project); fitRequest = `${project.project_id}:${saved}`; }
 	});
 
@@ -500,6 +579,8 @@
 			moveSelectedTo(target, readingOrder(dragged.filter((node) => isBeat(node.id)).map((node) => ({ id: node.id, ...(dragStart.get(node.id) ?? node.position) }))).map((item) => item.id));
 			return;
 		}
+		// An assembly keeps where its scene nodes sit (their reading order is the scene order).
+		if (activeAssembly && dragged.some((node) => node.id.startsWith(SCENE_NODE))) { saveAssemblyScenes(placedScenes()); return; }
 		scheduleLayoutSave();
 	}
 
@@ -519,10 +600,10 @@
 	}
 
 	/** Play the selected shots' picks in reading order (benched shots and stills are skipped). */
-	function playSelection() {
+	function playSelection(ids: string[] = selectedBeats) {
 		const project = activeProject;
 		if (!project) return;
-		const items = selectedBeats.flatMap((id) => {
+		const items = ids.flatMap((id) => {
 			const card = project.production.cards.find((c) => c.card_id === id);
 			const pick = card && !card.benched ? pickFor(project.production, card) : null;
 			return card && pick?.kind === 'video' ? [{ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id }] : [];
@@ -613,20 +694,29 @@
 		dropNoticeTimer = setTimeout(() => (dropNotice = null), 9000);
 	}
 
+	const SCENE_DRAG = 'application/x-csp-scene';
 	function boardDragOver(event: DragEvent) {
+		if (activeAssembly && event.dataTransfer?.types.includes(SCENE_DRAG)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; return; }
 		if (!activeProject || !event.dataTransfer?.types.includes('Files')) return;
 		event.preventDefault();
 		event.dataTransfer.dropEffect = 'copy';
 	}
 
 	function boardDrop(event: DragEvent) {
+		// A scene dragged from the Groups panel onto an assembly lands as one node where it was dropped.
+		if (activeAssembly && event.dataTransfer?.types.includes(SCENE_DRAG)) {
+			event.preventDefault();
+			const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+			addSceneAt(event.dataTransfer.getData(SCENE_DRAG), { x: (event.clientX - box.left - viewport.x) / viewport.zoom, y: (event.clientY - box.top - viewport.y) / viewport.zoom });
+			return;
+		}
 		if (!activeProject || !event.dataTransfer?.types.includes('Files')) return;
 		event.preventDefault();
 		const nodeId = (event.target as Element | null)?.closest('.svelte-flow__node')?.getAttribute('data-id');
 		const cardId = nodeId && activeProject.production.cards.some((card) => card.card_id === nodeId) ? nodeId : null;
 		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const at = { x: (event.clientX - box.left - viewport.x) / viewport.zoom, y: (event.clientY - box.top - viewport.y) / viewport.zoom };
-		void droppedFiles(event.dataTransfer).then((files) => importFiles(files, cardId ? { cardId } : { at, groupId: isCutView(activeGroup) ? MAIN_GROUP : activeGroup }));
+		void droppedFiles(event.dataTransfer).then((files) => importFiles(files, cardId ? { cardId } : { at, groupId: isBoardView(activeGroup) ? MAIN_GROUP : activeGroup }));
 	}
 
 	/**
@@ -844,7 +934,7 @@
 
 	async function persistLayout() {
 		// A cut view lays shots out in play order for the moment; their places in their own groups stay as saved.
-		if (!activeProject || isCutView(activeGroup)) return;
+		if (!activeProject || isBoardView(activeGroup)) return;
 		savingLayout = true;
 		try {
 			const next: CanvasLayout = {
@@ -1135,7 +1225,7 @@
 									<!-- svelte-ignore a11y_autofocus -->
 									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
 								{:else}
-									<button type="button" class="group-pick" onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every shot not in a group' : 'Show this group · double-click to rename'}>
+									<button type="button" class="group-pick" draggable={group.group_id !== MAIN_GROUP && Boolean(activeAssembly)} ondragstart={(event) => { event.dataTransfer?.setData(SCENE_DRAG, group.group_id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'; }} onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every shot not in a group' : 'Show this group · double-click to rename'}>
 										<b class="min-w-0 grow truncate" title={group.name}>{group.name}</b>
 										<small>{group.count}</small>
 									</button>
@@ -1146,6 +1236,27 @@
 							</li>
 						{/each}
 					</ul>
+					{@const assemblies = assemblyViews(activeProject.production)}
+					<div class="meta-label mt-4 flex items-center">Assemblies<span class="grow"></span><button type="button" class="group-add" onclick={createAssembly} aria-label="New assembly">+ new</button></div>
+					{#if assemblies.length}
+						<ul class="mt-2 grid grid-cols-[minmax(0,1fr)] gap-px" aria-label="Assemblies">
+							{#each assemblies as assembly (assembly.group_id)}
+								<li class={['group-row', assembly.group_id === activeGroup && 'active']}>
+									{#if renamingAssembly?.id === assembly.group_id}
+										<!-- svelte-ignore a11y_autofocus -->
+										<input class="group-name m-0" bind:value={renamingAssembly.name} aria-label={`Rename ${assembly.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameAssembly(); else if (event.key === 'Escape') renamingAssembly = null; }} onblur={renameAssembly} />
+									{:else}
+										<button type="button" class="group-pick" onclick={() => showGroup(assembly.group_id)} ondblclick={() => (renamingAssembly = { id: assembly.group_id, name: assembly.name })} aria-pressed={assembly.group_id === activeGroup} title="Show this assembly · drag scenes from the list onto its canvas · double-click to rename">
+											<b class="min-w-0 grow truncate" title={assembly.name}>▦ {assembly.name}</b>
+											<small>{assembly.count}</small>
+										</button>
+										<button type="button" class="group-move" onclick={() => removeAssembly(assembly.group_id)} title="Delete this assembly (its scenes and shots stay)" aria-label={`Delete ${assembly.name}`}>×</button>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					{#if activeAssembly}<p class="mt-2 font-mono text-[9px] leading-4 text-text-dim">Drag scenes from Groups onto the canvas: each lands as one node. Their reading order (rows top to bottom, left to right) is the order they play. Select scenes, then ▶ Play in order.</p>{/if}
 					{@const cuts = cutViews(activeProject.production)}
 					{#if cuts.length}
 						<div class="meta-label mt-4">Cuts</div>
@@ -1259,11 +1370,18 @@
 						<FitOnOpen request={fitRequest} focus={focusRequest} done={() => { fitRequest = null; focusRequest = null; }} />
 						<FrameKey />
 					</SvelteFlow>
+					{#if selectedScenes.length && activeProject}
+						<div class="sel-bar" role="group" aria-label="Selected scenes">
+							<span class="seq-cap">{selectedScenes.length} {selectedScenes.length === 1 ? 'scene' : 'scenes'} · {selectedSceneShots.length} shots</span>
+							<button type="button" class="bar-key agent" onclick={() => playSelection(selectedSceneShots)} title="Play the scenes in reading order, each scene's shots in story order (benched skipped)">▶ Play in order</button>
+							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>
+						</div>
+					{/if}
 					{#if selectedBeats.length > 1 && activeProject}
 						{@const moveTargets = groupsOf(activeProject.production).filter((g) => g.group_id !== activeGroup)}
 						<div class="sel-bar" role="group" aria-label="Selected beats">
 							<span class="seq-cap">{selectedBeats.length} shots</span>
-							<button type="button" class="bar-key agent" onclick={playSelection} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>
+							<button type="button" class="bar-key agent" onclick={() => playSelection()} title="Play their picks in reading order: row by row, left to right">▶ Play in order</button>
 							<button type="button" class="bar-key" onclick={groupSelection} title="Name a new group and move these shots into it">New group…</button>
 							{#if moveTargets.length}<Pick label="Move the selected shots to a group" placeholder="Move to…" options={moveTargets.map((g) => ({ value: g.group_id, label: g.name, hint: String(g.count) }))} onchange={(groupId) => moveSelectedTo(groupId)} />{/if}
 							<button type="button" class="bar-key" onclick={clearSelection}>Clear</button>

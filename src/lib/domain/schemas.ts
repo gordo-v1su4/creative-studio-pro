@@ -520,6 +520,11 @@ export const productionStateSchema = z.object({
 	still_sends: z.array(stillSendSchema).max(2000).optional(),
 	/** Board groups (V1S-131) besides Main, in creation order. */
 	groups: z.array(z.object({ group_id: idSchema, name: nonBlank(120), created_at: rfc3339Schema })).max(100).optional(),
+	/** Assemblies: scenes dropped on their own canvas as one node each; reading order of the nodes is the scene order. */
+	assemblies: z.array(z.object({
+		assembly_id: idSchema, name: nonBlank(120), created_at: rfc3339Schema,
+		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100)
+	})).max(100).optional(),
 	updated_at: rfc3339Schema.nullable().default(null)
 });
 export type ProductionState = z.infer<typeof productionStateSchema>;
@@ -1154,7 +1159,11 @@ export const setSoundPlanCommandSchema = z.object({
 export const groupCommandSchema = z.discriminatedUnion('command', [
 	z.object({ command: z.literal('create_group'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, name: nonBlank(120) }),
 	z.object({ command: z.literal('rename_group'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, name: nonBlank(120) }),
-	z.object({ command: z.literal('move_beats'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, card_ids: z.array(idSchema).min(1).max(200) })
+	z.object({ command: z.literal('move_beats'), project_id: idSchema, expected_version: z.number().int().nonnegative(), group_id: idSchema, card_ids: z.array(idSchema).min(1).max(200) }),
+	z.object({ command: z.literal('create_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema, name: nonBlank(120) }),
+	z.object({ command: z.literal('update_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema, name: nonBlank(120).optional(),
+		scenes: z.array(z.object({ group_id: idSchema, x: z.number(), y: z.number() })).max(100).optional() }),
+	z.object({ command: z.literal('remove_assembly'), project_id: idSchema, expected_version: z.number().int().nonnegative(), assembly_id: idSchema })
 ]);
 
 export type PushCutCommand = z.infer<typeof pushCutCommandSchema>;

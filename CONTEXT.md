@@ -127,7 +127,7 @@ The shots picked on the board (clicked or boxed), played in reading order of whe
 _Avoid_: Sequence, playlist
 
 **Assembly**:
-A saved, named, ordered set of scenes laid out together on the board, each scene a frame holding its shots in story order (benched shots greyed and skipped); selecting its shots and pushing makes a cut. It never moves a shot out of its scene.
+A saved, named canvas of scenes, each dragged in from the groups as one node showing four glimpses of the scene (its opening, middle and end); the reading order of the nodes is the scene order, and playing them runs each scene's shots in story order with benched shots skipped. Pushing what plays makes a cut. It never moves a shot out of its scene.
 _Avoid_: Composite, comp, pre-comp, sequence, cut (it holds scenes, not takes)
 
 **Cut view**:
