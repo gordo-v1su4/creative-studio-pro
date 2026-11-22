@@ -44,6 +44,8 @@
 		onAttachPrevious?: () => void;
 		onRemoveReference?: (key: string) => void;
 		onDropReference?: (pageId: string) => void;
+		/** A missing shot (no take yet) plays as this text card (V1S-495). */
+		slate?: { src: string; assetId: string } | null;
 	};
 
 	let { data, selected }: NodeProps = $props();
@@ -75,7 +77,7 @@
 	// What you see is what plays: a selected shot follows its pick, and leaves the selection when benched.
 	$effect(() => {
 		const id = card?.card_id;
-		const item = card && !benched && pick?.kind === 'video' ? { id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id } : null;
+		const item = playItem();
 		if (id) untrack(() => reviewSequence.sync(id, item));
 	});
 
@@ -129,9 +131,17 @@
 
 	// Shift-click adds the beat's pick to the review selection (click order = play order).
 	function select(event: MouseEvent) {
-		if (!event.shiftKey || !card || benched || pick?.kind !== 'video') return;
+		const item = event.shiftKey ? playItem() : null;
+		if (!item) return;
 		event.stopPropagation();
-		reviewSequence.toggle({ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id });
+		reviewSequence.toggle(item);
+	}
+
+	/** What this shot plays as: its video pick, or its text card while it is a missing shot. */
+	function playItem() {
+		if (!card || benched) return null;
+		if (pick?.kind === 'video') return { id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id };
+		return story.slate ? { id: card.card_id, title: card.title, src: story.slate.src, assetId: story.slate.assetId } : null;
 	}
 </script>
 

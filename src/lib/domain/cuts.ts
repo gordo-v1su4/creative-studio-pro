@@ -1,6 +1,7 @@
 import type { Cut, CutEntry, CutMusic, ProductionState, SoundPlan } from './schemas';
 import type { TakeResult } from './takes';
 import { programElapsed } from '../media/speed-curve';
+import { isSlateId, slateCardId } from './slate';
 
 /**
  * Cuts (CONTEXT.md: Cut, Push, Trim, Speed ramp). A push snapshots a selection
@@ -41,6 +42,8 @@ function checkTrim(entry: CutEntryInput): string | null {
 
 function checkTake(production: ProductionState, entry: CutEntryInput): string | null {
 	if (!production.cards.some((card) => card.card_id === entry.card_id)) return `Beat ${entry.card_id} not on this project`;
+	// A missing shot plays as its text card (V1S-495): the card's own slate id, never another shot's.
+	if (isSlateId(entry.asset_id)) return slateCardId(entry.asset_id) === entry.card_id ? null : `${entry.asset_id} is not the card of shot ${entry.card_id}`;
 	const take = production.assets.find((asset) => asset.asset_id === entry.asset_id);
 	if (!take || take.kind === 'audio' || take.card_id !== entry.card_id) return `Take ${entry.asset_id} is not a take of beat ${entry.card_id}`;
 	if (take.rejected) return `${take.name} is rejected; restore it on the board to use it`;

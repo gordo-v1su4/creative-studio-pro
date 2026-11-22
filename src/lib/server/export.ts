@@ -7,6 +7,8 @@ import { bakePlan, buildFcpxml, draftTakes, mp4Plan } from '$lib/domain/export';
 import { mixPlan, type Layer } from '$lib/domain/sound';
 import { safeFileName } from '$lib/domain/media';
 import { prepareMix, runFfmpeg } from '$lib/server/sound';
+import { isSlateId } from '$lib/domain/slate';
+import { ensureSlate } from './slate';
 
 type Failure = { ok: false; status: number; message: string };
 const failure = (status: number, message: string): Failure => ({ ok: false, status, message });
@@ -41,7 +43,8 @@ export async function exportCut(
 		const clips = [];
 		for (const [i, entry] of locked.entries.entries()) {
 			const take = project.production.assets.find((asset) => asset.asset_id === entry.asset_id);
-			const source = take ? local(take.url) : null;
+			// A missing shot exports as its text card (V1S-495).
+			const source = isSlateId(entry.asset_id) ? (await ensureSlate(deps.projectRoot, project, entry.card_id)).file : take ? local(take.url) : null;
 			if (!source) return failure(400, `${titles[i]}: its take isn't a file in the project`);
 			const name = `${String(i + 1).padStart(2, '0')}-${safeFileName(titles[i]).replace(/\.[^.]*$/, '').slice(0, 60)}.mp4`;
 			const bake = bakePlan({ file: source, in_s: entry.in_s, out_s: entry.out_s, speed: entry.speed, output: join(folder, name) });

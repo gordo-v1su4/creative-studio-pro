@@ -28,6 +28,7 @@
 	import { stageName } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
+	import { isMissingShot, playItemFor, slateAssetId, slateUrl } from '$lib/domain/slate';
 	import { benchedBeats } from '$lib/domain/bench';
 	import { mediaKind } from '$lib/domain/media';
 	import { droppedFiles } from '$lib/ui/dropped-files';
@@ -248,6 +249,7 @@
 				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 300 },
 				data: {
 					card, order: index, spineIndex: spineIndex < 0 ? null : spineIndex, takes, pickId: pick?.asset_id ?? null,
+					slate: card && isMissingShot(project.production, card) ? { src: slateUrl(project.project_id, card.card_id), assetId: slateAssetId(card.card_id) } : null,
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
 					onRestore: (takeId: string) => sendBoardCommand({ command: 'restore_take', take_id: takeId }),
@@ -659,16 +661,16 @@
 		sendBoardCommand({ command: 'rename_group', group_id: target.group_id, name: target.name.trim() });
 	}
 
-	/** Play the selected shots' picks in reading order (benched shots and stills are skipped). */
+	/** Play the selected shots' picks in reading order; missing shots play as their text card; benched shots and stills are skipped. */
 	function playSelection(ids: string[] = selectedBeats) {
 		const project = activeProject;
 		if (!project) return;
 		const items = ids.flatMap((id) => {
 			const card = project.production.cards.find((c) => c.card_id === id);
-			const pick = card && !card.benched ? pickFor(project.production, card) : null;
-			return card && pick?.kind === 'video' ? [{ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id }] : [];
+			const item = card ? playItemFor(project, card) : null;
+			return item ? [item] : [];
 		});
-		if (!items.length) { notify('None of the selected shots has a video pick to play.'); return; }
+		if (!items.length) { notify('None of the selected shots has a video pick or is a missing shot to play.'); return; }
 		reviewSequence.items = items;
 		reviewSequence.playing = true;
 	}

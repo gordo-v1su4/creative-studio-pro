@@ -12,6 +12,7 @@
 	import { onMount, untrack } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
+	import { isSlateId, slateUrl } from '$lib/domain/slate';
 	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipBlob, loadClipMetadata, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
@@ -763,9 +764,10 @@
 		if (!entries) throw new Error(`Version ${shownVersion} of this cut is not recorded`);
 		if (frozen) readOnly = true;
 		const found = entries.flatMap((entry) => {
-			const asset = assetOf(entry.asset_id);
 			const title = project.production.cards.find((card) => card.card_id === entry.card_id)?.title ?? entry.card_id;
-			return asset ? [{ id: entry.entry_id, cardId: entry.card_id, assetId: entry.asset_id, title, src: asset.url, in: entry.in_s, out: entry.out_s, speed: entry.speed }] : [];
+			// A missing shot plays as its text card (V1S-495).
+			const src = isSlateId(entry.asset_id) ? slateUrl(project.project_id, entry.card_id) : assetOf(entry.asset_id)?.url;
+			return src ? [{ id: entry.entry_id, cardId: entry.card_id, assetId: entry.asset_id, title, src, in: entry.in_s, out: entry.out_s, speed: entry.speed }] : [];
 		});
 		if (found.length < entries.length) {
 			readOnly = true;

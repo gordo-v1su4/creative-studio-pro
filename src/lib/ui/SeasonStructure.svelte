@@ -2,7 +2,7 @@
 	import type { Project } from '$lib/domain/schemas';
 	import type { SeriesRecord } from '$lib/server/series';
 	import { SAVE_THE_CAT, emptySections, sectionRank, storyBeatColor } from '$lib/domain/structures';
-	import { pickFor } from '$lib/domain/takes';
+	import { playItemFor } from '$lib/domain/slate';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 
 	/**
@@ -33,8 +33,8 @@
 			.filter((card) => card.group_id && groups.has(card.group_id) && !card.benched)
 			.toSorted((a, b) => a.order - b.order)
 			.flatMap((card) => {
-				const pick = pickFor(project.production, card);
-				return pick?.kind === 'video' ? [{ id: card.card_id, title: card.title, src: pick.url, assetId: pick.asset_id }] : [];
+				const item = playItemFor(project, card);
+				return item ? [item] : [];
 			});
 		if (!items.length) { note = 'None of this story beat\'s shots has a video pick yet.'; return; }
 		note = null;
