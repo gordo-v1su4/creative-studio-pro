@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Project } from '$lib/domain/schemas';
-	import { plannedCardId, type StoryPlan } from '$lib/domain/story-plan';
+	import { boardCardFor, plannedGroupId, type StoryPlan } from '$lib/domain/story-plan';
 	let { project, onUpdated, onPrep, onBoard }: { project: Project; onUpdated: (project: Project) => void; onPrep: () => void; onBoard: () => void } = $props();
 	let plan = $state<StoryPlan | null>(null);
 	let loadedVersion = $state(-1);
@@ -19,7 +19,13 @@
 	const moments = $derived(plan?.sections.flatMap(section => section.moments) ?? []);
 	const shots = $derived(moments.filter(moment => moment.approved).flatMap(moment => moment.shots));
 	const seconds = $derived(moments.reduce((sum, moment) => sum + moment.duration_s, 0));
-	const added = $derived(shots.filter(shot => project.production.cards.some(card => card.card_id === plannedCardId(shot.id))).length);
+	const added = $derived(shots.filter(shot => boardCardFor(project.production, shot)).length);
+	const room = $derived(project.review_room);
+	/** The Review Room scene a section's board group already has (codes never change once given). */
+	const sceneOf = (section: StoryPlan['sections'][number]) => room?.scenes?.[plannedGroupId(section.id)];
+	const groupName = (groupId?: string) => project.production.groups?.find(group => group.group_id === groupId)?.name ?? 'Main board';
+	const boardShots = $derived(project.production.cards.toSorted((a, b) => groupName(a.group_id).localeCompare(groupName(b.group_id)) || a.order - b.order));
+	const codeOf = (cardId: string) => room?.shots?.[cardId]?.code;
 	const stamp = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 	const total = (section: StoryPlan['sections'][number]) => section.moments.reduce((sum, moment) => sum + moment.duration_s, 0);
 	const start = (index: number) => plan?.sections.slice(0, index).reduce((sum, section) => sum + total(section), 0) ?? 0;
@@ -30,7 +36,7 @@
 			const result = await response.json();
 			if (!result.ok) throw new Error(result.error?.message ?? 'Could not save the plan');
 			onUpdated(result.data); dirty = false;
-			note = action === 'refresh_source' ? `Bible refreshed from Notion: ${result.source?.title ?? 'current story'}.` : action === 'moments' ? 'Moments proposed for your review. No shots or media were created.' : action === 'save' ? 'Moment plan saved.' : action === 'approve' ? 'Moment approved. You can now draft its shots.' : action === 'breakdown' ? 'Shot breakdown drafted for review; no media was generated.' : 'Planned shots added in new board groups. They stay benched until you choose to use them.';
+			note = action === 'refresh_source' ? `Bible refreshed from Notion: ${result.source?.title ?? 'current story'}.` : action === 'moments' ? 'Moments proposed for your review. No shots or media were created.' : action === 'save' ? 'Moment plan saved.' : action === 'approve' ? 'Moment approved. You can now draft its shots.' : action === 'breakdown' ? 'Shot breakdown drafted for review; no media was generated.' : `Planned shots added in board groups, benched until you use them.${project.review_room ? ' Acts with a scene code now have their Review Room folders.' : ''}`;
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Could not save the plan'; }
 		finally { busy = false; }
 	}
@@ -51,6 +57,16 @@
 		{#if added}<button type="button" onclick={onBoard} disabled={dirty || busy}>Open trailer Board</button>{/if}
 		{#if dirty}<button type="button" class="primary" onclick={() => void send('save')} disabled={busy}>Save moment plan</button>{/if}
 	</div>
+	<details class="how">
+		<summary>What each step does</summary>
+		<ol>
+			<li><b>Approve this moment</b> marks a proposed moment as yours. Nothing else changes.</li>
+			<li><b>Draft shots for this moment</b> splits an approved moment into planned shots with times. No media is made.</li>
+			<li><b>Covered by board shot</b> (on a planned shot) points it at a shot that already exists, so Add to Board makes no duplicate.</li>
+			<li><b>Add missing shots to Board</b> makes one board group per act and one benched card per planned shot that isn't covered yet. It never removes or replaces anything.{#if room} An act with a <b>Review Room scene code</b> also gets its own scene folder in Review Room, and its new shots get permanent codes like {room.show_code}_{room.code}_ABC_0010.{/if}</li>
+			<li><b>Continue to Prep</b> only opens the references step (character and location sheets). It creates nothing.</li>
+		</ol>
+	</details>
 	<p class="hint">Existing boards and footage stay intact. Candidate takes are suggestions; they do not change picks. New planned shots are added benched for review.</p>
 	{#if dirty}<p class="hint">Save your shot-plan edits before continuing. Story text uses Save workspace.</p>{/if}
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
@@ -59,6 +75,11 @@
 		<section class="act" aria-label={section.title}>
 			<div class="act-heading"><span class="time">{stamp(start(i))}–{stamp(start(i) + total(section))}</span><h3>{section.title}</h3><span>{section.moments.length} moments · {section.moments.flatMap(moment => moment.shots).length} shots · {total(section)}s</span></div>
 			<p class="summary">{section.summary}</p>
+			{#if room}
+				{@const scene = sceneOf(section)}
+				{#if scene}<p class="hint">Review Room scene folder · <b>{scene.code}</b> (permanent)</p>
+				{:else}<label class="scene-code">Review Room scene code<input value={section.scene_code ?? ''} maxlength="3" placeholder="e.g. PCK" oninput={(event) => { const code = event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3); event.currentTarget.value = code; section.scene_code = code.length === 3 ? code : undefined; dirty = true; }} /><span>Three capital letters. Add to Board then makes this act's scene folder; shots linked to existing board shots keep their codes.</span></label>{/if}
+			{/if}
 			{#each section.moments as shot, j (shot.id)}
 				<details class="shot">
 					<summary><span class="number">{String(j + 1).padStart(2, '0')}</span><span class="shot-name">{shot.title}</span><span class="length">{shot.duration_s}s</span><span class="state">{shot.approved ? 'Approved moment' : 'Proposed moment'}</span></summary>
@@ -71,7 +92,9 @@
 						<label>Candidate footage<select value={shot.candidate_asset_id ?? ''} onchange={(event) => { shot.candidate_asset_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">New coverage / choose later</option>{#each project.production.assets.filter(asset => asset.kind === 'video') as asset (asset.asset_id)}<option value={asset.asset_id}>{asset.name}</option>{/each}</select></label>
 						{#if shot.candidate_asset_id}{@const asset = project.production.assets.find(asset => asset.asset_id === shot.candidate_asset_id)}{#if asset}<a href={asset.url} target="_blank" rel="noreferrer">Review candidate clip</a>{/if}{/if}
 						<div class="actions">{#if !shot.approved}<button type="button" class="primary" disabled={dirty || busy} onclick={() => void send('approve', shot.id)}>Approve this moment</button>{:else if !shot.shots.length}<button type="button" class="primary" disabled={dirty || busy} onclick={() => void send('breakdown', shot.id)}>{busy ? 'Drafting…' : 'Draft shots for this moment'}</button>{/if}</div>
-						{#if shot.shots.length}<p class="hint">Shot breakdown · {shot.shots.reduce((sum, entry) => sum + entry.duration_s, 0)}s. Review before adding to Board.</p>{#each shot.shots as entry (entry.id)}<div class="breakdown"><b>{entry.title} · {entry.duration_s}s</b><p>{entry.beat}</p></div>{/each}{/if}
+						{#if shot.shots.length}<p class="hint">Shot breakdown · {shot.shots.reduce((sum, entry) => sum + entry.duration_s, 0)}s. Review before adding to Board.</p>{#each shot.shots as entry (entry.id)}{@const covered = boardCardFor(project.production, entry)}<div class="breakdown"><b>{entry.title} · {entry.duration_s}s</b><p>{entry.beat}</p>
+								<label>Covered by board shot<select value={entry.card_id ?? ''} onchange={(event) => { entry.card_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">New shot on Add to Board</option>{#each boardShots as card (card.card_id)}<option value={card.card_id}>{groupName(card.group_id)} · {card.title}{codeOf(card.card_id) ? ` · ${codeOf(card.card_id)}` : ''}</option>{/each}</select></label>
+								{#if covered}<p class="on-board">On board · {groupName(covered.group_id)} · {covered.title}{codeOf(covered.card_id) ? ` · ${codeOf(covered.card_id)}` : ' · no Review Room code yet'}</p>{/if}</div>{/each}{/if}
 					</div>
 				</details>
 			{/each}
@@ -82,6 +105,9 @@
 {/if}
 
 <style>
+	.how {margin:8px 0;font-size:12px;color:#9fbcc0;} .how summary::before {content:none;} .how summary {padding:6px 0;color:#7bd7c6;} .how ol {margin:4px 0 8px 18px;line-height:1.8;} .how b {color:#c9e2df;font-weight:600;}
+	.scene-code {max-width:520px;} .scene-code input {max-width:90px;text-transform:uppercase;font-family:var(--font-mono,monospace);letter-spacing:.12em;} .scene-code span {display:block;margin-top:4px;font-size:10.5px;color:#6f8f95;}
+	.on-board {font-size:11px;color:#7bd7c6;margin-top:4px;}
 	.bible {white-space:pre-wrap;max-height:380px;overflow:auto;font:12px/1.8 var(--font-sans);padding:16px;background:#10191f;} .breakdown {padding:10px 0;border-top:1px solid #294047;font-size:12px;line-height:1.7;} .breakdown p {color:#8ba6ae;}
 	.plan { color: #b9d0d2; margin-bottom: 36px; } header { display:flex; justify-content:space-between; gap:24px; align-items:start; } h2 { font-size:24px; color:#d7efed; margin:8px 0; font-weight:600; } .eyebrow,.time,.number,.state,.metrics span { font:10px var(--font-mono,monospace); letter-spacing:.08em; } .eyebrow {color:#66d9ca;} .intro,.hint,.summary {font-size:12px;line-height:1.7;color:#819fa5;} .metrics {display:flex;gap:14px;align-items:center;white-space:nowrap;} .metrics strong {font-size:30px;font-weight:400;color:#b8eee5;} .metrics span {line-height:1.9;} .actions {display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px;} button {border:1px solid #355155;padding:9px 12px;color:#b3d5d4;font-size:12px;background:#101b20;cursor:pointer;} button.primary {background:#16483f;border-color:#2c7c6c;color:#c5f7e8;} button:disabled {opacity:.45;cursor:default;} .hint {font-size:11px;} .act {border-top:1px solid #294047;margin-top:26px;padding-top:15px;} .act-heading {display:flex;align-items:center;gap:16px;} .act-heading h3 {font-size:16px;color:#c9e2df;flex:1;} .act-heading>span:last-child {font-size:11px;color:#83a6aa;white-space:nowrap;} .time {color:#5cbcaf;min-width:90px;} .summary {margin:8px 0 12px;} .shot {border-top:1px solid #1d2d35;} summary {display:flex;gap:12px;align-items:center;padding:12px 2px;cursor:pointer;font-size:12px;list-style:none;} summary::before {content:'+';color:#629b9e;} details[open]>summary::before {content:'−';} .number {color:#587c86;} .shot-name {flex:1;} .length {color:#8fbbbc;min-width:30px;} .state {color:#8b9c99;width:125px;text-align:right;font-size:9px;} .shot-body {padding:8px 18px 18px;background:#10191f;} label {display:block;font-size:11px;color:#91afb3;margin:10px 0;} input,textarea,select {display:block;width:100%;border:1px solid #30434b;background:#0c141a;padding:8px;color:#bed3d5;font-size:12px;margin-top:5px;} .shot-facts {display:flex;gap:24px;align-items:center;font-size:11px;} .shot-facts label {max-width:180px;} a {font-size:12px;color:#7bd7c6;} .error {color:#f6a6a2;font-size:12px;} :is(button,input,textarea,select,summary,a):focus-visible {outline:2px solid #7bd7c6;outline-offset:3px;} @media(max-width:600px) {header {flex-direction:column;gap:10px;} .act-heading {flex-wrap:wrap;gap:8px;} .time {min-width:auto;} .state {width:85px;font-size:8px;} .shot-facts {flex-direction:column;align-items:start;gap:0;}}
 </style>

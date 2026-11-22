@@ -2,7 +2,11 @@ import { z } from 'zod';
 import type { ProductionState } from './schemas';
 
 const planId = z.string().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/);
-export const planShotSchema = z.object({ id: planId, title: z.string().trim().min(1).max(180), beat: z.string().trim().min(1).max(4000), duration_s: z.number().positive().max(120).multipleOf(0.001) });
+export const planShotSchema = z.object({ id: planId, title: z.string().trim().min(1).max(180), beat: z.string().trim().min(1).max(4000), duration_s: z.number().positive().max(120).multipleOf(0.001),
+	/** An existing board shot that already covers this planned shot: Add to Board then creates no new card for it. */
+	card_id: planId.optional() });
+/** Review Room scene code for a section's board group (three capital letters, e.g. PCK). */
+export const sceneCodeSchema = z.string().regex(/^[A-Z]{3}$/, 'A scene code is three capital letters');
 export const storyPlanSchema = z.object({
 	title: z.string().trim().min(1).max(200),
 	source: z.object({ series_id: planId.optional(), title: z.string().max(300), text: z.string().max(100_000), url: z.string().url().optional(), imported_at: z.string(), references: z.array(z.object({ key: z.string().min(1).max(300), name: z.string().min(1).max(200), kind: z.string().max(40) })).max(300).default([]) }).optional(),
@@ -11,6 +15,8 @@ export const storyPlanSchema = z.object({
 	prep_source_project_id: planId.optional(),
 	sections: z.array(z.object({
 		id: planId, title: z.string().trim().min(1).max(200), summary: z.string().max(2000),
+		/** When set on a trailer linked to Review Room, Add to Board gives this section's group its own scene folder. */
+		scene_code: sceneCodeSchema.optional(),
 		moments: z.array(z.object({
 			id: planId, title: z.string().trim().min(1).max(180), beat: z.string().trim().min(1).max(4000),
 			duration_s: z.number().positive().max(120).multipleOf(0.001),
@@ -24,6 +30,8 @@ export const storyPlanSchema = z.object({
 }).superRefine((plan, ctx) => {
 	const ids = plan.sections.flatMap(section => [section.id, ...section.moments.flatMap(moment => [moment.id, ...moment.shots.map(shot => shot.id)])]);
 	if (new Set(ids).size !== ids.length) ctx.addIssue({ code: 'custom', message: 'Plan section and shot IDs must be unique' });
+	const codes = plan.sections.flatMap(section => section.scene_code ? [section.scene_code] : []);
+	if (new Set(codes).size !== codes.length) ctx.addIssue({ code: 'custom', message: 'Each section needs its own scene code' });
 });
 export type StoryPlan = z.infer<typeof storyPlanSchema>;
 export const plannedCardId = (id: string) => `plan-shot-${id}`;
@@ -41,7 +49,14 @@ export function reconcileMomentEdits(previous: StoryPlan | undefined, next: Stor
 	return result;
 }
 
-/** Append only. Stable IDs make repeated clicks harmless; existing boards and picks remain untouched. */
+/** The board card that covers a planned shot: the existing shot it is linked to, else the card Add to Board made for it. */
+export function boardCardFor(production: ProductionState, shot: { id: string; card_id?: string }) {
+	return production.cards.find(card => card.card_id === (shot.card_id ?? plannedCardId(shot.id)))
+		?? (shot.card_id ? production.cards.find(card => card.card_id === plannedCardId(shot.id)) : undefined);
+}
+
+/** Append only. Stable IDs make repeated clicks harmless; existing boards and picks remain untouched.
+ * A planned shot linked to an existing board shot (card_id) is already covered and adds nothing. */
 export function appendPlannedShots(production: ProductionState, now: string): ProductionState {
 	const plan = production.story_plan;
 	if (!plan) return production;
@@ -49,12 +64,13 @@ export function appendPlannedShots(production: ProductionState, now: string): Pr
 	const cards = [...production.cards];
 	let order = cards.reduce((max, card) => Math.max(max, card.order), -1) + 1;
 	for (const section of plan.sections) {
-		if (!section.moments.some(moment => moment.approved && moment.shots.length)) continue;
+		const missing = section.moments.filter(moment => moment.approved).flatMap(moment => moment.shots.map(shot => ({ moment, shot })))
+			.filter(({ shot }) => !boardCardFor({ ...production, cards }, shot));
+		if (!missing.length) continue;
 		const group_id = plannedGroupId(section.id);
 		if (!groups.some(group => group.group_id === group_id)) groups.push({ group_id, name: `${plan.title} · ${section.title}`.slice(0, 120), created_at: now });
-		for (const moment of section.moments.filter(moment => moment.approved)) for (const shot of moment.shots) {
+		for (const { moment, shot } of missing) {
 			const card_id = plannedCardId(shot.id);
-			if (cards.some(card => card.card_id === card_id)) continue;
 			cards.push({
 				card_id, group_id, order: order++, title: shot.title, beat: shot.beat,
 				identity_tags: {

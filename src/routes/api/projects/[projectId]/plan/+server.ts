@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { storyPlanSchema, planShotSchema, reconcileMomentEdits } from '$lib/domain/story-plan';
+import { storyPlanSchema, planShotSchema, reconcileMomentEdits, plannedGroupId } from '$lib/domain/story-plan';
 import { getGateway, getProjectStore, resolveProjectModel, getReviewRoomConfig, getSeriesStore, getNotionToken } from '$lib/server/config';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries } from '$lib/server/series';
@@ -51,6 +51,12 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const source = input.plan.prep_source_project_id;
 		if (source && (source === project.project_id || !(await store.readProject(source)))) return json({ ok: false, error: { message: 'Choose an existing reference project other than this project' } }, { status: 400 });
 		if (input.plan.sections.some(section => section.moments.some(shot => shot.candidate_asset_id && !project.production.assets.some(asset => asset.asset_id === shot.candidate_asset_id)))) return json({ ok: false, error: { message: 'A candidate take is no longer in this project' } }, { status: 400 });
+		if (input.plan.sections.some(section => section.moments.some(moment => moment.shots.some(shot => shot.card_id && !project.production.cards.some(card => card.card_id === shot.card_id))))) return json({ ok: false, error: { message: 'A linked board shot is no longer in this project' } }, { status: 400 });
+		const taken = Object.entries(project.review_room?.scenes ?? {});
+		const clash = input.plan.sections.find(section => section.scene_code && taken.some(([groupId, scene]) => scene.code === section.scene_code && groupId !== plannedGroupId(section.id)));
+		if (clash) return json({ ok: false, error: { message: `Scene code ${clash.scene_code} already names another sequence in Review Room` } }, { status: 400 });
+		const renamed = input.plan.sections.find(section => { const scene = project.review_room?.scenes?.[plannedGroupId(section.id)]; return scene && section.scene_code !== scene.code; });
+		if (renamed) return json({ ok: false, error: { message: `${renamed.title} already has the Review Room scene code ${project.review_room!.scenes![plannedGroupId(renamed.id)].code}; codes never change` } }, { status: 400 });
 	} else if (!project.production.story_plan) return json({ ok: false, error: { message: 'Save a shot plan first' } }, { status: 400 });
 	let production = input.action === 'save' ? { ...project.production, story_plan: reconcileMomentEdits(project.production.story_plan, input.plan) } : project.production;
 	if (input.action === 'moments') {
@@ -88,7 +94,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			const resolved = await resolveProjectModel(project);
 			if (!resolved.ok) return json({ ok: false, error: { message: resolved.message } }, { status: 503 });
 			try {
-				const schema = z.object({ shots: z.array(planShotSchema.omit({ id: true })).min(1).max(12) });
+				const schema = z.object({ shots: z.array(planShotSchema.omit({ id: true, card_id: true })).min(1).max(12) });
 				const result = await generateStructured(createOpenAICompatibleClient(resolved.connection), {
 					system: `You are a trailer editor breaking one owner-approved dramatic moment into shots. Follow the supplied Bible; never invent new canon, identities, powers, reveals or dialogue. Preserve its misdirection. This is a shot specification, not a final generation prompt. Use exact declared character names and locations; never generic substitutes. Do not generate media. The Ghost skill guides physical, readable coverage:\n${await readAgentSkill('ghost')}`,
 					prompt: `Return JSON only {shots:[{title,beat,duration_s}]}. Durations must sum to ${moment.duration_s} seconds. Give concrete shots, dramatic intent and any specified internal narration, and room for longer source performances. Source Bible:\n${plan.source?.text ?? '(none)'}\nTrailer direction:\n${project.production.premise}\nApproved moment:\n${JSON.stringify(moment)}\nExisting named references:\n${JSON.stringify(plan.source?.references ?? [])}`,

@@ -35,6 +35,23 @@ test('only approved moments append shots; repeats preserve existing boards, medi
 	expect(appendPlannedShots({...again,story_plan:reconciled},'2026-11-15')).toEqual({...again,story_plan:reconciled});
 });
 
+test('a planned shot linked to an existing board shot adds no card or group; the rest still append', () => {
+	const production = productionStateSchema.parse({
+		groups: [{ group_id: 'seq-08', name: 'TR110 08 · Red', created_at: '2026-11-21T00:00:00Z' }],
+		cards: [{ card_id: 'rush', group_id: 'seq-08', order: 0, title: 'TR110-08-02 · Restraint slips', beat: 'Kai takes the Rush.', purpose: 'x', duration_ms: 6000, image_prompt: 'x', video_prompt: 'x', status: 'draft' }],
+		story_plan: { title: 'Trailer', sections: [{ id: 'act-3', title: 'Act 3', summary: '', scene_code: 'RED', moments: [{ id: 'red', title: 'Red and the watcher', beat: 'Kai takes the Rush.', duration_s: 12, approved: true,
+			shots: [{ id: 'take-rush', title: 'The Rush', beat: 'He drinks.', duration_s: 6, card_id: 'rush' }, { id: 'watcher', title: 'The watcher', beat: 'Someone films.', duration_s: 6 }] }] }] }
+	});
+	const next = appendPlannedShots(production, '2026-11-22T00:00:00Z');
+	expect(next.cards.map(card => card.card_id)).toEqual(['rush', 'plan-shot-watcher']);
+	expect(next.groups?.map(group => group.group_id)).toEqual(['seq-08', 'plan-section-act-3']);
+	const covered = structuredClone(production);
+	covered.story_plan!.sections[0].moments[0].shots[1].card_id = 'rush';
+	expect(appendPlannedShots(covered, '2026-11-22T00:00:00Z')).toEqual(covered);
+	expect(() => productionStateSchema.parse({ story_plan: { title: 'T', sections: [{ id: 'a', title: 'A', summary: '', scene_code: 'RED', moments: [] }, { id: 'b', title: 'B', summary: '', scene_code: 'RED', moments: [] }] } })).toThrow('scene code');
+	expect(() => productionStateSchema.parse({ story_plan: { title: 'T', sections: [{ id: 'a', title: 'A', summary: '', scene_code: 'red', moments: [] }] } })).toThrow('three capital letters');
+});
+
 test('Joey workflows require reviewed facts and the correct predecessor without old sheet QC', () => {
 	const state = emptyState();
 	state.workflow = {builder:'castkit-v1',stage:'sheet',approved_source_url:null,confirmed:false};
