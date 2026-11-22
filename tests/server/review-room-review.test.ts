@@ -68,6 +68,18 @@ test('pull updates already-known versions and restores exclusions without import
 	expect(result.project.production.assets).toHaveLength(2);
 });
 
+test('pull skips a version Review Room is still processing and keeps the cursor for the next pull', async () => {
+	const deps = await setup();
+	let media = 0;
+	deps.client.changes = async () => ({ cursor: '50', assets: [{ assetId: 'remote-shot', folderId: 'shot-folder', assetCode: 'BLR_TR100_SHT_0010', title: 'Shot', currentVersionId: 'v1', misfiled: false, copiedFromAssetId: null, updatedAt: 50 }], versions: [{ versionId: 'v3', assetId: 'remote-shot', version: 3, isCurrent: false, processingState: 'processing', mimeType: 'video/mp4', createdAt: 50 }], removedAssets: [] });
+	deps.client.versionMedia = async () => { media++; throw new Error('Version not ready: processing is processing'); };
+	const result = await pullTakes({ ...deps, series: { read: async () => null }, projectRoot: '/unused' } as unknown as PushDeps, deps.project.project_id);
+	if (!result.ok) throw new Error(result.message);
+	expect(result.added).toBe(0);
+	expect(media).toBe(0);
+	expect(result.project.review_room?.cursor).toBeUndefined();
+});
+
 test('client uses the review API contract and fresh action keys when excluding, restoring and excluding again', async () => {
 	const calls: Array<{ url: string; body: unknown; key: string | null }> = [];
 	const client = createReviewRoomClient({ baseUrl: 'https://review.test', apiKey: 'test', fetch: (async (url, init) => {

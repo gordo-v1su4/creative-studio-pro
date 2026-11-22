@@ -113,7 +113,7 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 	}));
 	const misfiled = feed.assets.filter((asset) => asset.misfiled && asset.folderId && sceneByFolder.has(asset.folderId)).map((asset) => ({ scene: sceneByFolder.get(asset.folderId!)!.title, title: asset.title }));
 	const known = new Set(project.production.assets.flatMap((asset) => (asset.review_room ? [asset.review_room.version_id] : [])));
-	let added = 0, picked = 0;
+	let added = 0, picked = 0, processing = false;
 	for (const asset of feed.assets) {
 		const code = asset.assetCode ? parseShotCode(asset.assetCode) : null;
 		const trailerShot = project.review_room && Object.entries(project.review_room.shots).find(([, shot]) => shot.code === asset.assetCode);
@@ -123,7 +123,9 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 			: code && code.show === record?.show_code && code.episode === episode && scene
 				? project.production.cards.find((entry) => entry.group_id === scene.group_id && entry.shot_number === code.shot) : undefined;
 		if (!card) continue;
-		for (const version of feed.versions.filter((entry) => entry.assetId === asset.assetId && !known.has(entry.versionId) && entry.processingState !== 'failed').toSorted((a, b) => a.version - b.version)) {
+		// A version still processing has no media yet: skip it and keep the cursor so the next pull takes it.
+		if (feed.versions.some((entry) => entry.assetId === asset.assetId && !known.has(entry.versionId) && entry.processingState !== 'ready' && entry.processingState !== 'failed')) processing = true;
+		for (const version of feed.versions.filter((entry) => entry.assetId === asset.assetId && !known.has(entry.versionId) && entry.processingState === 'ready').toSorted((a, b) => a.version - b.version)) {
 			const media = await deps.client.versionMedia(version.versionId);
 			const ext = (version.mimeType.split('/')[1] ?? 'bin').replace('jpeg', 'jpg').replace('quicktime', 'mov');
 			const name = `${asset.assetCode}_v${String(version.version).padStart(3, '0')}.${ext}`;
@@ -163,7 +165,8 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 			if (set.ok) { project = set.data as Project; picked += 1; }
 		}
 	}
-	if (project.review_room) project = await deps.store.updateProject(projectId, project.version, (current) => ({ ...current, review_room: { ...current.review_room!, cursor: feed.cursor } }));
+	if (processing) { /* keep the stored cursor */ }
+	else if (project.review_room) project = await deps.store.updateProject(projectId, project.version, (current) => ({ ...current, review_room: { ...current.review_room!, cursor: feed.cursor } }));
 	else if (record?.review_room) await deps.series.write({ ...record, review_room: { ...record.review_room, cursor: feed.cursor } });
 	return { ok: true, project, added, picked, misfiled };
 }
