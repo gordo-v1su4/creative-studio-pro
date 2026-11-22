@@ -39,7 +39,7 @@ test('a planned shot linked to an existing board shot adds no card or group; the
 	const production = productionStateSchema.parse({
 		groups: [{ group_id: 'seq-08', name: 'TR110 08 · Red', created_at: '2026-11-21T00:00:00Z' }],
 		cards: [{ card_id: 'rush', group_id: 'seq-08', order: 0, title: 'TR110-08-02 · Restraint slips', beat: 'Kai takes the Rush.', purpose: 'x', duration_ms: 6000, image_prompt: 'x', video_prompt: 'x', status: 'draft' }],
-		story_plan: { title: 'Trailer', sections: [{ id: 'act-3', title: 'Act 3', summary: '', scene_code: 'RED', moments: [{ id: 'red', title: 'Red and the watcher', beat: 'Kai takes the Rush.', duration_s: 12, approved: true,
+		story_plan: { title: 'Trailer', sections: [{ id: 'act-3', title: 'Act 3', summary: '', moments: [{ id: 'red', title: 'Red and the watcher', beat: 'Kai takes the Rush.', duration_s: 12, approved: true,
 			shots: [{ id: 'take-rush', title: 'The Rush', beat: 'He drinks.', duration_s: 6, card_id: 'rush' }, { id: 'watcher', title: 'The watcher', beat: 'Someone films.', duration_s: 6 }] }] }] }
 	});
 	const next = appendPlannedShots(production, '2026-11-22T00:00:00Z');
@@ -48,8 +48,26 @@ test('a planned shot linked to an existing board shot adds no card or group; the
 	const covered = structuredClone(production);
 	covered.story_plan!.sections[0].moments[0].shots[1].card_id = 'rush';
 	expect(appendPlannedShots(covered, '2026-11-22T00:00:00Z')).toEqual(covered);
-	expect(() => productionStateSchema.parse({ story_plan: { title: 'T', sections: [{ id: 'a', title: 'A', summary: '', scene_code: 'RED', moments: [] }, { id: 'b', title: 'B', summary: '', scene_code: 'RED', moments: [] }] } })).toThrow('scene code');
-	expect(() => productionStateSchema.parse({ story_plan: { title: 'T', sections: [{ id: 'a', title: 'A', summary: '', scene_code: 'red', moments: [] }] } })).toThrow('three capital letters');
+});
+
+test('story beats land in their scene: an existing board group or a new scene group; the schema guards codes and links', () => {
+	const production = productionStateSchema.parse({
+		groups: [{ group_id: 'seq-08', name: 'TR110 08 · Red', created_at: '2026-11-21T00:00:00Z' }],
+		story_plan: { title: 'TR110', sections: [{ id: 'act-3', title: 'Act 3', summary: '',
+			scenes: [{ id: 'pck', title: 'Red and the pickup deadline', group_id: 'seq-08' }, { id: 'drk', title: 'The darkness takes Mara', scene_code: 'DRK' }],
+			moments: [
+				{ id: 'red', title: 'Red and the watcher', beat: 'x', duration_s: 6, approved: true, scene_id: 'pck', shots: [{ id: 'watcher', title: 'The watcher', beat: 'x', duration_s: 6 }] },
+				{ id: 'dark', title: 'The darkness takes Mara', beat: 'x', duration_s: 4, approved: true, scene_id: 'drk', shots: [{ id: 'pull', title: 'Pulled into the building', beat: 'x', duration_s: 4 }] }
+			] }] }
+	});
+	const next = appendPlannedShots(production, '2026-11-22T00:00:00Z');
+	expect(next.cards.map(card => [card.card_id, card.group_id])).toEqual([['plan-shot-watcher', 'seq-08'], ['plan-shot-pull', 'plan-scene-drk']]);
+	expect(next.groups?.map(group => group.name)).toEqual(['TR110 08 · Red', 'TR110 · The darkness takes Mara']);
+	const section = (extra: object) => ({ story_plan: { title: 'T', sections: [{ id: 'a', title: 'A', summary: '', moments: [], ...extra }] } });
+	expect(() => productionStateSchema.parse(section({ scenes: [{ id: 's1', title: 'One', scene_code: 'RED' }, { id: 's2', title: 'Two', scene_code: 'RED' }] }))).toThrow('scene code');
+	expect(() => productionStateSchema.parse(section({ scenes: [{ id: 's1', title: 'One', scene_code: 'red' }] }))).toThrow('three capital letters');
+	expect(() => productionStateSchema.parse(section({ scenes: [{ id: 's1', title: 'One', group_id: 'g' }, { id: 's2', title: 'Two', group_id: 'g' }] }))).toThrow('share one board group');
+	expect(() => productionStateSchema.parse(section({ moments: [{ id: 'm', title: 'Lost', beat: 'x', duration_s: 1, scene_id: 'nowhere' }] }))).toThrow('outside');
 });
 
 test('Joey workflows require reviewed facts and the correct predecessor without old sheet QC', () => {

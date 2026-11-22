@@ -1,19 +1,19 @@
 import type { Project } from '$lib/domain/schemas';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
-import { appendPlannedShots, plannedGroupId } from '$lib/domain/story-plan';
+import { appendPlannedShots, sceneGroupId } from '$lib/domain/story-plan';
 import { connectTrailer } from './review-room-trailer';
 import type { ReviewRoomClient } from './review-room';
 
 /**
- * The Review Room scenes after Add to Board: every scene the trailer already has, plus each story section with a
- * scene code whose board group exists now. Undefined when no section asks for one (the connection keeps what it has).
+ * The Review Room scenes after Add to Board: every scene the trailer already has, plus each story-plan scene with a
+ * scene code whose board group exists now. Undefined when no scene asks for one (the connection keeps what it has).
  */
 export function plannedScenes(project: Project, production: Project['production']): Array<{ group_id: string; code: string }> | undefined {
 	const known = Object.entries(project.review_room?.scenes ?? {}).map(([group_id, scene]) => ({ group_id, code: scene.code }));
-	const asked = (production.story_plan?.sections ?? []).flatMap((section) => {
-		const group_id = plannedGroupId(section.id);
-		return section.scene_code && production.groups?.some((group) => group.group_id === group_id) && !known.some((scene) => scene.group_id === group_id)
-			? [{ group_id, code: section.scene_code }] : [];
+	const asked = (production.story_plan?.sections ?? []).flatMap((section) => section.scenes).flatMap((scene) => {
+		const group_id = sceneGroupId(scene);
+		return scene.scene_code && production.groups?.some((group) => group.group_id === group_id) && !known.some((entry) => entry.group_id === group_id)
+			? [{ group_id, code: scene.scene_code }] : [];
 	});
 	return asked.length ? [...known, ...asked] : undefined;
 }

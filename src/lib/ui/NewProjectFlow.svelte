@@ -29,7 +29,7 @@
 	<p>Your source story can describe a whole show. This project is the trailer, episode or film you want to make from it.</p>
 	<div class="paths" role="group" aria-label="Starting point">
 		<button type="button" class:chosen={path === 'need_idea'} aria-pressed={path === 'need_idea'} onclick={() => path = 'need_idea'}><b>I need an idea</b><span>Explore concepts and pitches.</span></button>
-		<button type="button" class:chosen={path === 'have_idea'} aria-pressed={path === 'have_idea'} onclick={() => path = 'have_idea'}><b>I have an idea</b><span>Develop the idea into moments.</span></button>
+		<button type="button" class:chosen={path === 'have_idea'} aria-pressed={path === 'have_idea'} onclick={() => path = 'have_idea'}><b>I have an idea</b><span>Develop the idea into story beats.</span></button>
 		<button type="button" class:chosen={path === 'have_story'} aria-pressed={path === 'have_story'} onclick={() => path = 'have_story'}><b>I already have a story</b><span>Import the Bible and plan this production.</span></button>
 	</div>
 	<form onsubmit={(event) => { event.preventDefault(); void create(); }}>
@@ -42,7 +42,7 @@
 		{#if path !== 'need_idea' && !seriesId && !root.trim()}<label>{path === 'have_story' ? 'Or paste your existing story / Bible' : 'Your starting idea'}<textarea bind:value={text} rows="6" required maxlength="100000"></textarea></label>{/if}
 		{#if path !== 'need_idea'}<label>Existing reference images to offer in Prep (optional)<select bind:value={sourceId}><option value="">Start a new reference collection</option>{#each projects as project (project.project_id)}<option value={project.project_id}>{project.title}</option>{/each}</select></label>{/if}
 		{#if error}<p role="alert" class="error">{error}</p>{/if}
-		<footer><span>Bible → moments → approved moments → shots → Prep and Board</span><button type="submit" class="primary" disabled={busy || !title.trim()}>{busy ? 'Importing and creating…' : path === 'need_idea' ? 'Start exploring' : 'Create project and review moments'}</button></footer>
+		<footer><span>Bible → acts → scenes → story beats → shots → Prep and Board</span><button type="submit" class="primary" disabled={busy || !title.trim()}>{busy ? 'Importing and creating…' : path === 'need_idea' ? 'Start exploring' : 'Create project and review story beats'}</button></footer>
 	</form>
 </dialog>
 </div>

@@ -33,7 +33,7 @@ test('adding approved shots also persists TR105 folders; a repeat creates neithe
 	expect(again.data.production.cards).toEqual(saved.data.production.cards);
 	expect(folders).toHaveLength(2);
 });
-test('an act with a scene code becomes a Review Room scene folder beside the existing scenes; codes already given never change', async () => {
+test('a coded scene becomes a Review Room scene folder beside the existing scenes; a scene mapped onto an existing group keeps its code', async () => {
 	const { store, gateway, project } = await setup();
 	const folders = [
 		{ id: 'trailer', title: 'TR110 — Teaser Trailer', parentFolderId: null as string | null, ownedByCaller: true },
@@ -47,8 +47,12 @@ test('an act with a scene code becomes a Review Room scene folder beside the exi
 			groups: [{ group_id: 'seq-08', name: 'TR110 08 · Red', created_at: '2026-11-21T00:00:00Z' }],
 			cards: [{ card_id: 'rush', group_id: 'seq-08', order: 0, title: 'TR110-08-02 · Restraint slips', beat: 'x', purpose: 'x', duration_ms: 6000, image_prompt: 'x', video_prompt: 'x', status: 'draft' }],
 			story_plan: { title: 'TR110', sections: [
-				{ id: 'act-3', title: 'Act 3 · What the Camera Saw', summary: '', scene_code: 'WCS', moments: [{ id: 'red', title: 'Red and the watcher', beat: 'x', duration_s: 12, approved: true, shots: [
-					{ id: 'linked', title: 'The Rush', beat: 'x', duration_s: 6, card_id: 'rush' }, { id: 'watcher', title: 'The watcher', beat: 'x', duration_s: 6 }] }] },
+				{ id: 'act-3', title: 'Act 3 · What the Camera Saw', summary: '',
+					scenes: [{ id: 'pck', title: 'Red and the pickup deadline', group_id: 'seq-08', scene_code: 'PCK' }, { id: 'wcs', title: 'The watcher', scene_code: 'WCS' }],
+					moments: [
+						{ id: 'red', title: 'Red and the watcher', beat: 'x', duration_s: 6, approved: true, scene_id: 'pck', shots: [{ id: 'linked', title: 'The Rush', beat: 'x', duration_s: 6, card_id: 'rush' }] },
+						{ id: 'film', title: 'Someone films', beat: 'x', duration_s: 6, approved: true, scene_id: 'wcs', shots: [{ id: 'watcher', title: 'The watcher', beat: 'x', duration_s: 6 }] }
+					] },
 				{ id: 'act-4', title: 'Act 4', summary: '', moments: [{ id: 'm4', title: 'Later', beat: 'x', duration_s: 4, approved: true, shots: [{ id: 'later', title: 'Later', beat: 'x', duration_s: 4 }] }] }
 			] }
 		})
@@ -56,8 +60,8 @@ test('an act with a scene code becomes a Review Room scene folder beside the exi
 	const saved = await savePlannedBoard(p, gateway, client); if (!saved.ok) throw Error(saved.error.message);
 	const room = saved.data.review_room!;
 	expect(room.scenes?.['seq-08']).toEqual({ code: 'PCK', folder_id: 'pck' });
-	expect(room.scenes?.['plan-section-act-3']?.code).toBe('WCS');
-	expect(created).toEqual(['020 WCS — TR110 · Act 3 · What the Camera Saw']);
+	expect(room.scenes?.['plan-scene-wcs']?.code).toBe('WCS');
+	expect(created).toEqual(['020 WCS — TR110 · The watcher']);
 	expect(room.shots.rush.code).toBe('BLR_TR110_PCK_0020');
 	expect(room.shots['plan-shot-watcher'].code).toBe('BLR_TR110_WCS_0010');
 	expect(room.shots['plan-shot-linked']).toBeUndefined();

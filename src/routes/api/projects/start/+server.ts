@@ -37,7 +37,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			title: input.title,
 			source: { ...(record ? { series_id: record.series_id, url: `https://www.notion.so/${record.story!.page_id}` } : {}), title: record?.story?.title ?? (input.path === 'have_story' ? 'Supplied story' : 'Starting idea'), text, imported_at: new Date().toISOString(), references: record?.references?.items.map(ref => ({ key: ref.page_id, name: ref.name, kind: ref.kind })) ?? [] },
 			...(input.prep_source_project_id ? { prep_source_project_id: input.prep_source_project_id } : {}),
-			sections: ['Act 1 · The promise', 'Act 2 · The complication', 'Act 3 · The unanswered question'].map(title => ({ id: crypto.randomUUID(), title, summary: 'Propose moments from the story Bible. Approve each moment before breaking it into shots.', moments: [] }))
+			sections: ['Act 1 · The promise', 'Act 2 · The complication', 'Act 3 · The unanswered question'].map(title => ({ id: crypto.randomUUID(), title, summary: 'Propose story beats from the story Bible, put each in a scene, and approve each story beat before breaking it into shots.', scenes: [], moments: [] }))
 		};
 		const saved = await getGateway().saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version, production: { ...project.production, title: input.title, premise: record ? 'Develop this deliverable from the linked Notion Bible. The imported text is a read-only source snapshot; Notion remains the story master.' : input.text.slice(0, 8000), story_plan: plan } });
 		if (!saved.ok) return json({ ...saved, project_id: project.project_id }, { status: 400 });

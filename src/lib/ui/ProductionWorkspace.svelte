@@ -254,7 +254,7 @@
 	}
 
 	async function generate() {
-		if (project.production.story_plan) { error = 'Review the proposed moments and draft their shots in the trailer plan above.'; return; }
+		if (project.production.story_plan) { error = 'Review the proposed story beats and draft their shots in the trailer plan above.'; return; }
 		busy = true; error = null;
 		try { const next = await request({ mode: 'generate', expected_version: project.version }); if (next.production.cards.length) tab = 'beats'; }
 		catch (cause) { error = cause instanceof Error ? cause.message : 'Story build failed'; }
