@@ -119,6 +119,18 @@ test('a connected trailer stores exported cuts as versions of BLR_TR110_TRL01 in
 	expect(folders.at(-1)).toMatchObject({ title: '_Deliverables', parentFolderId: 'trailer' });
 	expect(uploads[0]).toMatchObject({ folderId: 'deliv', assetCode: 'BLR_TR110_TRL01' });
 	expect((saved as { review_room: { deliverables_folder_id: string } }).review_room.deliverables_folder_id).toBe('deliv');
+	// V1S-505: the QC report rides along — its verdict as a field, the report under the notes.
+	const metadata: Array<Record<string, unknown>> = [];
+	client.putMetadata = (async (_: string, m: Record<string, unknown>) => { metadata.push(m); }) as never;
+	const qc = { at: '2026-11-22T18:00:00Z', file: 'cut.mp4', status: 'fail' as const, duration_s: 137, checks: [
+		{ id: 'lip_sync' as const, label: 'Lip sync', status: 'fail' as const, summary: '1 entry measured (1 with dialogue); 1 off or unsure', items: [{ status: 'fail' as const, at_s: 45.18, message: '07 Mara: dialogue +100 ms (late, over 40 ms)' }] }
+	] };
+	await pushDeliverable(deps, 'p', { file, name: 'rough-cut-21.mp4', kind: 'TRL', scope: 'episode', cut: 'Rough cut 21', qc });
+	expect(String(metadata[0].notes).split('\n')).toEqual([
+		'Rough cut 21 · Trailer · TR110 · 137.0 s', '',
+		'QC FAIL · lip sync fail', 'FAIL Lip sync: 1 entry measured (1 with dialogue); 1 off or unsure', '✗ 0:45.18 07 Mara: dialogue +100 ms (late, over 40 ms)'
+	]);
+	expect(metadata[0].customFields).toContainEqual({ id: 'qc', label: 'qc', kind: 'text', value: 'QC FAIL · lip sync fail' });
 });
 test('a removed shot keeps its number: a replacement never reuses its code', async () => {
 	const { client, project, input } = sceneSetup();

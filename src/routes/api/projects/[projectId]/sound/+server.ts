@@ -18,6 +18,7 @@ import { generateEffect, proposeEffects, quoteEffect } from '$lib/server/effects
 import { commandStatus } from '$lib/server/http';
 import { buildMix } from '$lib/server/sound';
 import { exportCut } from '$lib/server/export';
+import { qcCut } from '$lib/server/qc-cut';
 
 const AUDIO = /\.(mp3|wav|m4a|aac|flac|ogg|opus|aif|aiff)$/i;
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_COMMAND', message, retryable: status >= 500, source: 'sound' } }, { status });
@@ -29,6 +30,8 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('export'), cut_id: idSchema, version: z.number().int().positive(),
 		// Series episodes (V1S-280): also store the MP4 as a deliverable in Review Room's _Deliverables.
 		deliverable: z.object({ kind: z.enum(['EPC', 'TSR', 'TRL']), index: z.number().int().min(1).max(99).optional(), scope: z.enum(['episode', 'series']) }).optional() }),
+	// The QC report (V1S-505) again: on the export's MP4, or on any rendered cut that is a project file.
+	z.object({ action: z.literal('qc'), cut_id: idSchema, version: z.number().int().positive(), url: z.string().min(1).max(2000).optional(), asr: z.boolean().optional() }),
 	z.object({ action: z.literal('quote_effect'), prompt: z.string().min(3).max(300), duration_s: z.number().min(0.5).max(5) }),
 	z.object({
 		action: z.literal('generate_effect'), cut_id: idSchema, version: z.number().int().positive(), prompt: z.string().min(3).max(300),
@@ -92,12 +95,16 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		if (body.deliverable && push) {
 			// The cut it came from goes into Review Room's fields, so any version traces back to its cut.
 			const cutName = exported.project.production.cuts?.find((c) => c.cut_id === body.cut_id)?.name;
-			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable, ...(cutName ? { cut: `${cutName} v${body.version}` } : {}) });
+			const stored = await pushDeliverable(push, projectId.data, { file: exported.mp4, name: exported.mp4.split(/[\\/]/).pop()!, ...body.deliverable, qc: exported.qc, ...(cutName ? { cut: `${cutName} v${body.version}` } : {}) });
 			deliverable = stored.ok ? { code: stored.code, version: stored.version } : { error: stored.message };
 		}
 		// Storing a trailer's first deliverable saves its folder id, so hand back the project as it is now.
 		const project = deliverable ? (await getProjectStore().readProject(projectId.data)) ?? exported.project : exported.project;
-		return json({ ok: true, data: project, folder: exported.folder, deliverable });
+		return json({ ok: true, data: project, folder: exported.folder, deliverable, qc: exported.qc });
+	}
+	if (body.action === 'qc') {
+		const checked = await qcCut(deps, projectId.data, body.cut_id, body.version, { url: body.url, asr: body.asr });
+		return checked.ok ? json({ ok: true, data: checked.project, qc: checked.report }) : fail(checked.status, checked.message);
 	}
 	if (body.action === 'quote_effect') {
 		const quoted = await quoteEffect(getSfxGenerator(), body);

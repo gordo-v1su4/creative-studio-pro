@@ -3,6 +3,7 @@
 	import { cutLength, cutsOf } from '$lib/domain/cuts';
 	import { draftTakes } from '$lib/domain/export';
 	import Pick from '$lib/ui/controls/Pick.svelte';
+	import QcReport from '$lib/ui/QcReport.svelte';
 
 	/**
 	 * Export (V1S-130): a locked, mixed cut version renders to an MP4 and a
@@ -38,7 +39,7 @@
 			if (!result.ok) throw new Error(result.error.message);
 			onUpdated(result.data);
 			const d = result.deliverable;
-			stored = d ? ('code' in d ? `Stored in Review Room as ${d.code}_v${String(d.version).padStart(3, '0')}`: `Not stored in Review Room: ${d.error}`) : null;
+			stored = d ? ('code' in d ? `Stored in Review Room as ${d.code}_v${String(d.version).padStart(3, '0')}, with its QC report in the notes`: `Not stored in Review Room: ${d.error}`) : null;
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Export failed'; }
 		finally { exporting = false; }
 	}
@@ -84,6 +85,9 @@
 				<p class="mt-2 text-[11px] leading-5 text-[#8a969e]">In Resolve: File → Import → Timeline… and pick the .fcpxml in <span class="font-mono text-[#b9cfd2]">{done.folder}</span>; the clips and stems it uses are in the same folder.</p>
 				<ul class="mt-2 grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px]">{#each done.files as file (file.url)}<li><a class="text-[#7de5dc] hover:underline" href={file.url} download>{file.name}</a></li>{/each}</ul>
 			</div>
+		{/if}
+		{#if done || selected.v.sound?.qc}
+			<QcReport {project} cutId={selected.cut.cut_id} version={selected.v.version} report={selected.v.sound?.qc ?? null} exportUrl={done?.mp4 ?? null} {onUpdated} />
 		{/if}
 	{/if}
 </section>

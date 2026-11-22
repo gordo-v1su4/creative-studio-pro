@@ -285,3 +285,7 @@ _Avoid_: Preview, proxy, temp
 **Finalize**:
 Re-rendering a draft at full resolution from the same generation, keeping its motion and timing.
 _Avoid_: Upscale, up-res (those are different processes)
+
+**QC report**:
+The automatic check of a rendered cut, run after every export and on demand on any rendered cut: picture (a contact sheet, one frame per entry plus the first and last second), sound present (gaps and loudness), song sync, lip sync against each take's own sound, and length against the plan, each pass, warn or fail with timecodes. A cut is not done until its QC report passes; the report rides into the deliverable's notes in Review Room.
+_Avoid_: Review (that is a person's decision), audit, lint

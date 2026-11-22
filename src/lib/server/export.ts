@@ -3,7 +3,10 @@ import { join } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
-import { bakePlan, buildFcpxml, draftTakes, mp4Plan } from '$lib/domain/export';
+import { EXPORT_FPS, bakePlan, buildFcpxml, draftTakes, mp4Plan } from '$lib/domain/export';
+import type { QcReport } from '$lib/domain/qc';
+import { runQc } from './qc';
+import { qcEntries } from './qc-cut';
 import { mixPlan, type Layer } from '$lib/domain/sound';
 import { safeFileName } from '$lib/domain/media';
 import { prepareMix, runFfmpeg } from '$lib/server/sound';
@@ -18,12 +21,13 @@ const failure = (status: number, message: string): Failure => ({ ok: false, stat
  * each entry baked to an intermediate (trim and ramp rendered in), the mix
  * and one stem per layer, the MP4, and the Resolve timeline (.fcpxml) that
  * references them. Notes the export, and any takes still at draft
- * resolution, on the version's sound plan.
+ * resolution, on the version's sound plan, with the QC report of the MP4
+ * (V1S-505) and its contact sheet beside it.
  */
 export async function exportCut(
 	deps: { gateway: ProjectCommandGateway; store: ProjectStore; projectRoot: string },
 	projectId: string, cutId: string, version: number
-): Promise<{ ok: true; project: Project; folder: string; mp4: string } | Failure> {
+): Promise<{ ok: true; project: Project; folder: string; mp4: string; qc: QcReport } | Failure> {
 	const prepared = await prepareMix(deps, projectId, cutId, version);
 	if (!prepared.ok) return prepared;
 	const { project, cut, locked, plan, files, prefix, local, mix } = prepared;
@@ -71,14 +75,22 @@ export async function exportCut(
 		const fcpxml = `${slug}.fcpxml`;
 		await writeFile(join(folder, fcpxml), buildFcpxml({ title: `${cut.name} v${version}`, clips, audio }), 'utf8');
 
+		// The QC report (V1S-505): picture, sound, song sync, lip sync and length of the MP4, beside it.
+		const { entries: qcRows, planned_s } = qcEntries(project, locked, local);
+		const musicFile = cut.music && !plan.layers.music.mute ? local(cut.music.url) : null;
+		const qc = await runQc({
+			file: join(folder, mp4), label: url(mp4), outDir: folder, sheetUrl: url('qc-sheet.jpg'), fps: EXPORT_FPS, entries: qcRows, planned_s,
+			crossfade_s: plan.crossfade_s, take_muted: plan.layers.take.mute, music: musicFile ? { file: musicFile, sections: cut.music!.sections } : null
+		});
+
 		const drafts = draftTakes(locked.entries.map((entry, i) => ({ title: titles[i], take: project.production.assets.find((asset) => asset.asset_id === entry.asset_id) })));
-		const listed = [...clips.map((c) => ({ name: c.file.split(/[\\/]/).pop()! })), ...audio.map((a) => ({ name: a.file.split(/[\\/]/).pop()! }))];
+		const listed = [...clips.map((c) => ({ name: c.file.split(/[\\/]/).pop()! })), ...audio.map((a) => ({ name: a.file.split(/[\\/]/).pop()! })), ...(qc.sheet ? [{ name: 'qc-sheet.jpg' }] : []), { name: 'qc.json' }];
 		const saved = await deps.gateway.setSoundPlan({
 			command: 'set_sound_plan', project_id: projectId, expected_version: project.version, cut_id: cutId, version,
-			plan: { ...plan, export: { built_at: new Date().toISOString(), folder, mp4: url(mp4), fcpxml: url(fcpxml), files: listed.map((f) => ({ name: f.name, url: url(f.name) })), drafts } }
+			plan: { ...plan, export: { built_at: new Date().toISOString(), folder, mp4: url(mp4), fcpxml: url(fcpxml), files: listed.map((f) => ({ name: f.name, url: url(f.name) })), drafts }, qc }
 		});
 		if (!saved.ok) return failure(409, saved.error.message);
-		return { ok: true, project: saved.data, folder, mp4: join(folder, mp4) };
+		return { ok: true, project: saved.data, folder, mp4: join(folder, mp4), qc };
 	} catch (cause) {
 		return failure(500, `The export render failed: ${cause instanceof Error ? cause.message : 'ffmpeg error'}`);
 	}

@@ -7,6 +7,7 @@ import { connectTrailer } from '$lib/server/review-room-trailer';
 import { join, resolve, sep } from 'node:path';
 import { pullTakes, pushDeliverable, pushTake } from '$lib/server/review-room-takes';
 import { reviewTake } from '$lib/server/review-room-review';
+import { qcCut } from '$lib/server/qc-cut';
 
 const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('review'), take_id: idSchema, expected_version: z.number().int(), status: z.enum(['awaiting_review', 'in_progress', 'needs_changes', 'approved']).optional(), excluded: z.boolean().optional() }),
@@ -17,7 +18,9 @@ const bodySchema = z.discriminatedUnion('action', [
 	// Store one series take in Review Room (V1S-276): the shot's next version, current when it is the pick.
 	z.object({ action: z.literal('push'), take_id: idSchema }),
 	// Store a finished cut that is already a video in the project (a render made outside Export) as a deliverable.
-	z.object({ action: z.literal('push_deliverable'), take_id: idSchema, kind: z.enum(['EPC', 'TSR', 'TRL']).default('TRL'), index: z.number().int().min(1).max(99).optional(), cut: z.string().trim().min(1).max(120).optional() }),
+	z.object({ action: z.literal('push_deliverable'), take_id: idSchema, kind: z.enum(['EPC', 'TSR', 'TRL']).default('TRL'), index: z.number().int().min(1).max(99).optional(), cut: z.string().trim().min(1).max(120).optional(),
+		// The locked cut version it renders: the QC report (V1S-505) runs on the video first and goes into the deliverable's notes.
+		qc_cut: z.object({ cut_id: idSchema, version: z.number().int().positive() }).optional() }),
 	// Store every take of this episode that isn't in Review Room yet.
 	z.object({ action: z.literal('push_all') }),
 	// Pull takes added in Review Room, follow its current version as the pick, report misfiled drops.
@@ -55,7 +58,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return pulled.ok ? json({ ok: true, data: pulled.project, added: pulled.added, picked: pulled.picked, misfiled: pulled.misfiled }) : fail(pulled.status, pulled.message);
 	}
 	if (body.data.action === 'push_deliverable') {
-		const { take_id, kind, index, cut } = body.data;
+		const { take_id, kind, index, cut, qc_cut } = body.data;
 		const project = await deps.store.readProject(projectId.data);
 		const take = project?.production.assets.find((asset) => asset.asset_id === take_id);
 		if (!project || !take || take.kind !== 'video') return fail(404, 'Video not found in this project');
@@ -65,8 +68,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!file.startsWith(files + sep)) return fail(400, 'The video is not stored in the project folder');
 		// "TR110 Rough cut 18 (2-17) exact mix.mp4" → "Rough cut 18" when no cut name is given.
 		const cutName = cut ?? (take.name.replace(/\.[^.]+$/, '').replace(/^TR\d{3}\s+/, '').replace(/\s*\(.*$/, '') || undefined);
-		const stored = await pushDeliverable(deps, projectId.data, { file, name: take.name, kind, index, scope: 'episode', cut: cutName });
-		return stored.ok ? json({ ok: true, code: stored.code, version: stored.version }) : fail(stored.status, stored.message);
+		const checked = qc_cut ? await qcCut(deps, projectId.data, qc_cut.cut_id, qc_cut.version, { url: take.url }) : null;
+		if (checked && !checked.ok) return fail(checked.status, checked.message);
+		const stored = await pushDeliverable(deps, projectId.data, { file, name: take.name, kind, index, scope: 'episode', cut: cutName, qc: checked?.report });
+		return stored.ok ? json({ ok: true, code: stored.code, version: stored.version, ...(checked ? { qc: checked.report } : {}) }) : fail(stored.status, stored.message);
 	}
 	if (body.data.action === 'push') {
 		const pushed = await pushTake(deps, projectId.data, body.data.take_id);

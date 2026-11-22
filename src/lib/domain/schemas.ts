@@ -381,6 +381,23 @@ export const placedEffectSchema = z.object({
 });
 export type PlacedEffect = z.infer<typeof placedEffectSchema>;
 
+const qcStatusSchema = z.enum(['pass', 'warn', 'fail']);
+/** QC report (V1S-505, CONTEXT.md): five checks of a rendered cut, each pass / warn / fail with timecodes. */
+export const qcReportSchema = z.object({
+	at: rfc3339Schema,
+	file: z.string().max(2000),
+	status: qcStatusSchema,
+	duration_s: z.number().nonnegative(),
+	sheet: z.string().max(2000).optional(),
+	checks: z.array(z.object({
+		id: z.enum(['picture', 'sound', 'song', 'lip_sync', 'length']),
+		label: z.string().max(60),
+		status: qcStatusSchema,
+		summary: z.string().max(400),
+		items: z.array(z.object({ status: qcStatusSchema, at_s: z.number().nonnegative().optional(), message: z.string().max(400) })).max(400)
+	})).max(10)
+});
+
 /** The sound for one locked picture version: four layers, placed effects, and the auto-mix settings. */
 export const soundPlanSchema = z.object({
 	layers: z.object({ take: layerSettingsSchema, ambience: layerSettingsSchema, music: layerSettingsSchema, effects: layerSettingsSchema }),
@@ -403,7 +420,9 @@ export const soundPlanSchema = z.object({
 		fcpxml: z.string().max(2000),
 		files: z.array(z.object({ name: z.string().max(300), url: z.string().max(2000) })).max(400),
 		drafts: z.array(z.object({ title: z.string().max(300), name: z.string().max(300), why: z.string().max(300) })).max(400)
-	}).optional()
+	}).optional(),
+	/** The last QC report (V1S-505) of this version's render: run after every export, or on demand on any rendered cut. */
+	qc: qcReportSchema.optional()
 });
 export type SoundPlan = z.infer<typeof soundPlanSchema>;
 
