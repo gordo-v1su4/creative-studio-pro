@@ -112,7 +112,8 @@ export class ProjectStore {
 					stage_id: project.stage.id,
 					stage_state: project.stage.state,
 					updated_at: project.updated_at,
-					version: project.version
+					version: project.version,
+					archived_at: project.archived_at ?? null
 				});
 			}
 		}
@@ -135,6 +136,7 @@ export class ProjectStore {
 			created_at: now,
 			updated_at: now,
 			version: 0,
+			archived_at: null,
 			stage: { id: 'S0', state: 'BLOCKED', confidence: null },
 			gate_history: [],
 			interview: { status: 'BLOCKED', rounds: [] },

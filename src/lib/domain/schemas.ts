@@ -613,6 +613,8 @@ export const projectSchema = z.object({
 	updated_at: rfc3339Schema,
 	/** Aggregate version precondition (AD-3). */
 	version: z.number().int().nonnegative(),
+	/** Set when the project is archived: hidden from the project list for everyone, kept whole, and restorable. */
+	archived_at: rfc3339Schema.nullable().default(null),
 	stage: stageSchema,
 	/** Gate audit trail (FR-003): default [] keeps pre-existing v1 records valid. */
 	gate_history: z.array(gateHistoryEntrySchema).default([]),
@@ -684,7 +686,8 @@ export const projectSummarySchema = z.object({
 	stage_id: z.string(),
 	stage_state: stageStateSchema,
 	updated_at: rfc3339Schema,
-	version: z.number().int().nonnegative()
+	version: z.number().int().nonnegative(),
+	archived_at: rfc3339Schema.nullable().default(null)
 });
 
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;

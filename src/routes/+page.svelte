@@ -928,7 +928,35 @@
 		}
 	}
 
-	const projectOptions = $derived(projects.map((project) => ({ value: project.project_id, label: project.title, hint: new Date(project.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })));
+	/** Archived projects stay out of the picker unless "Show archived" is on (V1S-496); the open one always shows. */
+	let showArchived = $state(false);
+	const SHOW_ARCHIVED = '__show_archived__';
+	const archivedCount = $derived(projects.filter((project) => project.archived_at).length);
+	const projectOptions = $derived([
+		...projects
+			.filter((project) => !project.archived_at || showArchived || project.project_id === activeProject?.project_id)
+			.map((project) => ({ value: project.project_id, label: project.title, hint: project.archived_at ? 'archived' : new Date(project.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
+		...(archivedCount ? [{ value: SHOW_ARCHIVED, label: showArchived ? 'Hide archived projects' : `Show archived projects (${archivedCount})`, hint: '' }] : [])
+	]);
+	function pickProject(id: string) {
+		if (id === SHOW_ARCHIVED) { showArchived = !showArchived; return; }
+		void switchProject(id);
+	}
+	let archiving = $state(false);
+	async function setArchived(archived: boolean) {
+		if (!activeProject || archiving) return;
+		if (archived && !confirm(`Archive “${activeProject.title}”? It leaves the project list for everyone. Nothing is deleted, and you can unarchive it from “Show archived projects”.`)) return;
+		archiving = true;
+		try {
+			const response = await fetch(`/api/projects/${activeProject.project_id}/archive`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ archived, expected_version: activeProject.version }) });
+			const body = await response.json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Could not change the archive');
+			activeProject = body.data;
+			await loadProjects();
+			notify(archived ? 'Archived. It now shows only under “Show archived projects”.' : 'Unarchived. It is back in the project list.');
+		} catch (e) { notify(e instanceof Error ? e.message : 'Could not change the archive'); }
+		finally { archiving = false; }
+	}
 
 	/** Open another project from the picker, and keep the address (?project=) pointing at it. */
 	async function switchProject(projectId: string) {
@@ -1170,7 +1198,9 @@
 			const asked = params.get('tab') === 'board' ? 'canvas' : params.get('tab');
 			const tab = workspaceTabs.find((item) => item.tab === asked)?.tab;
 			if (tab) openWorkspace(tab);
-			if (projects.length > 0) void openProject(wanted && projects.some((p) => p.project_id === wanted) ? wanted : projects[0].project_id);
+			// A link may open an archived project; the default is the newest one that isn't archived.
+			const newest = projects.find((p) => !p.archived_at) ?? projects[0];
+			if (projects.length > 0) void openProject(wanted && projects.some((p) => p.project_id === wanted) ? wanted : newest.project_id);
 		});
 		return () => {
 			if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
@@ -1197,13 +1227,19 @@
 		{#if projects.length}
 			<!-- Every project, newest first: the way back to any of them (the trailer, an imported episode…). -->
 			<span class="project-pick w-[170px] shrink-0 max-w-[300px] sm:w-auto sm:min-w-0 sm:shrink" title={activeProject?.title}>
-				<Pick label="Open a project" value={activeProject?.project_id} options={projectOptions} wide onchange={(id) => void switchProject(id)} />
+				<Pick label="Open a project" value={activeProject?.project_id} options={projectOptions} wide onchange={pickProject} />
 			</span>
 		{:else}
 			<b class="project-name min-w-0 max-w-[260px] truncate">No project open</b>
 		{/if}
 		{#if activeProject}
 			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
+			{#if activeProject.archived_at}
+				<span class="meta-label shrink-0 text-[#e0b35a]" title="Archived {new Date(activeProject.archived_at).toLocaleDateString()}">archived</span>
+				<button type="button" class="meta-label shrink-0 cursor-pointer border border-border-default px-1.5 py-0.5 text-[#9fd0dc] hover:text-text-primary" disabled={archiving} onclick={() => void setArchived(false)}>unarchive</button>
+			{:else}
+				<button type="button" class="meta-label shrink-0 cursor-pointer px-1 text-text-dim hover:text-text-primary" disabled={archiving} title="Archive this project: it leaves the project list for everyone; nothing is deleted" onclick={() => void setArchived(true)}>archive</button>
+			{/if}
 		{/if}
 		<nav class="ml-2 flex shrink-0 items-center gap-0.5 lg:min-w-0 lg:shrink lg:overflow-x-auto" aria-label="Project">
 			{#each workspaceTabs as item (item.label)}
