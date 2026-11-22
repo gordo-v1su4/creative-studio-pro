@@ -33,6 +33,8 @@
 	let paletteActions = $derived([...ui.pageActions, ...globalActions]);
 	/** The public watch pages: read-only, no studio navigation, no Agent. */
 	const watching = $derived(page.url.pathname === '/watch' || page.url.pathname.startsWith('/watch/'));
+	/** A copy running on this machine (ADR 0007): it never holds real projects. */
+	const localCopy = $derived(['localhost', '127.0.0.1', '[::1]'].includes(page.url.hostname) || page.url.hostname.endsWith('.localhost'));
 
 	function onGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -68,6 +70,12 @@
 	</div>
 {:else}
 <div class="flex h-screen flex-col bg-surface-base text-text-primary">
+	{#if localCopy}
+		<!-- ADR 0007: Hosted Studio is the only home of real projects; a local copy is for testing code. -->
+		<p class="shrink-0 border-b border-[#2c4a5a] bg-[#0f2530] px-4 py-1 text-center text-[11px] text-[#9fd0dc]" role="note">
+			Local test copy · your projects live on <a class="underline decoration-dotted hover:text-[#c9eef5]" href="https://studio.v1su4.com">studio.v1su4.com</a> · nothing here syncs there
+		</p>
+	{/if}
 	<!-- The project screen carries its own single navigation bar; other pages share this one. -->
 	{#if page.url.pathname !== '/'}
 		<header class="flex h-12 shrink-0 items-center border-b border-border-default bg-surface-base px-4 max-sm:px-3">

@@ -1,0 +1,5 @@
+# Hosted Studio is the only home of real projects; a local copy never syncs
+
+Real projects live in one place: Hosted Studio (studio.v1su4.com, the App VM's project store). A copy of the app running on a desktop or laptop is for testing code on throwaway projects; it shows a "Local test copy" banner, and no project data moves between it and Hosted Studio in either direction. We chose this over two-way sync because each project is an append-only history, and two copies edited separately cannot be merged without one losing work: TR105 had already split (local v64, hosted v161) and TR110 existed only on hosted, so each menu was missing something and the operator could not tell where his work was. A one-way, read-only pull from hosted for testing stays possible later; it was not needed.
+
+**Consequences**: every real edit, import and cut push goes to Hosted Studio; scripts that move project data target the hosted origin; git and deploys carry code, never project data; projects found only in a local copy are archived there rather than copied up.

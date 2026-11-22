@@ -11,12 +11,12 @@ The storytelling template a project follows (a TV episode's acts, Save the Cat, 
 _Avoid_: Format, framework, beat sheet
 
 **Section**:
-One named slot of a structure, such as Act 2, Tag, Catalyst or All Is Lost; it holds story beats but is not one.
+One named slot of a structure, such as Act 2, Tag, Catalyst or All Is Lost; it holds story beats but is not one. In a trailer, a section holds scenes.
 _Avoid_: Beat, act (unless the structure calls it that)
 
 **Story beat**:
-One thing that clearly happens in this story; it sits in one section and plays out over one or more scenes, and a season or film has roughly ten to fifteen.
-_Avoid_: Beat (alone), plot point, moment, musical beat
+One thing that clearly happens in this story. In a season or film it sits in one section and plays out over one or more scenes (roughly ten to fifteen in all); in a trailer it sits inside one scene and is covered by one or more shots.
+_Avoid_: Beat (alone), plot point, moment, story point, musical beat
 
 **Musical beat**:
 One pulse of a song's rhythm, found by beat tracking (Essentia), that cuts can snap to; it has nothing to do with story structure.
@@ -27,7 +27,7 @@ The running time an episode is being made to, set per episode and defaulting to 
 _Avoid_: Runtime, episode length, duration (in prose)
 
 **Scene**:
-A run of shots in one place and time, belonging to one episode; it is titled by name only, and its order and scene code are kept beside the name. In a trailer, a scene is one story chunk (TR110 01 · The sealed drop and the hood) and may cross places; it still gets a scene code and its own Review Room folder (`010 DRP`).
+A run of shots in one place and time, belonging to one episode; it is titled by name only, and its order and scene code are kept beside the name. In a trailer, a scene is one story chunk inside a section (TR110 01 · The sealed drop and the hood), holds story beats and may cross places; naming it with a scene code on the Story tab is what gives it its board group and its own Review Room folder (`010 DRP`).
 _Avoid_: Sequence, group (in prose), P01-style titles
 
 **Action**:
@@ -107,16 +107,24 @@ _Avoid_: Asset, alternate, version
 One generated clip that holds several shots joined by hard cuts (a hyper-cut teaser or moment); it lands on its scene and can be split into separate shots later.
 _Avoid_: Multi-shot clip, cut-up take, sequence
 
+**Stitched take**:
+A new take on a shot, joined from spans of that shot's own takes (the beginning of one, the end of another); it gets the next version number and leaves the takes it came from untouched.
+_Avoid_: Comp, composite, merged take
+
 **Scene split**:
 The division of a montage take at detected shot boundaries. The resulting takes cover the source in order, with every source frame appearing exactly once. Removing frames is a trim.
 
 **Pick**:
-The take currently chosen to represent its shot.
+The take currently chosen to represent its shot; it is the shot's current version in Review Room, and takes still in the running stay beside it until the others are excluded.
 _Avoid_: Selected take, active take
 
 **Spine**:
 The story order of the shots, set by how they are connected on the board.
 _Avoid_: Timeline, master cut, sequence
+
+**Missing shot**:
+A shot on the board with no take yet; wherever it is played or cut it shows as a plain text card with its shot code, order and story beat, for its planned length.
+_Avoid_: Placeholder, gap, empty card
 
 **Benched**:
 A shot that keeps its place on the spine but is skipped wherever the spine is played or assembled.
@@ -192,6 +200,10 @@ _Avoid_: Image-to-video (in prose), I2V
 
 ### Media
 
+**Hosted Studio**:
+The one home of every real project (studio.v1su4.com); a local copy of the app is only for testing code, on throwaway projects, and nothing moves between them.
+_Avoid_: Production (for the place), the server, the live one
+
 **Review Room**:
 The separate app where every take's media is stored and reviewed; this app refers to those files and keeps no copies of its own.
 _Avoid_: RustFS, bucket, media server (in prose)
@@ -205,7 +217,7 @@ A Review Room folder that belongs to a series tree; media can be added inside it
 _Avoid_: Read-only folder, synced folder
 
 **Shot code**:
-A shot's permanent production ID: show code, episode code, scene code, shot number (e.g. `BLR_EP101_PAR_0020`); a take of it adds its version (`_v003`).
+A shot's permanent production ID: show code, episode code, scene code, shot number (e.g. `BLR_EP101_PAR_0020`); a take of it adds its version (`_v003`). A shot gets it when it is added to the board, and keeps it wherever the shot later moves.
 _Avoid_: Shot name, asset code, clip ID
 
 **Show code**:
@@ -215,6 +227,10 @@ _Avoid_: Prefix, project code
 **Episode code**:
 `EP` plus the season and the two-digit episode number, such as `EP101` for season 1, episode 01.
 _Avoid_: EP01 (in codes)
+
+**Trailer code**:
+`TR` plus a number that names one trailer of a show, such as `TR110` or `TR120`; it stands where the episode code would in its shot codes, and the trailer's title carries its length and style.
+_Avoid_: TR60 (length is not the number), trailer version
 
 **Scene code**:
 A three-letter mnemonic for a scene, unique within its episode, such as `PAR` for the parking lot; the scene's story order (`010`, `020`…) travels beside it, never inside it.
@@ -243,6 +259,10 @@ _Avoid_: House style, template (alone), preset
 **Handle**:
 A short `@` name for a reference (such as `@Kai`) that is swapped for the reference's exact name, its image number and its attachment before a prompt is checked or sent.
 _Avoid_: Alias, tag, mention
+
+**Archived**:
+A project or Review Room asset set aside: hidden from everyone's lists but kept whole (files, takes and codes unchanged), and brought back by unarchiving.
+_Avoid_: Deleted, removed, hidden (as the name of the state)
 
 **Deliverable**:
 A finished export (an episode cut, a teaser, a trailer) kept in the `_Deliverables` folder of its episode, or of the series when it spans episodes; it has its own code, such as `BLR_EP101_EPC_v002` or `BLR_S1_TRL01_v003`.
