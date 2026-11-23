@@ -244,7 +244,7 @@ export const MODEL_TEST_SYSTEM = 'You are a model check. Follow every rule exact
 export const MODEL_TEST_PROMPT = `Look at the attached image. Return exactly {"color": "<the single dominant color, one lowercase English word>", "word_count": 3, "echo": "${MODEL_TEST_ECHO}"}. Rules: color is one lowercase word; word_count is the number 3; echo is exactly "${MODEL_TEST_ECHO}"; no other keys.`;
 /** 64x64 solid red PNG. */
 export const MODEL_TEST_IMAGE_PNG_BASE64 =
-	'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAg0lEQVR4nO3RQQkAMAwEwYiIf2UVUxF9DIWFE5DMztn9esMv6AFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWAFNWIH1ii+7qsVA8Q8GuokAAAAASUVORK5CYII=';
+	'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAfUlEQVR4nNXOQQkAMAzAwAzi33FhIvooOQX3hjaJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkziJkzivA1sf0mwB+99LQWUAAAAASUVORK5CYII=';
 
 const RED_WORDS = new Set(['red', 'crimson', 'scarlet']);
 
