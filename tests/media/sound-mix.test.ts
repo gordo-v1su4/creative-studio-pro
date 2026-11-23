@@ -119,3 +119,25 @@ describe.skipIf(!hasFfmpeg)('mix render (ffmpeg smoke test)', () => {
 		for (const length of lengths) expect(length).toBeCloseTo(7.06, 1);
 	}, 120_000);
 });
+
+describe.skipIf(!hasFfmpeg)('music flow render (ffmpeg smoke test)', () => {
+	test('a 6 s song under a 15 s cut: head once, quiet loops, its ending on the last frame, full length', async () => {
+		const { musicFlow } = await import('../../src/lib/domain/sound');
+		const root = await mkdtemp(join(tmpdir(), 'csp-flow-')); roots.push(root);
+		expect(Bun.spawnSync(['ffmpeg', '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=330:d=6', '-ar', '48000', join(root, 'song.wav')]).exitCode).toBe(0);
+		const output = join(root, 'mix.m4a');
+		const pieces = musicFlow({ song_s: 6, cut_s: 15 }).pieces;
+		const { args, report } = mixPlan({
+			length_s: 15, output, auto: { take: 0, ambience: 0, music: 0, effects: 0 }, plan: defaultSoundPlan(), duck: [],
+			entries: [], music: { file: join(root, 'song.wav'), pieces }, ambience: null, effects: []
+		});
+		const done = Bun.spawnSync(['ffmpeg', ...args]);
+		expect(done.stderr.toString()).toBe('');
+		expect(report.join(' ')).toContain('plays from the top once');
+		const probe = Bun.spawnSync(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', output]).stdout.toString();
+		expect(Number(probe)).toBeCloseTo(15, 0);
+		// Never silent in the middle: the loop fills it (volumedetect over 6–12 s).
+		const mid = Bun.spawnSync(['ffmpeg', '-v', 'info', '-ss', '6', '-t', '6', '-i', output, '-af', 'volumedetect', '-f', 'null', '-']).stderr.toString();
+		expect(Number(/mean_volume: (-?[\d.]+)/.exec(mid)![1])).toBeGreaterThan(-40);
+	}, 60_000);
+});

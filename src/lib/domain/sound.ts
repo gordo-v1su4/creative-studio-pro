@@ -104,6 +104,61 @@ export function duckVolumeExpression(regions: Array<[number, number]>, duckDb: n
 	return `if(gt(${inside}\\,0)\\,${dbToGain(duckDb).toFixed(4)}\\,1)`;
 }
 
+/** Overlap at each music join, seconds (a short crossfade, so a loop never clicks). */
+export const MUSIC_JOIN_S = 0.3;
+const MUSIC_END_FADE_S = 2;
+
+/** One placed piece of the song: source seconds [from, to] starting at at_s in the cut. */
+export interface MusicPiece { from: number; to: number; at_s: number; gain_db: number; fade_in: number; fade_out: number }
+
+/** The nearest bar start (every 4th beat) to t, or t itself without beats. */
+function snapToBar(t: number, beats: number[] | undefined): number {
+	const bars = (beats ?? []).filter((_, i) => i % 4 === 0);
+	if (bars.length < 2) return t;
+	return bars.reduce((best, b) => (Math.abs(b - t) < Math.abs(best - t) || (Math.abs(b - t) === Math.abs(best - t) && b > best) ? b : best), bars[0]);
+}
+
+/**
+ * How the song runs under the whole cut (Robert's rule: the song never restarts
+ * from the top, never stops and starts, and shots are never trimmed to fit it).
+ * A song at least as long as the cut plays once and fades out at the end. A
+ * shorter song plays its head once, then repeats its loop bars quietly (bed_db)
+ * for as long as the picture needs, and its own ending lands on the last frame.
+ * The loop is snapped to whole bars when the song has a beat grid; without a
+ * valid chosen loop the middle half of the song loops.
+ */
+export function musicFlow(input: { song_s: number; cut_s: number; beats?: number[]; flow?: { loop_from_s: number; loop_to_s: number; bed_db: number } }): { pieces: MusicPiece[]; loop: [number, number] | null; loops: number } {
+	const { song_s, cut_s } = input;
+	const J = MUSIC_JOIN_S;
+	if (cut_s <= song_s) return { pieces: [{ from: 0, to: cut_s, at_s: 0, gain_db: 0, fade_in: 0, fade_out: Math.min(MUSIC_END_FADE_S, cut_s / 4) }], loop: null, loops: 0 };
+	const chosen = input.flow;
+	const valid = chosen && chosen.loop_from_s > J && chosen.loop_to_s < song_s - J && chosen.loop_to_s - chosen.loop_from_s >= 2;
+	let from = snapToBar(valid ? chosen.loop_from_s : song_s / 4, input.beats);
+	let to = snapToBar(valid ? chosen.loop_to_s : (song_s * 3) / 4, input.beats);
+	if (!(from > J && to < song_s - J && to - from >= 2)) { from = valid ? chosen.loop_from_s : song_s / 4; to = valid ? chosen.loop_to_s : (song_s * 3) / 4; }
+	const bed = chosen?.bed_db ?? -6;
+	const S = to - from;
+	const outroAt = cut_s - (song_s - to);
+	// The head ends at `to`; loops fill [to, outroAt]; each piece overlaps the next by J (half before, half after).
+	const pieces: MusicPiece[] = [{ from: 0, to: to + J / 2, at_s: 0, gain_db: 0, fade_in: 0, fade_out: J }];
+	for (let at = to; at < outroAt - 1e-6; at += S) {
+		const len = Math.min(S, outroAt - at);
+		pieces.push({ from: from - J / 2, to: from + len + J / 2, at_s: at - J / 2, gain_db: bed, fade_in: J, fade_out: J });
+	}
+	pieces.push({ from: to - J / 2, to: song_s, at_s: outroAt - J / 2, gain_db: 0, fade_in: J, fade_out: 0 });
+	const r = (x: number) => Math.round(x * 1000) / 1000;
+	return { pieces: pieces.map((p) => ({ ...p, from: r(p.from), to: r(p.to), at_s: r(p.at_s) })), loop: [r(from), r(to)], loops: pieces.length - 2 };
+}
+
+/** Where in the song the cut is at program time t, through the flow's pieces (the latest piece started by t). */
+export function songTimeAt(pieces: MusicPiece[] | undefined, t: number): number | null {
+	if (!pieces?.length) return t;
+	const piece = pieces.filter((p) => p.at_s <= t + 1e-6).at(-1);
+	if (!piece) return null;
+	const at = piece.from + (t - piece.at_s);
+	return at <= piece.to ? at : null;
+}
+
 export interface MixEntry {
 	/** Local file, or null when the take has no audio. */
 	file: string | null;
@@ -123,7 +178,8 @@ export interface MixEntry {
 export interface MixInput {
 	length_s: number;
 	entries: MixEntry[];
-	music: { file: string } | null;
+	/** The song, and how it is laid under the cut (musicFlow); without pieces it plays once from the cut start. */
+	music: { file: string; pieces?: MusicPiece[] } | null;
 	ambience: { file: string } | null;
 	effects: Array<{ file: string; at_s: number; from_s?: number; gain_db: number }>;
 	/** Auto gains (dB) per layer, added to the plan's own gains. */
@@ -201,7 +257,21 @@ export function mixPlan(input: MixInput): { args: string[]; report: string[] } {
 	// Music, ducked under hits, dialogue and effects.
 	if (input.music && !plan.layers.music.mute) {
 		const k = addInput(input.music.file);
-		filters.push(`[${k}:a]atrim=0:${input.length_s.toFixed(3)},asetpts=PTS-STARTPTS,${fmt},volume=${layerGain('music').toFixed(1)}dB,volume='${duckVolumeExpression(input.duck, plan.duck_db)}':eval=frame[music]`);
+		const pieces = input.music.pieces ?? [];
+		if (pieces.length > 1) {
+			// The song's head once, quiet loop bars, its own ending on the last frame: each piece placed and crossfaded.
+			filters.push(`[${k}:a]${fmt},asplit=${pieces.length}${pieces.map((_, i) => `[ms${i}]`).join('')}`);
+			pieces.forEach((piece, i) => {
+				const len = piece.to - piece.from;
+				const fades = [piece.fade_in > 0 ? `afade=t=in:st=0:d=${piece.fade_in.toFixed(3)}` : '', piece.fade_out > 0 ? `afade=t=out:st=${Math.max(0, len - piece.fade_out).toFixed(3)}:d=${piece.fade_out.toFixed(3)}` : ''].filter(Boolean);
+				filters.push(`[ms${i}]atrim=start=${Math.max(0, piece.from).toFixed(3)}:end=${piece.to.toFixed(3)},asetpts=PTS-STARTPTS,${[...fades, `volume=${piece.gain_db.toFixed(1)}dB`].join(',')},adelay=delays=${Math.max(0, Math.round(piece.at_s * 1000))}:all=1,${pad}[mp${i}]`);
+			});
+			filters.push(`${pieces.map((_, i) => `[mp${i}]`).join('')}amix=inputs=${pieces.length}:normalize=0:duration=longest,atrim=0:${input.length_s.toFixed(3)},volume=${layerGain('music').toFixed(1)}dB,volume='${duckVolumeExpression(input.duck, plan.duck_db)}':eval=frame[music]`);
+			report.push(`The song plays from the top once, its loop bars repeat ${pieces.length - 2}× quietly (${pieces[1].gain_db} dB) and its own ending lands on the last frame.`);
+		} else {
+			const end = pieces[0]?.fade_out ? `,afade=t=out:st=${Math.max(0, input.length_s - pieces[0].fade_out).toFixed(3)}:d=${pieces[0].fade_out.toFixed(3)}` : '';
+			filters.push(`[${k}:a]atrim=0:${input.length_s.toFixed(3)},asetpts=PTS-STARTPTS,${fmt}${end},volume=${layerGain('music').toFixed(1)}dB,volume='${duckVolumeExpression(input.duck, plan.duck_db)}':eval=frame[music]`);
+		}
 		mixLabels.push('[music]');
 		if (input.duck.length) report.push(`Music ducks ${plan.duck_db} dB in ${input.duck.length} place${input.duck.length === 1 ? '' : 's'}.`);
 	}

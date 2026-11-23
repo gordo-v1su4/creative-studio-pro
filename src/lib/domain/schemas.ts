@@ -404,6 +404,12 @@ export const soundPlanSchema = z.object({
 	/** The ambience bed: one file looped under the whole cut. */
 	ambience: z.object({ url: z.string().min(1).max(2000), name: nonBlank(300) }).optional(),
 	effects: z.array(placedEffectSchema).max(500),
+	/**
+	 * How a song shorter than the cut keeps flowing: it plays from the top once, these bars repeat quietly
+	 * (bed_db) for as long as the picture needs, and its own ending lands on the last frame. Shots are never
+	 * trimmed to fit the song. Without it the middle half of the song loops at -6 dB.
+	 */
+	music_flow: z.object({ loop_from_s: z.number().nonnegative(), loop_to_s: z.number().positive(), bed_db: z.number().min(-24).max(0) }).optional(),
 	/** Length of the crossfade at every cut, seconds. */
 	crossfade_s: z.number().min(0).max(1),
 	/** How far music drops under hits, dialogue and effects, dB (negative). */

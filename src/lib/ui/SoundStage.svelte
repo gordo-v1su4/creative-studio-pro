@@ -180,6 +180,16 @@
 						</div>
 					{:else if layer.key === 'music'}
 						<p class="mt-1 text-[11px] {selected.cut.music ? 'text-[#d9c98a]' : 'text-[#5b6b70]'}">{selected.cut.music ? `♪ ${selected.cut.music.name} · ${selected.cut.music.bpm} BPM` : 'No song on this cut: attach one in the cut player.'}</p>
+						{#if selected.cut.music}
+							{@const song = selected.cut.music.duration_s}
+							<div class="mt-1 flex flex-wrap items-center gap-2 text-[11px]" aria-label="Music flow">
+								<span class="text-[#668d98]">Plays from the top once. When the cut runs longer, these bars loop quietly and the song's own ending lands on the last frame. Shots are never trimmed to the song.</span>
+								<label class="field-inline">loop from <input type="number" min="0" max={song} step="0.1" value={plan.music_flow?.loop_from_s ?? +(song / 4).toFixed(1)} onchange={(event) => { plan.music_flow = { loop_from_s: Number(event.currentTarget.value), loop_to_s: plan.music_flow?.loop_to_s ?? +((song * 3) / 4).toFixed(1), bed_db: plan.music_flow?.bed_db ?? -6 }; changed(); }} class="num" />s</label>
+								<label class="field-inline">to <input type="number" min="0" max={song} step="0.1" value={plan.music_flow?.loop_to_s ?? +((song * 3) / 4).toFixed(1)} onchange={(event) => { plan.music_flow = { loop_from_s: plan.music_flow?.loop_from_s ?? +(song / 4).toFixed(1), loop_to_s: Number(event.currentTarget.value), bed_db: plan.music_flow?.bed_db ?? -6 }; changed(); }} class="num" />s</label>
+								<label class="field-inline">loop level <input type="number" min="-24" max="0" step="1" value={plan.music_flow?.bed_db ?? -6} onchange={(event) => { plan.music_flow = { loop_from_s: plan.music_flow?.loop_from_s ?? +(song / 4).toFixed(1), loop_to_s: plan.music_flow?.loop_to_s ?? +((song * 3) / 4).toFixed(1), bed_db: Number(event.currentTarget.value) }; changed(); }} class="num" />dB</label>
+								{#if plan.music_flow}<button type="button" class="ctl" onclick={() => { plan.music_flow = undefined; changed(); }}>default</button>{/if}
+							</div>
+						{/if}
 					{:else if layer.key === 'effects'}
 						<ul class="mt-1 grid gap-1" aria-label="Placed effects">
 							{#each plan.effects as effect, i (effect.effect_id)}

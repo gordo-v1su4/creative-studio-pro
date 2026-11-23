@@ -42,12 +42,12 @@ export async function qcInputFor(
 ): Promise<({ ok: true; project: Project; plan: SoundPlan; files: string; prefix: string; local: (url: string) => string | null; base: Omit<QcInput, 'file' | 'outDir'> }) | Failure> {
 	const prepared = await prepareMix(deps, projectId, cutId, version);
 	if (!prepared.ok) return prepared;
-	const { project, cut, locked, plan, files, prefix, local } = prepared;
+	const { project, cut, locked, plan, files, prefix, local, mix } = prepared;
 	const { entries, planned_s } = qcEntries(project, locked, local);
 	const musicFile = cut.music && !plan.layers.music.mute ? local(cut.music.url) : null;
 	return {
 		ok: true, project, plan, files, prefix, local,
-		base: { fps: EXPORT_FPS, entries, planned_s, crossfade_s: plan.crossfade_s, take_muted: plan.layers.take.mute, music: musicFile ? { file: musicFile, sections: cut.music!.sections } : null }
+		base: { fps: EXPORT_FPS, entries, planned_s, crossfade_s: plan.crossfade_s, take_muted: plan.layers.take.mute, music: musicFile ? { file: musicFile, sections: cut.music!.sections, pieces: mix.music?.pieces } : null }
 	};
 }
 

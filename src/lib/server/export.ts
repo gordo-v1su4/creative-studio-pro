@@ -81,7 +81,7 @@ export async function exportCut(
 		const musicFile = cut.music && !plan.layers.music.mute ? local(cut.music.url) : null;
 		const qc = await runQc({
 			file: join(folder, mp4), label: url(mp4), outDir: folder, sheetUrl: url('qc-sheet.jpg'), fps: EXPORT_FPS, entries: qcRows, planned_s,
-			crossfade_s: plan.crossfade_s, take_muted: plan.layers.take.mute, music: musicFile ? { file: musicFile, sections: cut.music!.sections } : null
+			crossfade_s: plan.crossfade_s, take_muted: plan.layers.take.mute, music: musicFile ? { file: musicFile, sections: cut.music!.sections, pieces: mix.music?.pieces } : null
 		});
 
 		const drafts = draftTakes(locked.entries.map((entry, i) => ({ title: titles[i], take: project.production.assets.find((asset) => asset.asset_id === entry.asset_id) })));

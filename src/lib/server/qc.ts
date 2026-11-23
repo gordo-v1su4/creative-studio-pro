@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { CutMusic } from '$lib/domain/schemas';
+import { songTimeAt, type MusicPiece } from '$lib/domain/sound';
 import {
 	LIP_SYNC_S, SEARCH_S, SILENCE_DB, SILENCE_MIN_S, bestOffset, dialogueMatch, finishReport, lengthCheck, levelDb, loudestWindow, offsetItem,
 	parseLoudness, parseSilences, soundCheck, timecode, worst, type QcCheck, type QcEntry, type QcItem, type QcReport
@@ -23,8 +24,8 @@ export interface QcInput {
 	entries: QcEntry[];
 	/** The planned length (whole export frames); null = unknown. */
 	planned_s: number | null;
-	/** The cut's song, played from the cut's start, when the music layer is on. */
-	music?: { file: string; sections?: CutMusic['sections'] } | null;
+	/** The cut's song when the music layer is on: from the cut's start, or laid out by its flow pieces. */
+	music?: { file: string; sections?: CutMusic['sections']; pieces?: MusicPiece[] } | null;
 	/** Crossfade at every cut (seconds): sync windows stay clear of it. */
 	crossfade_s: number;
 	/** Take sound muted in the mix: lip sync can't be read from the render. */
@@ -105,7 +106,9 @@ async function songCheck(input: QcInput, cut: Float32Array | null): Promise<QcCh
 	const window = 1.5;
 	for (const entry of input.entries) {
 		// The song plays from the cut's start: where the picture starts, the song should be at the plan's time for this entry.
-		const want = entry.planned_at_s;
+		// With a music flow (head, quiet loops, ending), the song moment under this entry comes from its pieces.
+		const want = songTimeAt(input.music.pieces, entry.planned_at_s);
+		if (want === null) continue;
 		const from = Math.max(0, want), to = Math.min(song.length / PCM_RATE, want + window);
 		if (to - from < 0.3) continue;
 		const needle = song.subarray(seconds(from), seconds(to));

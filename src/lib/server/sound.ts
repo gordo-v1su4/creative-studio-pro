@@ -6,7 +6,7 @@ import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
 import { cutsOf } from '$lib/domain/cuts';
 import { EXPORT_FPS, frameGrid } from '$lib/domain/export';
-import { autoGain, defaultSoundPlan, duckRegions, layLevels, mixPlan, rmsDb, type MixEntry, type MixInput } from '$lib/domain/sound';
+import { autoGain, defaultSoundPlan, duckRegions, layLevels, mixPlan, musicFlow, rmsDb, type MixEntry, type MixInput } from '$lib/domain/sound';
 import { PCM_RATE, readPcm } from '$lib/server/audio-envelope';
 import { probeMedia } from '$lib/server/media-probe';
 
@@ -125,7 +125,7 @@ export async function prepareMix(
 
 	const mix: Omit<MixInput, 'output'> = {
 		length_s: length, entries, auto, plan, duck, effects,
-		music: musicPcm && musicFile ? { file: musicFile } : null,
+		music: musicPcm && musicFile ? { file: musicFile, pieces: musicFlow({ song_s: musicPcm.length / PCM_RATE, cut_s: length, beats: cut.music?.beats, flow: plan.music_flow }).pieces } : null,
 		ambience: ambiencePcm && ambienceFile ? { file: ambienceFile } : null
 	};
 	return { ok: true as const, project, cut, locked, plan, files, prefix, local, length, mix, report };
