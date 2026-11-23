@@ -26,7 +26,7 @@
 		{ id: 'nav-library', label: 'go to library', hint: '/library', run: () => void goto('/library') },
 		{ id: 'nav-runs', label: 'go to runs', hint: '/runs', run: () => void goto('/runs') },
 		{ id: 'nav-settings', label: 'go to settings', hint: '/settings', run: () => void goto('/settings') },
-		{ id: 'toggle-chat', label: 'toggle the Agent', hint: '✦ agent', run: () => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; } },
+		{ id: 'toggle-chat', label: 'toggle the Agent', hint: '✦ agent', run: () => { ui.chatOpen = !ui.chatOpen; } },
 		{ id: 'toggle-caps', label: 'open capability drawer', hint: 'status', run: () => (ui.capabilitiesOpen = true) }
 	];
 
@@ -44,7 +44,8 @@
 		}
 		if (e.key === 'Escape' && !ui.paletteOpen) {
 			if (ui.capabilitiesOpen) ui.capabilitiesOpen = false;
-			else if (ui.chatOpen) ui.chatOpen = false;
+			// Escape closes the Agent only when it is the focused dialog; the dock stays put.
+			else if (ui.chatOpen && ui.chatMode === 'focus') ui.chatOpen = false;
 		}
 	}
 </script>
@@ -72,8 +73,8 @@
 <div class="flex h-screen flex-col bg-surface-base text-text-primary">
 	{#if localCopy}
 		<!-- ADR 0007: Hosted Studio is the only home of real projects; a local copy is for testing code. -->
-		<p class="shrink-0 border-b border-[#2c4a5a] bg-[#0f2530] px-4 py-1 text-center text-[11px] text-[#9fd0dc]" role="note">
-			Local test copy · your projects live on <a class="underline decoration-dotted hover:text-[#c9eef5]" href="https://studio.v1su4.com">studio.v1su4.com</a> · nothing here syncs there
+		<p class="cp shrink-0 px-4 py-1 text-center text-ink-3" role="note">
+			Local test copy<span class="max-sm:hidden"> · your projects live on</span> · <a class="text-teal hover:text-teal-ink" href="https://studio.v1su4.com">studio.v1su4.com</a><span class="max-md:hidden"> · nothing here syncs there</span>
 		</p>
 	{/if}
 	<!-- The project screen carries its own single navigation bar; other pages share this one. -->
@@ -111,7 +112,12 @@
 	</div>
 </div>
 
-<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={ui.activeProject} />
+<!-- On the project screen the docked Agent lives inside the shell's work area; everywhere else, and in focus mode, it is mounted here. -->
+{#if !(page.url.pathname === '/' && ui.chatMode === 'dock')}
+	<div class={ui.chatMode === 'dock' ? 'lg:fixed lg:inset-y-12 lg:right-0 lg:z-40 lg:w-[400px]' : 'contents'}>
+		<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={ui.activeProject} />
+	</div>
+{/if}
 <CapabilityDrawer />
 <CommandPalette bind:open={ui.paletteOpen} actions={paletteActions} />
 {/if}

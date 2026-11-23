@@ -39,6 +39,13 @@ Goal: the new frame around the app, with every existing screen still working ins
 
 Done when: every old screen is reachable through the four stages, the top bar fits at 1280px, and nothing overflows at 375px.
 
+Status, 2026-11-23: built and checked in the browser on the local copy at 1440px and 375px.
+
+- Done: tokens and Geist fonts; four stages with their views (`src/lib/domain/stages.ts`); the project menu; panels on a black ground; an outline of groups and shots; the Agent in a dock; the "Next" line (`src/lib/domain/next-line.ts`); tests for all of it.
+- Changed from the plan: the docked Agent no longer starts its interview by itself. Left open beside the work it would have called the model on every project change, so it now waits for "Start the interview". In focus mode it behaves as before.
+- Left for later slices: the project picker and the Agent's own header still have the old look; the outline lists board groups, not yet the story plan's acts and scene codes; on the canvas the layers panel stands in for the outline.
+- Two tests fail on this machine before and after this slice and are unrelated to it: the text-card video test and the vault skills-sync test.
+
 Risk: step 2 is the largest single change in the plan. Do it as a move with no behaviour change, and merge it before restyling the insides.
 
 ### 1 · Shots and playback

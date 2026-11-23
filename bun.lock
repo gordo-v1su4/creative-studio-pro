@@ -7,6 +7,8 @@
       "dependencies": {
         "@ai-sdk/openai-compatible": "^3.0.35",
         "@ai-sdk/svelte": "^5.0.77",
+        "@fontsource-variable/geist": "^5.3.0",
+        "@fontsource-variable/geist-mono": "^5.3.0",
         "@higgsfield/client": "^0.2.6",
         "@notionhq/client": "^5.27.0",
         "@xyflow/svelte": "^1.6.3",
@@ -93,6 +95,10 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.28.2", "", { "os": "win32", "cpu": "ia32" }, "sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.28.2", "", { "os": "win32", "cpu": "x64" }, "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g=="],
+
+    "@fontsource-variable/geist": ["@fontsource-variable/geist@5.3.0", "", {}, "sha512-j0m+vLQuG5XAYoHtGCVu0spvlGreR3EzpECUVzkFmI1mTVnAO38l/NEPDCFgZ177JxzYJCLSmTQibIiYPilGrA=="],
+
+    "@fontsource-variable/geist-mono": ["@fontsource-variable/geist-mono@5.3.0", "", {}, "sha512-vBbuwDEo9AkrqADMXOrlAR3DFcJi4/JxeuU43FoiQERnNwsfXNnvxvReZG02cQKmyk4DZkZdBZX3oTDvy2zBAw=="],
 
     "@higgsfield/client": ["@higgsfield/client@0.2.6", "", { "dependencies": { "axios": "^1.6.5", "form-data": "^4.0.0" } }, "sha512-rO3LjQY9hQIuErFhqsCcxYOGBBP6IqJV5ZhJc/VrC1+bingCWn4KL4EUSODziMjeIDecced2wATZvn2fl5q3nQ=="],
 

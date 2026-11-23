@@ -118,7 +118,9 @@
 			composer = '';
 			error = null;
 		}
-		if (open && loadedVersion !== project.version && !busy) void start(project);
+		// In focus the interview starts by itself, as it always has. Docked, the Agent stays open beside the work,
+		// so it waits to be asked: starting on every project change would call the model without the operator knowing.
+		if (open && !docked && loadedVersion !== project.version && !busy) void start(project);
 	});
 
 	async function submit() {
@@ -191,7 +193,7 @@
 	{/if}
 	<div
 		class={docked
-			? 'agent-shell fixed inset-y-12 right-0 z-40 flex w-[420px] max-w-full flex-col border-l shadow-[-18px_0_60px_rgba(0,0,0,0.55)]'
+			? 'agent-shell agent-docked flex min-h-0 flex-col max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[min(420px,100vw)] lg:h-full lg:w-full lg:overflow-hidden lg:rounded-[10px]'
 			: 'agent-shell fixed left-1/2 top-1/2 z-50 flex h-[min(720px,76vh)] w-[min(760px,94vw)] -translate-x-1/2 -translate-y-1/2 flex-col border shadow-[0_28px_100px_rgba(0,0,0,0.72)] max-sm:inset-0 max-sm:h-full max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0'}
 		transition:fly={{ x: docked ? 36 : 0, y: docked ? 0 : -12, duration: 220, easing: quintOut }}
 		role="dialog"
@@ -226,6 +228,9 @@
 					<ProjectModelPanel {project} bind:label={modelLabel} />
 					{#if savedMessages.length === 0}
 						<div class="agent-section-label"><span>&gt;</span> S1 interview · no saved rounds yet</div>
+					{/if}
+					{#if docked && !assistantMessage && !pendingQuestion && !busy && !error}
+						<button type="button" class="btn mr-auto" onclick={() => project && void start(project)}>{savedMessages.length ? 'Continue the interview' : 'Start the interview'}</button>
 					{/if}
 					{#each savedMessages as message (message.id)}
 						<div class={message.role === 'user' ? 'agent-message agent-user ml-auto max-w-[88%] px-3 py-2.5' : 'agent-message agent-assistant mr-auto max-w-[94%] px-3 py-2.5'}>
@@ -289,6 +294,8 @@
 {/if}
 
 <style>
+	/* Docked in the shell: a plain panel like its neighbours, no frame. */
+	.agent-shell.agent-docked { border: 0; background: var(--color-panel); box-shadow: none; }
 	.agent-shell {
 		--agent-teal: #4ee8d2;
 		--agent-cyan: #48bdf5;
