@@ -437,3 +437,23 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect((await readPrep(deps.projectRoot, projectId)).entries['r-mara'].sources[0].file).toBe(local);
 	});
 });
+
+test('a project with no story beats lists every reference of its reference project, read in place', async () => {
+	const { deps, projectId } = await setup();
+	await addPrepEntry(deps, projectId, 'location', 'Video Haven');
+	const source = (await deps.store.readProject(projectId))!;
+	const own = await prepView(deps, source);
+	if (!own.ok) throw new Error(own.message);
+	const before = JSON.stringify(await readPrep(deps.projectRoot, projectId));
+	const created = await deps.gateway.createProject({command:'create_project',title:'Teaser',brief:'',creative_focus:'full room',created_by:'test'});
+	if (!created.ok) throw new Error(created.error.message);
+	const saved = await deps.gateway.saveProduction({command:'save_production',project_id:created.data.project_id,expected_version:created.data.version,production:{...created.data.production,story_plan:{title:'Teaser',prep_source_project_id:projectId,sections:[{id:'act',title:'Act 1',summary:'',scenes:[{id:'s1',title:'The drop'}],moments:[]}]}}});
+	if (!saved.ok) throw new Error(saved.error.message);
+	const view = await prepView(deps, saved.data);
+	if (!view.ok) throw new Error(view.message);
+	expect(view.reference_project).toEqual({ project_id: projectId, title: source.title });
+	expect(view.items.map(item => item.entry.key).toSorted()).toEqual(own.items.map(item => item.entry.key).toSorted());
+	expect(view.items.some(item => item.entry.name === 'Video Haven')).toBeTrue();
+	expect(JSON.stringify(await readPrep(deps.projectRoot, projectId))).toBe(before);
+	expect((await readPrep(deps.projectRoot, saved.data.project_id)).entries).toEqual({});
+});

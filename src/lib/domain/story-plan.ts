@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { ProductionState } from './schemas';
+import type { Cut, ProductionState } from './schemas';
+import { programElapsed } from '../media/speed-curve';
 
 // A trailer's story plan: sections (acts) hold scenes; scenes hold story beats; story beats hold planned shots.
 // The schema keeps the stored field name `moments` for story beats so existing plans stay readable.
@@ -109,4 +110,39 @@ export function appendPlannedShots(production: ProductionState, now: string): Pr
 		}
 	}
 	return cards.length === production.cards.length && groups.length === (production.groups?.length ?? 0) ? production : { ...production, cards, groups };
+}
+
+/** The edit the Story tab measures: the cut worked on last (none until a cut is pushed). */
+export function currentEdit(production: ProductionState): Cut | null {
+	return (production.cuts ?? []).toSorted((a, b) => b.updated_at.localeCompare(a.updated_at))[0] ?? null;
+}
+
+/** What a board group holds: its shots on the board, and how many of them play in the current edit and for how long. */
+export interface GroupMeasure { shots: number; in_edit: number; edit_s: number }
+
+/**
+ * Real length and shot counts per board group (Main = ''), read from the board and the current edit, so a scene
+ * linked to a group shows what is actually there even when it has no story beats.
+ */
+export function groupMeasures(production: ProductionState): Map<string, GroupMeasure> {
+	const measures = new Map<string, GroupMeasure>();
+	const at = (groupId: string) => measures.get(groupId) ?? (measures.set(groupId, { shots: 0, in_edit: 0, edit_s: 0 }), measures.get(groupId)!);
+	const groupOf = new Map(production.cards.map(card => [card.card_id, card.group_id ?? '']));
+	for (const card of production.cards) at(card.group_id ?? '').shots += 1;
+	const edit = currentEdit(production);
+	const counted = new Set<string>();
+	for (const entry of edit?.entries ?? []) {
+		const groupId = groupOf.get(entry.card_id);
+		if (groupId === undefined) continue;
+		const measure = at(groupId);
+		measure.edit_s += programElapsed(entry.speed, entry.out_s - entry.in_s);
+		if (!counted.has(entry.card_id)) { counted.add(entry.card_id); measure.in_edit += 1; }
+	}
+	return measures;
+}
+
+/** `BLR_TR130_MRN_0020` → `MRN_0020`: the scene code and shot number, the part that names the shot inside its project. */
+export function shortShotCode(code: string | undefined): string | null {
+	const match = code ? /_([A-Z]{3}_\d{4})$/.exec(code) : null;
+	return match ? match[1] : null;
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Project } from '$lib/domain/schemas';
-	import { boardCardFor, sceneGroupId, type StoryPlan, type PlanScene } from '$lib/domain/story-plan';
+	import { boardCardFor, currentEdit, groupMeasures, sceneGroupId, shortShotCode, type GroupMeasure, type StoryPlan, type PlanScene } from '$lib/domain/story-plan';
+	import { cutLength } from '$lib/domain/cuts';
 	let { project, onUpdated, onPrep, onBoard }: { project: Project; onUpdated: (project: Project) => void; onPrep: () => void; onBoard: () => void } = $props();
 	let plan = $state<StoryPlan | null>(null);
 	let loadedVersion = $state(-1);
@@ -29,9 +30,25 @@
 	const boardGroups = $derived(project.production.groups ?? []);
 	const boardShots = $derived(project.production.cards.toSorted((a, b) => groupName(a.group_id).localeCompare(groupName(b.group_id)) || a.order - b.order));
 	const codeOf = (cardId: string) => room?.shots?.[cardId]?.code;
+	const shortCode = (cardId: string) => shortShotCode(codeOf(cardId));
+	// Real length and shots from the board and the current edit (the cut worked on last), not only from story beats.
+	const edit = $derived(currentEdit(project.production));
+	const measures = $derived(groupMeasures(project.production));
+	const editSeconds = $derived(edit ? cutLength(edit) : 0);
+	const inEdit = $derived(new Set(edit?.entries.map(entry => entry.card_id) ?? []).size);
+	/** A scene's board group, once it has one (linked, or made by Add to Board). */
+	const sceneGroup = (scene: PlanScene) => scene.group_id ?? (project.production.groups?.some(group => group.group_id === sceneGroupId(scene)) ? sceneGroupId(scene) : undefined);
+	const sceneMeasure = (scene: PlanScene): GroupMeasure | null => { const id = sceneGroup(scene); return id ? measures.get(id) ?? { shots: 0, in_edit: 0, edit_s: 0 } : null; };
+	const sectionMeasure = (section: Section): GroupMeasure => [...new Set(section.scenes.map(sceneGroup).filter((id): id is string => !!id))]
+		.reduce((sum, id) => { const m = measures.get(id); return m ? { shots: sum.shots + m.shots, in_edit: sum.in_edit + m.in_edit, edit_s: sum.edit_s + m.edit_s } : sum; }, { shots: 0, in_edit: 0, edit_s: 0 });
+	/** An act's length: its scenes' time in the edit when there is an edit, else its story beats' planned time. */
+	const actSeconds = (section: Section) => edit ? sectionMeasure(section).edit_s : total(section);
+	const totalSeconds = $derived(edit ? editSeconds : seconds);
+	/** Once scenes or shots exist, the length comes from the edit: the target and the Bible draft step away. */
+	const started = $derived(project.production.cards.length > 0 || (plan?.sections.some(section => section.scenes.length) ?? false));
 	const stamp = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 	const total = (section: Section) => section.moments.reduce((sum, beat) => sum + beat.duration_s, 0);
-	const start = (index: number) => plan?.sections.slice(0, index).reduce((sum, section) => sum + total(section), 0) ?? 0;
+	const start = (index: number) => plan?.sections.slice(0, index).reduce((sum, section) => sum + actSeconds(section), 0) ?? 0;
 	/** Story beats in scene order: each scene's beats under it, then any beat not yet in a scene. */
 	const grouped = (section: Section): Array<{ scene: PlanScene | null; beats: Beat[] }> => [
 		...section.scenes.map(scene => ({ scene, beats: section.moments.filter(beat => beat.scene_id === scene.id) })),
@@ -75,8 +92,8 @@
 			{#if beat.candidate_asset_id}{@const asset = project.production.assets.find(asset => asset.asset_id === beat.candidate_asset_id)}{#if asset}<a href={asset.url} target="_blank" rel="noreferrer">Review candidate clip</a>{/if}{/if}
 			<div class="actions">{#if !beat.approved}<button type="button" class="primary" disabled={dirty || busy} onclick={() => void send('approve', beat.id)}>Approve this story beat</button>{:else if !beat.shots.length}<button type="button" class="primary" disabled={dirty || busy} onclick={() => void send('breakdown', beat.id)}>{busy ? 'Drafting…' : 'Draft shots for this story beat'}</button>{/if}</div>
 			{#if beat.shots.length}<p class="hint">Shot breakdown · {beat.shots.reduce((sum, entry) => sum + entry.duration_s, 0)}s. Review before adding to Board.</p>{#each beat.shots as entry (entry.id)}{@const covered = boardCardFor(project.production, entry)}<div class="breakdown"><b>{entry.title} · {entry.duration_s}s</b><p>{entry.beat}</p>
-					<label>Covered by board shot<select value={entry.card_id ?? ''} onchange={(event) => { entry.card_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">New shot on Add to Board</option>{#each boardShots as card (card.card_id)}<option value={card.card_id}>{groupName(card.group_id)} · {card.title}{codeOf(card.card_id) ? ` · ${codeOf(card.card_id)}` : ''}</option>{/each}</select></label>
-					{#if covered}<p class="on-board">On board · {groupName(covered.group_id)} · {covered.title}{codeOf(covered.card_id) ? ` · ${codeOf(covered.card_id)}` : ' · no Review Room code yet'}</p>{/if}</div>{/each}{/if}
+					<label>Covered by board shot<select value={entry.card_id ?? ''} onchange={(event) => { entry.card_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">New shot on Add to Board</option>{#each boardShots as card (card.card_id)}<option value={card.card_id}>{shortCode(card.card_id) ? `${shortCode(card.card_id)} · ` : ''}{card.title} · {groupName(card.group_id)}</option>{/each}</select></label>
+					{#if covered}<p class="on-board">On board · {groupName(covered.group_id)} · {shortCode(covered.card_id) ? `${shortCode(covered.card_id)} · ` : ''}{covered.title}{codeOf(covered.card_id) ? '' : ' · no Review Room code yet'}</p>{/if}</div>{/each}{/if}
 		</div>
 	</details>
 {/snippet}
@@ -85,15 +102,15 @@
 <section class="plan" aria-label="Trailer story and shot plan">
 	<header>
 			<div><p class="eyebrow">BIBLE · ACTS · SCENES · STORY BEATS · SHOTS</p><h2>{plan.title}</h2><p class="intro">Choose the story beats first. Put each in its scene, approve it, draft its shots, then prepare references and add shots to the Board.</p></div>
-		<div class="metrics"><strong>{stamp(seconds)}</strong><span>{beats.length} story beats · {beats.filter(beat => beat.approved).length} approved<br />{shots.length} shots drafted · {added} on board</span></div>
+		<div class="metrics"><strong title={edit ? `Length of the edit ${edit.name}` : 'Planned length of the story beats'}>{stamp(totalSeconds)}</strong><span>{project.production.cards.length} shots on board{#if edit} · {inEdit} in the edit{/if}<br />{#if edit}<span class="edit-name">Edit · {edit.name}</span>{:else}{beats.length} story beats · {beats.filter(beat => beat.approved).length} approved{/if}</span></div>
 	</header>
 	{#if plan.footage_source_project_id}<p class="hint"><a href={`/?project=${plan.footage_source_project_id}&tab=beats`} target="_blank" rel="noreferrer">Review the original test footage</a> · The existing project remains the source pool.</p>{/if}
 	{#if plan.source}<details class="act"><summary>Source Bible · {plan.source.title}</summary><p class="hint">Imported {new Date(plan.source.imported_at).toLocaleDateString()}. The trailer plan follows this source; its proposals do not change canon.</p>{#if plan.source.url}<a href={plan.source.url} target="_blank" rel="noreferrer">Open Bible in Notion</a>{/if}{#if plan.source.series_id}<button type="button" class="agent-mini" disabled={busy || dirty} onclick={() => send('refresh_source')} title={dirty ? 'Save your plan edits first' : 'Read the current Bible from Notion again (the page marked CURRENT)'}>Refresh from Notion</button>{/if}<pre class="bible">{plan.source.text}</pre></details>{/if}
 	<div class="actions">
-		{#if !beats.length}<label>Trailer target (seconds)<input type="number" min="15" max="600" step="1" bind:value={targetSeconds} /></label><button type="button" class="primary" disabled={busy || dirty} onclick={() => void send('moments')}>{busy ? 'Proposing story beats…' : 'Draft proposed story beats from Bible'}</button>{/if}
+		{#if !beats.length && !started}<label>Trailer target (seconds)<input type="number" min="15" max="600" step="1" bind:value={targetSeconds} /></label><button type="button" class="primary" disabled={busy || dirty} onclick={() => void send('moments')}>{busy ? 'Proposing story beats…' : 'Draft proposed story beats from Bible'}</button>{/if}
 		<button type="button" class="primary" onclick={onPrep} disabled={dirty || busy}>Continue to Prep</button>
-		<button type="button" onclick={() => void send('board')} disabled={dirty || busy || added === shots.length || !shots.length}>Add {shots.length - added} missing shots to Board</button>
-		{#if added}<button type="button" onclick={onBoard} disabled={dirty || busy}>Open trailer Board</button>{/if}
+		{#if shots.length}<button type="button" onclick={() => void send('board')} disabled={dirty || busy || added === shots.length}>Add {shots.length - added} missing shots to Board</button>{/if}
+		{#if added || project.production.cards.length}<button type="button" onclick={onBoard} disabled={dirty || busy}>Open trailer Board</button>{/if}
 		{#if dirty}<button type="button" class="primary" onclick={() => void send('save')} disabled={busy}>Save story plan</button>{/if}
 	</div>
 	<details class="how">
@@ -113,22 +130,24 @@
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
 	{#if note}<p role="status">{note}</p>{/if}
 	{#each plan.sections as section, i (section.id)}
+		{@const sm = sectionMeasure(section)}
 		<section class="act" aria-label={section.title}>
-			<div class="act-heading"><span class="time">{stamp(start(i))}–{stamp(start(i) + total(section))}</span><h3>{section.title}</h3><span>{section.scenes.length} scenes · {section.moments.length} story beats · {section.moments.flatMap(beat => beat.shots).length} shots · {total(section)}s</span></div>
+			<div class="act-heading"><span class="time">{stamp(start(i))}–{stamp(start(i) + actSeconds(section))}</span><h3>{section.title}</h3><span>{section.scenes.length} scenes · {sm.shots || section.moments.flatMap(beat => beat.shots).length} shots{#if edit} · {sm.in_edit} in the edit{/if}{#if section.moments.length} · {section.moments.length} story beats{/if}</span></div>
 			<p class="summary">{section.summary}</p>
 			{#each grouped(section) as entry, g (entry.scene?.id ?? `loose-${g}`)}
 				{#if entry.scene}
 					{@const scene = entry.scene}
 					{@const stored = storedScene(scene)}
+					{@const m = sceneMeasure(scene)}
 					<div class="scene">
 						<div class="scene-heading">
 							<span class="code">{sceneCode(scene) ?? '···'}</span>
 							<input class="scene-title" value={scene.title} maxlength="200" aria-label="Scene title" oninput={(event) => { scene.title = event.currentTarget.value; dirty = true; }} />
-							<span class="scene-meta">{entry.beats.length} story beats</span>
+							<span class="scene-meta">{#if m}{m.shots} shots{#if edit} · {m.in_edit} in the edit · {stamp(m.edit_s)}{/if}{/if}{#if entry.beats.length || !m}{m ? ' · ' : ''}{entry.beats.length} story beats{/if}</span>
 						</div>
 						<div class="scene-fields">
-							<label>Board group<select value={scene.group_id ?? ''} disabled={!!stored && !!scene.group_id} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">New group on Add to Board</option>{#each boardGroups as group (group.group_id)}<option value={group.group_id}>{group.name}{room?.scenes?.[group.group_id] ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>
-							{#if room}{#if stored}<p class="hint">Review Room scene folder · <b>{stored.code}</b> (permanent)</p>{:else}<label class="scene-code">Scene code<input value={scene.scene_code ?? ''} maxlength="3" placeholder="e.g. PCK" oninput={(event) => setCode(scene, event.currentTarget)} /><span>Three capital letters. Add to Board makes this scene's Review Room folder.</span></label>{/if}{/if}
+							{#if stored && scene.group_id}<p class="linked">Board group · <b>{groupName(scene.group_id)}</b> · Review Room scene folder <b>{stored.code}</b></p>{:else}<label>Board group<select value={scene.group_id ?? ''} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">New group on Add to Board</option>{#each boardGroups as group (group.group_id)}<option value={group.group_id}>{group.name}{room?.scenes?.[group.group_id] ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>{/if}
+							{#if room}{#if stored}{#if !scene.group_id}<p class="hint">Review Room scene folder · <b>{stored.code}</b> (permanent)</p>{/if}{:else}<label class="scene-code">Scene code<input value={scene.scene_code ?? ''} maxlength="3" placeholder="e.g. PCK" oninput={(event) => setCode(scene, event.currentTarget)} /><span>Three capital letters. Add to Board makes this scene's Review Room folder.</span></label>{/if}{/if}
 						</div>
 						{#each entry.beats as beat, j (beat.id)}{@render beatRow(beat, j, section)}{/each}
 					</div>
@@ -152,5 +171,5 @@
 	.on-board {font-size:11px;color:#7bd7c6;margin-top:4px;}
 	.scene {margin:14px 0 6px;padding:10px 12px 6px;background:#0e171c;border:1px solid #1f3138;} .scene-heading {display:flex;align-items:center;gap:12px;} .scene-heading .code {font:12px var(--font-mono,monospace);letter-spacing:.14em;color:#7bd7c6;min-width:34px;} .scene-title {flex:1;margin:0;border:1px solid transparent;background:transparent;font-size:13px;color:#d1e8e6;padding:4px 6px;} .scene-title:hover,.scene-title:focus {border-color:#30434b;background:#0c141a;} .scene-meta {font-size:10px;color:#6f8f95;white-space:nowrap;} .scene-fields {display:flex;flex-wrap:wrap;gap:0 18px;align-items:start;} .scene-fields>label:first-child {flex:1;min-width:240px;} .loose {margin-top:14px;}
 	.bible {white-space:pre-wrap;max-height:380px;overflow:auto;font:12px/1.8 var(--font-sans);padding:16px;background:#10191f;} .breakdown {padding:10px 0;border-top:1px solid #294047;font-size:12px;line-height:1.7;} .breakdown p {color:#8ba6ae;}
-	.plan { color: #b9d0d2; margin-bottom: 36px; } header { display:flex; justify-content:space-between; gap:24px; align-items:start; } h2 { font-size:24px; color:#d7efed; margin:8px 0; font-weight:600; } .eyebrow,.time,.number,.state,.metrics span { font:10px var(--font-mono,monospace); letter-spacing:.08em; } .eyebrow {color:#66d9ca;} .intro,.hint,.summary {font-size:12px;line-height:1.7;color:#819fa5;} .metrics {display:flex;gap:14px;align-items:center;white-space:nowrap;} .metrics strong {font-size:30px;font-weight:400;color:#b8eee5;} .metrics span {line-height:1.9;} .actions {display:flex;gap:8px;flex-wrap:wrap;margin:20px 0 8px;} button {border:1px solid #355155;padding:9px 12px;color:#b3d5d4;font-size:12px;background:#101b20;cursor:pointer;} button.primary {background:#16483f;border-color:#2c7c6c;color:#c5f7e8;} button:disabled {opacity:.45;cursor:default;} .hint {font-size:11px;} .act {border-top:1px solid #294047;margin-top:26px;padding-top:15px;} .act-heading {display:flex;align-items:center;gap:16px;} .act-heading h3 {font-size:16px;color:#c9e2df;flex:1;} .act-heading>span:last-child {font-size:11px;color:#83a6aa;white-space:nowrap;} .time {color:#5cbcaf;min-width:90px;} .summary {margin:8px 0 12px;} .shot {border-top:1px solid #1d2d35;} summary {display:flex;gap:12px;align-items:center;padding:12px 2px;cursor:pointer;font-size:12px;list-style:none;} summary::before {content:'+';color:#629b9e;} details[open]>summary::before {content:'−';} .number {color:#587c86;} .shot-name {flex:1;} .length {color:#8fbbbc;min-width:30px;} .state {color:#8b9c99;width:125px;text-align:right;font-size:9px;} .shot-body {padding:8px 18px 18px;background:#10191f;} label {display:block;font-size:11px;color:#91afb3;margin:10px 0;} input,textarea,select {display:block;width:100%;border:1px solid #30434b;background:#0c141a;padding:8px;color:#bed3d5;font-size:12px;margin-top:5px;} .shot-facts {display:flex;gap:24px;align-items:center;font-size:11px;} .shot-facts label {max-width:180px;} a {font-size:12px;color:#7bd7c6;} .error {color:#f6a6a2;font-size:12px;} :is(button,input,textarea,select,summary,a):focus-visible {outline:2px solid #7bd7c6;outline-offset:3px;} @media(max-width:600px) {header {flex-direction:column;gap:10px;} .act-heading {flex-wrap:wrap;gap:8px;} .time {min-width:auto;} .state {width:85px;font-size:8px;} .shot-facts {flex-direction:column;align-items:start;gap:0;}}
+	.plan { color: #b9d0d2; margin-bottom: 36px; } header { display:flex; justify-content:space-between; gap:24px; align-items:start; } h2 { font-size:24px; color:#d7efed; margin:8px 0; font-weight:600; } .eyebrow,.time,.number,.state,.metrics span { font:10px var(--font-mono,monospace); letter-spacing:.08em; } .eyebrow {color:#66d9ca;} .intro,.hint,.summary {font-size:12px;line-height:1.7;color:#819fa5;} .metrics {display:flex;gap:14px;align-items:center;white-space:nowrap;} .metrics strong {font-size:30px;font-weight:400;color:#b8eee5;} .metrics span {line-height:1.9;} .actions {display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:16px 0 8px;} button {flex:none;width:auto;border:1px solid #355155;padding:4px 10px;line-height:1.4;color:#b3d5d4;font-size:11px;background:#101b20;cursor:pointer;} .actions label {margin:0;} .linked {flex:1;min-width:240px;font-size:11px;color:#91afb3;margin:10px 0;} .linked b {color:#c9e2df;font-weight:600;} .edit-name {color:#8fbbbc;} button.primary {background:#16483f;border-color:#2c7c6c;color:#c5f7e8;} button:disabled {opacity:.45;cursor:default;} .hint {font-size:11px;} .act {border-top:1px solid #294047;margin-top:26px;padding-top:15px;} .act-heading {display:flex;align-items:center;gap:16px;} .act-heading h3 {font-size:16px;color:#c9e2df;flex:1;} .act-heading>span:last-child {font-size:11px;color:#83a6aa;white-space:nowrap;} .time {color:#5cbcaf;min-width:90px;} .summary {margin:8px 0 12px;} .shot {border-top:1px solid #1d2d35;} summary {display:flex;gap:12px;align-items:center;padding:12px 2px;cursor:pointer;font-size:12px;list-style:none;} summary::before {content:'+';color:#629b9e;} details[open]>summary::before {content:'−';} .number {color:#587c86;} .shot-name {flex:1;} .length {color:#8fbbbc;min-width:30px;} .state {color:#8b9c99;width:125px;text-align:right;font-size:9px;} .shot-body {padding:8px 18px 18px;background:#10191f;} label {display:block;font-size:11px;color:#91afb3;margin:10px 0;} input,textarea,select {display:block;width:100%;border:1px solid #30434b;background:#0c141a;padding:8px;color:#bed3d5;font-size:12px;margin-top:5px;} .shot-facts {display:flex;gap:24px;align-items:center;font-size:11px;} .shot-facts label {max-width:180px;} a {font-size:12px;color:#7bd7c6;} .error {color:#f6a6a2;font-size:12px;} :is(button,input,textarea,select,summary,a):focus-visible {outline:2px solid #7bd7c6;outline-offset:3px;} @media(max-width:600px) {header {flex-direction:column;gap:10px;} .act-heading {flex-wrap:wrap;gap:8px;} .time {min-width:auto;} .state {width:85px;font-size:8px;} .shot-facts {flex-direction:column;align-items:start;gap:0;}}
 </style>

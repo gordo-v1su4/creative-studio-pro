@@ -105,14 +105,38 @@ async function prepContext(deps: PrepContextDeps, project: Project) {
 	return { source, record, inherited, scenes };
 }
 
-export async function prepView(deps: PrepContextDeps, project: Project): Promise<{ ok: true; items: PrepView[]; props: string[] } | Failure> {
-	const { record, inherited, scenes } = await prepContext(deps, project);
-	const prep = await readPrep(deps.projectRoot, project.project_id);
+/** What a project's own Prep lists: the references its scenes or story beats name, its props and the entries added by hand. */
+function ownEntries(scenes: PrepScene[], record: SeriesRecord | null, prep: PrepFile): PrepEntry[] {
 	const entries = prepEntries(scenes, record?.references?.items ?? [], prep.props);
 	for (const custom of prep.custom_entries ?? []) {
 		if (entries.some(entry => entry.kind === custom.kind && entry.name.toLowerCase() === custom.name.toLowerCase())) continue;
 		entries.push({ key: `${custom.kind}:${custom.name}`, kind: custom.kind, name: custom.name, role: '', reference_page_id: null, scenes: [] });
 	}
+	return entries;
+}
+
+/**
+ * The reference project's own list (TR110's characters, locations and props), read in place: a project that
+ * reuses another's references lists all of them even before it has story beats of its own. Nothing is copied.
+ */
+async function referenceProjectEntries(deps: PrepContextDeps, source: Project, inherited: PrepFile | null): Promise<PrepEntry[]> {
+	const seriesId = source.series?.series_id ?? source.production.story_plan?.source?.series_id;
+	const record = seriesId ? await deps.series.read(seriesId) : null;
+	const scenes: PrepScene[] = source.series?.scenes ?? (source.production.story_plan?.sections.flatMap((section, number) => section.moments.map(moment => ({ page_id: moment.id, title: moment.title, number: number * 100, location: moment.location, characters: moment.characters }))) ?? []);
+	return ownEntries(scenes, record, inherited ?? await readPrep(deps.projectRoot, source.project_id)).map(entry => ({ ...entry, scenes: [] }));
+}
+
+/** Adds the entries `more` has that `entries` lacks (same key, or the same kind and name). */
+function mergeEntries(entries: PrepEntry[], more: PrepEntry[]): PrepEntry[] {
+	const same = (a: PrepEntry, b: PrepEntry) => a.key === b.key || (a.kind === b.kind && a.name.trim().toLowerCase() === b.name.trim().toLowerCase());
+	const order = { character: 0, location: 1, prop: 2 } as const;
+	return [...entries, ...more.filter(entry => !entries.some(have => same(have, entry)))].map((entry, i) => ({ entry, i })).sort((a, b) => order[a.entry.kind] - order[b.entry.kind] || a.i - b.i).map(({ entry }) => entry);
+}
+
+export async function prepView(deps: PrepContextDeps, project: Project): Promise<{ ok: true; items: PrepView[]; props: string[]; reference_project: { project_id: string; title: string } | null } | Failure> {
+	const { source, record, inherited, scenes } = await prepContext(deps, project);
+	const prep = await readPrep(deps.projectRoot, project.project_id);
+	const entries = source ? mergeEntries(ownEntries(scenes, record, prep), await referenceProjectEntries(deps, source, inherited)) : ownEntries(scenes, record, prep);
 	const folder = join(deps.projectRoot, project.project_id, 'files', 'prep', 'made');
 	const names = await readdir(folder).catch((cause: NodeJS.ErrnoException) => { if (cause.code === 'ENOENT') return []; throw cause; });
 	const saved = await Promise.all(names.filter((name) => IMAGE_EXT.has(extname(name).toLowerCase())).map(async (id) => ({ id, made_at: (await stat(join(folder, id))).mtime.toISOString() })));
@@ -141,7 +165,7 @@ export async function prepView(deps: PrepContextDeps, project: Project): Promise
 		const inheritedResult = inherited?.entries[entry.key]?.result;
 		return { entry, state: visible, versions, template: templateFor(entry.kind, state.sources.length > 0), current: inheritedResult ? { url: `${inheritedResult.url.split('?')[0]}?v=${encodeURIComponent(inheritedResult.made_at)}` } : file && record ? { url: `/api/series/${record.series_id}/references?page_id=${entry.reference_page_id}` } : null };
 	});
-	return { ok: true, items, props: prep.props };
+	return { ok: true, items, props: prep.props, reference_project: source ? { project_id: source.project_id, title: source.title } : null };
 }
 
 async function findEntry(deps: PrepContextDeps, project: Project, key: string): Promise<{ ok: true; view: PrepView; record: SeriesRecord | null } | Failure> {

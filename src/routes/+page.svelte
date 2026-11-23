@@ -29,6 +29,7 @@
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { isMissingShot, playItemFor, slateAssetId, slateUrl } from '$lib/domain/slate';
+	import { shortShotCode } from '$lib/domain/story-plan';
 	import { benchedBeats } from '$lib/domain/bench';
 	import { mediaKind } from '$lib/domain/media';
 	import { droppedFiles } from '$lib/ui/dropped-files';
@@ -249,6 +250,7 @@
 				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 300 },
 				data: {
 					card, order: index, spineIndex: spineIndex < 0 ? null : spineIndex, takes, pickId: pick?.asset_id ?? null,
+					code: card ? shortShotCode(project.review_room?.shots?.[card.card_id]?.code) : null,
 					slate: card && isMissingShot(project.production, card) ? { src: slateUrl(project.project_id, card.card_id), assetId: slateAssetId(card.card_id) } : null,
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
@@ -933,15 +935,21 @@
 	/** Archived projects stay out of the picker unless "Show archived" is on (V1S-496); the open one always shows. */
 	let showArchived = $state(false);
 	const SHOW_ARCHIVED = '__show_archived__';
+	/** Archive / unarchive live in the picker's menu, away from the version label (clicked by accident there). */
+	const ARCHIVE_OPEN = '__archive_open__';
 	const archivedCount = $derived(projects.filter((project) => project.archived_at).length);
 	const projectOptions = $derived([
 		...projects
 			.filter((project) => !project.archived_at || showArchived || project.project_id === activeProject?.project_id)
 			.map((project) => ({ value: project.project_id, label: project.title, hint: project.archived_at ? 'archived' : new Date(project.updated_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })),
-		...(archivedCount ? [{ value: SHOW_ARCHIVED, label: showArchived ? 'Hide archived projects' : `Show archived projects (${archivedCount})`, hint: '' }] : [])
+		...(archivedCount ? [{ value: SHOW_ARCHIVED, label: showArchived ? 'Hide archived projects' : `Show archived projects (${archivedCount})`, hint: '' }] : []),
+		...(activeProject ? [{ value: ARCHIVE_OPEN, label: activeProject.archived_at ? `Unarchive “${activeProject.title}”` : `Archive “${activeProject.title}”…`, hint: activeProject.archived_at ? 'back to the list' : 'nothing is deleted' }] : [])
 	]);
+	/** Bumped after a menu action so the picker shows the open project again, not the action it ran. */
+	let pickKey = $state(0);
 	function pickProject(id: string) {
-		if (id === SHOW_ARCHIVED) { showArchived = !showArchived; return; }
+		if (id === SHOW_ARCHIVED) { showArchived = !showArchived; pickKey += 1; return; }
+		if (id === ARCHIVE_OPEN) { pickKey += 1; if (!archiving) void setArchived(!activeProject?.archived_at); return; }
 		void switchProject(id);
 	}
 	let archiving = $state(false);
@@ -1229,7 +1237,7 @@
 		{#if projects.length}
 			<!-- Every project, newest first: the way back to any of them (the trailer, an imported episode…). -->
 			<span class="project-pick w-[170px] shrink-0 max-w-[300px] sm:w-auto sm:min-w-0 sm:shrink" title={activeProject?.title}>
-				<Pick label="Open a project" value={activeProject?.project_id} options={projectOptions} wide onchange={pickProject} />
+				{#key pickKey}<Pick label="Open a project" value={activeProject?.project_id} options={projectOptions} wide onchange={pickProject} />{/key}
 			</span>
 		{:else}
 			<b class="project-name min-w-0 max-w-[260px] truncate">No project open</b>
@@ -1237,10 +1245,7 @@
 		{#if activeProject}
 			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
 			{#if activeProject.archived_at}
-				<span class="meta-label shrink-0 text-[#e0b35a]" title="Archived {new Date(activeProject.archived_at).toLocaleDateString()}">archived</span>
-				<button type="button" class="meta-label shrink-0 cursor-pointer border border-border-default px-1.5 py-0.5 text-[#9fd0dc] hover:text-text-primary" disabled={archiving} onclick={() => void setArchived(false)}>unarchive</button>
-			{:else}
-				<button type="button" class="meta-label shrink-0 cursor-pointer px-1 text-text-dim hover:text-text-primary" disabled={archiving} title="Archive this project: it leaves the project list for everyone; nothing is deleted" onclick={() => void setArchived(true)}>archive</button>
+				<span class="meta-label shrink-0 text-[#e0b35a]" title="Archived {new Date(activeProject.archived_at).toLocaleDateString()}. Unarchive it from the project menu.">archived</span>
 			{/if}
 		{/if}
 		<nav class="ml-2 flex shrink-0 items-center gap-0.5 lg:min-w-0 lg:shrink lg:overflow-x-auto" aria-label="Project">

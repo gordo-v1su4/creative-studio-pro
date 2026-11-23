@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { productionStateSchema } from '../../src/lib/domain/schemas';
-import { appendPlannedShots, reconcileMomentEdits } from '../../src/lib/domain/story-plan';
+import { appendPlannedShots, currentEdit, groupMeasures, reconcileMomentEdits, shortShotCode } from '../../src/lib/domain/story-plan';
 import { applyAddTake } from '../../src/lib/domain/media';
 import { emptyState, referenceSpecSchema } from '../../src/lib/domain/prep';
 import { joeyPrerequisites, joeyPromptIssues } from '../../src/lib/domain/joey-prep';
@@ -82,4 +82,26 @@ test('Joey workflows require reviewed facts and the correct predecessor without 
 	expect(joeyPromptIssues('18% neutral gray shadowless LEFT PANEL headless CENTER PANEL RIGHT PANEL', state)).toContain('Confirm the pre-prompt check first');
 	state.workflow.confirmed = true;
 	expect(joeyPromptIssues('18% neutral gray shadowless LEFT PANEL headless CENTER PANEL RIGHT PANEL', state)).toEqual([]);
+});
+
+test('scene length and shot counts come from the board and the cut worked on last', () => {
+	const card = (card_id: string, group_id?: string) => ({ card_id, order: 0, title: card_id, beat: 'b', purpose: 'p', duration_ms: 4000, image_prompt: 'i', video_prompt: 'v', ...(group_id ? { group_id } : {}) });
+	const cut = (cut_id: string, updated_at: string, entries: Array<[string, number, number]>) => ({ cut_id, name: cut_id, version: 1, locked: false, created_at: updated_at, updated_at, entries: entries.map(([card_id, in_s, out_s], i) => ({ entry_id: `${cut_id}-${i}`, card_id, asset_id: `${card_id}-take`, in_s, out_s })) });
+	const production = productionStateSchema.parse({
+		cards: [card('a1', 'g-mrn'), card('a2', 'g-mrn'), card('a3', 'g-mrn'), card('b1', 'g-sun'), card('m1')],
+		cuts: [cut('old', '2026-11-20T00:00:00Z', [['b1', 0, 30]]), cut('now', '2026-11-23T00:00:00Z', [['a1', 0, 2.5], ['a2', 1, 4], ['a1', 3, 4], ['b1', 0, 5]])]
+	});
+	expect(currentEdit(production)?.cut_id).toBe('now');
+	const measures = groupMeasures(production);
+	expect(measures.get('g-mrn')).toEqual({ shots: 3, in_edit: 2, edit_s: 6.5 });
+	expect(measures.get('g-sun')).toEqual({ shots: 1, in_edit: 1, edit_s: 5 });
+	expect(measures.get('')).toEqual({ shots: 1, in_edit: 0, edit_s: 0 });
+	expect(groupMeasures(productionStateSchema.parse({ cards: [card('x', 'g')] })).get('g')).toEqual({ shots: 1, in_edit: 0, edit_s: 0 });
+});
+
+test('a shot is named inside its project by scene code and number', () => {
+	expect(shortShotCode('BLR_TR130_MRN_0020')).toBe('MRN_0020');
+	expect(shortShotCode('BLR_EP101_PAR_0015')).toBe('PAR_0015');
+	expect(shortShotCode(undefined)).toBeNull();
+	expect(shortShotCode('TR130-02-02')).toBeNull();
 });

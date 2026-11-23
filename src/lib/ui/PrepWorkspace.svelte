@@ -8,6 +8,7 @@
 	import ImageModelPicker from './ImageModelPicker.svelte';
 	import SheetTemplateFields from './SheetTemplateFields.svelte';
 	import StillApprovalCard from './StillApprovalCard.svelte';
+	import Pick from './controls/Pick.svelte';
 
 	/**
 	 * Prep (V1S-374): the references an episode needs, as a dependency graph per entry — source images →
@@ -35,6 +36,36 @@
 	let promptDrafts = $state<Record<string, string>>({});
 	let sheetDirty = $state<Record<string, boolean>>({});
 	let newNames = $state<Record<string, string>>({ character: '', location: '', prop: '' });
+	/** The earlier project whose references this one reuses (read in place, never copied), and the choice to change it. */
+	let referenceProject = $state<{ project_id: string; title: string } | null>(null);
+	let choosingReference = $state(false);
+	let referenceBusy = $state(false);
+	let projectList = $state<Array<{ project_id: string; title: string; archived_at?: string | null }>>([]);
+	const NO_REFERENCE = '__none__';
+	const referenceOptions = $derived([
+		{ value: NO_REFERENCE, label: 'No reference project', hint: 'only this project' },
+		...projectList.filter((other) => other.project_id !== project.project_id && (!other.archived_at || other.project_id === referenceProject?.project_id)).map((other) => ({ value: other.project_id, label: other.title, hint: other.archived_at ? 'archived' : '' }))
+	]);
+	async function openReferenceChoice() {
+		choosingReference = true;
+		if (projectList.length) return;
+		try { projectList = (await (await fetch('/api/projects')).json()).projects ?? []; }
+		catch { error = 'Could not load the project list'; }
+	}
+	async function setReferenceProject(id: string) {
+		const plan = project.production.story_plan;
+		if (!plan) return;
+		referenceBusy = true; error = null;
+		try {
+			const { prep_source_project_id: _old, ...rest } = $state.snapshot(plan);
+			const next = id === NO_REFERENCE ? rest : { ...rest, prep_source_project_id: id };
+			const body = await (await fetch(`/api/projects/${project.project_id}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'save', expected_version: project.version, plan: next }) })).json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Could not change the reference project');
+			onUpdated(body.data);
+			choosingReference = false;
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change the reference project'; }
+		finally { referenceBusy = false; }
+	}
 	/** The picture shown big (click any picture; Esc or a click closes it). */
 	let zoom = $state<{ src: string; alt: string } | null>(null);
 
@@ -45,8 +76,8 @@
 		{ kind: 'prop', label: 'Props', singular: 'prop', list: items.filter((item) => item.entry.kind === 'prop') }
 	]);
 
-	function take(body: { data?: { items: View[]; episode_spent: number } | null; project?: Project }) {
-		if (body.data) { items = body.data.items; spent = body.data.episode_spent; }
+	function take(body: { data?: { items: View[]; episode_spent: number; reference_project?: { project_id: string; title: string } | null } | null; project?: Project }) {
+		if (body.data) { items = body.data.items; spent = body.data.episode_spent; referenceProject = body.data.reference_project ?? null; }
 		if (body.project) onUpdated(body.project);
 		for (const item of items) {
 			const s = item.state.spec;
@@ -67,7 +98,7 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Prep could not load'; }
 		finally { loading = false; }
 	}
-	$effect(() => { void project.project_id; void load().then(() => { for (const item of items) if (item.state.job) void watch(item.entry.key); }); });
+	$effect(() => { void project.project_id; void project.production.story_plan?.prep_source_project_id; void load().then(() => { for (const item of items) if (item.state.job) void watch(item.entry.key); }); });
 
 	async function call(key: string, label: string, payload: Record<string, unknown> | FormData) {
 		busy[key] = label; error = null; delete entryErrors[key];
@@ -191,7 +222,19 @@
 			<div class="cap accent">PREP · REFERENCES</div>
 			<h2 class="title">What {project.series?.episode_title ?? project.title} needs</h2>
 			<p class="lede">Add characters, locations and props. Attach images to show who and what you mean, then develop the reference before making shots.</p>
-			{#if project.production.story_plan?.prep_source_project_id}<p class="lede">Existing show references are available below. Use an existing reference as a source to refresh it for this trailer; the source project stays intact.</p>{/if}
+			{#if project.production.story_plan}
+				<div class="reference-project">
+					<span class="cap">Reference project</span>
+					{#if choosingReference}
+						<span class="reference-pick"><Pick label="Reference project" value={project.production.story_plan.prep_source_project_id ?? NO_REFERENCE} options={referenceOptions} wide disabled={referenceBusy} onchange={(id) => void setReferenceProject(id)} /></span>
+						<button type="button" class="link" onclick={() => (choosingReference = false)}>done</button>
+					{:else}
+						<b>{referenceProject?.title ?? (project.production.story_plan.prep_source_project_id ? 'Unavailable project' : 'None')}</b>
+						<button type="button" class="link" onclick={() => void openReferenceChoice()}>change</button>
+					{/if}
+				</div>
+				{#if referenceProject}<p class="lede">Every reference from {referenceProject.title} is listed below, read from that project in place (nothing is copied). Use one as a source to refresh it for this project; {referenceProject.title} stays intact.</p>{/if}
+			{/if}
 		</div>
 		<div><span class="mono">project spend {spent} cr</span>{#if onContinue}<button type="button" class="key" onclick={onContinue}>Continue to shot plan</button>{/if}</div>
 	</header>
@@ -409,6 +452,7 @@
 	.cap.accent { color: var(--color-nr-accent); }
 	.title { margin-top: 4px; color: var(--color-nr-mark); font-size: 18px; font-weight: 600; }
 	.lede { margin-top: 4px; max-width: 720px; color: var(--color-nr-muted); font-size: 12.5px; line-height: 1.6; }
+	.reference-project { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12px; color: var(--color-nr-text); } .reference-project b { font-weight: 600; } .reference-pick { width: 280px; } .reference-project .link { border: 0; background: none; padding: 0; color: var(--color-nr-accent); font-size: 11.5px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 	.mono { color: var(--color-nr-muted); font: 11px var(--font-mono); white-space: nowrap; }
 	.muted { color: var(--color-nr-muted); font-size: 11.5px; }
 	.error { border: 1px solid var(--color-nr-danger-line); border-radius: 2px; padding: 8px 10px; color: var(--color-nr-danger-text); font-size: 12px; }

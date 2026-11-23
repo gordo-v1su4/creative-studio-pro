@@ -43,7 +43,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	const project = await deps.store.readProject(idSchema.parse(params.projectId));
 	if (!project) return fail(404, 'Project not found');
 	const view = await prepView(deps, project);
-	return view.ok ? json({ ok: true, data: { items: view.items, props: view.props, episode_spent: episodeSpend(project.production) } }) : fail(view.status, view.message);
+	return view.ok ? json({ ok: true, data: { items: view.items, props: view.props, reference_project: view.reference_project, episode_spent: episodeSpend(project.production) } }) : fail(view.status, view.message);
 };
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -56,7 +56,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (!result.ok) return fail(result.status, result.message, result.reasons);
 		const fresh = (await deps.store.readProject(projectId.data)) ?? project;
 		const view = await prepView(deps, fresh);
-		return json({ ok: true, ...extra, data: view.ok ? { items: view.items, props: view.props, episode_spent: episodeSpend(fresh.production) } : null, project: fresh });
+		return json({ ok: true, ...extra, data: view.ok ? { items: view.items, props: view.props, reference_project: view.reference_project, episode_spent: episodeSpend(fresh.production) } : null, project: fresh });
 	};
 	try {
 		if ((request.headers.get('content-type') ?? '').includes('multipart/form-data')) {
