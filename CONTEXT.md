@@ -4,6 +4,20 @@ A production studio for short films and trailers: story beats are generated as i
 
 ## Language
 
+### Workspace
+
+**Stage**:
+One of the four stops a project moves through, in order: Story, Prep, Shots, Cut.
+_Avoid_: Tab, step, phase, workspace
+
+**Gate**:
+One numbered checkpoint (S0 to S10) of the Agent's pipeline; it is recorded with its run and is not a stage.
+_Avoid_: Stage (for this), stage gate
+
+**Viewer**:
+The full-size player that opens over the work from any shot or take: a take is played there, compared with the shot's other takes, picked, excluded and given its review status.
+_Avoid_: Lightbox, quick look, preview, player (alone)
+
 ### Story
 
 **Structure**:
@@ -44,6 +58,10 @@ A spoken line heard over the picture that the speaker does not deliver within th
 **Episode outline**:
 An episode's main story points in order, each marked with its section, written before its scenes are fleshed out.
 _Avoid_: Synopsis, treatment
+
+**Story plan**:
+A project's story laid out in order as sections, scenes and story beats; the Agent proposes each level and the operator approves it before the next. It ends where the shot list begins.
+_Avoid_: Breakdown, outline (alone), treatment
 
 **Story pass**:
 The conversation, with any model, that turns an idea or a rough story into the filled Notion template: season story beats, episode outlines, and scenes for the episode being made.
@@ -99,6 +117,10 @@ _Avoid_: Beat, card (in prose), slot, clip
 The fields a shot is written as (size, angle, who is in frame, action, dialogue, place, light, camera move, duration); once approved, its image and video prompts are written from it to the ONE SHOT standard, and a prompt edited by hand afterwards is kept.
 _Avoid_: Shot fields, shot recipe, shot sheet
 
+**Shot list**:
+A project's shots in spine order, each with its shot code and shot spec, whether or not it has a take yet.
+_Avoid_: Shot plan, storyboard, breakdown
+
 **Take**:
 One generated clip or still attached to a shot; a shot can hold several.
 _Avoid_: Asset, alternate, version
@@ -122,6 +144,10 @@ _Avoid_: Selected take, active take
 The story order of the shots, set by how they are connected on the board.
 _Avoid_: Timeline, master cut, sequence
 
+**Group**:
+A named set of shots on the board, made by selecting shots and grouping them. A scene is a group that has a scene code; a group without one holds unplaced shots.
+_Avoid_: Collection, bin, folder, stack
+
 **Missing shot**:
 A shot on the board with no take yet; wherever it is played or cut it shows as a plain text card with its shot code, order and story beat, for its planned length.
 _Avoid_: Placeholder, gap, empty card
@@ -131,7 +157,7 @@ A shot that keeps its place on the spine but is skipped wherever the spine is pl
 _Avoid_: Deactivated, disabled, hidden
 
 **Selection**:
-The shots picked on the board (clicked or boxed), played in reading order of where they sit (rows top to bottom, left to right, whatever order they were clicked in), previewed together before anything is kept.
+The shots gathered to be played together before anything is kept, in the order they are arranged (boxing shots on the board adds them in reading order: rows top to bottom, left to right). Each plays its pick unless another of its takes is auditioned there, which never changes the pick.
 _Avoid_: Sequence, playlist
 
 **Assembly**:
