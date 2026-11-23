@@ -4,9 +4,9 @@ import { join, resolve, sep } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project } from '$lib/domain/schemas';
-import { cutLength, cutsOf } from '$lib/domain/cuts';
+import { cutsOf } from '$lib/domain/cuts';
+import { EXPORT_FPS, frameGrid } from '$lib/domain/export';
 import { autoGain, defaultSoundPlan, duckRegions, layLevels, mixPlan, rmsDb, type MixEntry, type MixInput } from '$lib/domain/sound';
-import { programElapsed } from '$lib/media/speed-curve';
 import { PCM_RATE, readPcm } from '$lib/server/audio-envelope';
 import { probeMedia } from '$lib/server/media-probe';
 
@@ -69,15 +69,17 @@ export async function prepareMix(
 		const file = resolve(join(files, decodeURIComponent(url.slice(prefix.length))));
 		return file.startsWith(files + sep) ? file : null;
 	};
-	const length = cutLength({ entries: locked.entries });
+	// Picture and sound share one frame grid (frameGrid): each entry's sound starts on its picture's first frame.
+	const grid = frameGrid(locked.entries);
+	const length = grid.reduce((sum, g) => sum + g.frames, 0) / EXPORT_FPS;
 	const report: string[] = [];
 
 	// Take audio: where each entry sits, its level, its edges, and the activity that ducks the music.
 	const entries: MixEntry[] = [];
 	const activity = new Array<number>(Math.ceil(length * HZ)).fill(-120);
 	const takeLevels: number[] = [];
-	let at = 0;
-	for (const entry of locked.entries) {
+	for (const [i, entry] of locked.entries.entries()) {
+		const at = grid[i].start / EXPORT_FPS;
 		const take = project.production.assets.find((asset) => asset.asset_id === entry.asset_id);
 		const file = take ? local(take.url) : null;
 		const pcm = file ? await readPcm(file).catch(() => null) : null;
@@ -93,7 +95,6 @@ export async function prepareMix(
 			edge_db: pcm ? rmsDb(pcm, PCM_RATE, entry.out_s - 0.03, entry.out_s) : null,
 			average_db: pcm ? rmsDb(pcm, PCM_RATE, entry.in_s, entry.out_s) : null
 		});
-		at += programElapsed(entry.speed, entry.out_s - entry.in_s);
 	}
 	const takeLevel = takeLevels.length ? 10 * Math.log10(takeLevels.reduce((s, db) => s + Math.pow(10, db / 10), 0) / takeLevels.length) : null;
 

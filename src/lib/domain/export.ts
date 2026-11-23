@@ -14,22 +14,42 @@ export const EXPORT_SIZE = { width: 1920, height: 1080 } as const;
 
 /** Seconds → whole frames at the export rate. */
 export const toFrames = (seconds: number) => Math.max(1, Math.round(seconds * EXPORT_FPS));
+/**
+ * Each entry on the export frame grid: its first frame and its length. The cut points are the
+ * plan's running times rounded to whole frames, so rounding never piles up along a cut: every
+ * cut point stays within half a frame of the plan, and the picture (bakes) and the sound (mix)
+ * use the same points. Rounding each entry's own length instead drifted up to half a frame per
+ * entry, which put the sound out of sync further into a long cut.
+ */
+export function frameGrid(entries: ReadonlyArray<{ in_s: number; out_s: number; speed?: SpeedPoint[] }>): Array<{ start: number; frames: number }> {
+	let planned = 0, previous = 0;
+	return entries.map((entry) => {
+		planned += programElapsed(entry.speed, entry.out_s - entry.in_s);
+		const end = Math.max(previous + 1, Math.round(planned * EXPORT_FPS));
+		const row = { start: previous, frames: end - previous };
+		previous = end;
+		return row;
+	});
+}
+
 /** Frames → an FCPXML rational time. */
 const t = (frames: number) => (frames === 0 ? '0s' : `${frames}/${EXPORT_FPS}s`);
 
 /**
  * One entry baked to an intermediate: its kept span, its ramp rendered in
  * (each piece retimed), scaled and padded to the export frame, every frame a
- * keyframe so Resolve scrubs and cuts it cleanly. Video only; sound comes
+ * keyframe so Resolve scrubs and cuts it cleanly. Its last frame is held for up
+ * to two frames so a length rounded up on the grid never comes out short. Video only; sound comes
  * from the mix and stems.
  */
-export function bakePlan(input: { file: string; in_s: number; out_s: number; speed?: SpeedPoint[]; output: string }): { args: string[]; frames: number } {
-	const frames = toFrames(programElapsed(input.speed, input.out_s - input.in_s));
+export function bakePlan(input: { file: string; in_s: number; out_s: number; speed?: SpeedPoint[]; output: string; frames?: number }): { args: string[]; frames: number } {
+	// Its length on the frame grid (frameGrid) when given, else its own played length rounded.
+	const frames = input.frames ?? toFrames(programElapsed(input.speed, input.out_s - input.in_s));
 	const chunks = rampChunks(input, 0.25).map((chunk, i) => ({ ...chunk, label: `p${i}` }));
 	const { width, height } = EXPORT_SIZE;
 	const pieces = chunks.map((chunk) => `[0:v]trim=start=${chunk.from.toFixed(4)}:end=${chunk.to.toFixed(4)},setpts=(PTS-STARTPTS)/${chunk.rate}[${chunk.label}]`);
 	const joined = chunks.length > 1 ? `${chunks.map((c) => `[${c.label}]`).join('')}concat=n=${chunks.length}:v=1:a=0[joined]` : null;
-	const graph = [...pieces, ...(joined ? [joined] : []), `[${joined ? 'joined' : chunks[0].label}]fps=${EXPORT_FPS},scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v]`].join(';');
+	const graph = [...pieces, ...(joined ? [joined] : []), `[${joined ? 'joined' : chunks[0].label}]fps=${EXPORT_FPS},tpad=stop_mode=clone:stop=2,scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[v]`].join(';');
 	return {
 		frames,
 		args: ['-y', '-v', 'error', '-i', input.file, '-filter_complex', graph, '-map', '[v]', '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-g', '1', '-r', String(EXPORT_FPS), '-frames:v', String(frames), input.output]

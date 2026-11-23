@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { bakePlan, buildFcpxml, draftTakes, fileUrl, mp4Plan, toFrames } from '../../src/lib/domain/export';
+import { bakePlan, buildFcpxml, draftTakes, fileUrl, frameGrid, mp4Plan, toFrames } from '../../src/lib/domain/export';
 
 describe('FCPXML for Resolve', () => {
 	const xml = buildFcpxml({
@@ -30,10 +30,24 @@ describe('FCPXML for Resolve', () => {
 	});
 });
 
+describe('frame grid', () => {
+	test('cut points round the running time, so 40 entries of 1.02 s stay within half a frame of the plan', () => {
+		// Rounding each entry on its own gave 24 frames each: 40 × 20 ms = 0.8 s of picture lost against the sound.
+		const grid = frameGrid(Array.from({ length: 40 }, () => ({ in_s: 0, out_s: 1.02 })));
+		grid.forEach((g, i) => expect(Math.abs(g.start / 24 - i * 1.02)).toBeLessThanOrEqual(0.5 / 24 + 1e-9));
+		expect(grid.reduce((sum, g) => sum + g.frames, 0)).toBe(Math.round(40 * 1.02 * 24));
+		expect(new Set(grid.map((g) => g.frames))).toEqual(new Set([24, 25]));
+	});
+	test('ramps count by their played length; every entry keeps at least one frame', () => {
+		expect(frameGrid([{ in_s: 0, out_s: 4, speed: [{ x: 0, rate: 2 }, { x: 1, rate: 2 }] }, { in_s: 0, out_s: 0.001 }])).toEqual([{ start: 0, frames: 48 }, { start: 48, frames: 1 }]);
+	});
+});
+
 describe('render plans', () => {
 	test('a flat entry bakes its trim; a ramp bakes as retimed pieces; the frame count is the played length', () => {
 		const flat = bakePlan({ file: 'a.mp4', in_s: 1, out_s: 4, output: 'o.mp4' });
 		expect(flat.frames).toBe(72);
+		expect(bakePlan({ file: 'a.mp4', in_s: 1, out_s: 4, output: 'o.mp4', frames: 73 }).args).toContain('73');
 		expect(flat.args.join(' ')).toContain('trim=start=1.0000:end=4.0000,setpts=(PTS-STARTPTS)/1');
 		expect(flat.args).toContain('-g');
 		const ramp = bakePlan({ file: 'a.mp4', in_s: 0, out_s: 4, speed: [{ x: 0, rate: 2 }, { x: 1, rate: 2 }], output: 'o.mp4' });

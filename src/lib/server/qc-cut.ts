@@ -2,7 +2,7 @@ import { join } from 'node:path';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { ProjectStore } from '$lib/adapters/project-store';
 import type { CutVersion, Project, SoundPlan } from '$lib/domain/schemas';
-import { EXPORT_FPS, toFrames } from '$lib/domain/export';
+import { EXPORT_FPS, frameGrid } from '$lib/domain/export';
 import type { QcEntry, QcReport } from '$lib/domain/qc';
 import { isSlateId } from '$lib/domain/slate';
 import { programElapsed } from '$lib/media/speed-curve';
@@ -12,28 +12,28 @@ import { runQc, type QcInput } from '$lib/server/qc';
 type Failure = { ok: false; status: number; message: string };
 
 /**
- * The QC entries of a locked version: picture starts in whole export frames (as the
- * export bakes them), the plan's unrounded starts (as the mix and the song see them),
+ * The QC entries of a locked version: picture starts on the export frame grid (as the
+ * export bakes them and the mix places their sound), the plan's unrounded starts (as the mix and the song see them),
  * each take's file and in-point, and the shot's written dialogue.
  */
 export function qcEntries(project: Project, locked: Pick<CutVersion, 'entries'>, local: (url: string) => string | null): { entries: QcEntry[]; planned_s: number } {
-	let frames = 0, planned = 0;
-	const entries = locked.entries.map((entry) => {
+	const grid = frameGrid(locked.entries);
+	let planned = 0;
+	const entries = locked.entries.map((entry, i) => {
 		const card = project.production.cards.find((c) => c.card_id === entry.card_id);
 		const take = isSlateId(entry.asset_id) ? undefined : project.production.assets.find((a) => a.asset_id === entry.asset_id);
 		const played = programElapsed(entry.speed, entry.out_s - entry.in_s);
-		const own = toFrames(played);
 		const file = take && take.kind === 'video' ? local(take.url) : null;
 		const dialogue = (card?.source?.dialogue ?? card?.fit?.dialogue ?? '').trim();
 		const row: QcEntry = {
-			title: card?.title ?? entry.card_id, at_s: frames / EXPORT_FPS, length_s: own / EXPORT_FPS, planned_at_s: planned,
+			title: card?.title ?? entry.card_id, at_s: grid[i].start / EXPORT_FPS, length_s: grid[i].frames / EXPORT_FPS, planned_at_s: planned,
 			take: file ? { file, in_s: entry.in_s } : null, ramped: Boolean(entry.speed?.some((p) => p.rate !== 1)),
 			...(dialogue ? { dialogue } : {})
 		};
-		frames += own; planned += played;
+		planned += played;
 		return row;
 	});
-	return { entries: entries.map((e, i) => ({ ...e, title: `${String(i + 1).padStart(2, '0')} ${e.title}` })), planned_s: frames / EXPORT_FPS };
+	return { entries: entries.map((e, i) => ({ ...e, title: `${String(i + 1).padStart(2, '0')} ${e.title}` })), planned_s: grid.reduce((sum, g) => sum + g.frames, 0) / EXPORT_FPS };
 }
 
 /** Everything a QC run of this version needs except the file and where its output goes. */
