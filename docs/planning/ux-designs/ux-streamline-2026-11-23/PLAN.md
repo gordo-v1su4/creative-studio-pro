@@ -72,6 +72,30 @@ Status, 2026-11-23: the first part is built and checked in the browser on the lo
 - Not done yet: the playback measurements (step 1, to be taken before any playback code changes), the selection timeline in the band and the selection strip (3, 4), the viewer and its keys (5), frame strips (6), progressive timeline loading (7), prompts shown by skill section and the price and confirm steps in Details (8).
 - The toolbars above the grid (add files, score, first cut) keep their old look for now.
 
+Status, part two, 2026-11-23 (local test copy, Blood Rush teaser, 82 shots):
+
+Measured before any playback change:
+
+| What | Result |
+| --- | --- |
+| Hovering a shot until it plays (GPU frame bank) | 450–800 ms; the whole proxy (0.6–1.3 MB) is downloaded and decoded first |
+| Opening a 62-clip cut, all video, first time | 10.0 s, most of it making 480p proxies on first request |
+| Opening the same cut again | 0.12 s to the timeline, 0.30 s to playing |
+| Opening a cut that contains stills (68 clips, 9 stills) | never: the first still failed as "unsupported format" and the cut stayed on "loading 34/68" |
+
+Two of the project's seven cuts held stills, so this was the "long timeline will not play" problem. Not a loading-speed problem locally.
+
+Built:
+
+- **Stills play in a cut.** A picture is one frame held for as long as the cut entry says (`src/lib/media/stills.ts`, `ResidentFrameBank.loadStill`, `clipBanks.ts`). The 68-clip cut now opens in 0.39 s and plays through its stills.
+- **One unreadable clip no longer stops a timeline.** The rest plays, the cut opens read-only, and a line names what was left out.
+- **The viewer** (`src/lib/ui/shots/Viewer.svelte`, keys in `src/lib/domain/viewer-keys.ts`): opens over the grid on Space, Enter or a double-click; plays the take from its 480p proxy in a plain video element; arrows step shots and takes; J K L, P, X, 1–4, Esc; a scrub bar that thickens on hover with a rectangular playhead and amber timecode; takes with version, file name and state. Its review controls (status, Make pick, Exclude, the stored name) sit at the top of the dock's Details tab.
+- Selecting a shot fetches its pick's proxy; the viewer fetches the neighbouring shots' proxies.
+
+Measured after: the viewer is on screen 6–27 ms after Space with the take's still; the take is playing after 100–140 ms when its proxy was already fetched, and after 400–900 ms when it was not.
+
+Still open in slice 1: the same measurements on Hosted Studio (they need the operator signed in), whether the gateway may cache proxies, frame strips and the frame preview on hover, the audio lane, the selection strip, prompts by skill section, and the price and confirm steps.
+
 ### 2 · Canvas
 
 Goal: the board as a view of Shots where anything can be dragged anywhere.

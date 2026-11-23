@@ -15,7 +15,7 @@
 		pick: Take | null;
 		selected?: boolean;
 		onselect: () => void;
-		/** Asked for the shot's details (double-click or Enter). */
+		/** Asked to play the shot in the viewer (double-click, Enter or Space). */
 		onopen: () => void;
 	} = $props();
 </script>
@@ -29,7 +29,7 @@
 	tabindex="0"
 	onclick={onselect}
 	ondblclick={onopen}
-	onkeydown={(event) => { if (event.key === 'Enter') { onselect(); onopen(); } else if (event.key === ' ') { event.preventDefault(); onselect(); } }}
+	onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onselect(); onopen(); } }}
 >
 	<div class="frame">
 		{#if pick?.kind === 'video'}

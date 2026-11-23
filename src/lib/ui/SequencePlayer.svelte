@@ -786,14 +786,17 @@
 				canvas!.height = Math.round(canvas!.clientHeight * ratio);
 				const items = sources();
 				expected = items.length;
-				const loaded: Clip[] = new Array(items.length);
+				const loaded: Array<Clip | undefined> = new Array(items.length);
+				const failed: string[] = [];
 				let nextItem = 0;
 				const readMetadata = async () => {
 					while (!disposed && nextItem < items.length) {
 						const at = nextItem++;
 						const item = items[at];
-						const metadata = await loadClipMetadata(item.src);
+						// One clip that cannot be read must not stop the whole timeline from opening.
+						const metadata = await loadClipMetadata(item.src).catch(() => null);
 						if (disposed) return;
+						if (!metadata) { failed.push(item.title); loading++; continue; }
 						const out = Math.min(item.out ?? metadata.duration, metadata.duration);
 						loaded[at] = { ...item, ...metadata, speed: item.speed, bank: null, in: Math.max(0, Math.min(item.in ?? 0, out - MIN_SPAN)), out };
 						loading++;
@@ -801,7 +804,12 @@
 				};
 				await Promise.all(Array.from({ length: Math.min(6, items.length) }, readMetadata));
 				if (disposed) return;
-				clips = loaded;
+				clips = loaded.filter((clip): clip is Clip => !!clip);
+				if (failed.length) {
+					readOnly = true;
+					error = `${failed.length} of ${items.length} clips could not be read (${failed.slice(0, 2).join(', ')}${failed.length > 2 ? '…' : ''}); playing the rest, edits are not saved`;
+				}
+				if (!clips.length) throw new Error('None of these clips could be read');
 				startClip(0);
 				lastTick = performance.now();
 				frame = requestAnimationFrame(tick);

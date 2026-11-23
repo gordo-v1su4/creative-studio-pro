@@ -1,5 +1,6 @@
 import { ALL_FORMATS, BlobSource, Input, UrlSource, VideoSampleSink } from 'mediabunny';
 import { ResidentCapacityError, ResidentFrameBank, ResidentMemoryBudget, residentDimensions, type BankProgress } from './ResidentFrameBank';
+import { isStillUrl, STILL_FPS, STILL_SECONDS } from '$lib/media/stills';
 import { getPreferredCanvasFormat, getSharedWebGpuDevice, onSharedWebGpuDeviceLost } from './SharedGpuDevice';
 
 /**
@@ -54,6 +55,11 @@ export function unpinBank(url: string, maxHeight: number): void {
 /** Read timeline bounds without decoding or uploading frames. */
 export function loadClipMetadata(url: string): Promise<{ duration: number; fps: number; hasAudio: boolean }> {
 	let pending = clipMetadata.get(url);
+	// A still in a cut: nothing to read, it is one frame held for as long as the cut says.
+	if (!pending && isStillUrl(url)) {
+		pending = Promise.resolve({ duration: STILL_SECONDS, fps: STILL_FPS, hasAudio: false });
+		clipMetadata.set(url, pending);
+	}
 	if (!pending) {
 		pending = (async () => {
 			const input = new Input({ formats: ALL_FORMATS, source: new UrlSource(new URL(proxyUrl(url), location.href)) });
@@ -147,7 +153,14 @@ export function loadBank(url: string, maxHeight: number, progress: (p: BankProgr
 			const bank = new ResidentFrameBank(device, budget);
 			entry.bank = bank;
 			try {
-				await bank.load(blob, progress, maxHeight);
+				if (isStillUrl(url)) {
+					const image = await createImageBitmap(blob);
+					try { await bank.loadStill(image, STILL_SECONDS, STILL_FPS, maxHeight); }
+					finally { image.close(); }
+					progress({ frames: 1, total: 1, bytes: bank.stats.bytes });
+				} else {
+					await bank.load(blob, progress, maxHeight);
+				}
 				return bank;
 			} catch (error) {
 				if (!(error instanceof ResidentCapacityError) || !evictOldest(key)) throw error;

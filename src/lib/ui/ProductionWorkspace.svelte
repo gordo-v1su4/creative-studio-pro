@@ -25,6 +25,8 @@
 	import StoryPlan from '$lib/ui/StoryPlan.svelte';
 	import ShotCard from '$lib/ui/shots/ShotCard.svelte';
 	import TakesBand from '$lib/ui/shots/TakesBand.svelte';
+	import Viewer from '$lib/ui/shots/Viewer.svelte';
+	import type { ReviewStatus } from '$lib/domain/viewer-keys';
 	import { shotCardFacts } from '$lib/domain/shot-card';
 	import { takesFor } from '$lib/domain/takes';
 
@@ -286,12 +288,48 @@
 	const selectedPick = $derived(selectedShot ? pickFor(draft, selectedShot) : null);
 	const selectedFacts = $derived(selectedShot ? shotCardFacts(selectedShot, draft.assets, selectedPick?.asset_id ?? null) : null);
 
-	async function makePick(takeId: string) {
-		if (!selectedShot || pickBusy) return;
+	/** The viewer is open over the grid (Space, or a double-click on a shot). */
+	let viewerOpen = $state(false);
+	// Selecting a shot fetches its pick's proxy, so the viewer has it by the time Space is pressed.
+	$effect(() => { if (selectedPick?.kind === 'video') void fetch(proxyUrl(selectedPick.url)).catch(() => null); });
+
+	async function makePick(cardId: string, takeId: string) {
+		if (pickBusy) return;
 		pickBusy = true; error = null;
-		try { await boardCommand({ command: 'set_pick', card_id: selectedShot.card_id, take_id: takeId }); }
+		try { await boardCommand({ command: 'set_pick', card_id: cardId, take_id: takeId }); }
 		catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change the pick'; }
 		finally { pickBusy = false; }
+	}
+
+	/** A review decision made in the viewer: the shot's status, or excluding one take. Sent to Review Room at once. */
+	async function reviewTake(take: ProductionAsset, change: { status?: ReviewStatus; excluded?: boolean }) {
+		if (pickBusy) return;
+		pickBusy = true; error = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'review', take_id: take.asset_id, expected_version: project.version, ...change }) });
+			const body = await response.json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Review could not be saved');
+			onUpdated(body.data);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Review could not be saved'; }
+		finally { pickBusy = false; }
+	}
+
+	function openViewer(cardId?: string) {
+		const target = cardId ?? selectedShotId ?? draft.cards[0]?.card_id;
+		if (!target) return;
+		selectedShotId = target;
+		viewerOpen = true;
+		onOpenDetails?.();
+	}
+
+	/** Space on the Shots grid opens the viewer on the selected shot. */
+	function gridKey(event: KeyboardEvent) {
+		if (tab !== 'beats' || viewerOpen || event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
+		const target = event.target as HTMLElement | null;
+		if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(target.tagName))) return;
+		if (!selectedShotId && !draft.cards.length) return;
+		event.preventDefault();
+		openViewer(selectedShotId || draft.cards[0].card_id);
 	}
 
 	/** Shows a node inside another element of the page (the dock), keeping it part of this component. */
@@ -374,6 +412,8 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Rename failed'; }
 	}
 </script>
+
+<svelte:window onkeydown={gridKey} />
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
 	<div class="sticky top-0 z-10 flex min-w-max items-center justify-end gap-3 border-b border-[#26333a] bg-[#10141a]/95 px-4 py-2 backdrop-blur">
@@ -476,14 +516,14 @@
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-0.5 px-2 pb-2 pt-1">
 			{#each draft.cards as card (card.card_id)}
 				{@const pick = pickFor(draft, card)}
-				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} onselect={() => (selectedShotId = card.card_id)} onopen={() => onOpenDetails?.()} />
+				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} onselect={() => (selectedShotId = card.card_id)} onopen={() => openViewer(card.card_id)} />
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>
 		{#if dropping}<div class="shots-drop-hint" aria-hidden="true">Drop to add as shots</div>{/if}
 		<!-- The takes band stays put under the grid, so selecting a shot never moves the page. -->
 		<div class="sticky bottom-0 z-[5] bg-panel p-1">
-			<TakesBand title={selectedShot?.title ?? null} facts={selectedFacts} takes={selectedShot ? takesFor(draft, selectedShot.card_id, true) : []} busy={pickBusy || unsaved || shotBusy !== null} onpick={(takeId) => void makePick(takeId)} onopen={() => onOpenDetails?.()} />
+			<TakesBand title={selectedShot?.title ?? null} facts={selectedFacts} takes={selectedShot ? takesFor(draft, selectedShot.card_id, true) : []} busy={pickBusy || unsaved || shotBusy !== null} onpick={(takeId) => selectedShot && void makePick(selectedShot.card_id, takeId)} onopen={() => onOpenDetails?.()} />
 		</div>
 		</div>
 	{:else if tab === 'cuts'}
@@ -574,6 +614,9 @@
 				<button type="button" class="btn btn-accent mt-5" onclick={downloadManifest} disabled={draft.cards.length === 0}>Download manifest</button>
 			</div>
 		</div>
+	{/if}
+	{#if viewerOpen && tab === 'beats'}
+		<Viewer production={draft} cards={draft.cards} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)} />
 	{/if}
 	{#if detailsHost}
 		<div class="shot-details" use:portal={detailsHost}>
