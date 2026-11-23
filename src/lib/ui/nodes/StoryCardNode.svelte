@@ -173,7 +173,7 @@
 	<header class="flex items-center gap-2 border-b border-nr-line px-2 py-1.5">
 		{#if inSequence}<span class="bg-nr-mark px-1 font-mono text-[10px] font-bold text-black" title="Sequence position">{inSequence}</span>{/if}
 		<span class={['font-mono text-[10px] font-bold', number ? 'text-nr-accent' : 'text-nr-dim']} title={number ? 'Place on the spine' : 'Off the spine: hook a connector in to give it a place'}>{number ? String(number).padStart(2, '0') : '--'}</span>
-		<strong class="min-w-0 grow truncate text-[11px] text-nr-text" title={story.code ? `${story.code} · ${card?.title}` : card?.title}>{#if story.code}<span class="font-mono text-nr-accent">{story.code}</span> · {/if}{card?.title ?? `Shot ${story.order + 1}`}</strong>
+		<strong class="min-w-0 grow truncate text-[11px] text-nr-text" title={story.code ? `${story.code} · ${card?.title}` : card?.title}>{#if story.code}<span class="font-mono text-nr-accent">{story.code}</span>{' · '}{/if}{card?.title ?? `Shot ${story.order + 1}`}</strong>
 		{#if benched}<span class="benched-mark">Benched</span>{/if}
 		{#if story.animating}<span class="benched-mark" title="A Seedance generation from this shot is running">Animating…</span>{/if}
 		<span class="font-mono text-[9px] uppercase text-nr-dim">{card ? `${card.duration_ms / 1000}s` : 'placeholder'}</span>

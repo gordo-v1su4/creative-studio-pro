@@ -46,6 +46,7 @@
 	const totalSeconds = $derived(edit ? editSeconds : seconds);
 	/** Once scenes or shots exist, the length comes from the edit: the target and the Bible draft step away. */
 	const started = $derived(project.production.cards.length > 0 || (plan?.sections.some(section => section.scenes.length) ?? false));
+	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 	const stamp = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 	const total = (section: Section) => section.moments.reduce((sum, beat) => sum + beat.duration_s, 0);
 	const start = (index: number) => plan?.sections.slice(0, index).reduce((sum, section) => sum + actSeconds(section), 0) ?? 0;
@@ -102,7 +103,7 @@
 <section class="plan" aria-label="Trailer story and shot plan">
 	<header>
 			<div><p class="eyebrow">BIBLE · ACTS · SCENES · STORY BEATS · SHOTS</p><h2>{plan.title}</h2><p class="intro">Choose the story beats first. Put each in its scene, approve it, draft its shots, then prepare references and add shots to the Board.</p></div>
-		<div class="metrics"><strong title={edit ? `Length of the edit ${edit.name}` : 'Planned length of the story beats'}>{stamp(totalSeconds)}</strong><span>{project.production.cards.length} shots on board{#if edit} · {inEdit} in the edit{/if}<br />{#if edit}<span class="edit-name">Edit · {edit.name}</span>{:else}{beats.length} story beats · {beats.filter(beat => beat.approved).length} approved{/if}</span></div>
+		<div class="metrics"><strong title={edit ? `Length of the edit ${edit.name}` : 'Planned length of the story beats'}>{stamp(totalSeconds)}</strong><span>{plural(project.production.cards.length, 'shot')} on board{#if edit}{` · ${inEdit} in the edit`}{/if}<br />{#if edit}<span class="edit-name">Edit · {edit.name}</span>{:else}{beats.length} story beats · {beats.filter(beat => beat.approved).length} approved{/if}</span></div>
 	</header>
 	{#if plan.footage_source_project_id}<p class="hint"><a href={`/?project=${plan.footage_source_project_id}&tab=beats`} target="_blank" rel="noreferrer">Review the original test footage</a> · The existing project remains the source pool.</p>{/if}
 	{#if plan.source}<details class="act"><summary>Source Bible · {plan.source.title}</summary><p class="hint">Imported {new Date(plan.source.imported_at).toLocaleDateString()}. The trailer plan follows this source; its proposals do not change canon.</p>{#if plan.source.url}<a href={plan.source.url} target="_blank" rel="noreferrer">Open Bible in Notion</a>{/if}{#if plan.source.series_id}<button type="button" class="agent-mini" disabled={busy || dirty} onclick={() => send('refresh_source')} title={dirty ? 'Save your plan edits first' : 'Read the current Bible from Notion again (the page marked CURRENT)'}>Refresh from Notion</button>{/if}<pre class="bible">{plan.source.text}</pre></details>{/if}
@@ -132,7 +133,7 @@
 	{#each plan.sections as section, i (section.id)}
 		{@const sm = sectionMeasure(section)}
 		<section class="act" aria-label={section.title}>
-			<div class="act-heading"><span class="time">{stamp(start(i))}–{stamp(start(i) + actSeconds(section))}</span><h3>{section.title}</h3><span>{section.scenes.length} scenes · {sm.shots || section.moments.flatMap(beat => beat.shots).length} shots{#if edit} · {sm.in_edit} in the edit{/if}{#if section.moments.length} · {section.moments.length} story beats{/if}</span></div>
+			<div class="act-heading"><span class="time">{stamp(start(i))}–{stamp(start(i) + actSeconds(section))}</span><h3>{section.title}</h3><span>{plural(section.scenes.length, 'scene')} · {plural(sm.shots || section.moments.flatMap(beat => beat.shots).length, 'shot')}{#if edit}{` · ${sm.in_edit} in the edit`}{/if}{#if section.moments.length}{` · ${plural(section.moments.length, 'story beat')}`}{/if}</span></div>
 			<p class="summary">{section.summary}</p>
 			{#each grouped(section) as entry, g (entry.scene?.id ?? `loose-${g}`)}
 				{#if entry.scene}
@@ -143,7 +144,7 @@
 						<div class="scene-heading">
 							<span class="code">{sceneCode(scene) ?? '···'}</span>
 							<input class="scene-title" value={scene.title} maxlength="200" aria-label="Scene title" oninput={(event) => { scene.title = event.currentTarget.value; dirty = true; }} />
-							<span class="scene-meta">{#if m}{m.shots} shots{#if edit} · {m.in_edit} in the edit · {stamp(m.edit_s)}{/if}{/if}{#if entry.beats.length || !m}{m ? ' · ' : ''}{entry.beats.length} story beats{/if}</span>
+							<span class="scene-meta">{#if m}{plural(m.shots, 'shot')}{#if edit}{` · ${m.in_edit} in the edit · ${stamp(m.edit_s)}`}{/if}{/if}{#if entry.beats.length || !m}{`${m ? ' · ' : ''}${plural(entry.beats.length, 'story beat')}`}{/if}</span>
 						</div>
 						<div class="scene-fields">
 							{#if stored && scene.group_id}<p class="linked">Board group · <b>{groupName(scene.group_id)}</b> · Review Room scene folder <b>{stored.code}</b></p>{:else}<label>Board group<select value={scene.group_id ?? ''} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">New group on Add to Board</option>{#each boardGroups as group (group.group_id)}<option value={group.group_id}>{group.name}{room?.scenes?.[group.group_id] ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>{/if}
