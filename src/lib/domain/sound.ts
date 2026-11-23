@@ -151,6 +151,9 @@ export function mixPlan(input: MixInput): { args: string[]; report: string[] } {
 	const addInput = (file: string, loop = false) => { if (loop) args.push('-stream_loop', '-1'); args.push('-i', file); return inputs++; };
 	const layerGain = (layer: Layer) => input.auto[layer] + plan.layers[layer].gain_db;
 	const mixLabels: string[] = [];
+	// Every placed piece runs the whole cut: amix (duration=longest) can end with its first input when the
+	// others start later, so a mix came out cut short at the first entry (found by the QC report, V1S-505).
+	const pad = `apad=whole_dur=${input.length_s.toFixed(3)}`;
 
 	// Take audio.
 	if (!plan.layers.take.mute) {
@@ -173,7 +176,7 @@ export function mixPlan(input: MixInput): { args: string[]; report: string[] } {
 			const length = chunks.reduce((sum, chunk) => sum + (chunk.to - chunk.from) / chunk.rate, 0);
 			const fadeOut = Math.max(xf, repair.fade_s);
 			const delay = Math.max(0, Math.round((entry.at_s - head) * 1000));
-			filters.push(`${labels.join('')}concat=n=${labels.length}:v=0:a=1,afade=t=in:st=0:d=${Math.max(0.005, xf).toFixed(3)},afade=t=out:st=${Math.max(0, length - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)},adelay=delays=${delay}:all=1[take${e}]`);
+			filters.push(`${labels.join('')}concat=n=${labels.length}:v=0:a=1,afade=t=in:st=0:d=${Math.max(0.005, xf).toFixed(3)},afade=t=out:st=${Math.max(0, length - fadeOut).toFixed(3)}:d=${fadeOut.toFixed(3)},adelay=delays=${delay}:all=1,${pad}[take${e}]`);
 			placed.push(`[take${e}]`);
 			if (repair.extend_s) report.push(`Entry ${e + 1}: a sound was cut off mid-hit; it now rings out ${repair.extend_s}s into the next clip.`);
 			const muted = chunks.filter((chunk) => chunk.mute).length;
@@ -207,7 +210,7 @@ export function mixPlan(input: MixInput): { args: string[]; report: string[] } {
 	if (input.effects.length && !plan.layers.effects.mute) {
 		const placed = input.effects.map((effect, i) => {
 			const k = addInput(effect.file);
-			filters.push(`[${k}:a]${effect.from_s ? `atrim=start=${effect.from_s.toFixed(3)},` : ''}asetpts=PTS-STARTPTS,${fmt},volume=${effect.gain_db.toFixed(1)}dB,adelay=delays=${Math.round(effect.at_s * 1000)}:all=1[fx${i}]`);
+			filters.push(`[${k}:a]${effect.from_s ? `atrim=start=${effect.from_s.toFixed(3)},` : ''}asetpts=PTS-STARTPTS,${fmt},volume=${effect.gain_db.toFixed(1)}dB,adelay=delays=${Math.round(effect.at_s * 1000)}:all=1,${pad}[fx${i}]`);
 			return `[fx${i}]`;
 		});
 		filters.push(`${placed.join('')}amix=inputs=${placed.length}:normalize=0:duration=longest,volume=${layerGain('effects').toFixed(1)}dB[fx]`);

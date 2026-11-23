@@ -94,4 +94,28 @@ describe.skipIf(!hasFfmpeg)('mix render (ffmpeg smoke test)', () => {
 		const probe = Bun.spawnSync(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', output]).stdout.toString();
 		expect(Number(probe)).toBeCloseTo(5, 0);
 	}, 60_000);
+
+	test('takes placed later never cut the mix short: every render runs the whole cut (found by the QC report)', async () => {
+		// ffmpeg's amix could end with the first take when the others start later: a 7.06 s cut mixed to 2.05 s.
+		const root = await mkdtemp(join(tmpdir(), 'csp-mix-')); roots.push(root);
+		const run = (args: string[]) => expect(Bun.spawnSync(['ffmpeg', '-v', 'error', '-y', ...args]).exitCode).toBe(0);
+		run(['-f', 'lavfi', '-i', 'testsrc2=s=160x90:r=24:d=6', '-f', 'lavfi', '-i', 'anoisesrc=d=6:c=pink:a=0.3', '-c:v', 'libx264', '-c:a', 'aac', '-shortest', join(root, 'a.mp4')]);
+		run(['-f', 'lavfi', '-i', 'anoisesrc=d=10:c=white:a=0.1', '-ar', '48000', join(root, 'song.wav')]);
+		const output = join(root, 'mix.m4a');
+		const { args } = mixPlan({
+			length_s: 7.06, output, auto: { take: 0, ambience: 0, music: 0, effects: 0 }, plan: defaultSoundPlan(), duck: [],
+			entries: [
+				{ file: join(root, 'a.mp4'), in_s: 1, out_s: 3.01, at_s: 0, before_s: 1, after_s: 3, edge_db: null },
+				{ file: join(root, 'a.mp4'), in_s: 0.5, out_s: 3.5, at_s: 2.01, before_s: 0.5, after_s: 2.5, edge_db: null },
+				{ file: join(root, 'a.mp4'), in_s: 3.2, out_s: 5.25, at_s: 5.01, before_s: 3.2, after_s: 0.75, edge_db: null }
+			],
+			music: { file: join(root, 'song.wav') }, ambience: null, effects: []
+		});
+		const lengths: number[] = [];
+		for (let i = 0; i < 6; i++) {
+			expect(Bun.spawnSync(['ffmpeg', ...args]).exitCode).toBe(0);
+			lengths.push(Number(Bun.spawnSync(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', output]).stdout.toString()));
+		}
+		for (const length of lengths) expect(length).toBeCloseTo(7.06, 1);
+	}, 120_000);
 });
