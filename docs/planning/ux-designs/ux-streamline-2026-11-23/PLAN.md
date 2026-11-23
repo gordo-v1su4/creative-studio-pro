@@ -66,6 +66,12 @@ Done when: the viewer opens playing in under 100ms on the local copy, a 60-clip 
 
 Open question settled here: whether Hosted Studio's gateway may cache proxies and frame strips.
 
+Status, 2026-11-23: the first part is built and checked in the browser on the local copy at 1440px and 375px.
+
+- Done (steps 2, 3 in part, 8 in part): the new shot card (`src/lib/ui/shots/ShotCard.svelte`, facts in `src/lib/domain/shot-card.ts`); selecting a shot moves nothing; a fixed takes band under the grid where a click makes another take the pick (`TakesBand.svelte`); a Details tab in the dock holding the title, story beat, purpose, prompts, bench, remove, title card and take review that the old card carried.
+- Not done yet: the playback measurements (step 1, to be taken before any playback code changes), the selection timeline in the band and the selection strip (3, 4), the viewer and its keys (5), frame strips (6), progressive timeline loading (7), prompts shown by skill section and the price and confirm steps in Details (8).
+- The toolbars above the grid (add files, score, first cut) keep their old look for now.
+
 ### 2 · Canvas
 
 Goal: the board as a view of Shots where anything can be dragged anywhere.

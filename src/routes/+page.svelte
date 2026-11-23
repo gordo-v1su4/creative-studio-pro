@@ -188,6 +188,9 @@
 	const currentStage = $derived(stageOfTab(currentTab));
 	const stageViews = $derived(viewsOfStage(currentStage));
 	let menuOpen = $state(false);
+	/** The dock holds the Agent and the selected shot's details. */
+	let dockTab = $state<'agent' | 'details'>('agent');
+	let detailsHost = $state<HTMLElement | null>(null);
 	/** The Agent is docked beside the work; whether it is open is remembered on this machine. */
 	let agentRestored = $state(false);
 	const dockOpen = $derived(ui.chatOpen && ui.chatMode === 'dock');
@@ -1552,7 +1555,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} {detailsHost} onOpenDetails={() => { ui.chatMode = 'dock'; ui.chatOpen = true; dockTab = 'details'; }} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">
@@ -1689,8 +1692,16 @@
 		</aside>
 		{#if dockOpen}
 			<!-- The Agent, docked beside the work; below 1024px it lies over it. -->
-			<aside class="wa-dock min-h-0 max-lg:contents lg:ml-[3px]" aria-label="Agent">
-				<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={activeProject} />
+			<aside class="wa-dock min-h-0 max-lg:contents lg:ml-[3px] lg:flex lg:flex-col lg:overflow-hidden lg:rounded-[10px] lg:bg-panel" aria-label="Agent and details">
+				<div class="flex shrink-0 items-center gap-px px-1.5 pt-1.5 max-lg:hidden" role="group" aria-label="Dock">
+					<button type="button" class="shell-tab agent" aria-pressed={dockTab === 'agent'} onclick={() => (dockTab = 'agent')}>Agent</button>
+					<button type="button" class="tg" aria-pressed={dockTab === 'details'} onclick={() => (dockTab = 'details')}>Details</button>
+				</div>
+				<div class={dockTab === 'agent' ? 'min-h-0 max-lg:contents lg:grow' : 'lg:hidden max-lg:contents'}>
+					<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={activeProject} />
+				</div>
+				<!-- The selected shot's details are drawn here by the Shots workspace. -->
+				<div bind:this={detailsHost} class={['min-h-0 grow overflow-y-auto max-lg:hidden', dockTab !== 'details' && 'hidden']}></div>
 			</aside>
 		{/if}
 	</div>
