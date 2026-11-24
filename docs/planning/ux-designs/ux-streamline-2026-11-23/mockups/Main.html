@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shots</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px;padding:2px 8px 8px;align-content:start;flex:1}
+.card{display:flex;flex-direction:column;gap:4px;padding:5px 5px 6px;border-radius:8px;min-width:0}
+.card[data-sel]{background:var(--sel)}
+.th{position:relative;display:flex;align-items:center;justify-content:center;aspect-ratio:16/9;border-radius:5px;overflow:hidden;background:var(--raise);font-size:11.5px;color:var(--ink3)}
+.th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.du{position:absolute;right:4px;bottom:4px;padding:0 4px;border-radius:3px;background:#000000b8;color:var(--ink)}
+.tk{position:absolute;left:5px;bottom:5px;display:flex;gap:2px}
+.tk i{width:3px;height:9px;background:#ffffff59}
+.tk i.p{background:var(--teal)}
+.tk i.x{background:#ffffff26}
+.or{position:absolute;left:4px;top:4px;padding:0 4px;border-radius:3px;background:var(--tealdeep);color:var(--tealink)}
+.hs{position:absolute;left:0;right:0;bottom:0;height:5px;background:#00000080}
+.hs i{position:absolute;left:0;top:0;bottom:0;width:58%;background:linear-gradient(90deg,#1b4741,#8be0c6)}
+.hs b{position:absolute;left:58%;bottom:0;width:2px;height:13px;background:#d9f7ef}
+.tcx{position:absolute;left:4px;top:4px;padding:0 4px;border-radius:3px;background:#000000b8;color:var(--amber)}
+.l1,.l2{display:flex;gap:8px;align-items:baseline;white-space:nowrap;overflow:hidden;padding:0 1px}
+.tt{color:var(--ink);overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.nm,.vr{color:var(--ink3)}
+.l2{font-size:11.5px;color:var(--ink3)}
+.st{color:var(--st)}
+.vr{margin-left:auto}
+.band{display:flex;flex-wrap:wrap;gap:3px;padding:0 4px 4px}
+.bx{display:flex;align-items:center;gap:10px;min-width:0;height:56px;padding:0 10px;border-radius:8px;background:var(--raise);overflow:hidden;white-space:nowrap;box-sizing:border-box}
+.bx.t{flex:0 1 auto}.bx.s{flex:1 1 380px}
+.lb{display:flex;flex-direction:column;gap:1px}
+.lbl{color:var(--ink);font-size:11.5px}
+.lb .mono{color:var(--ink3)}
+.tks{display:flex;gap:3px}
+.tkc{position:relative;width:66px;aspect-ratio:16/9;border-radius:4px;overflow:hidden;display:block}
+.tkc img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tkc .mono{position:absolute;left:3px;bottom:2px;padding:0 3px;border-radius:2px;background:#000000b8;color:var(--ink2)}
+.tkc[data-p] .mono{background:var(--tealdeep);color:var(--tealink)}
+.tkc[data-x] img{opacity:.25}
+.tkc[data-x] .mono{text-decoration:line-through}
+.tl{flex:1;min-width:120px;display:flex;flex-direction:column;gap:3px}
+.tr{position:relative;height:3px;background:#27272a}
+.tr i{position:absolute;left:0;top:0;bottom:0;width:36%;background:linear-gradient(90deg,#1b4741,#8be0c6)}
+.tr b{position:absolute;left:36%;top:-5px;width:2px;height:13px;background:#d9f7ef}
+.clips{display:flex;gap:2px;height:34px}
+.clips span{position:relative;min-width:0;border-radius:3px;overflow:hidden}
+.clips img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.clips em{position:absolute;left:3px;top:2px;font-style:normal;padding:0 3px;border-radius:2px;background:#000000b8;color:var(--ink2)}
+.l2,.lbl{font-family:"Geist Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.11em;font-size:9.5px;font-weight:400}
+.l2{gap:10px}
+.tt{font-size:12px}
+.card[data-sel] .tt{color:var(--tealink)}
+.vr,.nm{letter-spacing:.02em}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button" aria-current="page">Shots</button>
+<button class="stage" type="button">Cut</button>
+</nav>
+<span class="sync">Review Room <b>in step</b> · 12s</span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Story plan">
+<div class="cap">Story plan</div>
+<div class="act">Act 1 · Cold open</div>
+<button class="scene" type="button" aria-current="true"><span class="mono">010 VHS</span><span class="t">Video Haven, 2:47 AM</span><span class="mono">9</span></button>
+<div class="srow" data-st="approved"><span class="mono">0010</span><span class="t">CRT monitor, 2:47 AM</span></div>
+<div class="srow" data-st="approved"><span class="mono">0020</span><span class="t">Storefront, 2:47 AM</span></div>
+<div class="srow" data-st="awaiting" data-sel><span class="mono">0030</span><span class="t">Mara on the floor</span></div>
+<div class="srow" data-st="changes"><span class="mono">0040</span><span class="t">The customer</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">0050</span><span class="t">Malachi in the doorway</span></div>
+<div class="srow" data-st="approved"><span class="mono">0060</span><span class="t">The tableau</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">0070</span><span class="t">Kai on the landline</span></div>
+<div class="srow" data-st="approved"><span class="mono">0080</span><span class="t">Thumb on the red vial</span></div>
+<div class="srow" data-st="missing"><span class="mono">0090</span><span class="t">Kai drinks</span></div>
+<button class="scene" type="button"><span class="mono">020 CMP</span><span class="t">Campus, the day before</span><span class="mono">14</span></button>
+<div class="act">Act 2 · The rule</div>
+<button class="scene" type="button"><span class="mono">030 CLS</span><span class="t">Kai and Malachi in class</span><span class="mono">11</span></button>
+<button class="scene" type="button"><span class="mono">040 ROF</span><span class="t">Rooftop leap</span><span class="mono">8</span></button>
+<div class="act">Unplaced</div>
+<button class="scene" type="button"><span class="t">Higgsfield pool</span><span class="mono">32</span></button>
+</aside>
+<main class="work">
+<div class="bar">
+<span class="mono k">010 VHS</span>
+<h1>Video Haven, 2:47 AM</h1>
+<span class="mono m">9 shots · 40s of 45s</span>
+<button class="tg sp" type="button" aria-pressed="true">Grid</button><button class="tg" type="button" aria-pressed="false">Canvas</button>
+<button class="tg" type="button" data-st="awaiting">Awaiting <b>3</b></button><button class="tg" type="button" data-st="changes">Changes <b>1</b></button><button class="tg" type="button" data-st="missing">No take <b>1</b></button>
+<button class="btn" type="button">Add shot</button>
+<button class="btn go" type="button">Play scene</button>
+</div>
+<div class="grid">
+<button class="card" type="button" data-st="approved"><span class="th"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><span class="or mono">1</span><span class="tk"><i></i><i class="p"></i></span><span class="du mono">4s</span></span><span class="l1"><span class="tt">CRT monitor, 2:47 AM</span><span class="mono nm">0010</span></span><span class="l2"><span class="st">Approved</span><span>2 takes</span><span class="mono vr">v002</span></span></button>
+<button class="card" type="button" data-st="approved"><span class="th"><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""><span class="tk"><i class="p"></i></span><span class="du mono">4s</span></span><span class="l1"><span class="tt">Storefront, 2:47 AM</span><span class="mono nm">0020</span></span><span class="l2"><span class="st">Approved</span><span>1 take</span><span class="mono vr">v001</span></span></button>
+<button class="card" type="button" data-st="awaiting" data-sel><span class="th"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><span class="tcx mono">00:02.10</span><span class="hs"><i></i><b></b></span></span><span class="l1"><span class="tt">Mara on the floor</span><span class="mono nm">0030</span></span><span class="l2"><span class="st">Awaiting review</span><span>3 takes</span><span class="mono vr">v003</span></span></button>
+<button class="card" type="button" data-st="changes"><span class="th"><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><span class="tk"><i></i><i class="p"></i></span><span class="du mono">3s</span></span><span class="l1"><span class="tt">The customer</span><span class="mono nm">0040</span></span><span class="l2"><span class="st">Needs changes</span><span>2 takes</span><span class="mono vr">v002</span></span></button>
+<button class="card" type="button" data-st="awaiting"><span class="th"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><span class="or mono">3</span><span class="tk"><i></i><i class="p"></i></span><span class="du mono">3s</span></span><span class="l1"><span class="tt">Malachi in the doorway</span><span class="mono nm">0050</span></span><span class="l2"><span class="st">Awaiting review</span><span>2 takes</span><span class="mono vr">v002</span></span></button>
+<button class="card" type="button" data-st="approved"><span class="th"><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><span class="tk"><i class="x"></i><i></i><i></i><i class="p"></i></span><span class="du mono">5s</span></span><span class="l1"><span class="tt">The tableau</span><span class="mono nm">0060</span></span><span class="l2"><span class="st">Approved</span><span>4 takes</span><span class="mono vr">v004</span></span></button>
+<button class="card" type="button" data-st="awaiting"><span class="th"><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><span class="or mono">4</span><span class="tk"><i class="p"></i><i></i></span><span class="du mono">8s</span></span><span class="l1"><span class="tt">Kai on the landline</span><span class="mono nm">0070</span></span><span class="l2"><span class="st">Awaiting review</span><span>2 takes</span><span class="mono vr">v001</span></span></button>
+<button class="card" type="button" data-st="approved"><span class="th"><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""><span class="tk"><i class="p"></i></span><span class="du mono">3s</span></span><span class="l1"><span class="tt">Thumb on the red vial</span><span class="mono nm">0080</span></span><span class="l2"><span class="st">Approved</span><span>1 take</span><span class="mono vr">v001</span></span></button>
+<button class="card" type="button" data-st="missing"><span class="th">No take · planned 5s</span><span class="l1"><span class="tt">Kai drinks</span><span class="mono nm">0090</span></span><span class="l2"><span class="st">No take</span><span>No spec yet</span></span></button>
+</div>
+<div class="band">
+<div class="bx t"><span class="lb"><span class="lbl">Takes</span><span class="mono">0030</span></span>
+<div class="tks">
+<span class="tkc" data-x><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><span class="mono">v001</span></span>
+<span class="tkc"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><span class="mono">v002</span></span>
+<span class="tkc" data-p><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><span class="mono">v003 pick</span></span>
+</div></div>
+<div class="bx s"><span class="lb"><span class="lbl">Selection</span><span class="mono">4 shots · 20s</span></span>
+<div class="tl"><div class="tr"><i></i><b></b></div>
+<div class="clips"><span style="flex:4"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><em class="mono">0010</em></span><span style="flex:5"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><em class="mono">0030</em></span><span style="flex:3"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><em class="mono">0050</em></span><span style="flex:8"><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><em class="mono">0070</em></span></div></div>
+<button class="btn" type="button">Play</button><button class="btn go" type="button">Push to cut</button></div>
+</div>
+</main>
+<aside class="dock" aria-label="Agent and details">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="true">Agent</button><button class="tab" type="button" role="tab" aria-selected="false">Details</button></div>
+<div class="chat">
+<div class="msg"><span class="who">Agent</span>Scene 010 has 40s of its 45s. One shot has no take yet: <span class="mono">VHS_0090</span>, Kai drinks. Should I write its shot spec from the scene's action?</div>
+<div class="msg me">Yes. Make it a slow push-in.</div>
+<div class="msg"><span class="who">Agent</span>Shot spec for <span class="mono">VHS_0090</span>
+<div class="prop"><dl class="spec"><dt>Size</dt><dd>Close-up</dd><dt>In frame</dt><dd>Kai, red vial</dd><dt>Camera</dt><dd>Slow push-in</dd><dt>Length</dt><dd>5s</dd></dl>
+<div class="row"><button class="btn go" type="button">Approve spec</button><button class="btn" type="button">Edit</button></div></div>
+</div>
+</div>
+<div class="compose"><label style="position:absolute;left:-9999px" for="askM">Message the Agent</label><input id="askM" type="text" placeholder="Type, or hold V to talk"><button class="mic" type="button" aria-label="Talk to the Agent"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></button><button class="btn ag" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · 1 shot has no take · 3 takes await review</span><span class="mono sp">Space play · ←→ shot · ↑↓ take</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

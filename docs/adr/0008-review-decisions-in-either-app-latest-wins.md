@@ -1,0 +1,5 @@
+# Review decisions are made in either app; the latest change wins
+
+A shot's review status, its pick and a take's exclusion can be set in this app or in Review Room. This app writes its own change to Review Room at once, and reads Review Room's changes every 10 seconds while a project is open and whenever the window regains focus. When both apps changed the same thing on the same shot between two checks, the later change wins. We chose this over reviewing only in Review Room (the operator would leave the board for every decision) and over reviewing only here (clients review through Review Room's links, so its decisions have to flow back anyway). Polling stands in for a push from Review Room, which has no webhooks.
+
+**Consequences**: there is no manual sync button; a write that fails is shown on its shot and retried, never dropped silently; a shot is marked briefly when a change arrives from Review Room; Review Room gains addresses for a folder, a shot and a version, a link back to this app, and notes this app can read.

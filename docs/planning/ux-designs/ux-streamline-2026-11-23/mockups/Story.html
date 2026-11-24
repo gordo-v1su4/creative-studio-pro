@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Story plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.level{display:flex;align-items:center;gap:10px;height:24px;padding:0 8px;border-radius:5px;white-space:nowrap}
+.level .mono{color:#52525b}
+.level[data-now]{background:var(--sel);color:var(--tealink)}
+.level[data-now] .mono,.level[data-done] .mono{color:var(--teal)}
+.level[data-done]{color:var(--ink2)}
+.level small{margin-left:auto;color:var(--ink3)}
+.lockn{margin:2px 14px 8px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lockn b{font-weight:400;color:var(--teal)}
+.plan{display:flex;flex-direction:column;gap:10px;padding:2px 8px 12px}
+.ah{display:flex;align-items:baseline;gap:12px;padding:8px 6px 4px;color:var(--teal)}
+.ah .mono{margin-left:auto;color:var(--ink3)}
+.sc{display:flex;align-items:center;gap:14px;height:30px;padding:0 6px;border-radius:5px;white-space:nowrap;overflow:hidden;width:100%}
+.sc[data-sel]{background:var(--sel)}
+.sc .code{color:var(--teal);width:56px;flex:none}
+.sc .n{color:var(--ink);flex:none}
+.sc .d{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--ink3)}
+.sc .x{color:var(--ink3);flex:none}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button" aria-current="page">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button">Shots</button>
+<button class="stage" type="button">Cut</button>
+</nav>
+<span class="sync">Review Room <b>TR100 connected</b></span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Story plan">
+<div class="cap">Story plan</div>
+<div class="level" data-done><span class="mono">01</span>Brief<small class="cp">Approved</small></div>
+<div class="level" data-done><span class="mono">02</span>Acts<small class="cp">3 approved</small></div>
+<div class="level" data-now><span class="mono">03</span>Scenes<small class="cp">5 proposed</small></div>
+<div class="level"><span class="mono">04</span>Story beats</div>
+<div class="level"><span class="mono">05</span>Shot list</div>
+</aside>
+<main class="work">
+<div class="bar">
+<span class="mono k">03</span>
+<h1>Scenes</h1>
+<span class="mono m">5 proposed · 30s of 30s</span>
+<button class="btn sp" type="button">Add scene</button>
+<button class="btn go" type="button">Approve 5 scenes</button>
+</div>
+<div class="lockn cp"><b>Names lock on approve</b> · each scene code becomes its Review Room folder and never changes</div>
+<div class="plan">
+<section>
+<div class="ah cp">Act 1 · Cold open<span class="mono">8s</span></div>
+<button class="sc" type="button" data-sel><span class="mono code">010 VHS</span><span class="n">Video Haven, 2:47 AM</span><span class="d">Store dark. Mara on the floor, a customer out cold, Malachi bleeding in the doorway, Kai on the landline.</span><span class="mono x">8s · 9 shots</span></button>
+</section>
+<section>
+<div class="ah cp">Act 2 · The rule<span class="mono">12s</span></div>
+<button class="sc" type="button"><span class="mono code">020 CMP</span><span class="n">Campus, the day before</span><span class="d">Kai walks through campus. Mara writing.</span><span class="mono x">7s · 6 shots</span></button>
+<button class="sc" type="button"><span class="mono code">030 CLS</span><span class="n">Kai and Malachi in class</span><span class="d">The paper cut. One rule, said out loud. Malachi's eyes, then Kai's.</span><span class="mono x">5s · 4 shots</span></button>
+</section>
+<section>
+<div class="ah cp">Act 3 · The break<span class="mono">10s</span></div>
+<button class="sc" type="button"><span class="mono code">040 ROF</span><span class="n">Rooftop leap</span><span class="d">Kai runs, jumps, lands. His eyes go gold.</span><span class="mono x">6s · 3 shots</span></button>
+<button class="sc" type="button"><span class="mono code">050 TTL</span><span class="n">Title, then black</span><span class="d">Smash to black. 36 hours earlier.</span><span class="mono x">4s · 1 shot</span></button>
+</section>
+</div>
+</main>
+<aside class="dock" aria-label="Agent and details">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="true">Agent</button><button class="tab" type="button" role="tab" aria-selected="false">Details</button></div>
+<div class="chat">
+<div class="msg"><span class="who">Agent</span>Five scenes across your three acts, sized to the 30s target.</div>
+<div class="msg me">Move the paper cut into the class scene.</div>
+<div class="msg"><span class="who">Agent</span>Done: the paper cut now opens the class scene. Approve the scenes and I'll write story beats for each. Once you approve, <span class="mono">010 VHS</span> and the rest are fixed for good.</div>
+</div>
+<div class="compose"><label style="position:absolute;left:-9999px" for="askT">Message the Agent</label><input id="askT" type="text" placeholder="Type, or hold V to talk"><button class="mic" type="button" aria-label="Talk to the Agent"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></button><button class="btn ag" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · approve the scenes, then story beats</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

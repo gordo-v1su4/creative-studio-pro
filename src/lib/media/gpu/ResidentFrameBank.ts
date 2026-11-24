@@ -157,6 +157,32 @@ export class ResidentFrameBank {
     }
   }
 
+  /** A still: one frame, held for `seconds`. The bank then behaves like any clip of that length. */
+  async loadStill(image: ImageBitmap, seconds: number, fps: number, maxHeight = 0) {
+    if (this.loading || this.ready || this.stopped) throw new Error('Frame bank cannot be loaded twice');
+    const started = performance.now();
+    if (Math.max(image.width, image.height) > this.device.limits.maxTextureDimension2D) throw new Error('Picture dimensions exceed the GPU texture limit');
+    const size = residentDimensions(image.width, image.height, maxHeight);
+    const bytes = size.width * size.height * 4;
+    this.budget.check(bytes);
+    const scaled = size.width !== image.width || size.height !== image.height ? new OffscreenCanvas(size.width, size.height) : null;
+    const context = scaled?.getContext('2d');
+    if (scaled && !context) throw new Error('This browser cannot prepare the selected frame resolution');
+    context?.drawImage(image, 0, 0, size.width, size.height);
+    this.budget.claim(bytes);
+    this.bytes = bytes;
+    const texture = this.device.createTexture({
+      size: [size.width, size.height], format: 'rgba8unorm',
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+    });
+    this.frames = [{ texture, view: texture.createView(), pts: 0, duration: seconds }];
+    this.device.queue.copyExternalImageToTexture({ source: scaled ?? image }, { texture }, [size.width, size.height]);
+    this.width = size.width; this.height = size.height; this.fps = fps; this.duration = seconds;
+    this.decodedFrames = 1; this.uploadedFrames = 1;
+    this.ready = true;
+    this.loadMs = performance.now() - started;
+  }
+
   frameAt(seconds: number): ResidentFrame | null {
     if (!this.ready || this.stopped || !Number.isFinite(seconds)) return null;
     const remainder = seconds % this.duration;

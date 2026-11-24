@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Viewer</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.stagebox{flex:1;min-height:260px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:2px 14px 4px}
+.stagebox img{height:100%;max-width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-radius:6px}
+.sc{display:flex;gap:8px;padding:8px 14px 0}
+.lbs{display:flex;flex-direction:column;gap:3px;width:24px;flex:none;color:var(--ink3)}
+.lbs span{display:flex;align-items:center}
+.lanes{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.fs{display:flex;gap:1px;height:26px}
+.fs img{flex:1;min-width:0;height:100%;object-fit:cover;display:block;opacity:.7}
+.trk{position:relative;height:8px;background:#1f1f23}
+.trk i{position:absolute;left:0;top:0;bottom:0;width:42%;background:linear-gradient(90deg,#123a35,#8be0c6)}
+.trk u{position:absolute;top:-1px;width:2px;height:10px;background:var(--amber)}
+.wf{position:relative;height:22px;background:repeating-linear-gradient(90deg,#45454d 0 2px,transparent 2px 4px);clip-path:polygon(0.0% 42%,4.2% 24%,8.3% 34%,12.5% 12%,16.7% 28%,20.8% 6%,25.0% 36%,29.2% 16%,33.3% 4%,37.5% 32%,41.7% 14%,45.8% 40%,50.0% 22%,54.2% 8%,58.3% 30%,62.5% 16%,66.7% 36%,70.8% 10%,75.0% 24%,79.2% 6%,83.3% 38%,87.5% 20%,91.7% 28%,95.8% 12%,100.0% 42%,100.0% 58%,95.8% 88%,91.7% 72%,87.5% 80%,83.3% 62%,79.2% 94%,75.0% 76%,70.8% 90%,66.7% 64%,62.5% 84%,58.3% 70%,54.2% 92%,50.0% 78%,45.8% 60%,41.7% 86%,37.5% 68%,33.3% 96%,29.2% 84%,25.0% 64%,20.8% 94%,16.7% 72%,12.5% 88%,8.3% 66%,4.2% 76%,0.0% 58%)}
+.wf i{position:absolute;left:0;top:0;bottom:0;width:42%;background:repeating-linear-gradient(90deg,#7dd9c8 0 2px,transparent 2px 4px)}
+.ph{position:absolute;left:42%;top:-2px;bottom:-2px;width:3px;margin-left:-1px;background:#d9f7ef;z-index:1}
+.hov{position:absolute;left:62%;top:0;bottom:0;width:1px;background:#e4e4e780}
+.tip{position:absolute;left:62%;bottom:calc(100% + 6px);transform:translateX(-50%);padding:3px;border-radius:6px;background:#1f1f24;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:2}
+.tip img{width:132px;aspect-ratio:16/9;object-fit:cover;border-radius:4px;display:block}
+.tip .mono{color:var(--amber)}
+.ctl{display:flex;align-items:center;gap:2px;padding:6px 10px 2px}
+.tc{margin:0 auto;display:flex;gap:6px;white-space:nowrap}
+.tc b{font-weight:400;color:var(--amber)}
+.lab{display:flex;gap:8px;padding:8px 14px 4px;color:var(--ink3)}
+.takes{display:flex;gap:2px;padding:0 10px;overflow:hidden}
+.take{display:flex;gap:8px;align-items:center;padding:4px 10px 4px 4px;border-radius:7px;min-width:0}
+.take[data-pick]{background:var(--sel)}
+.take[data-pick] .v{color:var(--tealink)}
+.take img{width:92px;aspect-ratio:16/9;object-fit:cover;border-radius:4px;display:block;flex:none}
+.take[data-x] img{opacity:.25}
+.take .b{display:flex;flex-direction:column;gap:2px;white-space:nowrap;min-width:0}
+.take .v{color:var(--ink)}
+.take[data-x] .v{text-decoration:line-through;color:var(--ink3)}
+.take .cp{color:var(--ink3)}
+.take[data-pick] .cp{color:var(--teal)}
+.seq{display:flex;gap:1px;padding:0 14px 10px}
+.seq span{flex:1;min-width:0;aspect-ratio:16/9;border-radius:2px;overflow:hidden;background:var(--raise);opacity:.35}
+.seq img{width:100%;height:100%;object-fit:cover;display:block}
+.seq [data-now]{opacity:1}
+.side{flex:1;display:flex;flex-direction:column;gap:14px;padding:12px 8px 0}
+.side>div>.cp:first-child{display:block;padding:0 6px 4px;color:var(--ink3)}
+.st{display:flex;align-items:center;width:100%;height:22px;padding:0 6px;border-radius:5px;color:var(--st)}
+.st[aria-pressed="true"]{background:var(--sel)}
+.st .mono{margin-left:auto;color:var(--ink3)}
+.kv{display:flex;flex-direction:column;gap:3px}
+.kv>span,.kv>a{padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.note{padding:3px 6px;color:#c8c8ce;line-height:1.45}
+.note .mono{color:var(--amber);margin-right:6px}
+.tab.d[aria-selected="true"]{color:var(--ink)}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button" aria-current="page">Shots</button>
+<button class="stage" type="button">Cut</button>
+</nav>
+<span class="sync">Review Room <b>in step</b> · 4s</span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<main class="work" style="flex-basis:700px">
+<div class="bar">
+<button class="ib" type="button" aria-label="Back to shots"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3L5 8l5 5"/></svg></button>
+<span class="mono k">0030</span>
+<h1>Mara on the floor</h1>
+<span class="mono m">BLR_TR100_VHS_0030 · v003</span>
+<button class="tg sp" type="button" aria-label="Previous shot">←</button><span class="mono m">3 / 9</span><button class="tg" type="button" aria-label="Next shot">→</button>
+</div>
+<div class="stagebox"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt="Take v003 of Mara on the floor"></div>
+<div class="sc">
+<div class="lbs cp"><span style="height:26px">Pic</span><span style="height:8px"></span><span style="height:22px">Aud</span></div>
+<div class="lanes">
+<div class="tip"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><span class="mono">00:03.10</span></div>
+<i class="hov"></i><i class="ph"></i>
+<div class="fs" aria-hidden="true"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""></div>
+<div class="trk"><i></i><u style="left:24%"></u><u style="left:68%"></u></div>
+<div class="wf" aria-hidden="true"><i></i></div>
+</div>
+</div>
+<div class="ctl">
+<button class="ib" type="button" aria-label="Pause"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="#e4e4e7"><rect x="2" y="1.5" width="3" height="9"/><rect x="7" y="1.5" width="3" height="9"/></svg></button>
+<button class="ib" type="button" aria-label="Loop"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7V6a2 2 0 012-2h7M10 2l2 2-2 2M13 9v1a2 2 0 01-2 2H4M6 14l-2-2 2-2"/></svg></button>
+<button class="tg" type="button">1×</button>
+<span class="tc mono"><b>00:02.10</b><span>/ 00:05.00</span></span>
+<span class="tg">480p proxy</span><span class="tg">Take sound on</span>
+<button class="ib" type="button" aria-label="Full screen"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6V3h3M13 6V3h-3M3 10v3h3M13 10v3h-3"/></svg></button>
+</div>
+<div class="lab cp">Takes<span class="mono">↑↓</span></div>
+<div class="takes">
+<button class="take" type="button" data-x><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><span class="b"><span class="mono v">v001</span><span class="mono">hf_20260911_2140…mp4</span><span class="cp">Excluded</span></span></button>
+<button class="take" type="button"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><span class="b"><span class="mono v">v002</span><span class="mono">hf_20260912_0915…mp4</span><span class="cp">Draft · 480p</span></span></button>
+<button class="take" type="button" data-pick><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><span class="b"><span class="mono v">v003</span><span class="mono">hf_20260914_0733…mp4</span><span class="cp">Pick</span></span></button>
+</div>
+<div class="lab cp">Scene 010 plays straight through<span class="mono">←→</span></div>
+<div class="seq">
+<span><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""></span><span><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""></span><span data-now><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""></span><span><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""></span><span><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""></span><span><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""></span><span><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""></span><span><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""></span><span></span>
+</div>
+</main>
+<aside class="dock" aria-label="Review">
+<div class="tabs" role="tablist"><button class="tab d" type="button" role="tab" aria-selected="true">Review</button><button class="tab" type="button" role="tab" aria-selected="false">Details</button><button class="tab" type="button" role="tab" aria-selected="false">Agent</button></div>
+<div class="side">
+<div>
+<span class="cp">Status</span>
+<button class="st cp" type="button" aria-pressed="true" data-st="awaiting">Awaiting review<span class="mono">1</span></button>
+<button class="st cp" type="button" aria-pressed="false" data-st="progress">In progress<span class="mono">2</span></button>
+<button class="st cp" type="button" aria-pressed="false" data-st="changes">Needs changes<span class="mono">3</span></button>
+<button class="st cp" type="button" aria-pressed="false" data-st="approved">Approved<span class="mono">4</span></button>
+</div>
+<div class="row" style="padding:0 6px"><button class="btn go" type="button">Make pick</button><button class="btn" type="button">Exclude</button></div>
+<div class="kv">
+<span class="cp">Review Room</span>
+<span class="mono" style="color:var(--ink)">BLR_TR100_VHS_0030_v003</span>
+<span>Current there is v003, same as your pick</span>
+<a class="cp" href="#open-in-review-room">Open in Review Room</a>
+</div>
+<div>
+<span class="cp">Notes · 2</span>
+<div class="note"><span class="mono">00:01.20</span>Her hand should already be on the desk leg.</div>
+<div class="note"><span class="mono">00:03.40</span>Love the light here. Keep this grade.</div>
+</div>
+</div>
+<div class="compose"><span class="mono" style="color:var(--amber)">00:02.10</span><label style="position:absolute;left:-9999px" for="noteV">Leave a note</label><input id="noteV" type="text" placeholder="Leave a note at this frame"><button class="btn" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span class="mono">Space play · ←→ shot · ↑↓ take · JKL shuttle · P pick · X exclude · 1–4 status · Esc close</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

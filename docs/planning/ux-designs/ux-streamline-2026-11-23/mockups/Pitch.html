@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Logline pitch</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.hero{flex:1;display:flex;flex-direction:column;align-items:center;gap:12px;padding:56px 24px 20px}
+.hero>.cp{color:var(--teal)}
+.hero h1{margin:0;font-size:17px;line-height:1.2;white-space:nowrap}
+.steps{display:flex;gap:8px;color:var(--ink3)}
+.steps b{font-weight:400;color:var(--teal)}
+.lgs{width:100%;max-width:640px;display:flex;flex-direction:column;gap:3px;margin-top:6px}
+.lg{display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:10px;background:#101012}
+.lg[data-on]{background:var(--sel)}
+.lg .n{color:var(--ink3);width:10px}
+.lg .b{flex:1;min-width:0}
+.lg h2{margin:0 0 3px;font-size:14px;font-weight:500;line-height:1.2;color:var(--ink);white-space:nowrap}
+.lg[data-on] h2{color:var(--tealink)}
+.lg p{margin:0;color:var(--ink2);line-height:1.45}
+.more{display:flex;align-items:center;gap:10px;color:var(--ink3)}
+.qt{width:100%;max-width:640px;box-sizing:border-box;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 14px;border-radius:10px;background:var(--raise);margin-top:10px}
+.qt .t{color:var(--ink);white-space:nowrap}
+.qt .d{flex:1;min-width:160px;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.level{display:flex;align-items:center;gap:10px;height:24px;padding:0 8px;border-radius:5px;white-space:nowrap}
+.level .mono{color:#52525b}
+.level[data-now]{background:var(--sel);color:var(--tealink)}
+.level[data-now] .mono{color:var(--teal)}
+.level small{margin-left:auto;color:var(--ink3)}
+.voice{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#15122a;color:#ddd6fe}
+.lv{display:flex;align-items:center;gap:2px;height:16px}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button"><em>New project</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button" aria-current="page">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button">Shots</button>
+<button class="stage" type="button">Cut</button>
+</nav>
+<span class="sync">Review Room <b>ready</b></span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Story plan">
+<div class="cap">Story plan</div>
+<div class="level" data-now><span class="mono">01</span>Brief<small class="cp">From your pick</small></div>
+<div class="level"><span class="mono">02</span>Acts</div>
+<div class="level"><span class="mono">03</span>Scenes</div>
+<div class="level"><span class="mono">04</span>Story beats</div>
+<div class="level"><span class="mono">05</span>Shot list</div>
+</aside>
+<main class="work">
+<div class="hero">
+<span class="cp">Pitch · round 1</span>
+<h1 class="ser">Three ways to play it</h1>
+<div class="steps cp"><b>Logline</b><span>→ quick teaser</span><span>→ characters</span><span>→ shot list</span></div>
+<div class="lgs">
+<div class="lg"><span class="mono n">A</span><div class="b"><h2>Late Fees</h2><p>A night clerk at a dying video store learns the regulars aren't renting for the movies.</p></div><button class="btn" type="button">Make this</button></div>
+<div class="lg" data-on><span class="mono n">B</span><div class="b"><h2>Blood Rush</h2><p>Kai breaks blood law to save a girl, and she wakes crying black.</p></div><button class="btn go" type="button">Make this</button></div>
+<div class="lg"><span class="mono n">C</span><div class="b"><h2>Be Kind, Rewind</h2><p>Every tape in the store shows the same night, and tonight it's back on the shelf.</p></div><button class="btn" type="button">Make this</button></div>
+</div>
+<div class="more"><button class="btn" type="button">Three more</button><span class="cp">None of these? Say what's off</span></div>
+<div class="qt"><span class="cp" style="color:var(--teal)">Quick teaser</span><span class="t">Blood Rush · 12s</span><span class="d">One prompt, one draft render. No characters needed yet.</span><button class="btn go" type="button">Get price</button></div>
+</div>
+</main>
+<aside class="dock" aria-label="Agent">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="true">Agent</button></div>
+<div class="chat">
+<div class="msg me">It's a vampire thing, but it all happens in a video store at night.</div>
+<div class="msg"><span class="who">Agent</span>Three ways to play that. A is the slow reveal, B starts in the aftermath, C is the loop. Which one pulls?</div>
+<div class="msg me">B. Keep the aftermath.</div>
+<div class="msg"><span class="who">Agent</span>Then I'll cut you a <b>12 second teaser</b> of B before we build anyone. If it feels right we go back and do the characters properly.</div>
+<div class="voice"><span class="lv" aria-hidden="true"><i style="height:5px"></i><i style="height:13px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:7px"></i><i style="height:11px"></i></span><span class="cp">Listening</span></div>
+</div>
+<div class="compose"><label style="position:absolute;left:-9999px" for="askP">Message the Agent</label><input id="askP" type="text" placeholder="Type, or hold V to talk"><button class="mic" type="button" aria-label="Talk to the Agent"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></button><button class="btn ag" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · pick a logline, then see it as a quick teaser</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

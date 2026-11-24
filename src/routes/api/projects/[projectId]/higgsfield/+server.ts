@@ -7,6 +7,7 @@ import { uuid7ish } from '$lib/domain/ids';
 import { isUnder2K, safeFileName } from '$lib/domain/media';
 import { getAnimateDeps, getGateway, getHiggsfieldRunner, getProjectRoot, getProjectStore } from '$lib/server/config';
 import { prepareVideoProxy } from '$lib/server/video-proxies';
+import { prepareVideoStrip } from '$lib/server/video-strips';
 import { commandStatus } from '$lib/server/http';
 import { probeMedia } from '$lib/server/media-probe';
 import { getRender, renderFileName } from '$lib/server/higgsfield-renders';
@@ -49,7 +50,7 @@ export const POST: RequestHandler = async ({ params, url }) => {
 		await rm(target, { force: true });
 		return fail(502, cause instanceof Error ? cause.message : 'Download failed');
 	}
-	if (/\.(mp4|mov|webm)$/i.test(target)) prepareVideoProxy(target, getProjectRoot());
+	if (/\.(mp4|mov|webm)$/i.test(target)) { prepareVideoProxy(target, getProjectRoot()); prepareVideoStrip(target, getProjectRoot()); }
 	const take = {
 		asset_id: takeId, kind: render.kind, name,
 		mime_type: render.kind === 'video' ? 'video/mp4' : `image/${name.split('.').pop()?.toLowerCase().replace('jpg', 'jpeg') ?? 'png'}`,

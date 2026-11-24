@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { referenceImageUrl } from '$lib/media/reference-images';
-	import { proxyUrl } from '$lib/media/gpu/clipBanks';
+	import { loadClipMetadata, proxyUrl } from '$lib/media/gpu/clipBanks';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
@@ -23,16 +24,31 @@
 	import HiggsfieldImport from '$lib/ui/HiggsfieldImport.svelte';
 	import TakeReview from '$lib/ui/TakeReview.svelte';
 	import StoryPlan from '$lib/ui/StoryPlan.svelte';
+	import ShotCard from '$lib/ui/shots/ShotCard.svelte';
+	import TakesBand from '$lib/ui/shots/TakesBand.svelte';
+	import SelectionStrip from '$lib/ui/shots/SelectionStrip.svelte';
+	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
+	import { selectionEntries } from '$lib/domain/selection';
+	import { playItemFor } from '$lib/domain/slate';
+	import { nextCutName } from '$lib/domain/cuts';
+	import Viewer from '$lib/ui/shots/Viewer.svelte';
+	import type { ReviewStatus } from '$lib/domain/viewer-keys';
+	import { shotCardFacts } from '$lib/domain/shot-card';
+	import { takesFor } from '$lib/domain/takes';
 
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
-	let { project, onUpdated, onAddFiles, onImportRenders, onOpenBoard, tab = $bindable('story') }: {
+	let { project, onUpdated, onAddFiles, onImportRenders, onOpenBoard, tab = $bindable('story'), detailsHost = null, onOpenDetails }: {
 		project: Project; onUpdated: (project: Project) => void;
 		/** Files dropped or picked on the Shots tab: each becomes a new shot (off the spine, not benched). */
 		onAddFiles?: (files: File[]) => void;
 		/** Higgsfield renders picked on the Shots tab (job ids, in the order to add): each becomes a new shot. */
 		onImportRenders?: (jobIds: string[]) => void;
 		onOpenBoard?: (groupId?: string) => void;
-		tab?: ProductionTab
+		tab?: ProductionTab;
+		/** Where the selected shot's details are shown: the Details tab of the shell's dock. */
+		detailsHost?: HTMLElement | null;
+		/** Asked to bring the Details tab forward. */
+		onOpenDetails?: () => void
 	} = $props();
 
 	let higgsfieldOpen = $state(false);
@@ -229,9 +245,6 @@
 	let loadedVersion = $state(-1);
 	const unsaved = $derived(JSON.stringify(draft) !== JSON.stringify(project.production));
 	let previewCardId = $state('');
-	type CardFace = 'text' | 'image' | 'video';
-	let cardFaces = $state<Record<string, CardFace>>({});
-	const faces: CardFace[] = ['text', 'image', 'video'];
 	const cloneProduction = (value: ProductionState): ProductionState => JSON.parse(JSON.stringify(value)) as ProductionState;
 
 	$effect(() => {
@@ -274,6 +287,114 @@
 		finally { saving = false; }
 	}
 
+	// The selected shot: the grid marks it, the band shows its takes, the dock's Details tab edits it.
+	let selectedShotId = $state('');
+	let pickBusy = $state(false);
+	const selectedShot = $derived(draft.cards.find((card) => card.card_id === selectedShotId) ?? null);
+	const selectedPick = $derived(selectedShot ? pickFor(draft, selectedShot) : null);
+	const selectedFacts = $derived(selectedShot ? shotCardFacts(selectedShot, draft.assets, selectedPick?.asset_id ?? null) : null);
+
+	/** The viewer is open over the grid (Space, or a double-click on a shot). */
+	let viewerOpen = $state(false);
+	// Selecting a shot fetches its pick's proxy, so the viewer has it by the time Space is pressed.
+	$effect(() => { if (selectedPick?.kind === 'video') void fetch(proxyUrl(selectedPick.url)).catch(() => null); });
+
+	async function makePick(cardId: string, takeId: string) {
+		if (pickBusy) return;
+		pickBusy = true; error = null;
+		try { await boardCommand({ command: 'set_pick', card_id: cardId, take_id: takeId }); }
+		catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change the pick'; }
+		finally { pickBusy = false; }
+	}
+
+	/** A review decision made in the viewer: the shot's status, or excluding one take. Sent to Review Room at once. */
+	async function reviewTake(take: ProductionAsset, change: { status?: ReviewStatus; excluded?: boolean }) {
+		if (pickBusy) return;
+		pickBusy = true; error = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'review', take_id: take.asset_id, expected_version: project.version, ...change }) });
+			const body = await response.json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Review could not be saved');
+			onUpdated(body.data);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'Review could not be saved'; }
+		finally { pickBusy = false; }
+	}
+
+	// The selection (CONTEXT.md): shots gathered in the strip under the grid, played in order, pushed to a cut.
+	/** The project as the grid shows it, unsaved edits included. */
+	const live = $derived<Project>({ ...project, production: draft });
+	let pushNote = $state('');
+	/** Lengths read from the files, for takes that arrived before lengths were recorded (seconds by take id). */
+	let readLengths = $state<Record<string, number>>({});
+	$effect(() => {
+		for (const item of reviewSequence.items) {
+			const take = draft.assets.find((asset) => asset.asset_id === item.assetId);
+			if (!take || take.out_s !== undefined || take.duration_s !== undefined || untrack(() => item.assetId in readLengths)) continue;
+			void loadClipMetadata(take.url).then((clip) => { readLengths[item.assetId] = clip.duration; }).catch(() => null);
+		}
+	});
+
+	/** Shift-click on a shot adds it to the selection, or takes it out. */
+	function toggleInSelection(card: StoryCard) {
+		const position = reviewSequence.position(card.card_id);
+		const item = playItemFor(live, card);
+		if (position) reviewSequence.remove(card.card_id);
+		else if (item) reviewSequence.toggle(item);
+		else pushNote = 'A still pick does not play in a selection';
+	}
+
+	// An entry follows its shot: a new pick replaces it unless a take is auditioned there; a benched or removed shot leaves.
+	$effect(() => {
+		const usable = new Set(draft.assets.filter((asset) => asset.kind === 'video' && !asset.rejected).map((asset) => asset.asset_id));
+		const wanted = reviewSequence.items.map((item) => {
+			const card = draft.cards.find((entry) => entry.card_id === item.id);
+			return { id: item.id, item: card ? playItemFor(live, card) : null };
+		});
+		untrack(() => { for (const { id, item } of wanted) reviewSequence.sync(id, item, (assetId) => usable.has(assetId)); });
+	});
+
+	/** One button: the selection's order, takes, trims and ramps become a new cut named "Cut N". */
+	async function pushSelection() {
+		if (pickBusy) return;
+		const built = selectionEntries(project, reviewSequence.items, readLengths);
+		if (!built.ok) { pushNote = `Still reading ${built.unknown.length} ${built.unknown.length === 1 ? 'take' : 'takes'}; try again`; return; }
+		pickBusy = true; error = null; pushNote = '';
+		const name = nextCutName(project.production);
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/cuts`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: 'push_cut', expected_version: project.version, name, entries: built.entries }) });
+			const body = await response.json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Push failed');
+			onUpdated(body.data);
+			pushNote = `Pushed as ${name}`;
+		} catch (cause) { pushNote = cause instanceof Error ? cause.message : 'Push failed'; }
+		finally { pickBusy = false; }
+	}
+
+	function openViewer(cardId?: string) {
+		const target = cardId ?? selectedShotId ?? draft.cards[0]?.card_id;
+		if (!target) return;
+		selectedShotId = target;
+		viewerOpen = true;
+		onOpenDetails?.();
+	}
+
+	/** Space on the Shots grid opens the viewer on the selected shot. */
+	function gridKey(event: KeyboardEvent) {
+		if (tab !== 'beats' || viewerOpen || reviewSequence.playing || event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
+		const target = event.target as HTMLElement | null;
+		if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(target.tagName))) return;
+		if (!selectedShotId && !draft.cards.length) return;
+		event.preventDefault();
+		openViewer(selectedShotId || draft.cards[0].card_id);
+	}
+
+	/** Shows a node inside another element of the page (the dock), keeping it part of this component. */
+	function portal(node: HTMLElement, target: HTMLElement | null) {
+		const place = (host: HTMLElement | null) => { if (host && node.parentNode !== host) host.appendChild(node); };
+		place(target);
+		return { update: place, destroy: () => node.remove() };
+	}
+
 	function updateCard(cardId: string, patch: Partial<StoryCard>) {
 		draft.cards = draft.cards.map((card) => card.card_id === cardId ? { ...card, ...patch } : card);
 	}
@@ -284,20 +405,6 @@
 		const pick = card ? pickFor(draft, card) : null;
 		if (pick?.kind === kind) return pick;
 		return draft.assets.findLast((asset) => asset.card_id === cardId && asset.kind === kind && !asset.rejected) ?? null;
-	}
-
-	function faceFor(cardId: string): CardFace {
-		if (cardFaces[cardId]) return cardFaces[cardId];
-		return assetFor(cardId, 'video') ? 'video' : assetFor(cardId, 'image') ? 'image' : 'text';
-	}
-
-	function setFace(cardId: string, face: CardFace) {
-		cardFaces = { ...cardFaces, [cardId]: face };
-	}
-
-	function moveFace(cardId: string, direction: -1 | 1) {
-		const current = faceFor(cardId);
-		setFace(cardId, faces[(faces.indexOf(current) + direction + faces.length) % faces.length]);
 	}
 
 	function downloadManifest() {
@@ -361,6 +468,8 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Rename failed'; }
 	}
 </script>
+
+<svelte:window onkeydown={gridKey} />
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
 	<div class="sticky top-0 z-10 flex min-w-max items-center justify-end gap-3 border-b border-[#26333a] bg-[#10141a]/95 px-4 py-2 backdrop-blur">
@@ -460,56 +569,20 @@
 			</p>
 		{/if}
 		{#if higgsfieldOpen && onImportRenders}<HiggsfieldImport have={importedJobs} onImport={onImportRenders} onclose={() => (higgsfieldOpen = false)} />{/if}
-		<div class="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3 p-4">
+		<div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-0.5 px-2 pb-2 pt-1">
 			{#each draft.cards as card (card.card_id)}
-				{@const image = assetFor(card.card_id, 'image')}
-				{@const video = assetFor(card.card_id, 'video')}
-				{@const face = faceFor(card.card_id)}
-				{@const tagged = pickFor(project.production, card)}
-				<article class={['story-card', card.benched && 'benched']}>
-					<div class="flex items-center gap-2"><span class="card-index">{String(card.order + 1).padStart(2, '0')}</span><input value={card.title} oninput={(event) => updateCard(card.card_id, { title: event.currentTarget.value })} aria-label={`Card ${card.order + 1} title`} /><span class="meta-label text-[#63838c]">{card.duration_ms / 1000}s</span></div>
-					<nav class="card-face-nav" aria-label={`Card ${card.order + 1} face`}>
-						{#each faces as item}<button type="button" class:active={face === item} onclick={() => setFace(card.card_id, item)} aria-pressed={face === item}>{item}</button>{/each}
-					</nav>
-					<div class="card-face-stage" aria-live="polite">
-						{#key face}
-							<div class="card-face-panel">
-								{#if face === 'text'}
-									<textarea value={card.beat} oninput={(event) => updateCard(card.card_id, { beat: event.currentTarget.value })} rows="5" aria-label={`Card ${card.order + 1} beat`}></textarea>
-									<p class="mt-2 text-[11px] text-[#668d98]"><b class="text-[#5bd9d0]">PURPOSE</b> · {card.purpose}</p>
-								{:else if face === 'image'}
-									<div class="card-result">{#if image}<img src={referenceImageUrl(image.url)} alt={`${card.title} image result`} />{:else}<div><b>IMAGE PROMPT</b><p>{card.image_prompt}</p></div>{/if}</div>
-								{:else}
-									<div class="card-result">{#if video}<ClipHoverPlayer src={video.url} label={card.title} maxHeight={270} inS={video.in_s} outS={video.out_s} speed={video.speed} />{:else}<div><b>VIDEO PROMPT</b><p>{card.video_prompt}</p></div>{/if}</div>
-								{/if}
-							</div>
-						{/key}
-					</div>
-					<div class="mt-3 flex items-center gap-2">
-						<button type="button" class="face-arrow" onclick={() => moveFace(card.card_id, -1)} aria-label={`Previous face for ${card.title}`}>←</button>
-						<button type="button" class="agent-mini" onclick={() => updateCard(card.card_id, { status: card.status === 'approved' ? 'draft' : 'approved' })}>{card.status}</button>
-						<span class="grow"></span><span class="meta-label text-[#55747c]">{face}</span>
-						<button type="button" class="face-arrow" onclick={() => moveFace(card.card_id, 1)} aria-label={`Next face for ${card.title}`}>→</button>
-					</div>
-					{#if tagged?.tags}
-						<p class="mt-2 text-[11px] leading-4 text-[#9fc9cf]" title={[tagged.tags.caption, tagged.tags.place && `Place: ${tagged.tags.place}`, tagged.tags.subjects.length ? `Who: ${tagged.tags.subjects.join(', ')}` : '', tagged.tags.shot_size && `Shot: ${tagged.tags.shot_size}`, `Motion ${tagged.tags.motion}${tagged.tags.cuts ? ` · ${tagged.tags.cuts} cuts inside` : ''}`, `Tagged by ${tagged.tags.source}`].filter(Boolean).join('\n')}>
-							<span class="tag-caption">{tagged.tags.caption}</span>
-							<span class="meta-label text-[#63838c]">{tagged.tags.place.split(/[,.]/)[0].slice(0, 40)}{tagged.tags.cuts > 3 ? ' · already an edit' : ''}</span>
-						</p>
-					{/if}
-					<div class="mt-2 flex items-center gap-2 border-t border-[#1b262c] pt-2">
-						{#if card.benched}<span class="meta-label text-[#f2c14e]">benched</span>{/if}
-						{#if tagged?.tags}<button type="button" class={['agent-mini', tagged.tags.title_card && 'title-on']} onclick={() => void setTitleCard(tagged.asset_id, !tagged.tags?.title_card)} disabled={shotBusy !== null} title="The title card closes the first cut as its end tag, after the music">title card</button>{/if}
-						<span class="grow"></span>
-						<button type="button" class="agent-mini" onclick={() => void setBenched(card, !card.benched)} disabled={shotBusy !== null} title={card.benched ? 'Use this shot again in plays and the Agent\'s cut' : 'Keep this shot, but leave it out of plays and the Agent\'s first cut'}>{card.benched ? 'unbench' : 'bench'}</button>
-						<button type="button" class="agent-mini remove" onclick={() => void removeShot(card)} disabled={shotBusy !== null} title="Remove this shot and its takes from the project (you can undo right after; a shot a cut uses can't be removed)">{shotBusy === card.card_id ? '…' : 'remove'}</button>
-					</div>
-					<TakeReview {project} cardId={card.card_id} {onUpdated} disabled={unsaved || roomBusy} />
-				</article>
+				{@const pick = pickFor(draft, card)}
+				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} position={reviewSequence.position(card.card_id)} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>
 		{#if dropping}<div class="shots-drop-hint" aria-hidden="true">Drop to add as shots</div>{/if}
+		<!-- The takes band stays put under the grid, so selecting a shot never moves the page. -->
+		<div class="bands-area sticky bottom-0 z-[5] bg-panel p-1"><div class="bands">
+			<TakesBand title={selectedShot?.title ?? null} facts={selectedFacts} takes={selectedShot ? takesFor(draft, selectedShot.card_id, true) : []} busy={pickBusy || unsaved || shotBusy !== null} onpick={(takeId) => selectedShot && void makePick(selectedShot.card_id, takeId)} onopen={() => onOpenDetails?.()} />
+			<SelectionStrip project={live} selectedId={selectedShotId} read={readLengths} busy={pickBusy || unsaved || shotBusy !== null} note={pushNote} onselect={(cardId) => (selectedShotId = cardId)} onplay={() => { pushNote = ''; reviewSequence.playing = true; }} onpush={() => void pushSelection()} />
+		</div></div>
+		{#if reviewSequence.playing}<SequencePlayer {project} {onUpdated} />{/if}
 		</div>
 	{:else if tab === 'cuts'}
 		<div class="mx-auto max-w-5xl p-5">
@@ -600,40 +673,73 @@
 			</div>
 		</div>
 	{/if}
+	{#if viewerOpen && tab === 'beats'}
+		<Viewer production={draft} cards={draft.cards} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)} />
+	{/if}
+	{#if detailsHost}
+		<div class="shot-details" use:portal={detailsHost}>
+			{#if tab !== 'beats' || !selectedShot || !selectedFacts}
+				<p class="cp none">Select a shot in the Shots grid to see its details</p>
+			{:else}
+				{@const card = selectedShot}
+				{@const tagged = selectedPick}
+				<p class="cp head"><b>{selectedFacts.number}</b><span data-status={selectedFacts.status}>{selectedFacts.statusLabel}</span><span>{selectedFacts.length}</span></p>
+				<label class="cp" for="detail-title">Title</label>
+				<input id="detail-title" value={card.title} oninput={(event) => updateCard(card.card_id, { title: event.currentTarget.value })} />
+				<label class="cp" for="detail-beat">Story beat</label>
+				<textarea id="detail-beat" value={card.beat} oninput={(event) => updateCard(card.card_id, { beat: event.currentTarget.value })} rows="4"></textarea>
+				<p class="cp">Purpose</p>
+				<p class="text">{card.purpose}</p>
+				{#if tagged?.tags}
+					<p class="cp">Seen in the pick</p>
+					<p class="text" title={[tagged.tags.place && `Place: ${tagged.tags.place}`, tagged.tags.subjects.length ? `Who: ${tagged.tags.subjects.join(', ')}` : '', tagged.tags.shot_size && `Shot: ${tagged.tags.shot_size}`, `Motion ${tagged.tags.motion}${tagged.tags.cuts ? ` · ${tagged.tags.cuts} cuts inside` : ''}`, `Tagged by ${tagged.tags.source}`].filter(Boolean).join('\n')}>{tagged.tags.caption}{tagged.tags.cuts > 3 ? ' (already an edit)' : ''}</p>
+				{/if}
+				<p class="cp">Image prompt</p>
+				<p class="text prompt">{card.image_prompt}</p>
+				<p class="cp">Video prompt</p>
+				<p class="text prompt">{card.video_prompt}</p>
+				<div class="actions">
+					<button type="button" class="key" onclick={() => updateCard(card.card_id, { status: card.status === 'approved' ? 'draft' : 'approved' })} title="Whether this shot's writing is approved">{card.status === 'approved' ? 'Approved' : 'Draft'}</button>
+					{#if tagged?.tags}<button type="button" class={['key', tagged.tags.title_card && 'on']} onclick={() => void setTitleCard(tagged.asset_id, !tagged.tags?.title_card)} disabled={shotBusy !== null} title="The title card closes the first cut as its end tag, after the music">Title card</button>{/if}
+					<button type="button" class="key" onclick={() => void setBenched(card, !card.benched)} disabled={shotBusy !== null} title={card.benched ? 'Use this shot again in plays and the Agent\'s cut' : 'Keep this shot, but leave it out of plays and the Agent\'s first cut'}>{card.benched ? 'Unbench' : 'Bench'}</button>
+					<button type="button" class="key danger" onclick={() => void removeShot(card)} disabled={shotBusy !== null} title="Remove this shot and its takes from the project (you can undo right after; a shot a cut uses can't be removed)">{shotBusy === card.card_id ? '…' : 'Remove'}</button>
+				</div>
+				<TakeReview {project} cardId={card.card_id} {onUpdated} disabled={unsaved || roomBusy} />
+			{/if}
+		</div>
+	{/if}
 </section>
 
 <style>
+	/* Takes and the selection sit side by side when there is room and stack when there is not; neither depends on what is selected. */
+	.bands-area { container-type: inline-size; }
+	.bands { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 3px; }
+	@container (max-width: 720px) { .bands { grid-template-columns: minmax(0, 1fr); } }
+	.bands > :global(*) { min-width: 0; }
+	.shot-details { display: flex; flex-direction: column; gap: 6px; padding: 12px; color: var(--color-ink-2); font-size: 12.5px; }
+	.shot-details .cp { margin: 6px 0 0; color: var(--color-ink-3); }
+	.shot-details .none { margin: 0; white-space: normal; line-height: 1.6; }
+	.shot-details .head { display: flex; gap: 10px; margin: 0; }
+	.shot-details .head b { font-weight: 400; color: var(--color-teal); }
+	.shot-details .head [data-status='approved'] { color: var(--color-teal); }
+	.shot-details .head [data-status='awaiting'] { color: var(--color-amber); }
+	.shot-details .head [data-status='changes'] { color: #ff7a6b; }
+	.shot-details .head [data-status='progress'] { color: #7fb2ff; }
+	.shot-details input, .shot-details textarea { width: 100%; border: 0; border-radius: 6px; background: var(--color-raised); padding: 6px 8px; color: var(--color-ink); font: 12.5px/1.5 var(--font-sans); outline: none; resize: vertical; }
+	.shot-details input:focus-visible, .shot-details textarea:focus-visible { background: var(--color-control); }
+	.shot-details .text { margin: 0; color: #c8c8ce; line-height: 1.5; }
+	.shot-details .prompt { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; }
+	.shot-details .actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+	.shot-details .key.on { background: var(--color-teal-deep); color: var(--color-teal-ink); }
+	.shot-details .key.danger { color: #ff7a6b; }
 	.workspace-field { display: grid; gap: 7px; color: #63d9d0; font: 600 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
-	.workspace-field textarea, .story-card input, .story-card textarea { width: 100%; border: 1px solid #26383f; background: #0d1116; color: #a8cbd2; padding: 10px; outline: none; font: 12px/1.6 var(--font-mono); }
-	.workspace-field textarea:focus, .story-card input:focus, .story-card textarea:focus { border-color: #4ee8d2; }
-	.story-card { border: 1px solid #26383f; background: #11161c; padding: 10px; box-shadow: inset 2px 0 #3b7f89; }
-	.story-card input { border: 0; padding: 4px 6px; font-weight: 700; color: #bee7e9; }
-	.story-card textarea { margin-top: 10px; }
-	.card-face-nav { display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 9px; padding: 3px; background: #0b0f13; }
-	.card-face-nav button { border: 0; background: transparent; padding: 6px; color: #55747c; font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.card-face-nav button:hover { background: #14232a; color: #84cbd0; }
-	.card-face-nav button.active { background: linear-gradient(120deg, rgba(77,224,208,.16), rgba(78,174,244,.1), rgba(118,104,220,.08)); color: #7de5dc; }
-	.card-face-stage { aspect-ratio: 16/9; overflow: hidden; }
-	.card-face-panel { height: 100%; overflow: auto; }
-	.card-face-panel { animation: card-face-in 140ms ease-out; }
-	.card-result { display: flex; height: 100%; align-items: end; overflow: hidden; background: #05070a; }
-	.card-result img { width: 100%; height: 100%; object-fit: contain; }
-	.card-result > div { max-height: 100%; overflow: auto; padding: 12px; color: #6f949c; font: 10px/1.55 var(--font-mono); }
-	.card-result b { color: #55d8d0; font-size: 9px; }
-	.card-result p { margin-top: 7px; }
-	.face-arrow { border: 0; background: transparent; padding: 5px 9px; color: #668d95; }
-	.face-arrow:hover { background: #15242a; color: #7de5dc; }
-	.card-index { color: #4ee8d2; font: 700 10px var(--font-mono); }
+	.workspace-field textarea { width: 100%; border: 1px solid #26383f; background: #0d1116; color: #a8cbd2; padding: 10px; outline: none; font: 12px/1.6 var(--font-mono); }
+	.workspace-field textarea:focus { border-color: #4ee8d2; }
 	.agent-mini { border: 1px solid #31565d; background: #101b20; color: #71c9cf; padding: 5px 8px; font: 600 9px var(--font-mono); text-transform: uppercase; }
 	.cut-row { display: flex; align-items: center; gap: 8px; border: 1px solid #26383f; background: #11161c; padding: 8px 10px; color: #bce6e8; }
 	.cut-row b { font-size: 12px; font-weight: 600; }
 	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
-	.story-card.benched { opacity: 0.5; }
-	.tag-caption { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
-	.agent-mini.title-on { color: #f2c14e; border-color: #f2c14e; }
-	.story-card.benched:hover { opacity: 0.85; }
-	.agent-mini.remove:hover { color: #ff6b6b; border-color: #ff6b6b; }
 	.shots-dropping { outline: 1px dashed #59d9cf; outline-offset: -6px; }
 	.shots-drop-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(5 7 10 / 0.6); color: #59d9cf; font: 600 12px var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; pointer-events: none; }
 	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }
@@ -644,8 +750,6 @@
 	.timeline-card.selected { border-color: transparent; background: linear-gradient(120deg, rgba(78,232,210,.16), rgba(72,189,245,.1), rgba(119,112,247,.08)); }
 	.timeline-card span, .timeline-card small { color: #62848c; font: 9px var(--font-mono); }
 	.timeline-card b { overflow: hidden; color: #9ec9cf; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-	@keyframes card-face-in { from { opacity: .35; transform: translateX(4px); } }
-	@media (prefers-reduced-motion: reduce) { .card-face-panel { animation: none; } }
 	.version-tag { border: 1px solid #29434a; padding: 0 5px; color: #84cbd0; font: 600 10px var(--font-mono); text-transform: uppercase; white-space: nowrap; }
 	.version-tag.locked { border-color: #6a5a26; color: #f2c14e; }
 </style>

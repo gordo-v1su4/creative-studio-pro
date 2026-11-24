@@ -1,32 +1,43 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 
+/* The shell's work area: outline or layers, the work, the references drawer, the Agent's dock. */
 .work-area {
 	grid-template-columns: minmax(0, 1fr);
 }
+.wa-outline, .wa-rail, .wa-main, .wa-inspector, .wa-dock { grid-row: 1; }
 
 @media (min-width: 768px) {
-	.work-area { grid-template-columns: var(--rail-width, 0px) minmax(0, 1fr); }
+	.work-area { grid-template-columns: var(--outline-width, 0px) var(--rail-width, 0px) minmax(0, 1fr); }
+	.wa-outline { grid-column: 1; }
+	.wa-rail { grid-column: 2; }
+	.wa-main { grid-column: 3; }
 }
 
 @media (min-width: 1024px) {
-	.work-area { grid-template-columns: var(--rail-width, 0px) minmax(0, 1fr) var(--inspector-width); }
+	.work-area { grid-template-columns: var(--outline-width, 0px) var(--rail-width, 0px) minmax(0, 1fr) var(--inspector-width, 0px) var(--dock-width, 0px); }
+	.wa-inspector { grid-column: 4; }
+	.wa-dock { grid-column: 5; }
 }
 @import '@xyflow/svelte/dist/style.css';
 
 /*
  * Creative Studio Pro visual tokens — canonical source:
- * docs/planning/ux-designs/.../DESIGN.md. Dark editorial control room;
- * verified Directors Cut neutrals; dynamic voice palette for model lanes.
+ * docs/planning/ux-designs/ux-streamline-2026-11-23/DESIGN.md. Black ground,
+ * zinc greys, teal as the one colour; purple and pink belong to the Agent.
+ * The older token names below keep their names and take the new values, so
+ * screens not yet rebuilt follow the look; dynamic voice palette for model lanes.
  */
 @theme {
-	--color-surface-base: #09090b;
-	--color-surface-raised: #111113;
-	--color-surface-raised-2: #18181b;
-	--color-border-default: #27272a;
-	--color-border-subtle: #202023;
-	--color-text-primary: #fafafa;
+	--color-surface-base: #000000;
+	--color-surface-raised: #0c0c0e;
+	--color-surface-raised-2: #141417;
+	--color-border-default: #1e1e22;
+	--color-border-subtle: #17171a;
+	--color-text-primary: #e4e4e7;
 	--color-text-muted: #a1a1aa;
-	--color-text-dim: #71717a;
+	--color-text-dim: #7c7c86;
 	--color-gate-pending: #fbbf24;
 	--color-gate-approved: #4ade80;
 	--color-gate-quoted: #60a5fa;
@@ -44,21 +55,21 @@
 
 	/* Charm / Bubble Tea palette: pastel-neon TUI accents for agent surfaces. */
 	/* Narrate board tokens (V1S-133): every board, card, timeline and player colour. */
-	--color-nr-ink: #e6fff8;
-	--color-nr-text: #bce6e8;
-	--color-nr-muted: #8fb3b8;
-	--color-nr-dim: #55747c;
-	--color-nr-faint: #4c5b5a;
-	--color-nr-accent: #99f6e4;
-	--color-nr-accent-deep: #2f6f6a;
+	--color-nr-ink: #e4e4e7;
+	--color-nr-text: #c8c8ce;
+	--color-nr-muted: #a1a1aa;
+	--color-nr-dim: #7c7c86;
+	--color-nr-faint: #52525b;
+	--color-nr-accent: #7dd9c8;
+	--color-nr-accent-deep: #1b4741;
 	--color-nr-blue: #6dbff3;
-	--color-nr-line: #26383f;
-	--color-nr-line-soft: #1d2528;
-	--color-nr-raised: #14232a;
-	--color-nr-surface: #0f1517;
-	--color-nr-card: #10151b;
-	--color-nr-deep: #0b0e10;
-	--color-nr-mark: #f2c14e;
+	--color-nr-line: #1e1e22;
+	--color-nr-line-soft: #17171a;
+	--color-nr-raised: #141417;
+	--color-nr-surface: #0c0c0e;
+	--color-nr-card: #101012;
+	--color-nr-deep: #08080a;
+	--color-nr-mark: #f5b84a;
 	--color-nr-mark-dim: #c9b27a;
 	--color-nr-mark-line: #6a5a26;
 	--color-nr-mark-bg: #17140a;
@@ -66,13 +77,31 @@
 	--color-nr-danger-text: #d98a8a;
 	--color-nr-danger-line: #6b3a3a;
 	--color-nr-danger-bg: #1a0f10;
+	/* Streamlined look (DESIGN.md): the names new screens use. */
+	--color-ground: #000000;
+	--color-panel: #0c0c0e;
+	--color-raised: #141417;
+	--color-control: #1e1e22;
+	--color-selected: #10221f;
+	--color-selected-row: #0c1a18;
+	--color-ink: #e4e4e7;
+	--color-ink-2: #a1a1aa;
+	--color-ink-3: #7c7c86;
+	--color-teal: #7dd9c8;
+	--color-teal-deep: #1b4741;
+	--color-teal-ink: #cdf3ea;
+	--color-amber: #f5b84a;
+	--color-agent-pink: #ff8adf;
+	--color-agent-purple: #a78bfa;
+	--color-agent-purple-deep: #2a2350;
+	--color-agent-surface: #15122a;
 	--color-charm-purple: #8174e8;
 	--color-charm-mint: #5cffbe;
 	--color-charm-blue: #4ab8ff;
 	--color-charm-gold: #ffd75f;
 
-	--font-sans: Inter, ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
-	--font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+	--font-sans: 'Geist Variable', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+	--font-mono: 'Geist Mono Variable', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
 
 	--radius-none: 0px;
 	--radius-sm: 2px;
@@ -90,6 +119,7 @@ body {
 	font-family: var(--font-sans);
 	font-size: 13px;
 	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
 }
 
 /* Page chrome never scrolls horizontally (NFR-011); the canvas pans inside. */
@@ -152,7 +182,7 @@ body {
 /* Keep native overflow/edit chrome inside the dark control-room palette. */
 * {
 	scrollbar-width: thin;
-	scrollbar-color: #237b85 #0b1116;
+	scrollbar-color: #2a2a30 transparent;
 }
 
 *::-webkit-scrollbar {
@@ -161,17 +191,17 @@ body {
 }
 
 *::-webkit-scrollbar-track {
-	background: #0b1116;
+	background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-	border: 1px solid #0b1116;
+	border: 0;
 	border-radius: 6px;
-	background: linear-gradient(180deg, #238b91, #275f83);
+	background: #2a2a30;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-	background: linear-gradient(180deg, #35aab0, #347ca4);
+	background: #3a3a42;
 }
 
 textarea::-webkit-resizer {
@@ -369,3 +399,91 @@ textarea::-webkit-resizer {
 	border: 1px solid var(--color-border-default);
 }
 
+
+/*
+ * Shell chrome (DESIGN.md): small tracked capitals, 20px controls that hug
+ * their text, teal selection, no borders. Unlayered so it wins over utilities.
+ */
+.cp,
+.stage,
+.shell-tab,
+.tg,
+.key {
+	font-family: var(--font-mono);
+	font-size: 9.5px;
+	font-weight: 400;
+	letter-spacing: 0.11em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+.stage,
+.shell-tab,
+.tg,
+.key {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	height: 20px;
+	border: 0;
+	border-radius: 5px;
+	background: none;
+	/* Tracking adds space after the last letter: one pixel more on the left centres the word. */
+	padding: 1px 8px 0 9px;
+	line-height: 1;
+	color: var(--color-ink-3);
+	cursor: pointer;
+	transition: color 110ms ease-out, background-color 110ms ease-out;
+}
+.stage:hover,
+.shell-tab:hover,
+.tg:hover {
+	color: var(--color-ink-2);
+}
+.stage[aria-current='page'],
+.tg[aria-pressed='true'] {
+	background: var(--color-selected);
+	color: var(--color-teal-ink);
+}
+.tg {
+	padding: 1px 5px 0 6px;
+	letter-spacing: 0.08em;
+}
+.key {
+	background: var(--color-control);
+	color: var(--color-ink);
+}
+.key:hover:not(:disabled) {
+	background: #26262b;
+}
+.key.go {
+	background: var(--color-teal-deep);
+	color: var(--color-teal-ink);
+	box-shadow: inset 0 1px 0 #ffffff12;
+}
+.key:disabled,
+.tg:disabled,
+.stage:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+.shell-tab.agent[aria-pressed='true'] {
+	background: #1d1736;
+	color: #d8cffc;
+}
+.stage:focus-visible,
+.shell-tab:focus-visible,
+.tg:focus-visible,
+.key:focus-visible {
+	outline: 2px solid var(--color-teal);
+	outline-offset: 1px;
+}
+@media (pointer: coarse) {
+	.stage,
+	.shell-tab,
+	.tg,
+	.key {
+		height: 36px;
+	}
+}

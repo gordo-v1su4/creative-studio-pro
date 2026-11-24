@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Front door</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.hero{flex:1;display:flex;flex-direction:column;align-items:center;gap:14px;padding:84px 24px 20px}
+.hero .cp{color:var(--teal)}
+.hero h1{margin:0;font-size:19px;line-height:1.2;white-space:nowrap}
+.ask{width:100%;max-width:600px;box-sizing:border-box;margin-top:8px;padding:12px 12px 8px;border-radius:12px;background:var(--raise);display:flex;flex-direction:column;gap:8px}
+.ask textarea{width:100%;box-sizing:border-box;min-height:54px;resize:none;border:0;background:none;color:var(--ink);font:inherit;font-size:14px;line-height:1.5;outline:none;padding:0}
+.ask .r{display:flex;flex-wrap:wrap;align-items:center;gap:2px}
+.ways{width:100%;max-width:600px;display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+.way{flex:1 1 260px;min-width:0;padding:10px 6px 8px;border-radius:10px;background:#101012}
+.way .cp{display:block;padding:0 8px 6px;color:var(--ink3)}
+.ex{display:flex;align-items:center;height:26px;padding:0 8px;border-radius:5px;width:100%;overflow:hidden;text-overflow:ellipsis;color:var(--ink2)}
+.ex[data-on]{background:var(--sel);color:var(--tealink)}
+.flow{display:flex;gap:10px;padding:8px 8px 0;color:var(--ink3);letter-spacing:.07em}
+.flow b{font-weight:400;color:var(--teal)}
+.foot{display:flex;flex-wrap:wrap;gap:4px 18px;justify-content:center;margin-top:auto;color:var(--ink3)}
+.level{display:flex;align-items:center;gap:10px;height:24px;padding:0 8px;border-radius:5px;white-space:nowrap}
+.level .mono{color:#52525b}
+.level small{margin-left:auto}
+.lock{margin-top:auto;padding:8px;color:var(--ink3);white-space:normal;line-height:1.6}
+.voice{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#15122a;color:#ddd6fe}
+.lv{display:flex;align-items:center;gap:2px;height:16px}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button"><em>New project</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button" aria-current="page">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button">Shots</button>
+<button class="stage" type="button">Cut</button>
+</nav>
+<span class="sync">Review Room <b>ready</b></span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Story plan">
+<div class="cap">Story plan</div>
+<div class="level"><span class="mono">01</span>Brief</div>
+<div class="level"><span class="mono">02</span>Acts</div>
+<div class="level"><span class="mono">03</span>Scenes</div>
+<div class="level"><span class="mono">04</span>Story beats</div>
+<div class="level"><span class="mono">05</span>Shot list</div>
+<div class="lock cp">Names lock as each level is approved, and stay the same in Review Room</div>
+</aside>
+<main class="work">
+<div class="hero">
+<span class="cp">New project</span>
+<h1 class="ser">What are we making?</h1>
+<div class="ask">
+<label for="idea" style="position:absolute;left:-9999px">Your idea, or what you have</label>
+<textarea id="idea" placeholder="Say it in a sentence, or drop in whatever you have"></textarea>
+<div class="r">
+<button class="btn ag" type="button"><span class="lv" aria-hidden="true"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></span>Talk</button>
+<button class="tg" type="button">Notion series</button>
+<button class="tg" type="button">Show folder</button>
+<button class="tg" type="button">Images or video</button>
+<button class="tg" type="button">Song</button>
+<button class="btn go sp" type="button">Start</button>
+</div>
+</div>
+<div class="ways">
+<div class="way">
+<span class="cp">You have something</span>
+<button class="ex" type="button">Here's my Notion series. Make the trailer.</button>
+<button class="ex" type="button">This folder is the whole show.</button>
+<button class="ex" type="button">Turn these eight stills into a teaser.</button>
+<button class="ex" type="button">Cut it to this song.</button>
+</div>
+<div class="way">
+<span class="cp">You have nothing yet</span>
+<button class="ex" type="button" data-on>Pitch me three loglines.</button>
+<button class="ex" type="button">Something like a heist, but quiet.</button>
+<button class="ex" type="button">Surprise me.</button>
+<div class="flow cp"><b>3 loglines</b><span>→ pick one</span><span>→ teaser</span><span>→ characters</span></div>
+</div>
+</div>
+<div class="foot cp"><a href="#template">Notion template · view or duplicate</a><a href="#settings">Notion key · Settings</a></div>
+</div>
+</main>
+<aside class="dock" aria-label="Agent">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="true">Agent</button></div>
+<div class="chat">
+<div class="msg"><span class="who">Agent</span>I'm here. Give me the idea in one sentence, or say <b>pitch me</b> and I'll throw you <b>three loglines</b>. Talk if that's easier.</div>
+<div class="voice"><span class="lv" aria-hidden="true"><i style="height:5px"></i><i style="height:13px"></i><i style="height:9px"></i><i style="height:16px"></i><i style="height:7px"></i><i style="height:11px"></i></span><span class="cp">Listening</span></div>
+<div class="msg me">It's a vampire thing, but it all happens in a video store at night.</div>
+<div class="msg"><span class="who">Agent</span>Good. Three ways to play that. Tell me which one pulls.</div>
+</div>
+<div class="compose"><label style="position:absolute;left:-9999px" for="askS">Message the Agent</label><input id="askS" type="text" placeholder="Type, or hold V to talk"><button class="mic" type="button" aria-label="Talk to the Agent"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></button><button class="btn ag" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · say the idea, or ask for a pitch</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

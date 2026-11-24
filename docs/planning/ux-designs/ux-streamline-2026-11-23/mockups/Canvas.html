@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shots on the canvas</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.cv{position:relative;flex:1;min-height:640px;overflow:hidden}
+.cv svg{position:absolute;left:0;top:0;pointer-events:none}
+.grp{position:absolute;border-radius:12px;background:#101012}
+.grp[data-drop]{background:#0e1a18}
+.grp>.cp{position:absolute;left:12px;top:10px;color:var(--ink3)}
+.grp[data-drop]>.cp{color:var(--teal)}
+.nd{position:absolute;width:124px;box-sizing:border-box;padding:4px 4px 5px;border-radius:7px;background:#18181b}
+.nd[data-sel]{background:#17332f}
+.nd[data-drop]{background:#17403a}
+.nd[data-drag]{z-index:3;background:#2a2a30;box-shadow:0 14px 30px #000000b0;opacity:.94}
+.nd .th{border-radius:4px}
+.nd .l{display:flex;gap:6px;padding:4px 1px 0;white-space:nowrap;overflow:hidden;font-size:11px;color:var(--ink)}
+.nd .l span:last-child{overflow:hidden;text-overflow:ellipsis}
+.nd .l .mono{color:var(--st)}
+.nd.rf{width:98px}
+.nd.rf .th{aspect-ratio:1}
+.nd.rf .l .mono{color:var(--teal)}
+.lay{position:absolute;width:124px;height:96px;border-radius:7px;background:#141417}
+.ln{position:absolute;height:1px;width:12px;background:#7dd9c870}
+.chip{position:absolute;z-index:4;height:20px;padding:0 8px;border-radius:5px;display:flex;align-items:center;gap:10px;background:#1f1f24;color:var(--ink2)}
+.chip b{font-weight:400;color:var(--ink)}
+.chip.t{background:var(--tealdeep);color:var(--tealink)}
+.zoom{position:absolute;right:10px;bottom:10px;display:flex;gap:1px}
+.hint{position:absolute;left:14px;bottom:12px;color:var(--ink3)}
+.det{flex:1;display:flex;flex-direction:column;gap:12px;padding:12px}
+.det>.cp{color:var(--ink3);margin-bottom:-6px}
+.det .hd{display:flex;gap:8px;color:var(--ink3);margin-bottom:-8px}
+.det .hd b{font-weight:400;color:var(--pink)}
+.det .hd em{font-style:normal;color:var(--teal);margin-left:auto}
+.secs{display:flex;flex-direction:column}
+.sec{display:flex;gap:10px;align-items:baseline;height:20px;white-space:nowrap;overflow:hidden}
+.sec .cp{color:var(--teal);width:74px;flex:none}
+.sec span:last-child{overflow:hidden;text-overflow:ellipsis;color:#c8c8ce;font-size:12px}
+.tab.d[aria-selected="true"]{color:var(--ink)}
+.btn[disabled]{opacity:.4}
+</style>
+</helmet>
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button" aria-current="page">Shots</button>
+<button class="stage" type="button">Cut</button>
+</nav>
+<span class="sync">Review Room <b>in step</b> · 5s</span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Story plan">
+<div class="cap">Story plan</div>
+<div class="act">Act 1 · Cold open</div>
+<button class="scene" type="button" aria-current="true"><span class="mono">010 VHS</span><span class="t">Video Haven, 2:47 AM</span><span class="mono">9</span></button>
+<div class="srow" data-st="approved" data-sel><span class="mono">0010</span><span class="t">CRT monitor, 2:47 AM</span></div>
+<div class="srow" data-st="approved" data-sel><span class="mono">0020</span><span class="t">Storefront, 2:47 AM</span></div>
+<div class="srow" data-st="awaiting" data-sel><span class="mono">0030</span><span class="t">Mara on the floor</span></div>
+<div class="srow" data-st="changes"><span class="mono">0040</span><span class="t">The customer</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">0050</span><span class="t">Malachi in the doorway</span></div>
+<div class="srow" data-st="approved"><span class="mono">0060</span><span class="t">The tableau</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">0070</span><span class="t">Kai on the landline</span></div>
+<div class="srow" data-st="approved"><span class="mono">0080</span><span class="t">Thumb on the red vial</span></div>
+<button class="scene" type="button"><span class="mono">020 CMP</span><span class="t">Campus, the day before</span><span class="mono">14</span></button>
+<div class="act">Act 2 · The rule</div>
+<button class="scene" type="button"><span class="mono">030 CLS</span><span class="t">Kai and Malachi in class</span><span class="mono">11</span></button>
+<button class="scene" type="button"><span class="mono">040 ROF</span><span class="t">Rooftop leap</span><span class="mono">8</span></button>
+<div class="act">Unplaced</div>
+<button class="scene" type="button"><span class="t">Higgsfield pool</span><span class="mono">32</span></button>
+</aside>
+<main class="work">
+<div class="bar">
+<span class="mono k">010 VHS</span>
+<h1>Video Haven, 2:47 AM</h1>
+<span class="mono m">9 shots · 40s of 45s</span>
+<button class="tg sp" type="button" aria-pressed="false">Grid</button><button class="tg" type="button" aria-pressed="true">Canvas</button>
+<button class="btn" type="button">Add shot</button>
+<button class="btn go" type="button">Play scene</button>
+</div>
+<div class="cv">
+<div class="grp" style="left:14px;top:8px;width:572px;height:296px"><span class="cp">010 VHS · Video Haven</span></div>
+<div class="grp" style="left:598px;top:8px;width:284px;height:296px"><span class="cp">Unplaced · Higgsfield pool</span></div>
+<div class="grp" style="left:14px;top:316px;width:300px;height:170px"><span class="cp">References</span></div>
+<svg aria-hidden="true" width="900" height="640" viewBox="0 0 900 640" fill="none" stroke="#7dd9c8" stroke-opacity=".45" stroke-width="1"><path d="M558 80 C 600 80, 600 150, 300 150 S 0 150, 26 208"/><path d="M124 400 C 230 400, 250 330, 350 276"/><path d="M124 412 C 330 412, 440 350, 490 276"/><path d="M296 430 C 420 430, 240 300, 224 152" stroke-opacity=".25"/></svg>
+<div class="nd" data-sel data-st="approved" style="left:26px;top:40px"><span class="th"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><span class="tk"><i></i><i class="p"></i></span></span><span class="l"><span class="mono">0010</span><span>CRT monitor</span></span></div>
+<i class="ln" style="left:150px;top:80px"></i>
+<div class="nd" data-sel data-st="approved" style="left:162px;top:40px"><span class="th"><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""><span class="tk"><i class="p"></i></span></span><span class="l"><span class="mono">0020</span><span>Storefront</span></span></div>
+<i class="ln" style="left:286px;top:80px"></i>
+<div class="nd" data-sel data-drop data-st="awaiting" style="left:298px;top:40px"><span class="th"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><span class="tk"><i></i><i></i><i class="p"></i></span></span><span class="l"><span class="mono">0030</span><span>Mara on the floor</span></span></div>
+<i class="ln" style="left:422px;top:80px"></i>
+<div class="nd" data-st="changes" style="left:434px;top:40px"><span class="th"><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><span class="tk"><i></i><i class="p"></i></span></span><span class="l"><span class="mono">0040</span><span>The customer</span></span></div>
+<span class="chip cp" style="left:26px;top:142px"><b>3 selected</b><span>G group</span><span>Space play</span><span>B bench</span></span>
+<div class="nd" data-st="awaiting" style="left:26px;top:170px"><span class="th"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><span class="tk"><i></i><i class="p"></i></span></span><span class="l"><span class="mono">0050</span><span>Malachi in the doorway</span></span></div>
+<i class="ln" style="left:150px;top:210px"></i>
+<div class="nd" data-st="approved" style="left:162px;top:170px"><span class="th"><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><span class="tk"><i></i><i></i><i></i><i class="p"></i></span></span><span class="l"><span class="mono">0060</span><span>The tableau</span></span></div>
+<i class="ln" style="left:286px;top:210px"></i>
+<div class="nd" data-st="awaiting" style="left:298px;top:170px"><span class="th"><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><span class="tk"><i class="p"></i><i></i></span></span><span class="l"><span class="mono">0070</span><span>Kai on the landline</span></span></div>
+<i class="ln" style="left:422px;top:210px"></i>
+<div class="nd" data-st="approved" style="left:434px;top:170px"><span class="th"><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""><span class="tk"><i class="p"></i></span></span><span class="l"><span class="mono">0080</span><span>Thumb on the red vial</span></span></div>
+<i class="lay" style="left:622px;top:48px"></i><i class="lay" style="left:618px;top:44px;background:#16161a"></i>
+<div class="nd" data-st="missing" style="left:614px;top:40px"><span class="th"><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""></span><span class="l"><span class="mono">×5</span><span>Store wides</span></span></div>
+<div class="nd" data-st="missing" style="left:750px;top:40px"><span class="th"><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""></span><span class="l"><span class="mono">hf_0825</span><span>Neon front</span></span></div>
+<div class="nd" data-st="missing" style="left:614px;top:170px"><span class="th"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""></span><span class="l"><span class="mono">hf_0914</span><span>Monitor alt</span></span></div>
+<div class="nd" data-drag data-st="missing" style="left:336px;top:74px"><span class="th"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""></span><span class="l"><span class="mono">hf_0911</span><span>Mara, wider</span></span></div>
+<span class="chip t cp" style="left:336px;top:176px">Drop on 0030 to nest as a take</span>
+<div class="nd rf" style="left:26px;top:350px"><span class="th"><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt="" style="object-position:38% 20%"></span><span class="l"><span class="mono">@Kai</span></span></div>
+<div class="nd rf" style="left:132px;top:350px"><span class="th"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt="" style="object-position:42% 30%"></span><span class="l"><span class="mono">@Mara</span></span></div>
+<div class="nd rf" style="left:238px;top:350px"><span class="th"><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""></span><span class="l"><span class="mono">@VideoHaven</span></span></div>
+<span class="hint cp">Drag anything anywhere · drop on a shot to nest · drag from an edge to connect</span>
+<div class="zoom"><button class="tg" type="button">Fit</button><button class="tg" type="button" aria-pressed="true">100%</button></div>
+</div>
+</main>
+<aside class="dock" aria-label="Agent and details">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="false">Agent</button><button class="tab d" type="button" role="tab" aria-selected="true">Details</button></div>
+<div class="det">
+<span class="cp" style="color:var(--teal)">0030 · Mara on the floor</span>
+<dl class="spec" style="margin:0"><dt class="cp">Size</dt><dd>Medium</dd><dt class="cp">In frame</dt><dd>@Mara</dd><dt class="cp">Place</dt><dd>@VideoHaven</dd><dt class="cp">Camera</dt><dd>Locked off</dd><dt class="cp">Length</dt><dd>5s</dd></dl>
+<div class="hd cp"><span>Video prompt</span><b>Ghost</b><em>QC passed</em></div>
+<div class="secs">
+<div class="sec"><span class="cp">Scene</span><span>Mara sits against the desk as a siren passes. Live-action film footage.</span></div>
+<div class="sec"><span class="cp">References</span><span>image 1 = @Mara face and costume · image 2 = @VideoHaven</span></div>
+<div class="sec"><span class="cp">Characters</span><span>Mara, black suit, dark hair. Identical in every frame.</span></div>
+<div class="sec"><span class="cp">Space</span><span>Back office, 3 m wide. Desk left, blinds far end.</span></div>
+<div class="sec"><span class="cp">First frame</span><span>Knees up, head down, one hand on the desk leg.</span></div>
+<div class="sec"><span class="cp">Timeline</span><span>SHOT 1 | 0.0–5.0 s · she lifts her head slowly</span></div>
+<div class="sec"><span class="cp">Camera</span><span>35 mm, floor height, locked off.</span></div>
+<div class="sec"><span class="cp">Light</span><span>Cold window key through blinds, one red accent.</span></div>
+<div class="sec"><span class="cp">Sound</span><span>Distant siren, room tone. No music.</span></div>
+<div class="sec"><span class="cp">Locks</span><span>No morphing, no extra people, no look to camera.</span></div>
+</div>
+<div class="hd cp"><span>Image prompt</span><b>One Shot</b><em>8 sections</em></div>
+<span class="cp">Make a take</span>
+<div class="row"><span class="mono" style="color:var(--ink2)">Seedance 2.5 · 480p draft</span></div>
+<div class="row"><button class="btn go" type="button">Get price</button><button class="btn" type="button" disabled>Confirm</button></div>
+</div>
+<div class="compose"><label style="position:absolute;left:-9999px" for="askC">Message the Agent</label><input id="askC" type="text" placeholder="Type, or hold V to talk"><button class="mic" type="button" aria-label="Talk to the Agent"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></button><button class="btn ag" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · 1 shot has no take · 3 takes await review</span><span class="mono sp">G group · Space play · ←→ shot · ↑↓ take</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

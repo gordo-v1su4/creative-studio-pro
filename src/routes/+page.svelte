@@ -22,7 +22,12 @@
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
 	import NewProjectFlow from '$lib/ui/NewProjectFlow.svelte';
-	import CapabilityChip from '$lib/ui/CapabilityChip.svelte';
+	import AgentChat from '$lib/ui/chat/AgentChat.svelte';
+	import ProjectMenu from '$lib/ui/shell/ProjectMenu.svelte';
+	import Outline from '$lib/ui/shell/Outline.svelte';
+	import { STAGES, restoreTab, stageOfTab, tabForStage, viewsOfStage } from '$lib/domain/stages';
+	import type { StageId, WorkspaceTab } from '$lib/domain/stages';
+	import { nextLine } from '$lib/domain/next-line';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName } from '$lib/domain/gates';
@@ -177,13 +182,20 @@
 	let selectedVoice = $derived(
 		activeProject?.voices.find((voice) => voice.voice_id === selectedNodeId) ?? null
 	);
-	// Tabs follow the flow: write the story, prep the references, review on the board, work the shots, cut, sound, finish.
-	const workspaceTabs: Array<{ label: string; tab: 'canvas' | ProductionTab }> = [
-		{ label: 'Story', tab: 'story' }, { label: 'Prep', tab: 'prep' }, { label: 'Board', tab: 'canvas' }, { label: 'Shots', tab: 'beats' },
-		{ label: 'Cuts', tab: 'cuts' }, { label: 'Sound', tab: 'sound' }, { label: 'Export', tab: 'export' }
-	];
-	// Tabs saved before the Narrate flow land on their nearest successor.
-	const legacyTabs: Record<string, 'canvas' | ProductionTab> = { cards: 'beats', media: 'beats', shots: 'beats', preview: 'cuts' };
+	// The four stages (CONTEXT.md: Stage); each groups the views the app already had.
+	let lastViews = $state<Partial<Record<StageId, WorkspaceTab>>>({});
+	const currentTab = $derived<WorkspaceTab>(canvasOpen ? 'canvas' : productionTab);
+	const currentStage = $derived(stageOfTab(currentTab));
+	const stageViews = $derived(viewsOfStage(currentStage));
+	let menuOpen = $state(false);
+	/** The dock holds the Agent and the selected shot's details. */
+	let dockTab = $state<'agent' | 'details'>('agent');
+	let detailsHost = $state<HTMLElement | null>(null);
+	/** The Agent is docked beside the work; whether it is open is remembered on this machine. */
+	let agentRestored = $state(false);
+	const dockOpen = $derived(ui.chatOpen && ui.chatMode === 'dock');
+	$effect(() => { if (agentRestored) localStorage.setItem('csp.agent-open', ui.chatOpen ? '1' : '0'); });
+	const next = $derived(nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room) } : null));
 	const secondaryNav = [
 		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
 		{ label: 'Watch', href: '/watch', hint: 'The public, read-only pages: what you have published' },
@@ -192,10 +204,15 @@
 		{ label: 'Settings', href: '/settings', hint: 'App settings: the Agent\'s model, video generation (Higgsfield), the sound-effects folder' }
 	];
 
-	function openWorkspace(tab: 'canvas' | ProductionTab) {
+	function openWorkspace(tab: WorkspaceTab) {
 		canvasOpen = tab === 'canvas';
 		if (tab !== 'canvas') productionTab = tab;
+		lastViews[stageOfTab(tab)] = tab;
 		localStorage.setItem('csp.workspace-tab', tab);
+	}
+
+	function openStage(stage: StageId) {
+		openWorkspace(tabForStage(stage, lastViews));
 	}
 
 	function projectToNodes(project: Project, saved: CanvasLayout | null): Node[] {
@@ -1191,10 +1208,14 @@
 
 	onMount(() => {
 		const savedWorkspace = localStorage.getItem('csp.workspace-tab');
-		const restored = savedWorkspace && (legacyTabs[savedWorkspace] ?? workspaceTabs.find((item) => item.tab === savedWorkspace)?.tab);
+		const restored = restoreTab(savedWorkspace);
 		if (restored) {
 			openWorkspace(restored);
 		}
+		// The Agent sits in the dock; on a narrow screen it starts closed so it does not cover the work.
+		ui.chatMode = 'dock';
+		ui.chatOpen = localStorage.getItem('csp.agent-open') !== '0' && window.innerWidth >= 1024;
+		agentRestored = true;
 		ui.activeProjectUpdater = (project) => adoptProject(project, layout);
 		ui.pageActions = [
 			{ id: 'new-project', label: 'new project', hint: 'seed · s0', run: () => void createProject() },
@@ -1204,9 +1225,8 @@
 			// ?project=<id> opens that project (the Series page links imported episodes this way); else the newest.
 			const params = new URLSearchParams(location.search);
 			const wanted = params.get('project');
-			// The Board tab is the canvas inside; links say "board".
-			const asked = params.get('tab') === 'board' ? 'canvas' : params.get('tab');
-			const tab = workspaceTabs.find((item) => item.tab === asked)?.tab;
+			// Links may name a view by an earlier name ("board" is the canvas).
+			const tab = restoreTab(params.get('tab'));
 			if (tab) openWorkspace(tab);
 			// A link may open an archived project; the default is the newest one that isn't archived.
 			const newest = projects.find((p) => !p.archived_at) ?? projects[0];
@@ -1226,14 +1246,10 @@
 
 <svelte:head><title>{activeProject ? `${activeProject.title} — Creative Studio Pro` : 'Creative Studio Pro'}</title></svelte:head>
 
-<div class="grid h-full min-w-0 overflow-x-hidden" style="grid-template-rows: 48px minmax(0,1fr) 42px">
-	<!-- The one navigation bar: product, project, the flow's tabs, then app-level links (48px). On a phone it scrolls sideways. -->
-	<div class="flex min-w-0 items-center gap-2 overflow-x-auto border-b border-border-default bg-surface-base px-3 [scrollbar-width:none]">
-		<span class="flex shrink-0 items-center gap-2" aria-label="Creative Studio Pro">
-			<span class="block h-2 w-2 rounded-[1px] bg-voice-1 shadow-[0_0_8px_color-mix(in_srgb,var(--color-voice-1)_45%,transparent)]"></span>
-			<span class="brand hidden sm:inline">Creative Studio Pro</span>
-		</span>
-		<span class="h-4 w-px shrink-0 bg-border-default"></span>
+<div class="grid h-full min-w-0 overflow-x-hidden bg-ground" style="grid-template-rows: auto minmax(0,1fr) 24px">
+	<!-- The top bar (34px, wrapping on a narrow screen): the project, the four stages, the views of the open stage, then the Agent and the menu. It never clips, so its menus can hang below it. -->
+	<div class="topbar relative z-40 flex min-h-[34px] min-w-0 flex-wrap items-center gap-x-3.5 gap-y-0.5 px-3">
+		<span class="wordmark cp shrink-0" aria-label="Creative Studio Pro">Studio</span>
 		{#if projects.length}
 			<!-- Every project, newest first: the way back to any of them (the trailer, an imported episode…). -->
 			<span class="project-pick w-[170px] shrink-0 max-w-[300px] sm:w-auto sm:min-w-0 sm:shrink" title={activeProject?.title}>
@@ -1242,28 +1258,37 @@
 		{:else}
 			<b class="project-name min-w-0 max-w-[260px] truncate">No project open</b>
 		{/if}
-		{#if activeProject}
-			<span class="meta-label shrink-0 text-text-dim">v{activeProject.version}</span>
-			{#if activeProject.archived_at}
-				<span class="meta-label shrink-0 text-[#e0b35a]" title="Archived {new Date(activeProject.archived_at).toLocaleDateString()}. Unarchive it from the project menu.">archived</span>
-			{/if}
+		{#if activeProject?.archived_at}
+			<span class="cp shrink-0 text-amber" title="Archived {new Date(activeProject.archived_at).toLocaleDateString()}. Unarchive it from the project menu.">archived</span>
 		{/if}
-		<nav class="ml-2 flex shrink-0 items-center gap-0.5 lg:min-w-0 lg:shrink lg:overflow-x-auto" aria-label="Project">
-			{#each workspaceTabs as item (item.label)}
-				{@const active = item.tab === 'canvas' ? canvasOpen : !canvasOpen && productionTab === item.tab}
-				<button type="button" class={['flow-tab', active && 'active']} aria-current={active ? 'page' : undefined} onclick={() => openWorkspace(item.tab)}>{item.label}</button>
+		<nav class="mx-auto flex shrink-0 items-center gap-px" aria-label="Stages">
+			{#each STAGES as stage (stage.id)}
+				<button type="button" class="stage" aria-current={currentStage === stage.id ? 'page' : undefined} onclick={() => openStage(stage.id)}>{stage.label}</button>
 			{/each}
 		</nav>
-		<span class="grow"></span>
-		<button type="button" class="agent-key" disabled={!activeProject} title="The Agent: your assistant for this project. It drafts the brief, shots and prompts, suggests effects, and makes judgment calls inside your rules. Measurable work (lint, trims, levels) is done in code, not by the Agent." onclick={() => { ui.chatMode = 'focus'; ui.chatOpen = !ui.chatOpen; }}>
-			<span class="glyph" aria-hidden="true">✦</span>Agent
-		</button>
-		<button type="button" class="bar-key" onclick={() => void createProject()} disabled={creating} title="Start a new project from a rough idea">
-			<span class="sm:hidden">{creating ? '…' : '+ New'}</span>
-			<span class="hidden sm:inline">{creating ? 'Creating…' : '+ New project'}</span>
-		</button>
-		<span class="relative">
-			<button type="button" class="bar-key" disabled={!activeProject} aria-expanded={publishOpen} onclick={() => { publishOpen = !publishOpen; publishResult = null; publishError = null; }} title="Publish this project to the public watch pages (read-only)">Publish</button>
+		{#if stageViews.length > 1}
+			<span class="flex shrink-0 items-center gap-px" role="group" aria-label="View">
+				{#each stageViews as view (view.tab)}
+					<button type="button" class="tg" aria-pressed={currentTab === view.tab} onclick={() => openWorkspace(view.tab)}>{view.label}</button>
+				{/each}
+			</span>
+		{/if}
+		<span class="cp hidden shrink-0 text-ink-3 lg:inline" title="Every take's media is stored in Review Room">Review Room <b class="font-normal text-teal">{activeProject?.series || activeProject?.review_room ? 'connected' : 'not connected'}</b></span>
+		<button type="button" class="shell-tab agent" disabled={!activeProject} aria-pressed={dockOpen} title="The Agent: your assistant for this project. It drafts the brief, shots and prompts, suggests effects, and makes judgment calls inside your rules." onclick={() => { ui.chatMode = 'dock'; ui.chatOpen = !ui.chatOpen; }}>Agent</button>
+		<span class="relative shrink-0">
+			<button type="button" class="tg" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => { menuOpen = !menuOpen; publishOpen = false; }}>Menu</button>
+			<ProjectMenu
+				bind:open={menuOpen}
+				links={secondaryNav}
+				version={activeProject?.version ?? null}
+				hasProject={!!activeProject}
+				{creating}
+				refsOpen={inspectorOpen}
+				onNew={() => void createProject()}
+				onPublish={() => { publishOpen = true; publishResult = null; publishError = null; }}
+				onRefs={() => (inspectorOpen = !inspectorOpen)}
+				onStatus={() => (ui.capabilitiesOpen = true)}
+			/>
 			{#if publishOpen && activeProject}
 				<div class="publish-pop" role="dialog" aria-label="Publish">
 					<p class="publish-cap">Publish to Watch</p>
@@ -1280,30 +1305,21 @@
 				</div>
 			{/if}
 		</span>
-		<nav class="hidden items-center gap-0.5 xl:flex" aria-label="App">
-			{#each secondaryNav as item (item.href)}
-				<a href={item.href} class="flow-tab" title={item.hint}>{item.label}</a>
-			{/each}
-		</nav>
-		<button type="button" class="bar-key hidden sm:flex" onclick={() => (ui.paletteOpen = true)} title="Command palette: jump to any action by typing">⌘K</button>
-		<CapabilityChip />
-		<button
-			type="button"
-			class="bar-key"
-			onclick={() => (inspectorOpen = !inspectorOpen)}
-			title={inspectorOpen ? 'Hide the References drawer (headshots, places, seed, voices)' : 'Show the References drawer: character headshots, places, seed and voices'}
-			aria-pressed={inspectorOpen}
-		>
-			{inspectorOpen ? 'Refs ▸' : '◂ Refs'}
-		</button>
+		<button type="button" class="tg hidden shrink-0 sm:inline-flex" onclick={() => (ui.paletteOpen = true)} title="Command palette: jump to any action by typing">⌘K</button>
 	</div>
 
 	<!-- Work area: lane rail + canvas + inspector -->
 	<div
-		class={['work-area relative grid min-h-0 min-w-0', !railResizing && 'transition-[grid-template-columns] duration-300 ease-out']}
-		style={`--inspector-width: ${inspectorOpen ? '400px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? `${railWidth}px` : '0px'}`}
+		class={['work-area relative grid min-h-0 min-w-0 px-1', !railResizing && 'transition-[grid-template-columns] duration-300 ease-out']}
+		style={`--inspector-width: ${inspectorOpen ? '403px' : '0px'}; --rail-width: ${canvasOpen && !railCollapsed ? `${railWidth}px` : '0px'}; --outline-width: ${canvasOpen ? '0px' : '223px'}; --dock-width: ${dockOpen ? '363px' : '0px'}`}
 	>
-		<aside class={['rail relative hidden bg-surface-raised md:flex md:flex-col', canvasOpen && !railCollapsed ? 'border-r border-border-default' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
+		{#if !canvasOpen}
+			<!-- The outline: the project's groups and shots. On the canvas the layers panel takes its place. -->
+			<aside class="wa-outline hidden min-h-0 overflow-hidden rounded-[10px] bg-panel md:mr-[3px] md:block">
+				<Outline project={activeProject} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} />
+			</aside>
+		{/if}
+		<aside class={['rail wa-rail relative hidden bg-panel md:flex md:flex-col', canvasOpen && !railCollapsed ? 'rounded-[10px] md:mr-[3px]' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
 			{#if canvasOpen && !railCollapsed}
 				<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 				<div class={['rail-resize', railResizing && 'active']} role="separator" aria-orientation="vertical" aria-label="Resize the layers panel" aria-valuemin={RAIL_MIN} aria-valuemax={RAIL_MAX} aria-valuenow={railWidth} tabindex="0" title="Drag to resize" onpointerdown={startRailResize} onkeydown={nudgeRail} ondblclick={() => { railWidth = 260; try { localStorage.setItem('csp.rail-width', '260'); } catch { /* private mode */ } }}></div>
@@ -1420,7 +1436,7 @@
 			</button>
 		{/if}
 
-		<main class="relative min-w-0">
+		<main class="wa-main relative min-w-0 overflow-hidden rounded-[10px] bg-panel">
 			{#if loadError}
 				<div
 					class="absolute inset-x-0 top-0 z-10 border-b border-[color-mix(in_srgb,var(--color-gate-failed)_55%,var(--color-border-default))] bg-surface-raised-2 px-3 py-2 text-gate-failed"
@@ -1539,7 +1555,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} {detailsHost} onOpenDetails={() => { dockTab = 'details'; /* Below 1024px the dock lies over the work, so it is not opened for the viewer. */ if (window.matchMedia('(min-width: 1024px)').matches) { ui.chatMode = 'dock'; ui.chatOpen = true; } }} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">
@@ -1560,11 +1576,10 @@
 
 		<aside
 			class={[
-				'overflow-hidden bg-surface-raised',
+				'wa-inspector overflow-hidden rounded-[10px] bg-panel',
 				inspectorOpen
-					? 'fixed bottom-[42px] right-0 top-[88px] z-30 block w-[min(92vw,420px)] border-l lg:static lg:w-auto'
-					: 'hidden',
-				inspectorOpen && 'border-l border-border-default'
+					? 'fixed bottom-[24px] right-0 top-[62px] z-30 block w-[min(92vw,420px)] lg:static lg:ml-[3px] lg:w-auto'
+					: 'hidden'
 			]}
 			aria-label="Inspector"
 			aria-hidden={!inspectorOpen}
@@ -1675,21 +1690,27 @@
 				</div>
 			</div>
 		</aside>
+		{#if dockOpen}
+			<!-- The Agent, docked beside the work; below 1024px it lies over it. -->
+			<aside class="wa-dock min-h-0 max-lg:contents lg:ml-[3px] lg:flex lg:flex-col lg:overflow-hidden lg:rounded-[10px] lg:bg-panel" aria-label="Agent and details">
+				<div class="flex shrink-0 items-center gap-px px-1.5 pt-1.5 max-lg:hidden" role="group" aria-label="Dock">
+					<button type="button" class="shell-tab agent" aria-pressed={dockTab === 'agent'} onclick={() => (dockTab = 'agent')}>Agent</button>
+					<button type="button" class="tg" aria-pressed={dockTab === 'details'} onclick={() => (dockTab = 'details')}>Details</button>
+				</div>
+				<div class={dockTab === 'agent' ? 'min-h-0 max-lg:contents lg:grow' : 'lg:hidden max-lg:contents'}>
+					<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={activeProject} />
+				</div>
+				<!-- The selected shot's details are drawn here by the Shots workspace. -->
+				<div bind:this={detailsHost} class={['min-h-0 grow overflow-y-auto max-lg:hidden', dockTab !== 'details' && 'hidden']}></div>
+			</aside>
+		{/if}
 	</div>
 
-	<!-- Transport strip (42px) -->
-	<footer class="meta-label flex min-w-0 items-center gap-2 overflow-hidden border-t border-border-default bg-surface-raised px-3 sm:gap-3">
-		<span class="flex items-center gap-1.5 text-gate-pending">
-			<span class="block h-1.5 w-1.5 rounded-full bg-gate-pending"></span>
-			{activeProject ? `${activeProject.stage.id} · ${stageName(activeProject.stage.id).toUpperCase()}` : 'NO PROJECT'}
-		</span>
-		<span class="text-border-default">|</span>
-		<span class="hidden sm:inline">
-			Confidence {activeProject?.stage.confidence ?? '—'}
-		</span>
+	<!-- The Next line (24px): what is waiting on the operator. Stages and gates stay with their runs. -->
+	<footer class="cp flex min-w-0 items-center gap-4 overflow-hidden px-3.5 text-ink-3">
+		<span class="min-w-0 truncate"><b class="font-normal text-ink-2">Next</b> · {next}</span>
 		{#if activeProject?.creative_room}
-			<span class="text-border-default">|</span>
-			<span class="text-text-muted">
+			<span class="hidden shrink-0 sm:inline">
 				Room {activeProject.creative_room.status}
 				{#if activeProject.voices.length > 0}
 					· {activeProject.voices.filter((v) => v.raw_text).length}/{activeProject.voices.length} replies
@@ -1697,11 +1718,7 @@
 			</span>
 		{/if}
 		<span class="grow"></span>
-		<span aria-live="polite" class={['hidden transition-opacity sm:inline', savingLayout ? 'opacity-100' : 'opacity-0']}>
-			Saving canvas…
-		</span>
-		<span class="text-border-default">|</span>
-		<span class="text-text-dim">{activeProject?.stage.state ?? '—'}</span>
+		<span aria-live="polite" class={['hidden shrink-0 transition-opacity sm:inline', savingLayout ? 'opacity-100' : 'opacity-0']}>Saving canvas…</span>
 	</footer>
 </div>
 
@@ -1713,11 +1730,8 @@
 	.layer-row > span { width: 6px; height: 6px; }
 	.layer-row b { font-size: 11px; font-weight: 500; }
 	.layer-row small { font: 9px var(--font-mono); color: #626b70; }
-	.brand { color: #b8c4c8; font: 600 12px var(--font-sans); letter-spacing: 0.22em; text-transform: uppercase; }
+	.wordmark { color: var(--color-teal); letter-spacing: 0.24em; }
 	.project-name { color: #8f9ca1; font-size: 12px; font-weight: 500; }
-	.flow-tab { padding: 3px 9px; border-radius: 2px; color: #66737a; font: 600 10px var(--font-sans); letter-spacing: 0.14em; text-transform: uppercase; transition: color 140ms ease, background 140ms ease; }
-	.flow-tab:hover { color: #a9b6bd; }
-	.flow-tab.active { color: #9eeee3; background: rgba(78, 232, 210, 0.07); box-shadow: inset 0 -1px 0 rgba(78, 232, 210, 0.6); }
 	.bar-key { display: inline-flex; align-items: center; gap: 6px; height: 26px; border: 1px solid #262c31; border-radius: 2px; background: transparent; padding: 0 10px; color: #8a969e; font: 600 10px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
 	.bar-key:hover:not(:disabled) { border-color: #44505a; color: #c4d0d6; }
 	.bar-key:disabled { opacity: 0.4; }
