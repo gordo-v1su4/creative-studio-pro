@@ -14,7 +14,8 @@
 	import { SHOT_DRAG } from '$lib/ui/shots/SelectionStrip.svelte';
 	import { page } from '$app/state';
 	import { sceneRoomLink } from '$lib/domain/review-room-links';
-	import { levelCounts, levelLabel, levelOpen, levelStates, levelSummary, nextLevel, placedGroups, shortCodeOf, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
+	import { shortName, shotCode } from '$lib/domain/shot-card';
+	import { levelCounts, levelLabel, levelOpen, levelStates, levelSummary, nextLevel, placedGroups, sceneLabel, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
 
 	let { project, openGroupId, onOpenGroup, onMoveShots, onAddFiles, level = null, onOpenLevel, fresh = false }: {
 		/** The front door is showing: the five levels a new project will go through, with nothing in them yet. */
@@ -45,7 +46,8 @@
 		const dragged = held(event);
 		if (!dragged) return;
 		event.preventDefault();
-		const line = dragged.kind === 'files' ? dropLabel(meaningOf(dragged, group.group_id), { group: group.name }) : `Drop to move the shot to ${group.name}`;
+		const name = project ? sceneLabel(project, group) : group.name;
+		const line = dragged.kind === 'files' ? dropLabel(meaningOf(dragged, group.group_id), { group: name }) : `Drop to move the shot to ${name}`;
 		if (over?.groupId !== group.group_id || over.line !== line) over = { groupId: group.group_id, line, ok: true };
 	}
 
@@ -92,8 +94,8 @@
 					.sort((a, b) => a.order - b.order)
 					.map((card, index) => ({
 						id: card.card_id,
-						// A shot's own number once it has one (it may have come from another scene); its place until then.
-							number: shortCodeOf(project, card)?.slice(-4) ?? String(card.shot_number ?? (index + 1) * 10).padStart(4, '0'),
+						// A shot's code once it has one (it may have come from another scene); its place until then.
+						code: shotCode(project, card, String(card.shot_number ?? (index + 1) * 10).padStart(4, '0')),
 						title: card.title,
 						status: shotStatus(project.production.assets.filter((asset) => asset.card_id === card.card_id))
 					}))
@@ -103,7 +105,7 @@
 
 {#snippet groupRow(group: { group_id: string; name: string; count: number; code?: string; title?: string })}
 	{@const open = group.group_id === openGroupId}
-	<button type="button" class={['group', over?.groupId === group.group_id && 'over']} aria-current={open ? 'true' : undefined} onclick={() => onOpenGroup(group.group_id)} title="Open {group.name} on the canvas. Drop a shot here to move it, or files to add them as shots."
+	<button type="button" class={['group', over?.groupId === group.group_id && 'over']} aria-current={open ? 'true' : undefined} onclick={() => onOpenGroup(group.group_id)} title="Open {project ? sceneLabel(project, group) : group.name} on the canvas. Drop a shot here to move it, or files to add them as shots."
 		ondragover={(event) => dragOver(event, group)} ondragleave={() => { if (over?.groupId === group.group_id) over = null; }} ondrop={(event) => drop(event, group)}>
 		{#if group.code}<span class="code">{group.code}</span>{/if}<span class="name">{group.title ?? group.name}</span><span class="count">{group.count}</span>
 	</button>
@@ -112,7 +114,7 @@
 		{#if roomHref}<a class="cp room" href={roomHref} target="_blank" rel="noopener" title="Open this scene's folder in Review Room">Open in Review Room</a>{/if}
 		<ul>
 			{#each shots as shot (shot.id)}
-				<li data-status={shot.status} title={shot.title} draggable="true" ondragstart={(event) => { event.dataTransfer?.setData(SHOT_DRAG, shot.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove'; }}><span class="num">{shot.number}</span><span class="name">{shot.title}</span></li>
+				<li data-status={shot.status} title={`${shot.code} · ${shot.title}`} draggable="true" ondragstart={(event) => { event.dataTransfer?.setData(SHOT_DRAG, shot.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove'; }}><span class="num">{shortName(shot.code)}</span><span class="name">{shot.title}</span></li>
 			{/each}
 		</ul>
 	{/if}

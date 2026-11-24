@@ -33,14 +33,13 @@
 	import { cutView } from '$lib/ui/cut/cut-view.svelte';
 	import type { StageId, WorkspaceTab } from '$lib/domain/stages';
 	import { nextLine } from '$lib/domain/next-line';
-	import { storyNextLine } from '$lib/domain/story-levels';
+	import { sceneLabel, shotCodeOf, storyNextLine } from '$lib/domain/story-levels';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { isMissingShot, playItemFor, slateAssetId, slateUrl } from '$lib/domain/slate';
-	import { shortShotCode } from '$lib/domain/story-plan';
 	import { benchedBeats } from '$lib/domain/bench';
 	import { mediaKind } from '$lib/domain/media';
 	import { dropMeaning, type DropContext } from '$lib/domain/drops';
@@ -287,7 +286,7 @@
 				position: { x: savedNode?.x ?? 760 + (index % 5) * 260, y: savedNode?.y ?? Math.floor(index / 5) * 300 },
 				data: {
 					card, order: index, spineIndex: spineIndex < 0 ? null : spineIndex, takes, pickId: pick?.asset_id ?? null,
-					code: card ? shortShotCode(project.review_room?.shots?.[card.card_id]?.code) : null,
+					code: card ? shotCodeOf(project, card) : null,
 					slate: card && isMissingShot(project.production, card) ? { src: slateUrl(project.project_id, card.card_id), assetId: slateAssetId(card.card_id) } : null,
 					onPick: (takeId: string) => card && pickTake(card.card_id, takeId),
 					onReject: (takeId: string) => sendBoardCommand({ command: 'reject_take', take_id: takeId }),
@@ -343,11 +342,11 @@
 				type: 'scene',
 				position: { x: place.x, y: place.y },
 				data: {
-					name: group.name, shots: shots.length, benched: shots.filter((card) => card.benched).length, seconds, glimpses,
+					name: sceneLabel(project, group), shots: shots.length, benched: shots.filter((card) => card.benched).length, seconds, glimpses,
 					onRemove: () => saveAssemblyScenes(assembly.scenes.filter((s) => s.group_id !== group.group_id)),
 					onOpen: () => { const from = activeGroup; showGroup(group.group_id); cameFrom = from; }
 				},
-				ariaLabel: `Scene ${group.name}`
+				ariaLabel: `Scene ${sceneLabel(project, group)}`
 			} satisfies Node];
 		});
 	}
@@ -684,6 +683,8 @@
 	const selectedBeats = $derived(readingOrder(nodes.filter((node) => node.selected && isBeat(node.id)).map((node) => ({ id: node.id, x: node.position.x, y: node.position.y }))).map((item) => item.id));
 	const beatTitle = (cardId: string) => activeProject?.production.cards.find((card) => card.card_id === cardId)?.title ?? 'the shot';
 	const groupName = (groupId: string) => (activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId)?.name : null) ?? 'that group';
+	/** What a group is called on screen (a plan scene by its code and title). */
+	const groupLabel = (groupId: string) => { const group = activeProject ? groupsOf(activeProject.production).find((g) => g.group_id === groupId) : null; return group && activeProject ? sceneLabel(activeProject, group) : 'that group'; };
 	const beatsLabel = (ids: string[]) => (ids.length === 1 ? beatTitle(ids[0]) : `${ids.length} beats`);
 
 	function clearSelection() {
@@ -738,7 +739,7 @@
 		const moving = ids.filter((id) => { const card = activeProject?.production.cards.find((c) => c.card_id === id); return card && groupOf(card) !== groupId; });
 		if (!moving.length) return;
 		sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: moving });
-		notify(`Moved ${beatsLabel(moving)} to ${groupName(groupId)}.`);
+		notify(`Moved ${beatsLabel(moving)} to ${groupLabel(groupId)}.`);
 		clearSelection();
 	}
 
@@ -1515,7 +1516,7 @@
 									<input class="group-name m-0" bind:value={renaming.name} aria-label={`Rename ${group.name}`} autofocus onkeydown={(event) => { if (event.key === 'Enter') renameGroup(); else if (event.key === 'Escape') renaming = null; }} onblur={renameGroup} />
 								{:else}
 									<button type="button" class="group-pick" draggable={group.group_id !== MAIN_GROUP && Boolean(activeAssembly)} ondragstart={(event) => { event.dataTransfer?.setData(SCENE_DRAG, group.group_id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy'; }} onclick={() => showGroup(group.group_id)} ondblclick={() => { if (group.group_id !== MAIN_GROUP) renaming = { group_id: group.group_id, name: group.name }; }} aria-pressed={group.group_id === activeGroup} title={group.group_id === MAIN_GROUP ? 'Main: every shot not in a group' : 'Show this group · double-click to rename'}>
-										<b class="min-w-0 grow truncate" title={group.name}>{group.name}</b>
+										<b class="min-w-0 grow truncate" title={activeProject ? sceneLabel(activeProject, group) : group.name}>{activeProject ? sceneLabel(activeProject, group) : group.name}</b>
 										<small>{group.count}</small>
 									</button>
 								{/if}

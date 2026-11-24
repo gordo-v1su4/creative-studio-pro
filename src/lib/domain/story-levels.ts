@@ -295,6 +295,43 @@ export function keepFixedNames(stored: ProductionState, incoming: ProductionStat
 	return next;
 }
 
+/** One row of the shot list: a planned shot (on the board or not yet), or a board shot the plan does not hold. */
+export interface ShotListRow { id: string; card_id: string | null; code: string | null; title: string; duration_s: number; planned: boolean }
+export interface ShotListScene { id: string; code: string | null; title: string; from: 'plan' | 'board'; shots: ShotListRow[] }
+export interface ShotList { acts: Array<{ id: string; title: string; scenes: ShotListScene[] }>; unplaced: ShotListRow[]; count: number }
+
+const boardRow = (project: Project, card: StoryCard): ShotListRow => ({ id: card.card_id, card_id: card.card_id, code: shotCodeOf(project, card), title: card.title, duration_s: card.duration_ms / 1000, planned: false });
+
+/**
+ * The shot list as it stands: under each scene of the plan, its planned shots when the plan has any, else the
+ * shots on the board in that scene's group, in board order. Board shots in no scene of the plan come after.
+ * It only reads; nothing here plans, names or approves a shot.
+ */
+export function shotListAsItStands(project: Project): ShotList {
+	const { production } = project;
+	const plan = production.story_plan;
+	const byOrder = production.cards.toSorted((a, b) => a.order - b.order);
+	const sceneGroups = new Set(planScenes(production).map(sceneGroupId));
+	const acts = (plan?.sections ?? []).map((section) => ({
+		id: section.id,
+		title: section.title,
+		scenes: section.scenes.map((scene): ShotListScene => {
+			const planned = section.moments.filter((moment) => moment.scene_id === scene.id).flatMap((moment) => moment.shots);
+			const base = { id: scene.id, code: codeOfScene(project, scene), title: scene.title };
+			if (planned.length) {
+				return { ...base, from: 'plan', shots: planned.map((shot) => {
+					const card = boardCardFor(production, shot);
+					return card ? { ...boardRow(project, card), id: shot.id, title: shot.title } : { id: shot.id, card_id: null, code: null, title: shot.title, duration_s: shot.duration_s, planned: true };
+				}) };
+			}
+			return { ...base, from: 'board', shots: byOrder.filter((card) => card.group_id === sceneGroupId(scene)).map((card) => boardRow(project, card)) };
+		})
+	}));
+	const listed = new Set(acts.flatMap((act) => act.scenes.flatMap((scene) => scene.shots.flatMap((shot) => (shot.card_id ? [shot.card_id] : [])))));
+	const unplaced = byOrder.filter((card) => !listed.has(card.card_id) && (!card.group_id || !sceneGroups.has(card.group_id))).map((card) => boardRow(project, card));
+	return { acts, unplaced, count: production.cards.length + unlisted(production).length };
+}
+
 // --- Words for the screens ------------------------------------------------------------------------------------
 
 const plural = (n: number, things: string) => `${n} ${n === 1 ? things.replace(/s$/, '') : things}`;
@@ -341,8 +378,20 @@ export function storyNextLine(project: Project): string | null {
 export function placedGroups<G extends { group_id: string }>(project: Project, groups: G[]): { scenes: Array<G & { code: string; title?: string }>; unplaced: G[] } {
 	const coded = codedGroups(project);
 	const order = [...coded.keys()];
-	// A group made for a story plan scene reads by the scene's own title, which can change; a group that was there before keeps its name.
-	const titles = new Map(planScenes(project.production).flatMap((scene) => (scene.group_id ? [] : [[sceneGroupId(scene), scene.title] as const])));
+	// A group that is a story plan scene reads by the scene's own title, which can change (the group's name is not shown).
+	const titles = new Map(planScenes(project.production).map((scene) => [sceneGroupId(scene), scene.title] as const));
 	const scenes = groups.flatMap((group) => { const code = coded.get(group.group_id); return code ? [{ ...group, code, title: titles.get(group.group_id) }] : []; }).toSorted((a, b) => order.indexOf(a.group_id) - order.indexOf(b.group_id));
 	return { scenes, unplaced: groups.filter((group) => !coded.has(group.group_id)) };
+}
+
+/**
+ * What a board group is called on screen: a group that is a story plan scene by the scene's code and title
+ * (`DRP · The sealed drop and the hood`), whatever the group itself is named; any other group by its own name.
+ * Order is shown by position, never by a number in the name. It only reads; the group keeps its name.
+ */
+export function sceneLabel(project: Project, group: { group_id: string; name: string }): string {
+	const scene = planScenes(project.production).find((entry) => sceneGroupId(entry) === group.group_id);
+	if (!scene) return group.name;
+	const code = codeOfScene(project, scene);
+	return code ? `${code} · ${scene.title}` : scene.title;
 }

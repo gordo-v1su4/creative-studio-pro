@@ -15,7 +15,7 @@
 	import { dropMeaning } from '$lib/domain/drops';
 	import { groupOf } from '$lib/domain/groups';
 	import { playItemFor, isSlateId } from '$lib/domain/slate';
-	import { shotCardFacts, takeLabel } from '$lib/domain/shot-card';
+	import { shortName, shotCardFacts, shotCode, takeName } from '$lib/domain/shot-card';
 	import { step } from '$lib/domain/viewer-keys';
 	import { posterUrl } from '$lib/media/gpu/clipBanks';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
@@ -50,8 +50,9 @@
 		const take = at >= 0 ? takes[at] : null;
 		return {
 			item,
-			number: card ? shotCardFacts(card, project.production.assets, null).number : '',
-			version: take && item.auditioned ? takeLabel(take, at) : '',
+			code: card ? shotCode(project, card) : '',
+			number: card ? shotCardFacts(card, project.production.assets, null, shotCode(project, card)).short : '',
+			version: take && item.auditioned && card ? takeName(shotCode(project, card), take, at) : '',
 			still: take ? posterUrl(take.url, take.in_s ?? 0) : null,
 			slate: isSlateId(item.assetId),
 			seconds: itemSeconds(project, item, read) ?? 3
@@ -144,7 +145,7 @@
 				onclick={() => onselect(entry.item.id)} onkeydown={(event) => clipKey(event, entry.item.id, at)}
 				ondragstart={(event) => { event.dataTransfer?.setData(SHOT_DRAG, entry.item.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'; }}>
 				{#if entry.still}<img src={entry.still} alt="" draggable="false" loading="lazy" decoding="async" />{/if}
-				<span class="code">{entry.number}{entry.version ? ` ${entry.version}` : ''}</span>
+				<span class="code" title={entry.version || entry.code}>{entry.version ? shortName(entry.version) : entry.number}</span>
 			</button>
 		{:else}
 			<span class="cp hint">Shift-click shots, or drag them here</span>

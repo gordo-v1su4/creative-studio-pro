@@ -72,7 +72,7 @@
 	data-shot={card.card_id}
 	data-status={facts.status}
 	role="button"
-	aria-label={`Shot ${facts.number}, ${card.title}, ${facts.statusLabel}`}
+	aria-label={`Shot ${facts.code}, ${card.title}, ${facts.statusLabel}`}
 	aria-pressed={selected}
 	tabindex="0"
 	draggable={draggable ? 'true' : 'false'}
@@ -106,7 +106,7 @@
 					{#each facts.takes as take (take.id)}
 						{@const choosable = !take.pick && !take.excluded && !pickBusy}
 						<button type="button" class="chip" class:pick={take.pick} class:excluded={take.excluded} aria-pressed={take.pick} aria-disabled={!choosable}
-							title={take.pick ? `${take.label} is the pick` : take.excluded ? `${take.label} is excluded` : pickBusy ? 'Save the workspace before changing the pick' : `Make ${take.label} the pick`}
+							title={`${take.pick ? `${take.name} is the pick` : take.excluded ? `${take.name} is excluded` : pickBusy ? 'Save the workspace before changing the pick' : `Make ${take.name} the pick`}${take.file ? ` · ${take.file}` : ''}`}
 							onpointerenter={() => (looking = take.id)} onfocus={() => (looking = take.id)} onblur={() => (looking = null)}
 							onclick={(event) => { event.stopPropagation(); if (choosable) onpick(take.id); }} ondblclick={(event) => event.stopPropagation()}
 							onkeydown={(event) => event.stopPropagation()}>{chipLabel(take.label)}</button>
@@ -118,7 +118,7 @@
 		{#if tag}<span class="tag" data-tone={tag.tone} title={tag.title}>{tag.text}</span>{/if}
 		{#if pick}<span class="length">{facts.length}</span>{/if}
 	</div>
-	<div class="line"><span class="title">{card.title}</span><span class="code">{facts.number}</span></div>
+	<div class="line"><span class="title">{card.title}</span><span class="code" title={facts.code}>{facts.short}</span></div>
 	<div class="line cp">
 		<span class="status">{facts.statusLabel}</span>
 		{#if card.benched}<span class="bench">Benched</span>{/if}

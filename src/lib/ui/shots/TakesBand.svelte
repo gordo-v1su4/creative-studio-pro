@@ -25,14 +25,14 @@
 	{#if !facts || title === null}
 		<span class="cp hint">Select a shot to see its takes</span>
 	{:else}
-		<span class="who"><span class="cp">Takes</span><span class="code">{facts.number}</span></span>
+		<span class="who"><span class="cp">Takes</span><span class="code">{facts.code}</span></span>
 		{#if facts.takes.length === 0}
 			<span class="cp hint">No take yet</span>
 		{:else}
 			<div class="takes">
 				{#each facts.takes as mark (mark.id)}
 					{@const take = takes.find((item) => item.asset_id === mark.id)}
-					<button type="button" class="take" class:pick={mark.pick} class:excluded={mark.excluded} disabled={busy || mark.pick || mark.excluded} title={mark.pick ? `${mark.label} is the pick` : mark.excluded ? `${mark.label} is excluded` : `Make ${mark.label} the pick`} onclick={() => onpick(mark.id)}>
+					<button type="button" class="take" class:pick={mark.pick} class:excluded={mark.excluded} disabled={busy || mark.pick || mark.excluded} title={`${mark.pick ? `${mark.name} is the pick` : mark.excluded ? `${mark.name} is excluded` : `Make ${mark.name} the pick`}${mark.file ? ` · ${mark.file}` : ''}`} onclick={() => onpick(mark.id)}>
 						{#if take && still(take)}<img src={still(take)} alt="" loading="lazy" decoding="async" />{/if}
 						<span class="code">{mark.label}{mark.pick ? ' pick' : ''}</span>
 					</button>

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
 	applyLevelApproval, approveLabel, assignSceneCodes, assignShotNumbers, canApprove, keepFixedNames, levelCounts, levelNextLine, levelOpen, levelStates, levelSummary, levelsOf, lockNotice, lockViolations,
-	nextLevel, placedGroups, planNames, sceneCodeFor, sceneCodeOfGroup, shotCodeOf, storyNextLine, STORY_LEVELS, type LevelApprovals
+	nextLevel, placedGroups, planNames, sceneCodeFor, sceneCodeOfGroup, sceneLabel, shotCodeOf, shotListAsItStands, storyNextLine, STORY_LEVELS, type LevelApprovals
 } from '../../src/lib/domain/story-levels';
 import { projectSchema, type Project } from '../../src/lib/domain/schemas';
 
@@ -299,4 +299,38 @@ test('a project still called by its first sentence takes the brief\'s title when
 	expect(approved.production.story_plan!.title).toBe('Blood Rush');
 	// A project the operator named keeps its name.
 	expect(applyLevelApproval(project(), 'brief', NOW).title).toBe('Blood Rush · Teaser');
+});
+
+test('the shot list as it stands: plan shots where the plan has them, else the board shots of each scene, in board order', () => {
+	const room = { project_id: 'room', folder_id: 'f', code: 'TR130', show_code: 'BLR', scenes: { 'g-cmp': { code: 'CMP', folder_id: 'f' } }, shots: { c2: { code: 'BLR_TR130_CMP_0020', folder_id: 'f' }, c3: { code: 'BLR_TR130_CMP_0010', folder_id: 'f' } } };
+	const plan = {
+		title: 'TR130',
+		sections: [
+			{ id: 'act1', title: 'Act 1', summary: '', scenes: [{ id: 'vh', title: 'Video Haven', group_id: 'g-vh', scene_code: 'VHA' }], moments: [
+				{ id: 'm1', title: 'The floor', beat: 'x', duration_s: 4, scene_id: 'vh', approved: true, shots: [{ id: 'sh1', title: 'Wide', beat: 'x', duration_s: 4, card_id: 'c1' }, { id: 'sh2', title: 'Close', beat: 'x', duration_s: 2 }] }
+			] },
+			{ id: 'act2', title: 'Act 2', summary: '', scenes: [{ id: 'cmp', title: 'Campus', group_id: 'g-cmp', scene_code: 'CMP' }, { id: 'empty', title: 'Nowhere', group_id: 'g-none' }], moments: [] }
+		]
+	};
+	const p = project({ room, plan, cards: [card('c1', 'g-vh', 0, { title: 'Wide', scene_code: 'VHA', shot_number: 10 }), card('c2', 'g-cmp', 3, { title: 'Kai' }), card('c3', 'g-cmp', 2, { title: 'Quad' }), card('c4', undefined as unknown as string, 4, { title: 'Loose', group_id: undefined })] });
+	const list = shotListAsItStands(p);
+	expect(list.acts.map((act) => [act.title, act.scenes.map((scene) => [scene.code, scene.title, scene.from, scene.shots.map((shot) => [shot.code, shot.title, shot.planned])])])).toEqual([
+		['Act 1', [['VHA', 'Video Haven', 'plan', [['BLR_TR130_VHA_0010', 'Wide', false], [null, 'Close', true]]]]],
+		['Act 2', [['CMP', 'Campus', 'board', [['BLR_TR130_CMP_0010', 'Quad', false], ['BLR_TR130_CMP_0020', 'Kai', false]]], [null, 'Nowhere', 'board', []]]]
+	]);
+	expect(list.acts[1].scenes[0].shots[0]).toMatchObject({ id: 'c3', card_id: 'c3', duration_s: 3 });
+	// Board shots in no scene of the plan are listed after, as they are.
+	expect(list.unplaced.map((shot) => [shot.code, shot.title])).toEqual([[null, 'Loose']]);
+	expect(list.count).toBe(5);
+});
+
+test('a board group that is a plan scene is called by its scene code and title; any other group keeps its name', () => {
+	const plan = { title: 'TR130', sections: [{ id: 'a1', title: 'Act 1', summary: '', scenes: [{ id: 's1', title: 'The sealed drop and the hood', group_id: 'g1', scene_code: 'DRP' }, { id: 's2', title: 'No code yet', group_id: 'g2' }], moments: [] }] };
+	const room = { project_id: 'r', folder_id: 'f', code: 'TR130', show_code: 'BLR', scenes: { g1: { code: 'DRP', folder_id: 'f' } }, shots: {} };
+	const p = project({ plan, room, groups: [{ group_id: 'g1', name: 'TR130 01 · The sealed drop and the hood', created_at: NOW }, { group_id: 'g2', name: 'TR130 02 · Old', created_at: NOW }] });
+	expect(sceneLabel(p, { group_id: 'g1', name: 'TR130 01 · The sealed drop and the hood' })).toBe('DRP · The sealed drop and the hood');
+	expect(sceneLabel(p, { group_id: 'g2', name: 'TR130 02 · Old' })).toBe('No code yet');
+	expect(sceneLabel(p, { group_id: 'main', name: 'Main' })).toBe('Main');
+	// The outline reads the scene's own title beside its code, whatever the group was called.
+	expect(placedGroups(p, [{ group_id: 'g1', name: 'TR130 01 · The sealed drop and the hood' }]).scenes.map((group) => [group.code, group.title])).toEqual([['DRP', 'The sealed drop and the hood']]);
 });

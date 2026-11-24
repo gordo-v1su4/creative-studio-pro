@@ -14,10 +14,12 @@
 	import { noteMarks, orderedNotes, type ReviewNote } from '$lib/domain/review-notes';
 	import { referenceImageUrl } from '$lib/media/reference-images';
 
-	let { production, cards, shotId = $bindable(), busy = false, reviewHost = null, roomHref = null, notesFor = null, notesStamp = 0, rerender = null, onclose, onpick, onreview }: {
+	let { production, cards, codeOf = null, shotId = $bindable(), busy = false, reviewHost = null, roomHref = null, notesFor = null, notesStamp = 0, rerender = null, onclose, onpick, onreview }: {
 		production: ProductionState;
 		/** The shots in the order the grid shows them; arrow keys walk this list. */
 		cards: StoryCard[];
+		/** What a shot is called (its shot code); without it a shot is named by its short number. */
+		codeOf?: ((card: StoryCard) => string) | null;
 		shotId: string;
 		busy?: boolean;
 		/** Where the review controls are drawn: the dock. */
@@ -39,7 +41,7 @@
 	const card = $derived(cards[index] ?? null);
 	const takes = $derived(card ? takesFor(production, card.card_id, true) : []);
 	const pick = $derived(card ? pickFor(production, card) : null);
-	const facts = $derived(card ? shotCardFacts(card, production.assets, pick?.asset_id ?? null) : null);
+	const facts = $derived(card ? shotCardFacts(card, production.assets, pick?.asset_id ?? null, codeOf?.(card)) : null);
 
 	/** The take on screen; it follows the pick until another take is chosen for this shot. */
 	let chosen = $state<{ shot: string; take: string } | null>(null);
@@ -174,9 +176,9 @@
 	<header>
 		<button type="button" class="tg" onclick={onclose} aria-label="Close the viewer" title="Back to the shots (Esc)">←</button>
 		{#if card && facts}
-			<span class="code teal">{facts.number}</span>
+			<span class="code teal">{facts.code}</span>
 			<h2>{card.title}</h2>
-			<span class="code">{shown?.review_room?.code ? `${shown.review_room.code}_${shownMark?.label ?? ''}` : (shownMark?.label ?? '')}</span>
+			<span class="code" title={shownMark?.file || undefined}>{shownMark?.name ?? ''}</span>
 		{/if}
 		<span class="grow"></span>
 		<button type="button" class="tg" onclick={() => showShot(-1)} disabled={index === 0} aria-label="Previous shot">←</button>
@@ -234,9 +236,9 @@
 	<div class="takes">
 		{#each takes as take (take.asset_id)}
 			{@const mark = facts?.takes.find((item) => item.id === take.asset_id)}
-			<button type="button" class="take" class:shown={take.asset_id === shown?.asset_id} class:excluded={take.rejected} onclick={() => (chosen = { shot: shotId, take: take.asset_id })} title={take.name}>
+			<button type="button" class="take" class:shown={take.asset_id === shown?.asset_id} class:excluded={take.rejected} onclick={() => (chosen = { shot: shotId, take: take.asset_id })} title={mark ? `${mark.name} · ${take.name}` : take.name}>
 				{#if still(take)}<img src={still(take)} alt="" loading="lazy" decoding="async" />{/if}
-				<span class="b"><span class="code v">{mark?.label ?? ''}</span><span class="code name">{take.name}</span><span class="cp state">{take.rejected ? 'Excluded' : mark?.pick ? 'Pick' : take.generation?.resolution === '480p' ? 'Draft' : take.kind === 'image' ? 'Still' : 'Take'}</span></span>
+				<span class="b"><span class="code v">{mark?.name ?? ''}</span><span class="code name">{take.name}</span><span class="cp state">{take.rejected ? 'Excluded' : mark?.pick ? 'Pick' : take.generation?.resolution === '480p' ? 'Draft' : take.kind === 'image' ? 'Still' : 'Take'}</span></span>
 			</button>
 		{/each}
 	</div>
@@ -246,7 +248,7 @@
 
 {#if reviewHost && card && facts}
 	<div class="review" use:intoDock={reviewHost}>
-		<p class="cp head"><b>Review</b><span>{facts.number}</span></p>
+		<p class="cp head"><b>Review</b><span>{facts.code}</span></p>
 		<div class="statuses">
 			{#each REVIEW_STATUSES as item (item.status)}
 				<button type="button" class="st cp" data-status={item.status} aria-pressed={!!shown?.review_room && reviewStatus === item.status} disabled={busy || !shown?.review_room} onclick={() => shown && onreview(shown, { status: item.status })}>{item.label}<span class="code">{item.key}</span></button>
@@ -260,7 +262,7 @@
 		{#if shown && rerender}{@render rerender(shown)}{/if}
 		{#if shown?.review_room}
 			<p class="cp">Review Room</p>
-			<p class="code stored">{shown.review_room.code}_{shownMark?.label}</p>
+			<p class="code stored">{shownMark?.name}</p>
 		{/if}
 		{#if noteList.length}
 			<p class="cp">Notes <span class="code">{noteList.length}</span></p>

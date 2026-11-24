@@ -7,7 +7,8 @@
 	 */
 	import type { Project } from '$lib/domain/schemas';
 	import { boardCardFor, currentEdit, groupMeasures, sceneGroupId, type GroupMeasure, type PlanScene, type StoryPlan } from '$lib/domain/story-plan';
-	import { approveLabel, canApprove, levelCounts, levelLabel, levelOpen, levelStates, levelSummary, lockNotice, nextLevel, projectCodes, shortCodeOf, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
+	import { approveLabel, canApprove, levelCounts, levelLabel, levelOpen, levelStates, levelSummary, lockNotice, nextLevel, projectCodes, sceneLabel, shortCodeOf, shotListAsItStands, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
+	import { shortName } from '$lib/domain/shot-card';
 	import { suggestCode } from '$lib/domain/shot-codes';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import BriefSheet from '$lib/ui/story/BriefSheet.svelte';
@@ -80,7 +81,10 @@
 	const sceneCode = (scene: PlanScene) => storedScene(scene)?.code ?? scene.scene_code;
 	/** A scene code can still be typed until the scenes are approved or Review Room holds it. */
 	const sceneCodeFixed = (scene: PlanScene) => !!storedScene(scene) || (!!approvals.scenes && !!project.production.story_plan?.sections.some((section) => section.scenes.some((entry) => entry.id === scene.id && entry.scene_code)));
-	const groupName = (groupId?: string) => project.production.groups?.find((group) => group.group_id === groupId)?.name ?? 'Main';
+	const groupName = (groupId?: string) => { const group = project.production.groups?.find((entry) => entry.group_id === groupId); return group ? sceneLabel(project, group) : 'Main'; };
+	/** The shot list as it stands (saved project): the board's shots under scenes the plan has no shots for. */
+	const shotList = $derived(shotListAsItStands(project));
+	const boardRowsOf = (scene: PlanScene) => shotList.acts.flatMap((act) => act.scenes).find((entry) => entry.id === scene.id && entry.from === 'board')?.shots ?? [];
 	const boardShots = $derived(project.production.cards.toSorted((a, b) => groupName(a.group_id).localeCompare(groupName(b.group_id)) || a.order - b.order));
 	const cardOf = (shot: Shot) => boardCardFor(project.production, shot);
 	const shotCode = (shot: Shot) => { const card = cardOf(shot); return card ? shortCodeOf(project, card) : null; };
@@ -273,6 +277,7 @@
 						{:else}
 							{#each [...section.scenes, null] as scene (scene?.id ?? 'loose')}
 								{@const own = beatsOf(section, scene)}
+								{@const board = level === 'shots' && scene ? boardRowsOf(scene) : []}
 								{#if scene || own.length}
 									<div class="sh cp"><span class="code" data-none={scene && sceneCode(scene) ? undefined : ''}>{scene ? sceneCode(scene) ?? '···' : '···'}</span><span>{scene ? scene.title : 'Not in a scene yet'}</span></div>
 									{#each own as beat, j (beat.id)}
@@ -288,12 +293,28 @@
 											{/each}
 										{/if}
 									{/each}
+									<!-- A scene the plan has no shots for lists the shots on its board group, as they are: read here, changed on the Shots stage. -->
+									{#each board as shot (shot.id)}
+										<div class="sc shot ro" title={`${shot.code ?? 'No code yet'} · ${shot.title}. On the board; change it on the Shots stage.`}>
+											<span class="code" data-none={shot.code ? undefined : ''}>{shot.code ? shortName(shot.code) : '····'}</span><span class="n">{shot.title}</span><span class="d"></span><span class="x">{stamp(shot.duration_s)} · <i data-ok>On the board</i></span>
+										</div>
+									{/each}
 								{/if}
 							{/each}
-							{#if !section.moments.length}<p class="none">No story beats in this act yet</p>{/if}
+							{#if !section.moments.length && !(level === 'shots' && section.scenes.some((scene) => boardRowsOf(scene).length))}<p class="none">No story beats in this act yet</p>{/if}
 						{/if}
 					</section>
 				{/each}
+				{#if level === 'shots' && shotList.unplaced.length}
+					<section>
+						<div class="ah cp"><span>Not in a scene</span></div>
+						{#each shotList.unplaced as shot (shot.id)}
+							<div class="sc shot ro" title={`${shot.code ?? 'No code yet'} · ${shot.title}. On the board, in no scene of the plan.`}>
+								<span class="code" data-none={shot.code ? undefined : ''}>{shot.code ? shortName(shot.code) : '····'}</span><span class="n">{shot.title}</span><span class="d"></span><span class="x">{stamp(shot.duration_s)} · <i data-ok>On the board</i></span>
+							</div>
+						{/each}
+					</section>
+				{/if}
 			{/if}
 		</div>
 
@@ -317,7 +338,7 @@
 					</div>
 					<p class="hint">{sceneCodeFixed(scene) ? 'The code is fixed. The title can still change.' : 'Leave it empty and approving the scenes gives it the code shown.'}</p>
 					{#if !storedScene(scene) && (scene.group_id || !sceneGroup(scene)) && (project.production.groups?.length ?? 0) > 0}
-						<label class="f"><span class="cp">Shots already on the board</span><select value={scene.group_id ?? ''} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">None: a new group for this scene</option>{#each project.production.groups ?? [] as group (group.group_id)}<option value={group.group_id}>{group.name}{room?.scenes?.[group.group_id] ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>
+						<label class="f"><span class="cp">Shots already on the board</span><select value={scene.group_id ?? ''} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">None: a new group for this scene</option>{#each project.production.groups ?? [] as group (group.group_id)}<option value={group.group_id}>{sceneLabel(project, group)}{room?.scenes?.[group.group_id] && !sceneLabel(project, group).startsWith(`${room.scenes[group.group_id].code} · `) ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>
 					{/if}
 					{#if !beatsOf(pane.section, scene).length && !sceneCodeFixed(scene)}<button type="button" class="key" onclick={remove}>Remove scene</button>{/if}
 				{:else if pane.kind === 'beat' && level === 'beats'}
@@ -390,6 +411,8 @@
 	.sc[data-sel] { background: var(--color-selected); }
 	.sc:focus-visible { outline: 2px solid var(--color-teal); outline-offset: -2px; }
 	.sc.shot { height: 26px; padding-left: 20px; }
+	.sc.ro { cursor: default; }
+	.sc.ro:hover { background: none; }
 	.sc[data-sub] .n { color: var(--color-ink-2); }
 	.code { width: 62px; flex: none; color: var(--color-teal); font: 10.5px var(--font-mono); letter-spacing: 0.01em; text-transform: none; }
 	.code[data-none] { color: #52525b; }

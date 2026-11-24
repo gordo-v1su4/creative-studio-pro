@@ -131,8 +131,8 @@
 	// What the card shows at rest: the grid's facts, numbered by its shot code or its place on the spine.
 	let facts = $derived.by(() => {
 		if (!card) return null;
-		const base = shotCardFacts(card, takes, story.pickId ?? null);
-		return { ...base, number: story.code ?? (number ? String(number).padStart(2, '0') : '--') };
+		const fallback = number ? String(number).padStart(2, '0') : '--';
+		return { ...shotCardFacts(card, takes, story.pickId ?? null, story.code ?? fallback), number: fallback };
 	});
 	/** One note over the frame: an excluded or under-2K take, or a generation still running. */
 	let tag = $derived.by(() => {
