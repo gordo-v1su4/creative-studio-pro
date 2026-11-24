@@ -1,6 +1,6 @@
 # Spec: a streamlined Creative Studio Pro
 
-Status: agreed with the operator on 2026-11-23 after four rounds of questions. Not built. How it looks is in [DESIGN.md](DESIGN.md); the order of work is in [PLAN.md](PLAN.md); the reasoning behind each choice is in [DECISIONS.md](DECISIONS.md). Terms are used as defined in the root `CONTEXT.md`.
+Status: agreed with the operator on 2026-11-23 after four rounds of questions; the re-render queue (stories 56 to 70) was added on 2026-11-24 after a fifth. See PLAN.md for what is built. How it looks is in [DESIGN.md](DESIGN.md); the order of work is in [PLAN.md](PLAN.md); the reasoning behind each choice is in [DECISIONS.md](DECISIONS.md). Terms are used as defined in the root `CONTEXT.md`.
 
 ## Problem statement
 
@@ -25,6 +25,7 @@ One shell, four stages, and an Agent that leads.
 - **Review Room on every shot**: stored or not, version, status, pick, with one click to open it there. Changes made in either app reach the other without a button.
 - **Playback first**: hover-scrub on any frame, a viewer that opens playing, a selection that can be ordered and auditioned, and a timeline that starts before it is fully loaded.
 - **Voice**: the operator can talk to the Agent and hear it answer.
+- **A render queue**: a take marked Needs changes can be queued for a re-render. The Agent writes the prompt change, the operator approves it, and one Confirm sends everything approved. The queue finishes on the server and says where and how each take was made.
 
 ## User stories
 
@@ -101,6 +102,24 @@ One shell, four stages, and an Agent that leads.
 54. As a reviewer in Review Room, I want a link from a locked folder back to its project here, so that I can find where it is made.
 55. As the operator, I want notes left in Review Room shown in the viewer at their timecode, so that I see feedback where it applies.
 
+### Re-renders and the render queue
+
+56. As the operator, I want a take marked Needs changes to offer "Queue re-render" in the right-hand panel, so that a review turns into the next take without leaving it.
+57. As the operator, I want to type what should change in one box, so that I direct the re-render in my own words.
+58. As the operator, I want a re-render to reuse the earlier take's still, references and settings, so that the only thing I touch is the prompt.
+59. As the operator, I want the Agent to rewrite the prompt with the skill that wrote it, in that skill's sections and order, so that it does not drift from the format.
+60. As the operator, I want reviewers' notes on the shot read by the Agent with their timecodes, so that feedback left in Review Room is answered too.
+61. As the operator, I want to see what the Agent added and what it took out, highlighted, so that I can judge the change at a glance.
+62. As the operator, I want to edit the changed prompt before approving it, so that the Agent's draft is never the last word.
+63. As the operator, I want one price and one Confirm for everything I have approved, so that a review session ends in a single decision about money.
+64. As the operator, I want to choose the render provider, model and resolution on an entry, with the price for that choice, so that I decide where and at what size it is made.
+65. As the operator, I want confirmed renders to finish with the browser closed, so that I can leave and find them done.
+66. As the operator, I want a finished re-render added as another take here and in Review Room, awaiting review, without replacing the pick, so that nothing reaches a client before I have looked.
+67. As the operator, I want every render of the project in one sortable table, one line each, so that I can read the queue like a render manager.
+68. As the operator, I want each line to say where and how the take was made (provider, model, resolution, length, sound, cost, time taken), so that I can trace any take.
+69. As the operator, I want a failed render to show the provider's answer code in its usual colour, with the reason, so that I can tell a bad request from a provider fault.
+70. As the operator, I want "Try again" to ask for a new price and a new Confirm, so that a retry never spends by itself.
+
 ## Implementation decisions
 
 - **Stages.** The top-level navigation becomes a list of four stages. Board becomes a view mode of Shots. Sound and Export become steps inside Cut. Global pages (Series, Watch, Library, Runs, Settings), Publish and New project move into a project menu. A stored workspace tab from the old layout maps to its new stage.
@@ -120,6 +139,15 @@ One shell, four stages, and an Agent that leads.
 - **Review Room additions** (in its own repository): the open project, folder, asset and version become part of its address; a locked folder shows a link to its project here; a read endpoint returns an asset's notes with timecodes.
 - **Voice.** A voice layer turns speech into chat text and chat replies into speech through OpenAI's voice API. It sits in front of the existing Agent chat endpoint and never answers on its own. It is absent when no key is set. See ADR 0009.
 - **Prompt view.** Prompts are stored and shown by the sections their skill defines (Ghost for video, ONE SHOT for images), with the skill's QC result. A hand-edited prompt is still kept as edited.
+- **Render record.** The record of a generation sent from a shot grows into the record of a render: its state (drafting, to approve, approved, queued, rendering, done, failed, refused), render provider and model, settings, the take it answers, the requested change, the notes it answered, the prompt before and after, the still and references it reuses, the confirmed price, the provider's job id and answer code, and its times. New fields are optional so stored projects still load. Renders are stored on the project.
+- **Reuse.** A re-render's request is read from what the app recorded when the earlier take was sent, or, for a take brought in from Higgsfield, read back from Higgsfield by its job id. A take with neither cannot be re-rendered, and the panel says why. Renders from now on record their still and references so every later take can be reused.
+- **Prompt change.** One server command gives the Agent the skill's own text, the earlier prompt by section, the shot spec, the requested change and the shot's open notes, and asks for the changed sections only; they are applied section by section, so everything else stays as written. The skill's check runs on the result, with one more ask if it finds something. A pure function compares before and after by word for the highlight. The Agent can only propose: no command it can reach approves, prices or confirms.
+- **Render providers.** One interface: is it set up (and why not), price, send, check, cancel. Higgsfield through its CLI (the adapter that exists, without `draft`), fal.ai through its queue and pricing addresses, SwarmUI on the desktop as a listed placeholder. Cost keeps the provider's own unit: credits or dollars.
+- **Confirm.** Approved entries are priced together; Confirm carries the price shown, and the server refuses any entry whose price has risen, whose check is not clean or whose still is under 2K, before anything is sent. Confirm is what starts a run; nothing else can.
+- **Trigger.dev.** One project for this app on the operator's instance; one task that carries a render from queued to done or failed; one queue per render provider with its own limit; a run per render, keyed by the render so it cannot start twice, tagged with its project. The task calls this app to send and to check; the app answers a repeated send with the job it already started and refuses a report from a run that is out of date. A send is never retried automatically. See ADR 0011.
+- **Landing.** A finished render's file is collected by the app and recorded as a take with where and how it was made. A re-render does not become the pick and is stored in Review Room as the next version, not the current one. "Make a take" goes out through the same path and keeps making its result the pick.
+- **Queue view.** A third view of the Shots stage: a table built with TanStack Table, one fixed-height line per render, sortable by any column, with the detail of the selected line in the dock. Rows follow the project's record; Trigger.dev's live updates only make them move sooner.
+- **Draft and Finalize.** Sends no longer ask for a draft; the Finalize action, the draft window and their notes are removed. Resolution is one of 480p, 720p and 1080p.
 - **Look.** Design tokens are replaced with the set in DESIGN.md. The old tokens are removed once no screen uses them.
 
 ## Testing decisions
@@ -129,6 +157,8 @@ A good test here states what the operator can observe, through the highest seam 
 - **Domain rules** (pure functions, the existing domain test folder): name locking, what a drop means, selection order and auditioning, latest-change-wins merging, mapping old workspace tabs to stages, sorting an intake result into kinds.
 - **Server commands** (the existing integration and server test folders, with a fake fetch as the Review Room and Notion tests already use): approving a level assigns codes once and only once; the poller applies a changes feed and retries a failed write; Notion writes are skipped without a key; the voice layer forwards text to the Agent and never answers itself.
 - **UI regressions** (the existing UI test folder): no control label wraps; selecting a shot does not change the grid's layout; no element in the shell has a border or outline other than the focus ring.
+- **Render queue rules** (domain tests): which moves a render's state allows; one open re-render per take; what may be confirmed; totals per provider; where a re-render's request comes from; the word-level highlight; the colour of an answer code.
+- **Render queue commands** (server tests with a fake provider, a fake model and a fake Trigger.dev client): the prompt change touches only the sections asked for and is checked; Confirm refuses a risen price and sends nothing; a repeated send returns the same job and spends once; a stale report is refused; a finished re-render lands as a take that is not the pick; a refused render returns to "to approve". No test spends: a real Confirm is exercised once, by the operator's word.
 - **In the browser** (the project's preview server, by the agent doing the work, with a screenshot as proof): each slice is walked through on the local test copy at desktop and phone width before it merges.
 - **Playback** is checked by measurement: time from Space to first frame in the viewer, and time from opening a 60-clip timeline to playing, recorded before and after.
 
@@ -140,6 +170,10 @@ A good test here states what the operator can observe, through the highest seam 
 - Redesigning Prep's reference-making flow beyond intake, sorting and suggestions.
 - Changing how cuts, sound mixing, export or QC work. Cut only moves into the shell in this pass.
 - Webhooks from Review Room; polling is used until it has them.
+- Re-rendering a still, cloud ComfyUI, and a working SwarmUI provider (it is listed as a placeholder).
+- Carrying a 480p take to 1080p with the same motion. A higher-resolution take is a new render.
+- Ticking off in Review Room the notes a re-render answered; that needs an addition there.
+- A render queue across projects.
 
 ## Further notes
 
