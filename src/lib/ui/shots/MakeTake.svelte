@@ -29,11 +29,16 @@
 	const blockers = $derived(takeBlockers({ pick, prompt: card.video_prompt, unsaved }));
 	const priced = $derived(quote?.key === key ? quote : null);
 	const open = $derived(canConfirm({ quote, key, blockers, busy: busy !== '' }));
-	const line = $derived(blockers[0] ?? (said?.shot === card.card_id ? said.text : ''));
+	// What the last request said comes first, so asking for a price always shows an outcome; else what is in the way.
+	const line = $derived((said?.shot === card.card_id ? said.text : '') || blockers[0] || '');
 
 	async function post(body: Record<string, unknown>) {
 		const response = await fetch(`/api/projects/${project.project_id}/animate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-		return (await response.json()) as { ok: true; data: unknown } | { ok: false; error: { message: string; reasons?: string[] } };
+		const text = await response.text();
+		type Answer = { ok: true; data: unknown } | { ok: false; error: { message: string; reasons?: string[] } };
+		// A server in front of the app can replace a failed answer with its own page; say so instead of failing silently.
+		try { return JSON.parse(text) as Answer; }
+		catch { return { ok: false, error: { message: `The provider could not be reached from this server (HTTP ${response.status}); making takes may not be set up here` } } satisfies Answer; }
 	}
 
 	/** Step one: what these settings cost. Nothing is uploaded and nothing is spent. */
@@ -83,9 +88,9 @@
 	<div class="steps">
 		<button type="button" class="key" disabled={busy !== ''} onclick={() => void getPrice()} title="Ask what these settings cost; nothing is spent">Get price</button>
 		<span class="price" class:has={!!priced} aria-live="polite">{busy === 'price' ? 'Pricing…' : priced ? `${priced.credits} credits` : 'No price yet'}</span>
-		<button type="button" class="key go" disabled={!open} onclick={() => void confirm()} title={open ? 'Send this shot to Seedance for the price shown' : 'Get a price for these settings first'}>{busy === 'send' ? 'Sending…' : 'Confirm'}</button>
+		<button type="button" class="key go" disabled={!open} onclick={() => void confirm()} title={open ? 'Send this shot to Seedance for the price shown' : (blockers[0] ?? 'Get a price for these settings first')}>{busy === 'send' ? 'Sending…' : 'Confirm'}</button>
 	</div>
-	<p class="why" class:bad={!!blockers.length || said?.bad}>{line}</p>
+	<p class="why" class:bad={said?.shot === card.card_id ? !!said.bad : !!blockers.length} title={blockers.join('\n')}>{line}</p>
 	{#if reasons.length}<ul class="found">{#each reasons as reason, i (i)}<li>{reason}</li>{/each}</ul>{/if}
 </div>
 

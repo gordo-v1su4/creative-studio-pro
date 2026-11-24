@@ -84,3 +84,10 @@ test('the make-a-take block keeps its shape: every control is always drawn', () 
 	expect(steps).not.toContain('{#if');
 	expect(make).toMatch(/\.why \{[^}]*min-height: 18px;/);
 });
+
+test('asking for a price always shows an outcome, even when the answer is not the app\'s own', () => {
+	// The last request's message is shown ahead of what is in the way, and a non-JSON answer becomes a plain message.
+	expect(make).toContain("const line = $derived((said?.shot === card.card_id ? said.text : '') || blockers[0] || '');");
+	expect(make).toContain('try { return JSON.parse(text) as Answer; }');
+	expect(make).toContain('making takes may not be set up here');
+});
