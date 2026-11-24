@@ -118,7 +118,7 @@ Measured on Hosted Studio, 2026-11-23 (studio.v1su4.com, still running `main`; p
 | The 2:35 trailer's proxy (14 MB) | 10.3 s the first time, 2.6 s the second (about 5 MB/s) |
 | Kept by the browser between requests | nothing: the gateway answers every request `Cache-Control: private, no-store` (`scripts/build-studio-gateway.ts`), replacing the app's own `private, max-age=86400` on proxies and posters |
 
-So on Hosted Studio every hover, every viewer open and every cut reopen downloads its media again, at 0.2–1.6 s a file. The local numbers above (a cut reopening in 0.1–0.4 s, a prefetched take playing in 100–140 ms) do not carry over until that changes. The new screens are not on Hosted Studio yet: `ux-streamline` is local only.
+So on Hosted Studio every hover, every viewer open and every cut reopen downloads its media again, at 0.2–1.6 s a file. The local numbers above (a cut reopening in 0.1–0.4 s, a prefetched take playing in 100–140 ms) do not carry over until that changes. (Slices 0 and 1 were published to Hosted Studio later that day as `b9cea0d`; on TR130 the viewer was on screen in 37 ms and playing in 414 ms the first time, 43 ms the second.)
 
 Settled 2026-11-23 (the open question above): the signed-in browser may keep proxies, posters, frame strips and picture thumbnails; Vercel's CDN still stores nothing, and pages, project data and original files stay `no-store`. The gateway now leaves the app's own `Cache-Control` on those four kinds of request (`scripts/build-studio-gateway.ts`, rule written down in `docs/operations/hosted-studio.md`). It went live the same day as `b51a5b4` on `main` (Vercel deploys the gateway on every push to `main`; the app on the App VM was not touched).
 
@@ -133,7 +133,23 @@ Measured again on TR130 right after that deploy, same four takes:
 | Header on the page, project data and an original file | `private, no-store` | `private, no-store` |
 | Vercel's CDN | stores nothing | stores nothing (`x-vercel-cache: MISS` on every request) |
 
-Still open in slice 1: the first request for each file (about 0.3–0.8 s through the gateway; fetching ahead is what hides it), progressive timeline loading (step 7), prompts by skill section, and the price and confirm steps (step 8). A still pick does not play in a selection yet.
+Status, part four, 2026-11-23 (step 7; local test copy, after a page reload so nothing was held in memory):
+
+- **A timeline opens from what is already known.** A cut entry says where its clip starts and ends, and most takes have a recorded length, so the player lays the timeline out and starts at once. Each file's real length, frame rate and sound are read afterwards in play order, four at a time, and settle the clip in place (`src/lib/media/timeline-open.ts`, `SequencePlayer.svelte`). Only a clip with no known length is read first. Before this, every file was read before anything was shown.
+- A save waits until every file has been read, so an assumed length is never written. A file that cannot be read is taken out when that is found, and the cut turns read-only as before.
+- Compressed proxies for the next eight clips are fetched ahead of the playhead.
+- While the clip at the playhead has no frame in memory, the nearest frame of its strip stands in for the picture.
+
+| Cut | Timeline on screen | Playing | Every file read |
+| --- | --- | --- | --- |
+| 4 clips | 37 ms | 211 ms | 59 ms |
+| 46 clips | 61 ms | 389 ms | 389 ms |
+| 62 clips, all video | 117 ms | 391 ms | 281 ms |
+| 68 clips, 9 stills | 72 ms | 281 ms | 509 ms |
+
+The 68-clip cut was still reading files when it started playing, and played through its first five clips without stopping. "Reopening downloads nothing" now rests on the browser keeping proxies (the gateway change above) and on the proxies held in memory for the session. Not yet measured on Hosted Studio: this part is not released.
+
+Still open in slice 1: releasing and measuring part four on Hosted Studio (step 7), prompts by skill section, and the price and confirm steps (step 8). A still pick does not play in a selection yet.
 
 ### 2 · Canvas
 

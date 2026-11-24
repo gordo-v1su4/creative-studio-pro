@@ -132,8 +132,8 @@ test('a missing bank holds picture time and sound until decoding finishes', () =
 		starts: [0], lengths: [10], programTime: 1,
 		sourceTime: (_clip: unknown, s: number) => s,
 		ensureBank: () => {}, pauseAll: () => { pauses++; }, stageUpcoming: () => {}, armVoice: () => {}, warmPeaks: () => {},
-		resumed: () => { resumes++; }, readyAudio: () => true, requestAnimationFrame: () => 1
-	}, 'let buffering = false, playhead = 1, lastTick = 1000, frame = 0; function syncAudio() { buffering = false; resumed(); }', 'time: () => playhead');
+		resumed: () => { resumes++; }, readyAudio: () => true, requestAnimationFrame: () => 1, fetchAhead: () => {}
+	}, 'let buffering = false, cold = false, playhead = 1, lastTick = 1000, frame = 0; function syncAudio() { buffering = false; resumed(); }', 'time: () => playhead');
 	tick(1100);
 	tick(1200);
 	expect(time()).toBe(1);

@@ -44,3 +44,13 @@ test('the frame under the pointer comes from the strip, not from seeking the vid
 	expect(card).toContain('stripFrameStyle(strip, stripIndexInSpan(along, pick.duration_s, pick.in_s, pick.out_s))');
 	expect(card).toContain('warmStrip(strip)');
 });
+
+test('a timeline opens from what is already known and reads its files while it plays', () => {
+	// Only clips with no known length are read before the timeline is laid out.
+	expect(player).toContain('const mustRead = items.flatMap((item, at) => (canOpenUnread(item) ? [] : [at]));');
+	expect(player.indexOf('frame = requestAnimationFrame(tick);\n\t\t\t\t// The rest are read in play order')).toBeGreaterThan(0);
+	// A save never writes a length that was only assumed.
+	expect(player).toMatch(/async function save\(\) \{\s*saveTimer = null;\s*\/\/[^\n]*\n\s*await allRead;/);
+	// The clip at the playhead shows a frame of its strip until its own frames are in memory.
+	expect(player).toContain('stripFrameStyle(strip, stripIndex(playhead, current.duration))');
+});

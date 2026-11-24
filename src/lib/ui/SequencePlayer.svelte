@@ -13,7 +13,9 @@
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
 	import { isSlateId, slateUrl } from '$lib/domain/slate';
-	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipBlob, loadClipMetadata, pinBank, unpinBank } from '$lib/media/gpu/clipBanks';
+	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipBlob, loadClipMetadata, pinBank, stripUrl, unpinBank } from '$lib/media/gpu/clipBanks';
+	import { stripFrameStyle, stripIndex } from '$lib/media/strips';
+	import { canOpenUnread, readTimes, unreadTimes } from '$lib/media/timeline-open';
 	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
@@ -48,13 +50,23 @@
 	type Voice = { audio: HTMLAudioElement; src: string; target: number; objectUrl: string };
 	const voices = new Map<string, Voice>();
 	/** id is the beat for a selection, the cut entry for a cut. */
-	type Clip = TimelineClip & { src: string; assetId: string; cardId: string; fps: number; hasAudio: boolean };
+	type Clip = TimelineClip & {
+		src: string; assetId: string; cardId: string; fps: number; hasAudio: boolean;
+		/** Laid out from what the cut or the take already says; its file has not been read yet (see timeline-open). */
+		pending?: boolean;
+	};
 	let clips = $state<Clip[]>([]);
 	let index = $state(0);
 	let playhead = $state(0);
 	let paused = $state(false);
 	let loading = $state(0);
 	let expected = $state(0);
+	/** Clips playing from what is already known while their files are still being read. */
+	let unread = $state(0);
+	/** Resolves when every clip's file has been read; a save waits for it so it never writes a guessed length. */
+	let allRead: Promise<void> = Promise.resolve();
+	/** The clip at the playhead has no frame in memory yet: its frame strip stands in for the picture. */
+	let cold = $state(false);
 	let error = $state('');
 	let saveState = $state<'' | 'saving' | 'saved'>('');
 	let scrubbing = false;
@@ -306,6 +318,45 @@
 		previewVisible = false;
 	}
 
+	// Compressed proxies for the clips coming up are fetched ahead of the playhead, so a frame bank never waits on the network.
+	const FETCH_AHEAD = 8;
+	const fetchedAhead = new Set<string>();
+	function fetchAhead() {
+		for (let offset = 0; offset <= FETCH_AHEAD && offset < clips.length; offset++) {
+			const src = clips[(index + offset) % clips.length].src;
+			if (fetchedAhead.has(src)) continue;
+			fetchedAhead.add(src);
+			void loadClipBlob(src).catch(() => fetchedAhead.delete(src));
+		}
+	}
+
+	/** While the clip at the playhead is still loading, the nearest frame of its strip is shown in its place. */
+	const standIn = $derived.by(() => {
+		const strip = cold && current ? stripUrl(current.src) : null;
+		return strip && current ? stripFrameStyle(strip, stripIndex(playhead, current.duration)) : '';
+	});
+
+	/** A clip's file has been read (or could not be): settle its length, frame rate and sound in place. */
+	function settleClip(waiting: Clip, metadata: { duration: number; fps: number; hasAudio: boolean } | null, fail: (title: string) => void) {
+		const at = clips.findIndex((entry) => entry.pending && entry.id === waiting.id && entry.src === waiting.src);
+		// Swapped for another take or dropped while it was being read: nothing to settle.
+		if (at < 0) return;
+		if (!metadata) {
+			fail(waiting.title);
+			if (clips.length < 2) return;
+			const voice = voices.get(waiting.id);
+			if (voice) { releaseVoice(voice); voices.delete(waiting.id); }
+			clips.splice(at, 1);
+			if (at < index) index -= 1;
+			else if (at === index) startClip(Math.min(at, clips.length - 1));
+			return;
+		}
+		const now = clips[at];
+		clips[at] = { ...now, ...metadata, ...readTimes(now, metadata.duration, MIN_SPAN), pending: false };
+		// Its sound was unknown until now; start it if this is the clip playing.
+		if (at === index && metadata.hasAudio) syncAudio();
+	}
+
 	function stageUpcoming() {
 		if (scrubbing) return;
 		const next = upcoming();
@@ -323,6 +374,8 @@
 	function tick(now: number) {
 		const clip = clips[index];
 		const ready = !!clip?.bank?.frameAt(playhead);
+		if (cold !== (!!clip && !ready)) cold = !!clip && !ready;
+		fetchAhead();
 		if (clip && !ready) {
 			if (scrubbing) previewSeek(clip);
 			else ensureBank(index);
@@ -473,7 +526,7 @@
 			const out = Math.min(clip.out, bank.duration);
 			const voice = voices.get(clip.id);
 			if (voice) { releaseVoice(voice); voices.delete(clip.id); }
-			clips[i] = { ...clip, ...metadata, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.max(0, Math.min(clip.in, out - MIN_SPAN)) };
+			clips[i] = { ...clip, ...metadata, assetId: asset.asset_id, src: asset.url, bank, duration: bank.duration, out, in: Math.max(0, Math.min(clip.in, out - MIN_SPAN)), pending: false };
 			// Suggestions were for the old take.
 			const { [clip.id]: _stale, ...rest } = suggestions;
 			suggestions = rest;
@@ -705,6 +758,8 @@
 
 	async function save() {
 		saveTimer = null;
+		// Every clip's real length is in before anything is written.
+		await allRead;
 		try {
 			if (source.kind === 'cut') {
 				const entries: CutEntry[] = entriesOf(clips).map((entry, i) => ({ entry_id: clips[i].id, ...entry }));
@@ -750,13 +805,13 @@
 	}
 
 	/** What to load: each clip's beat, take and starting trim and ramp. */
-	function sources(): Array<{ id: string; cardId: string; assetId: string; title: string; src: string; in?: number; out?: number; speed?: SpeedPoint[] }> {
+	function sources(): Array<{ id: string; cardId: string; assetId: string; title: string; src: string; in?: number; out?: number; length?: number; speed?: SpeedPoint[] }> {
 		const assetOf = (id: string) => project.production.assets.find((entry) => entry.asset_id === id);
 		if (source.kind === 'selection') {
 			// Start from the take's saved trim and ramp; untouched takes keep their whole length at 1×.
 			return reviewSequence.items.map((item) => {
 				const asset = assetOf(item.assetId);
-				return { id: item.id, cardId: item.id, assetId: item.assetId, title: item.title, src: item.src, in: asset?.in_s, out: asset?.out_s, speed: asset?.speed };
+				return { id: item.id, cardId: item.id, assetId: item.assetId, title: item.title, src: item.src, in: asset?.in_s, out: asset?.out_s, length: asset?.duration_s, speed: asset?.speed };
 			});
 		}
 		if (!cut) throw new Error('Cut not found');
@@ -767,7 +822,7 @@
 			const title = project.production.cards.find((card) => card.card_id === entry.card_id)?.title ?? entry.card_id;
 			// A missing shot plays as its text card (V1S-495).
 			const src = isSlateId(entry.asset_id) ? slateUrl(project.project_id, entry.card_id) : assetOf(entry.asset_id)?.url;
-			return src ? [{ id: entry.entry_id, cardId: entry.card_id, assetId: entry.asset_id, title, src, in: entry.in_s, out: entry.out_s, speed: entry.speed }] : [];
+			return src ? [{ id: entry.entry_id, cardId: entry.card_id, assetId: entry.asset_id, title, src, in: entry.in_s, out: entry.out_s, length: assetOf(entry.asset_id)?.duration_s, speed: entry.speed }] : [];
 		});
 		if (found.length < entries.length) {
 			readOnly = true;
@@ -778,6 +833,8 @@
 
 	onMount(() => {
 		let disposed = false;
+		let everyClipRead = () => {};
+		allRead = new Promise<void>((resolve) => (everyClipRead = resolve));
 		(async () => {
 			try {
 				draw = await attachCanvas(canvas!);
@@ -786,35 +843,63 @@
 				canvas!.height = Math.round(canvas!.clientHeight * ratio);
 				const items = sources();
 				expected = items.length;
-				const loaded: Array<Clip | undefined> = new Array(items.length);
 				const failed: string[] = [];
+				// One clip that cannot be read must not stop the whole timeline from opening.
+				const fail = (title: string) => {
+					failed.push(title);
+					readOnly = true;
+					error = `${failed.length} of ${items.length} clips could not be read (${failed.slice(0, 2).join(', ')}${failed.length > 2 ? '…' : ''}); playing the rest, edits are not saved`;
+				};
+				// A clip whose length nothing records has to be read before the timeline can be laid out. A cut entry
+				// always says where it ends, so a cut opens at once and its files are read while it plays.
+				const mustRead = items.flatMap((item, at) => (canOpenUnread(item) ? [] : [at]));
+				const read: Array<Clip | undefined> = new Array(items.length);
+				loading = items.length - mustRead.length;
 				let nextItem = 0;
-				const readMetadata = async () => {
-					while (!disposed && nextItem < items.length) {
-						const at = nextItem++;
+				const readFirst = async () => {
+					while (!disposed && nextItem < mustRead.length) {
+						const at = mustRead[nextItem++];
 						const item = items[at];
-						// One clip that cannot be read must not stop the whole timeline from opening.
 						const metadata = await loadClipMetadata(item.src).catch(() => null);
 						if (disposed) return;
-						if (!metadata) { failed.push(item.title); loading++; continue; }
-						const out = Math.min(item.out ?? metadata.duration, metadata.duration);
-						loaded[at] = { ...item, ...metadata, speed: item.speed, bank: null, in: Math.max(0, Math.min(item.in ?? 0, out - MIN_SPAN)), out };
+						if (metadata) {
+							const out = Math.min(item.out ?? metadata.duration, metadata.duration);
+							read[at] = { ...item, ...metadata, speed: item.speed, bank: null, in: Math.max(0, Math.min(item.in ?? 0, out - MIN_SPAN)), out };
+						} else fail(item.title);
 						loading++;
 					}
 				};
-				await Promise.all(Array.from({ length: Math.min(6, items.length) }, readMetadata));
+				await Promise.all(Array.from({ length: Math.min(6, mustRead.length) }, readFirst));
 				if (disposed) return;
-				clips = loaded.filter((clip): clip is Clip => !!clip);
-				if (failed.length) {
-					readOnly = true;
-					error = `${failed.length} of ${items.length} clips could not be read (${failed.slice(0, 2).join(', ')}${failed.length > 2 ? '…' : ''}); playing the rest, edits are not saved`;
-				}
+				const waiting: Clip[] = [];
+				clips = items.flatMap((item, at): Clip[] => {
+					if (read[at]) return [read[at]];
+					if (!canOpenUnread(item)) return [];
+					const clip: Clip = { ...item, ...unreadTimes(item, MIN_SPAN), fps: 24, hasAudio: false, speed: item.speed, bank: null, pending: true };
+					waiting.push(clip);
+					return [clip];
+				});
 				if (!clips.length) throw new Error('None of these clips could be read');
+				unread = waiting.length;
 				startClip(0);
 				lastTick = performance.now();
 				frame = requestAnimationFrame(tick);
+				// The rest are read in play order, a few at a time, while the timeline already plays.
+				let turn = 0;
+				const readRest = async () => {
+					while (!disposed && turn < waiting.length) {
+						const clip = waiting[turn++];
+						const metadata = await loadClipMetadata(clip.src).catch(() => null);
+						if (disposed) return;
+						settleClip(clip, metadata, fail);
+						unread -= 1;
+					}
+				};
+				await Promise.all(Array.from({ length: Math.min(4, waiting.length) }, readRest));
 			} catch (cause) {
 				error = cause instanceof Error ? cause.message : 'Sequence failed to load';
+			} finally {
+				everyClipRead();
 			}
 		})();
 		return () => {
@@ -841,6 +926,7 @@
 				<span class="tracking-[.14em] text-nr-accent">SEQUENCE</span>
 			{/if}
 			<span>{clips.length ? `${clips.length} ${clips.length === 1 ? "clip" : "clips"} · ${total.toFixed(2)}s` : `loading ${loading}/${expected}`}</span>
+			{#if unread > 0}<span class="text-nr-faint" title="The timeline plays from what the cut already says while each file is read">reading {clips.length - unread}/{clips.length}</span>{/if}
 			{#if buffering && !paused}<span role="status" class="text-nr-mark">Buffering…</span>{/if}
 			<span class="text-nr-faint" title={source.kind === 'cut' ? 'Trims, ramps and order save to this cut; takes and shots are untouched' : 'Trims and ramps save to the takes'}>
 				{source.kind === 'cut' ? (frozen ? 'picture locked · read-only' : readOnly ? 'read-only' : 'edits save to this cut') : 'trims save to the takes'}
@@ -893,6 +979,7 @@
 		     fits on one screen in both modes. -->
 		<div class="relative mx-auto w-fit max-w-full">
 			<canvas bind:this={canvas} class="block aspect-video max-w-full rounded-[3px] bg-black" style:height={`min(calc((100vw - 48px) * 0.5625), clamp(220px, calc(100dvh - ${source.kind === 'cut' ? 515 : 410}px), 670px))`} onclick={togglePause}></canvas>
+			{#if standIn}<div class="pointer-events-none absolute inset-0 rounded-[3px] bg-black bg-no-repeat" style={standIn} aria-hidden="true"></div>{/if}
 			<video bind:this={seekPreview} muted playsinline preload="auto" aria-hidden="true" class="pointer-events-none absolute inset-0 h-full w-full rounded-[3px] bg-black object-contain" style:visibility={previewVisible ? 'visible' : 'hidden'} onloadedmetadata={seekPreviewAfterMetadata} onseeked={showSeekPreview} onloadeddata={showSeekPreview}></video>
 		</div>
 
