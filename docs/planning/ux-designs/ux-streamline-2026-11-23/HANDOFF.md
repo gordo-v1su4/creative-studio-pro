@@ -17,14 +17,14 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 | | |
 | --- | --- |
 | Working branch | `ux-streamline`, local only (never pushed as a branch) |
-| Branch tip | `d81b3cc` plus the handoff commits |
+| Branch tip | slice 4's five commits, `a83b2d0` to `d2a140f`, plus this handoff |
 | `main` on GitHub | `337de5e` |
 | Hosted Studio (studio.v1su4.com) | gateway and app both at `337de5e`; rollback image `rollback-a1482a7` |
-| Not released | everything after `337de5e`: `d81b3cc` (take chips on the card, picks that are kept and resent, the link back) |
+| Not released | everything after `337de5e`: `d81b3cc` (take chips on the card, picks that are kept and resent, the link back) and all of slice 4 |
 | Review Room (`review-room-svelte`) | `main` at `c880092`, deployed; local branch `live-current-version` at `43be65a` is unfinished work, not pushed |
 
-Slices 0 and 1 are done and live. Slices 2 and 3 are mostly done and live. Slices 4 to 7 are not started, apart from
-a parked draft test for slice 4. Slice 8 is new and has no design yet.
+Slices 0 and 1 are done and live. Slices 2 and 3 are mostly done and live. Slice 4 is built and verified on the
+local test copy, not released. Slices 5 to 7 are not started. Slice 8 is new and has no design yet.
 
 ## Rules that are not written anywhere else
 
@@ -85,7 +85,6 @@ a parked draft test for slice 4. Slice 8 is new and has no design yet.
   does not open the viewer from the canvas; the canvas's side panel and its Seed, Voice and Scene cards still have
   the old look; the old Animate window (with its session cap) still opens from the card's bar beside the new
   two-step block.
-- "Unplaced" in the outline waits for scene codes on groups, which slice 4 brings.
 - Pricing a take fails on Hosted Studio: the server image has no Higgsfield CLI. Outside the plan; see slice 8.
 
 ### Slice 3 · Review Room: what is left
@@ -113,33 +112,38 @@ a parked draft test for slice 4. Slice 8 is new and has no design yet.
    record, not on the project (`shotRoomLink` and `folderLinks` in `src/lib/domain/review-room-links.ts` read
    `project.review_room` only).
 
-### Slice 4 · Front door and story plan: started, nothing built
+### Slice 4 · Front door and story plan: built, not released
 
-Steps and "Done when" are in `PLAN.md`. What exists:
+Five parts, each with a dated status note in `PLAN.md` (what was built, what was checked, what was not). In short:
 
-- A parked draft test, `slice4-story-levels.test.ts.draft` in this folder (move it to
-  `tests/domain/story-levels.test.ts` to use it). It describes a module that does not exist yet,
-  `src/lib/domain/story-levels.ts`, with this intended shape:
-  - `STORY_LEVELS = ['brief', 'acts', 'scenes', 'beats', 'shots']`; `levelStates(counts, approvals)` gives each level
-    `empty`, `proposed` or `approved` (an approval of something no longer there does not count); `nextLevel`;
-    `canApprove(level, states)` (in order, and only when the level holds something); `lockNotice(level)` (the sentence
-    shown before approving, story 16).
-  - Name locking (decision 22): `sceneCodeFor(title, taken)` and `assignSceneCodes(scenes)` (three capitals, unique,
-    never touching a code already given); `assignShotNumbers(shots)` (tens within a scene, keeping numbers already
-    given, a shot added between two takes a number between them); `lockViolations(approvals, before, after)` (a code
-    whose level is approved cannot change or be handed to another scene; new things can always be added; a title can
-    always change).
-  - The tests are a first draft written in one pass and never run against code: treat the expected values (for
-    example the exact scene codes) as a proposal, not a contract.
-- Where the story plan lives today: `src/lib/domain/story-plan.ts` (`sections` are acts, each with `scenes` that may
-  carry a `scene_code`, and `moments`, which are story beats with an `approved` flag and planned `shots`),
-  `src/lib/ui/StoryPlan.svelte`, the gateway's `setShotCodes` (`src/lib/application/gateway.ts` near line 449),
-  shot numbers on cards (`shot_number`, "never changes once set"), Review Room codes in `project.review_room`.
-- Not decided: where level approvals are stored (a new optional `story_levels` on the production was the idea), and
-  where the lock is enforced (the gateway, on every save that could change a code).
-- To be replaced by the front door: `src/lib/ui/NewProjectFlow.svelte`, `TrailerHousePanel.svelte`, `BriefPanel.svelte`.
-  The front door, pitch and story mocks are `mockups/Start.html`, `Pitch.html`, `Story.html`.
-- Step 6 is the operator's: publish the Notion series template as a public page and give its address.
+- Rules: `src/lib/domain/story-levels.ts` (levels, approvals, name locking), `story-propose.ts` (what the Agent may
+  put into a plan), `front-door.ts` (what a start means). Approvals live in `production.story_levels`; the lock is
+  in the gateway (`approveStoryLevel`, and `saveProduction` refuses a changed code).
+- Screens: `src/lib/ui/StoryPlan.svelte` (one level at a time), `src/lib/ui/story/` (`FrontDoor`, `BriefSheet`,
+  `Pitch`, `AgentActions`, `agent-work.svelte.ts`), levels and Unplaced in `shell/Outline.svelte`, Notion in
+  `settings/NotionSettings.svelte`. Gone: `NewProjectFlow`, `BriefPanel`, `TrailerHousePanel`.
+- Server: plan actions `approve_level`, `propose`, `begin`; trailer-house action `pick`;
+  `src/lib/server/story-propose.ts`; `/api/settings/notion`; `getNotionToken()` is now async.
+
+What is left:
+
+1. **Release it** when the operator says so. Before or at release: no real model call has been made through any
+   of this (drafting the brief, pitching, the teaser, proposing each level, the interview without a lock); try one
+   project end to end with the real model first. Also never tried: a real file, folder or song dropped on the
+   front door, starting from a Notion link, entering a real Notion key, and approving the shot list of a trailer
+   connected to Review Room (tests cover each with stand-ins).
+2. **Step 6, the operator's:** publish the series template as a public Notion page and paste its address into
+   Settings → Notion. The front door says "not published yet" until then.
+3. **Outside this repo, at release:** the Notion key can now live in the app settings file on the App VM, with
+   `NOTION_TOKEN` as fallback. Record that in `proxmox-home` and the vault note's env table (not done; both are
+   outside this checkout).
+4. Not built: the front door has no Agent of its own before a project exists (the dock belongs to the open
+   project); a code freed by removing a scene is not remembered; episodes imported from a series keep their own
+   codes and show no levels; the Agent's dock and the Settings page still carry the old look; the teaser's video
+   model and aspect are fixed, and the Trailer House panel's character image and live prompt highlighting were
+   not carried over.
+5. Checking tip: buttons that call the model run at once, and the local copy has a model configured. The checks
+   here installed a stand-in for `fetch` in the page first; a reload or a code change removes it.
 
 ### Slice 5 · Voice: not started (needs slice 4's front door)
 
