@@ -416,6 +416,14 @@ Goal: from "Needs changes" to a new take without leaving the review, with one pl
 
 Designed with the operator on 2026-11-24: decisions 27 to 40 in `DECISIONS.md`, stories 56 to 70 and the implementation decisions in `SPEC.md`, the terms under "Rendering" in the root `CONTEXT.md`, and ADR 0011 for how it runs. Nothing is built.
 
+**Status 2026-11-24: steps 1 and 2 and the first half of step 3 are built (`a168df8`, `40c5c83`, `73b884e`), proved by tests only; nothing is on a screen yet and nothing is released.**
+
+- Step 1: `src/lib/domain/render-queue.ts` and the render record in `schemas.ts` (`generationSchema`, optional fields only; `provider` now accepts `higgsfield`, `fal`, `swarmui`). `request_id` is the render's own id; the provider's job id is `job_id`. Records made before the queue have no `state` and are read from `status` by `renderState`. Decided while building: every state but done is "open" (so a failed re-render is the one reopened); "Try again" is failed to approved with the price dropped; editing the prompt sends an approved entry back to approval and keeps its price, changing provider, model or resolution keeps the approval and drops the price; the still must be known for a record to be the request's source, otherwise the Higgsfield job id is.
+- Step 2: `src/lib/server/render-providers/` (`types.ts`, `higgsfield.ts`, `fal.ts`, `swarmui.ts`, `index.ts`) and `getRenderProviders()` in `config.ts`. Nothing calls it yet; "Make a take" still goes through the old adapter and still sends `draft` (step 9). Higgsfield's request as read back was checked against one real job with `generate get` (read only): the media are in `params.medias` with a `role`, the still's is `start_image`. `FAL_KEY` is in `.env.example`, the vault note and proxmox-home (pushed there).
+- **fal.ai has not been called**: no key. Three things are from its documentation only and need one real try: a local still is sent as a data URI (fal advises against it for large files; its upload flow is documented only for its SDKs); the pricing address gives a unit price and a unit, so the total is unit price times seconds for a per-second unit and nothing says whether resolution changes it; `duration` is sent as text.
+- Step 3, first half: `src/lib/domain/prompt-change.ts` (`promptChange`, `changeCount`). The server command that asks the Agent is not built.
+- Next: the rest of step 3, then step 4. Steps 5 and 6 wait for the operator (the Queue view's mock; the Trigger.dev project).
+
 1. **The render record and its rules**, test-first, as pure functions in `src/lib/domain/render-queue.ts`:
    - the states (drafting, to approve, approved, queued, rendering, done, failed, refused) and which moves are allowed;
    - one open re-render per take;

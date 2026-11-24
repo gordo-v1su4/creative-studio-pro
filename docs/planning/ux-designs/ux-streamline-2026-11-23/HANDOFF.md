@@ -17,14 +17,16 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 | | |
 | --- | --- |
 | Working branch | `ux-streamline`, local only (never pushed as a branch) |
-| Branch tip | slice 4's five commits, `a83b2d0` to `d2a140f`, plus this handoff |
+| Branch tip | slice 4's five commits (`a83b2d0` to `d2a140f`), the slice 8 design merged in (`7e385ac`), then slice 8's first steps (`a168df8`, `73b884e`, `40c5c83`) |
 | `main` on GitHub | `337de5e` |
 | Hosted Studio (studio.v1su4.com) | gateway and app both at `337de5e`; rollback image `rollback-a1482a7` |
 | Not released | everything after `337de5e`: `d81b3cc` (take chips on the card, picks that are kept and resent, the link back) and all of slice 4 |
-| Review Room (`review-room-svelte`) | `main` at `43b2512` on GitHub (checked 2026-11-24). Its live refresh of the owner workspace is on `main` (`src/lib/live-refresh.ts`), shipped from its own thread; the local checkout there is far behind and needs a pull |
+| Review Room (`review-room-svelte`) | `main` at `43b2512` on GitHub; the local checkout was pulled to it on 2026-11-24 (the operator's phone work is in it). Its live refresh of the owner workspace is on `main` (`src/lib/live-refresh.ts`). Every local branch there is already in `main` |
+| Other branches here | none with work of their own: `claude/gracious-easley-99511a` (the slice 8 design, with its worktree) is merged into `ux-streamline` |
 
 Slices 0 and 1 are done and live. Slices 2 and 3 are mostly done and live. Slice 4 is built and verified on the
-local test copy, not released. Slices 5 to 7 are not started. Slice 8 is designed (2026-11-24) and not built.
+local test copy, not released. Slices 5 to 7 are not started. Slice 8 is designed and its first steps are built (rules, render providers, the
+prompt-change highlight), by tests only: see its status note in `PLAN.md`.
 
 ## Rules that are not written anywhere else
 
@@ -154,13 +156,13 @@ Steps in `PLAN.md`. Cut is not mocked. The Cut stage's views exist in the shell 
 what a cut already knows and reads files while playing), `SoundStage.svelte`, `ExportStage.svelte`. The spec says
 this pass only moves Cut into the shell and the look; how cuts, mixing, export and QC work does not change.
 
-### Slice 8 · Re-render queue: designed, nothing built
+### Slice 8 · Re-render queue: steps 1, 2 and half of 3 built; no screen yet
 
 Designed with the operator on 2026-11-24 in three rounds of questions. Read, in this order: decisions 27 to 40 and the facts under them in `DECISIONS.md`; slice 8 in `PLAN.md` (ten ordered steps and a "Done when"); stories 56 to 70 and the implementation decisions in `SPEC.md`; "Rendering" in the root `CONTEXT.md`; `docs/adr/0011`.
 
 The design in one paragraph: a take marked Needs changes offers "Queue re-render" with one box for what to change. The re-render reuses that take's still, references and settings; the Agent rewrites only the prompt, with the skill that wrote it, and the operator sees the change highlighted and approves it. Everything approved is priced together and sent on one Confirm. Each render is a run on the operator's Trigger.dev, so it finishes with the browser closed; this app does the provider's work. A finished re-render is another take, here and in Review Room, awaiting review, never the pick. The Queue view (third view of Shots) is a sortable table, one line per render, saying where and how each was made.
 
-Start with step 1 (the render record and its rules, test-first); it needs nothing from anyone. Steps 2 to 5 can follow without the operator. What needs the operator:
+Steps 1 and 2 and the highlight of step 3 are built (status note in `PLAN.md`, with what was decided on the way and what about fal.ai is untried). Carry on with the rest of step 3 (the server command that asks the Agent for the prompt change, tested with a fake model), then step 4. What needs the operator:
 
 - **Step 6**: creating the Trigger.dev project and its production key (the dashboard asks only for a name; they are signed in at `trigger.v1su4.dev`). Do not create it for them without their word.
 - **The fal.ai key**: they add `FAL_KEY` to the environment file themselves, later. Until then fal.ai is listed as not set up.
