@@ -29,3 +29,26 @@ test("the shot's takes and editing live in the band and the dock, not inside the
 test('shot cards and the band draw no borders', () => {
 	for (const source of [card, band]) expect(source.slice(source.indexOf('<style>'))).not.toMatch(/border(-(top|bottom|left|right))?: [^0;]/);
 });
+
+const strip = readFileSync('src/lib/ui/shots/SelectionStrip.svelte', 'utf8');
+
+test('the selection strip has the same fixed height as the takes band, and its buttons never come and go', () => {
+	expect(strip).toMatch(/\.strip \{[^}]*height: 56px;/);
+	// Every button is always drawn; what is selected only enables or disables it.
+	const buttons = markup(strip).slice(markup(strip).indexOf('class="key add"'));
+	expect(buttons).not.toContain('{#if');
+	expect(strip.slice(strip.indexOf('<style>'))).not.toMatch(/border(-(top|bottom|left|right))?: [^0;]/);
+});
+
+test('the bands sit side by side or stacked by the width of the work area, never by what is selected', () => {
+	expect(workspace).toContain('@container (max-width: 720px) { .bands { grid-template-columns: minmax(0, 1fr); } }');
+	expect(workspace).toContain('<SelectionStrip project={live}');
+});
+
+test('a shot joins the selection by shift-click or by being dragged, and auditioning goes through the selection, not the pick', () => {
+	expect(card).toContain('onclick={(event) => onselect(event.shiftKey)}');
+	expect(card).toContain('setData(SHOT_DRAG, card.card_id)');
+	expect(strip).toContain('reviewSequence.audition(');
+	expect(strip).not.toContain('set_pick');
+	expect(strip).not.toContain('onpick');
+});

@@ -12,7 +12,7 @@ test('the viewer plays a take from its proxy in a plain video element, not a fra
 });
 
 test('the playhead is a tall rectangle and nothing in the viewer is round or bordered', () => {
-	expect(styles).toMatch(/\.track b \{[^}]*width: 3px; height: 18px;/);
+	expect(styles).toMatch(/\.head \{[^}]*top: 2px; bottom: 4px; width: 3px;/);
 	expect(styles).not.toContain('border-radius: 50%');
 	expect(styles).not.toContain('border-radius: 999px');
 	expect(styles).not.toMatch(/border(-(top|bottom|left|right))?: [^0;]/);
@@ -27,4 +27,20 @@ test('a still is held as a clip, and one unreadable clip does not stop a timelin
 	expect(banks).toContain('bank.loadStill(image, STILL_SECONDS, STILL_FPS, maxHeight)');
 	expect(player).toContain('loadClipMetadata(item.src).catch(() => null)');
 	expect(player).toContain('playing the rest, edits are not saved');
+});
+
+test('frames, scrub bar and sound are lanes of one bar under one playhead, each with a fixed height', () => {
+	const lanes = viewer.slice(viewer.indexOf('<div class="scrub"'), viewer.indexOf('<div class="transport">'));
+	expect(lanes.indexOf('class="frames"')).toBeLessThan(lanes.indexOf('class="track"'));
+	expect(lanes.indexOf('class="track"')).toBeLessThan(lanes.indexOf('class="wave"'));
+	expect(lanes.match(/class="head"/g)).toHaveLength(1);
+	expect(styles).toMatch(/\.wave \{[^}]*height: 22px; flex: none;/);
+	expect(viewer).toContain("const FRAME_LANE = 30;");
+});
+
+test('the frame under the pointer comes from the strip, not from seeking the video', () => {
+	expect(viewer).toContain('stripFrameStyle(strip, stripIndex(hover, length))');
+	const card = readFileSync('src/lib/ui/shots/ShotCard.svelte', 'utf8');
+	expect(card).toContain('stripFrameStyle(strip, stripIndexInSpan(along, pick.duration_s, pick.in_s, pick.out_s))');
+	expect(card).toContain('warmStrip(strip)');
 });

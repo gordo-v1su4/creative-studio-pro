@@ -8,7 +8,9 @@
 	import { pickFor, takesFor, type Take } from '$lib/domain/takes';
 	import { shotCardFacts } from '$lib/domain/shot-card';
 	import { REVIEW_STATUSES, step, timecode, viewerAction, type ReviewStatus } from '$lib/domain/viewer-keys';
-	import { posterUrl, proxyUrl } from '$lib/media/gpu/clipBanks';
+	import { posterUrl, proxyUrl, stripUrl } from '$lib/media/gpu/clipBanks';
+	import { laneFrames, stripFrameStyle, stripIndex } from '$lib/media/strips';
+	import { loadPeaks, waveColumns, wavePath } from '$lib/media/waveform';
 	import { referenceImageUrl } from '$lib/media/reference-images';
 
 	let { production, cards, shotId = $bindable(), busy = false, reviewHost = null, onclose, onpick, onreview }: {
@@ -43,6 +45,26 @@
 	let length = $state(0);
 	let hover = $state<number | null>(null);
 	let track = $state<HTMLElement | null>(null);
+	let laneWidth = $state(0);
+	/** The picture's shape (width over height), so strip frames are drawn undistorted. */
+	let aspect = $state(16 / 9);
+
+	// Lanes: the take's frame strip above the scrub bar and its own sound below, all under one playhead.
+	const FRAME_LANE = 30;
+	const strip = $derived(shown?.kind === 'video' ? stripUrl(shown.url) : null);
+	const tiles = $derived(laneFrames(laneWidth / (FRAME_LANE * aspect)));
+	const played = $derived(length ? Math.min(100, (time / length) * 100) : 0);
+	let sound = $state<{ take: string; path: string; columns: number } | 'none' | null>(null);
+	$effect(() => {
+		const take = shown?.kind === 'video' ? shown : null;
+		sound = null;
+		if (!take) return;
+		void loadPeaks(proxyUrl(take.url)).then((peaks) => {
+			if (shown?.asset_id !== take.asset_id) return;
+			const columns = peaks ? waveColumns(peaks, 320) : [];
+			sound = columns.length ? { take: take.asset_id, path: wavePath(columns), columns: columns.length } : 'none';
+		});
+	});
 
 	const still = (take: Take) => (take.kind === 'video' ? (posterUrl(take.url, take.in_s ?? 0) ?? '') : referenceImageUrl(take.url, 'small'));
 
@@ -56,6 +78,13 @@
 			const take = neighbour ? pickFor(production, neighbour) : null;
 			if (take?.kind === 'video') void fetch(proxyUrl(take.url)).catch(() => null);
 		}
+	});
+	// While playing, the playhead follows the picture every frame (timeupdate alone fires a few times a second).
+	$effect(() => {
+		if (!video || !playing) return;
+		const element = video;
+		let frame = requestAnimationFrame(function tick() { time = element.currentTime; frame = requestAnimationFrame(tick); });
+		return () => cancelAnimationFrame(frame);
 	});
 	$effect(() => {
 		if (!video) return;
@@ -140,7 +169,7 @@
 				<!-- svelte-ignore a11y_media_has_caption -->
 				<video bind:this={video} src={proxyUrl(shown.url)} poster={still(shown) || undefined} loop playsinline preload="auto"
 					ontimeupdate={(event) => (time = event.currentTarget.currentTime)}
-					onloadedmetadata={(event) => (length = event.currentTarget.duration)}
+					onloadedmetadata={(event) => { length = event.currentTarget.duration; if (event.currentTarget.videoHeight) aspect = event.currentTarget.videoWidth / event.currentTarget.videoHeight; }}
 					onclick={() => (playing = !playing)}></video>
 			{/key}
 		{:else if shown}
@@ -151,12 +180,26 @@
 	</div>
 
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="scrub" bind:this={track} onpointermove={scrub} onpointerdown={scrub} onpointerleave={() => (hover = null)}>
-		<div class="track">
-			<i style:width={`${length ? (time / length) * 100 : 0}%`}></i>
-			<b style:left={`${length ? (time / length) * 100 : 0}%`}></b>
+	<div class="scrub" bind:this={track} bind:clientWidth={laneWidth} onpointermove={scrub} onpointerdown={scrub} onpointerleave={() => (hover = null)}>
+		<div class="frames" style:height={`${FRAME_LANE}px`}>
+			{#if strip}{#each tiles as frame, i (i)}<i style={stripFrameStyle(strip, frame)}></i>{/each}{/if}
 		</div>
-		{#if hover !== null && length}<span class="at code" style:left={`${(hover / length) * 100}%`}>{timecode(hover)}</span>{/if}
+		<div class="track"><i style:width={`${played}%`}></i></div>
+		<div class="wave">
+			{#if sound && sound !== 'none'}
+				<svg viewBox={`0 0 ${sound.columns} 2`} preserveAspectRatio="none" aria-hidden="true"><path d={sound.path} /></svg>
+				<svg class="played" viewBox={`0 0 ${sound.columns} 2`} preserveAspectRatio="none" aria-hidden="true" style:clip-path={`inset(0 ${100 - played}% 0 0)`}><path d={sound.path} /></svg>
+			{:else if sound === 'none'}
+				<span class="cp">No sound</span>
+			{/if}
+		</div>
+		<b class="head" style:left={`${played}%`}></b>
+		{#if hover !== null && length}
+			<span class="at" style:left={`${Math.min(Math.max(hover / length * laneWidth, strip ? 80 : 30), laneWidth - (strip ? 80 : 30))}px`}>
+				{#if strip}<i class="peek" style={`${stripFrameStyle(strip, stripIndex(hover, length))} aspect-ratio: ${aspect};`}></i>{/if}
+				<span class="code">{timecode(hover)}</span>
+			</span>
+		{/if}
 	</div>
 
 	<div class="transport">
@@ -211,12 +254,21 @@
 	.stage video, .stage img { max-width: 100%; max-height: 100%; border-radius: 6px; background: #000; object-fit: contain; }
 	.stage video { height: 100%; cursor: pointer; }
 	.stage p { color: var(--color-ink-3); }
-	.scrub { position: relative; flex: none; padding: 6px 14px; cursor: ew-resize; touch-action: none; }
-	.track { position: relative; height: 3px; background: #1f1f23; transition: height 110ms ease-out, margin 110ms ease-out; }
+	.scrub { position: relative; display: flex; flex: none; flex-direction: column; gap: 4px; margin: 0 14px; padding: 4px 0 6px; cursor: ew-resize; touch-action: none; }
+	.frames { display: flex; flex: none; overflow: hidden; border-radius: 3px; background: var(--color-raised); }
+	.frames i { min-width: 0; flex: 1; background-repeat: no-repeat; opacity: 0.8; }
+	.scrub:hover .frames i { opacity: 1; }
+	.track { position: relative; height: 3px; flex: none; background: #1f1f23; transition: height 110ms ease-out, margin 110ms ease-out; }
 	.scrub:hover .track { height: 8px; margin: -2.5px 0; }
 	.track i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #123a35, #8be0c6); }
-	.track b { position: absolute; top: 50%; width: 3px; height: 18px; margin: -9px 0 0 -1px; background: #d9f7ef; }
-	.at { position: absolute; bottom: calc(100% - 2px); transform: translateX(-50%); border-radius: 3px; background: #1f1f24; padding: 1px 5px; color: var(--color-amber); pointer-events: none; }
+	.wave { position: relative; display: flex; height: 22px; flex: none; align-items: center; }
+	.wave svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: #34343b; }
+	.wave svg.played { fill: var(--color-teal); opacity: 0.85; }
+	.wave .cp { color: var(--color-ink-3); }
+	.head { position: absolute; top: 2px; bottom: 4px; width: 3px; margin-left: -1px; background: #d9f7ef; pointer-events: none; }
+	.at { position: absolute; bottom: calc(100% + 2px); z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 3px; transform: translateX(-50%); pointer-events: none; }
+	.at .peek { display: block; width: 160px; border-radius: 4px; background-color: #000; background-repeat: no-repeat; }
+	.at .code { border-radius: 3px; background: #1f1f24; padding: 1px 5px; color: var(--color-amber); }
 	.transport { display: flex; flex: none; align-items: center; gap: 2px; padding: 0 10px 2px; }
 	.tc { display: flex; gap: 6px; margin: 0 auto; }
 	.tc b { font-weight: 400; color: var(--color-amber); }

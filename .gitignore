@@ -27,6 +27,7 @@ data/series/
 data/published/
 data/video-posters/
 data/video-proxies/
+data/video-strips/
 # App settings hold provider keys (Settings → Agent model); never commit.
 app-settings.json
 app-settings.json.*.tmp

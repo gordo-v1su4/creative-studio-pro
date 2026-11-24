@@ -1,10 +1,11 @@
 import { error } from '@sveltejs/kit';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
 import { dirname, extname, join, resolve, sep } from 'node:path';
 import { videoPoster } from '$lib/server/video-posters';
 import { proxyCacheDir, videoProxy } from '$lib/server/video-proxies';
+import { videoStrip } from '$lib/server/video-strips';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { getProjectRoot, getReferenceVariants } from '$lib/server/config';
@@ -50,6 +51,15 @@ export const GET: RequestHandler = async ({ params, request, url }) => {
 			const headers = { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400', etag };
 			return new Response(request.headers.get('if-none-match') === etag ? null : new Uint8Array(bytes), { status: request.headers.get('if-none-match') === etag ? 304 : 200, headers });
 		} catch { error(404, 'No poster for this file'); }
+	}
+	// ?strip=1 on a video: its frame strip (STRIP_FRAMES small frames in one row), for hover-scrub and the viewer's frame lane.
+	if (type.startsWith('video/') && url.searchParams.get('strip') === '1') {
+		try {
+			const bytes = await readFile(await videoStrip(target, getProjectRoot()));
+			const etag = `"${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}"`;
+			const headers = { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=86400', etag };
+			return new Response(request.headers.get('if-none-match') === etag ? null : new Uint8Array(bytes), { status: request.headers.get('if-none-match') === etag ? 304 : 200, headers });
+		} catch { error(404, 'No frame strip for this file'); }
 	}
 	// ?proxy=1 on a video: the 480p editing proxy (made on first request when ingest didn't already make it).
 	let file = target;

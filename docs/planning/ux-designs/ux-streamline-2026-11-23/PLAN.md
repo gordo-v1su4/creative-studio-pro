@@ -94,7 +94,46 @@ Built:
 
 Measured after: the viewer is on screen 6–27 ms after Space with the take's still; the take is playing after 100–140 ms when its proxy was already fetched, and after 400–900 ms when it was not.
 
-Still open in slice 1: the same measurements on Hosted Studio (they need the operator signed in), whether the gateway may cache proxies, frame strips and the frame preview on hover, the audio lane, the selection strip, prompts by skill section, and the price and confirm steps.
+Status, part three, 2026-11-23 (local test copy, checked in the browser at 1440px and 375px):
+
+- **Frame strips** (step 6). One JPEG per video take holding 24 frames of 160px side by side, read from the 480p proxy (`src/lib/server/video-strips.ts`, shared numbers in `src/lib/media/strips.ts`). Served as `?strip=1` on the files route, made when a take arrives and, for older takes, on first request (three ffmpeg runs at a time). About 50 KB each on this project.
+- **Hover-scrub on shot cards.** Moving across a card's frame walks the pick's kept span through its strip; nothing is decoded. Strips for the cards on screen are fetched ahead, three at a time, so the first hover does not wait. This replaces hover-to-play on the grid (450–800 ms before the first frame); playing with sound is the viewer's job. A video that is not a project file still uses the old hover player.
+- **Viewer lanes** (step 5). The frame strip, the scrub bar and the take's own sound are three lanes with fixed heights under one rectangular playhead. Hovering shows the frame at the pointer above the bar with its amber timecode. The played part of the waveform is teal. The playhead now follows the picture every frame instead of a few times a second.
+- **Selection strip** (steps 3, 4). Beside the takes band, same 56px height (stacked when the work area is under 720px wide). Rules in `src/lib/domain/selection.ts`; the strip, the canvas and the sequence player share one selection (`src/lib/ui/review-sequence.svelte.ts`).
+  - A shot joins by shift-click or by being dragged onto the strip; its card shows its place. On touch there is an Add button.
+  - Entries are as wide as they are long. Dragging inside the strip reorders; a teal bar shows where a drop lands.
+  - On a focused entry: ↑↓ auditions another video take (the pick is never written), ⌥←→ moves it, ⌫ takes it out, Space plays.
+  - Play opens the existing sequence player on the selection. Push to cut saves the order, takes, trims and ramps as "Cut N" in one click.
+  - Takes that arrived before lengths were recorded have their length read from the proxy, so the running length and the push still work.
+
+Not exercised against the project: Push to cut from the strip (covered by a domain test that runs its entries through the cut rules), so the test copy gained no cut.
+
+Measured on Hosted Studio, 2026-11-23 (studio.v1su4.com, still running `main`; project TR130, 57 shots, 120 takes):
+
+| What | Result |
+| --- | --- |
+| Any media request, time to first byte | 190–840 ms, through the Vercel gateway to the App VM |
+| A poster (10–23 KB) | 180–650 ms each; 14 at once had a median of 705 ms |
+| A normal take's 480p proxy (65–283 KB) | 220–1,640 ms, and the same again on every repeat |
+| The 2:35 trailer's proxy (14 MB) | 10.3 s the first time, 2.6 s the second (about 5 MB/s) |
+| Kept by the browser between requests | nothing: the gateway answers every request `Cache-Control: private, no-store` (`scripts/build-studio-gateway.ts`), replacing the app's own `private, max-age=86400` on proxies and posters |
+
+So on Hosted Studio every hover, every viewer open and every cut reopen downloads its media again, at 0.2–1.6 s a file. The local numbers above (a cut reopening in 0.1–0.4 s, a prefetched take playing in 100–140 ms) do not carry over until that changes. The new screens are not on Hosted Studio yet: `ux-streamline` is local only.
+
+Settled 2026-11-23 (the open question above): the signed-in browser may keep proxies, posters, frame strips and picture thumbnails; Vercel's CDN still stores nothing, and pages, project data and original files stay `no-store`. The gateway now leaves the app's own `Cache-Control` on those four kinds of request (`scripts/build-studio-gateway.ts`, rule written down in `docs/operations/hosted-studio.md`). It went live the same day as `b51a5b4` on `main` (Vercel deploys the gateway on every push to `main`; the app on the App VM was not touched).
+
+Measured again on TR130 right after that deploy, same four takes:
+
+| What | Before | After |
+| --- | --- | --- |
+| A take's proxy, first request | 340–1,640 ms | 305–830 ms (unchanged in kind: one trip to the App VM) |
+| The same proxy again | 220–1,290 ms | 3–8 ms, from the browser |
+| A poster again | 180–650 ms | 3–6 ms, from the browser |
+| Header on proxies and posters | `private, no-store` | `private, max-age=86400` |
+| Header on the page, project data and an original file | `private, no-store` | `private, no-store` |
+| Vercel's CDN | stores nothing | stores nothing (`x-vercel-cache: MISS` on every request) |
+
+Still open in slice 1: the first request for each file (about 0.3–0.8 s through the gateway; fetching ahead is what hides it), progressive timeline loading (step 7), prompts by skill section, and the price and confirm steps (step 8). A still pick does not play in a selection yet.
 
 ### 2 · Canvas
 

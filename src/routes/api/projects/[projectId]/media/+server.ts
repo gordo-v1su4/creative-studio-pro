@@ -11,6 +11,7 @@ import { uuid7ish } from '$lib/domain/ids';
 import { isUnder2K, mediaKind, safeFileName, ACCEPTED_EXTENSIONS } from '$lib/domain/media';
 import { getGateway, getProjectRoot, getProjectStore } from '$lib/server/config';
 import { prepareVideoProxy } from '$lib/server/video-proxies';
+import { prepareVideoStrip } from '$lib/server/video-strips';
 import { commandStatus } from '$lib/server/http';
 import { probeMedia } from '$lib/server/media-probe';
 
@@ -48,7 +49,7 @@ export const POST: RequestHandler = async ({ params, request, url }) => {
 		await rm(target, { force: true });
 		return fail(400, 'INVALID_COMMAND', 'Upload was interrupted');
 	}
-	if (/\.(mp4|mov|webm)$/i.test(target)) prepareVideoProxy(target, getProjectRoot());
+	if (/\.(mp4|mov|webm)$/i.test(target)) { prepareVideoProxy(target, getProjectRoot()); prepareVideoStrip(target, getProjectRoot()); }
 
 	const probe = await probeMedia(target);
 	const take = {

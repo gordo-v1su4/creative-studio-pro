@@ -24,6 +24,9 @@ export const proxyUrl = (url: string) => withParam(url, 'proxy');
 /** The server still at `at` seconds (default the first frame), or null for a URL that isn't a project video. */
 export const posterUrl = (url: string, at = 0) => (PROJECT_VIDEO.test(url) ? `${withParam(url, 'poster')}${at > 0 ? `&t=${Math.round(at * 100) / 100}` : ''}` : null);
 
+/** The take's frame strip (see $lib/media/strips), or null for a URL that isn't a project video. */
+export const stripUrl = (url: string) => (PROJECT_VIDEO.test(url) ? withParam(url, 'strip') : null);
+
 const blobs = new Map<string, Promise<Blob>>();
 const clipMetadata = new Map<string, Promise<{ duration: number; fps: number; hasAudio: boolean }>>();
 const banks = new Map<string, BankEntry>();

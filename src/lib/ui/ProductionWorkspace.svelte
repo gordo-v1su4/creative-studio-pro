@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { referenceImageUrl } from '$lib/media/reference-images';
-	import { proxyUrl } from '$lib/media/gpu/clipBanks';
+	import { loadClipMetadata, proxyUrl } from '$lib/media/gpu/clipBanks';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
@@ -25,6 +26,11 @@
 	import StoryPlan from '$lib/ui/StoryPlan.svelte';
 	import ShotCard from '$lib/ui/shots/ShotCard.svelte';
 	import TakesBand from '$lib/ui/shots/TakesBand.svelte';
+	import SelectionStrip from '$lib/ui/shots/SelectionStrip.svelte';
+	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
+	import { selectionEntries } from '$lib/domain/selection';
+	import { playItemFor } from '$lib/domain/slate';
+	import { nextCutName } from '$lib/domain/cuts';
 	import Viewer from '$lib/ui/shots/Viewer.svelte';
 	import type { ReviewStatus } from '$lib/domain/viewer-keys';
 	import { shotCardFacts } from '$lib/domain/shot-card';
@@ -314,6 +320,56 @@
 		finally { pickBusy = false; }
 	}
 
+	// The selection (CONTEXT.md): shots gathered in the strip under the grid, played in order, pushed to a cut.
+	/** The project as the grid shows it, unsaved edits included. */
+	const live = $derived<Project>({ ...project, production: draft });
+	let pushNote = $state('');
+	/** Lengths read from the files, for takes that arrived before lengths were recorded (seconds by take id). */
+	let readLengths = $state<Record<string, number>>({});
+	$effect(() => {
+		for (const item of reviewSequence.items) {
+			const take = draft.assets.find((asset) => asset.asset_id === item.assetId);
+			if (!take || take.out_s !== undefined || take.duration_s !== undefined || untrack(() => item.assetId in readLengths)) continue;
+			void loadClipMetadata(take.url).then((clip) => { readLengths[item.assetId] = clip.duration; }).catch(() => null);
+		}
+	});
+
+	/** Shift-click on a shot adds it to the selection, or takes it out. */
+	function toggleInSelection(card: StoryCard) {
+		const position = reviewSequence.position(card.card_id);
+		const item = playItemFor(live, card);
+		if (position) reviewSequence.remove(card.card_id);
+		else if (item) reviewSequence.toggle(item);
+		else pushNote = 'A still pick does not play in a selection';
+	}
+
+	// An entry follows its shot: a new pick replaces it unless a take is auditioned there; a benched or removed shot leaves.
+	$effect(() => {
+		const usable = new Set(draft.assets.filter((asset) => asset.kind === 'video' && !asset.rejected).map((asset) => asset.asset_id));
+		const wanted = reviewSequence.items.map((item) => {
+			const card = draft.cards.find((entry) => entry.card_id === item.id);
+			return { id: item.id, item: card ? playItemFor(live, card) : null };
+		});
+		untrack(() => { for (const { id, item } of wanted) reviewSequence.sync(id, item, (assetId) => usable.has(assetId)); });
+	});
+
+	/** One button: the selection's order, takes, trims and ramps become a new cut named "Cut N". */
+	async function pushSelection() {
+		if (pickBusy) return;
+		const built = selectionEntries(project, reviewSequence.items, readLengths);
+		if (!built.ok) { pushNote = `Still reading ${built.unknown.length} ${built.unknown.length === 1 ? 'take' : 'takes'}; try again`; return; }
+		pickBusy = true; error = null; pushNote = '';
+		const name = nextCutName(project.production);
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/cuts`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: 'push_cut', expected_version: project.version, name, entries: built.entries }) });
+			const body = await response.json();
+			if (!body.ok) throw new Error(body.error?.message ?? 'Push failed');
+			onUpdated(body.data);
+			pushNote = `Pushed as ${name}`;
+		} catch (cause) { pushNote = cause instanceof Error ? cause.message : 'Push failed'; }
+		finally { pickBusy = false; }
+	}
+
 	function openViewer(cardId?: string) {
 		const target = cardId ?? selectedShotId ?? draft.cards[0]?.card_id;
 		if (!target) return;
@@ -324,7 +380,7 @@
 
 	/** Space on the Shots grid opens the viewer on the selected shot. */
 	function gridKey(event: KeyboardEvent) {
-		if (tab !== 'beats' || viewerOpen || event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
+		if (tab !== 'beats' || viewerOpen || reviewSequence.playing || event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
 		const target = event.target as HTMLElement | null;
 		if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(target.tagName))) return;
 		if (!selectedShotId && !draft.cards.length) return;
@@ -516,15 +572,17 @@
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-0.5 px-2 pb-2 pt-1">
 			{#each draft.cards as card (card.card_id)}
 				{@const pick = pickFor(draft, card)}
-				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} onselect={() => (selectedShotId = card.card_id)} onopen={() => openViewer(card.card_id)} />
+				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} position={reviewSequence.position(card.card_id)} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>
 		{#if dropping}<div class="shots-drop-hint" aria-hidden="true">Drop to add as shots</div>{/if}
 		<!-- The takes band stays put under the grid, so selecting a shot never moves the page. -->
-		<div class="sticky bottom-0 z-[5] bg-panel p-1">
+		<div class="bands-area sticky bottom-0 z-[5] bg-panel p-1"><div class="bands">
 			<TakesBand title={selectedShot?.title ?? null} facts={selectedFacts} takes={selectedShot ? takesFor(draft, selectedShot.card_id, true) : []} busy={pickBusy || unsaved || shotBusy !== null} onpick={(takeId) => selectedShot && void makePick(selectedShot.card_id, takeId)} onopen={() => onOpenDetails?.()} />
-		</div>
+			<SelectionStrip project={live} selectedId={selectedShotId} read={readLengths} busy={pickBusy || unsaved || shotBusy !== null} note={pushNote} onselect={(cardId) => (selectedShotId = cardId)} onplay={() => { pushNote = ''; reviewSequence.playing = true; }} onpush={() => void pushSelection()} />
+		</div></div>
+		{#if reviewSequence.playing}<SequencePlayer {project} {onUpdated} />{/if}
 		</div>
 	{:else if tab === 'cuts'}
 		<div class="mx-auto max-w-5xl p-5">
@@ -653,6 +711,11 @@
 </section>
 
 <style>
+	/* Takes and the selection sit side by side when there is room and stack when there is not; neither depends on what is selected. */
+	.bands-area { container-type: inline-size; }
+	.bands { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 3px; }
+	@container (max-width: 720px) { .bands { grid-template-columns: minmax(0, 1fr); } }
+	.bands > :global(*) { min-width: 0; }
 	.shot-details { display: flex; flex-direction: column; gap: 6px; padding: 12px; color: var(--color-ink-2); font-size: 12.5px; }
 	.shot-details .cp { margin: 6px 0 0; color: var(--color-ink-3); }
 	.shot-details .none { margin: 0; white-space: normal; line-height: 1.6; }
