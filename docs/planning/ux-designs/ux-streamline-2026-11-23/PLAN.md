@@ -309,6 +309,19 @@ Goal: from nothing to an approved shot list in one conversation, with names that
 
 Done when: a project can go from one sentence to an approved shot list with no Notion key, and no code changes after its level is approved.
 
+Status, part one, 2026-11-24 (steps 3 and 4 as rules; no screen yet):
+
+- **The five levels and their states** (`src/lib/domain/story-levels.ts`, written test-first from the parked draft): brief, acts, scenes, story beats, shot list. A level is empty until it holds something, proposed until approved, and levels are approved in order. Something added to an approved level (a scene with no code, a story beat not approved, a shot with no shot code) puts it back to proposed until it is approved again.
+- **What approving fixes.** The brief fixes the show code and the project code (suggested from the brief's title, `TR100` unless given; a project already in Review Room keeps the codes it has there). Scenes fix each scene code (three capitals from the title, by the rule show codes already follow). Story beats approve each beat. The shot list puts the planned shots on the board and gives each its shot code: tens within its scene, a number between its neighbours for a shot added later, never a number the scene once gave.
+- **A shot's code is its own.** A shot now carries the scene code it was numbered under (`scene_code` beside `shot_number`), so `BLR_TR100_VHA_0020` stays that when the shot moves to another scene. Review Room registers a named shot under that name.
+- **Where approvals are stored:** `production.story_levels` (when each level was approved, and the two codes the brief fixed). Only approving a level writes it.
+- **Where the lock is enforced:** in the gateway. `approveStoryLevel` is the one command that approves and names. `saveProduction`, which every whole-project save goes through, keeps the stored approvals whatever it is sent, puts back a fixed code the incoming copy does not carry (a draft made before the approval), and refuses a save that changes a fixed code or hands it to something else ("Scene code VHA is fixed: its level is approved, so only the title can change"). A title always saves.
+- Changed from the draft test: scene codes follow the existing rule, so "The rooftop leap" is `RFL`, not `RLP`; a shot with no room between its neighbours takes the next ten after the scene's last number (`0020`, not `0021`); the lock compares shot codes (`VHA_0010`), not bare numbers.
+
+Checked: 28 new tests (rules, the gateway on a real store, Review Room registration with a fake client); `bun run check`, `bun test` (the two known failures only), `check:env`, `build`. Nothing to see in the browser yet.
+
+Not done here: an episode imported from a Notion series keeps its own codes and lock (`setShotCodes`, the series' "codes locked"); the levels read the story plan, which such an episode does not have. A code freed by removing its scene is not remembered, so a later scene could be given it; Review Room already refuses that for scenes it holds.
+
 ### 5 · Voice
 
 Goal: talk to the Agent and hear it.

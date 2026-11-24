@@ -148,3 +148,18 @@ test('a scene code stays with its sequence even when that sequence is left out o
 	project.production.groups!.push({ group_id: 'g3', name: 'TR110 03 · Everybody knows Kai' } as never);
 	await expect(connectTrailer(client, project, { ...input, scenes: [{ group_id: 'g3', code: 'DRP' }] })).rejects.toThrow('already belongs to another sequence');
 });
+
+test('a shot the approved shot list already named is stored under that name, even after it moved to another scene', async () => {
+	const { client, project } = setup();
+	project.production.groups = [{ group_id: 'g-vha', name: 'Video Haven', created_at: 'x' }, { group_id: 'g-cmp', name: 'Campus', created_at: 'x' }];
+	project.production.cards = [
+		{ card_id: 'a', group_id: 'g-vha', order: 0, title: 'Wide', scene_code: 'VHA', shot_number: 10 },
+		{ card_id: 'b', group_id: 'g-cmp', order: 1, title: 'Mara', scene_code: 'VHA', shot_number: 20 },
+		{ card_id: 'c', group_id: 'g-cmp', order: 2, title: 'Kai walks', scene_code: 'CMP', shot_number: 10 },
+		{ card_id: 'd', group_id: 'g-cmp', order: 3, title: 'Not named yet' }
+	] as never;
+	const room = await connectTrailer(client, project, { ...input, scenes: [{ group_id: 'g-vha', code: 'VHA' }, { group_id: 'g-cmp', code: 'CMP' }] });
+	expect(Object.fromEntries(Object.entries(room.shots).map(([id, shot]) => [id, shot.code]))).toEqual({ a: 'BLR_TR100_VHA_0010', b: 'BLR_TR100_VHA_0020', c: 'BLR_TR100_CMP_0010', d: 'BLR_TR100_CMP_0020' });
+	// The moved shot is stored where it sits now, under the name it was given.
+	expect(room.shots.b.folder_id).toBe(room.scenes!['g-cmp'].folder_id);
+});

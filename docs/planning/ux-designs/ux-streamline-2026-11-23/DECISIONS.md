@@ -148,3 +148,9 @@ The design tree is now fully settled. The written spec and plan are `DESIGN.md`,
 - **One thread per slice.** The operator asked that each slice be carried on in its own thread, started from a written handoff (`HANDOFF.md`).
 - **Takes.** The operator's requirement, in their words: "we have to be able to see and select between the takes easily on the app and the 'current' take choice must update live between the two, or sync at changes." Built so far: take chips on the shot card, a pick that is kept and resent until Review Room has it, and Review Room's current version followed here within ten seconds. Open: Review Room's own screen following a change made here without a reload.
 
+
+## 2026-11-24: decided while building slice 4
+
+- **Level approvals live on the production** (`production.story_levels`): when each of the five levels was approved, plus the show code and project code the brief fixed. Scene codes stay on the story plan's scenes; a shot's code is on the shot (`scene_code` and `shot_number`).
+- **The lock is enforced in the gateway**, not in the screens: approving is one command, and every whole-project save keeps the approvals, restores a fixed code that is missing and refuses one that is changed.
+- **Approving is repeatable.** Something added to an approved level waits, and approving the level again names only what is new. Nothing is named the moment it is typed, so a scene called "New scene" is not stuck with `NSC`.

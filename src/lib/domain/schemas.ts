@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { shotSpecSchema } from './shot-spec';
 import { shotTagsSchema } from './shot-tags';
 import { storyPlanSchema } from './story-plan';
+import { storyLevelsSchema } from './story-levels';
 import { identityTagsSchema } from './identity-tags';
 import { modelChoiceSchema, projectAgentModelSchema } from '$lib/domain/model-provider';
 
@@ -268,6 +269,8 @@ export const storyCardSchema = z.object({
 	group_id: idSchema.optional(),
 	/** In a series episode: the shot's number within its scene (0010, 0015…), part of its shot code; never changes once set (V1S-274). */
 	shot_number: z.number().int().positive().max(9999).optional(),
+	/** The scene code this shot was numbered under when the shot list was approved; with shot_number it is the shot's code, and it stays when the shot moves to another scene. */
+	scene_code: z.string().regex(/^[A-Z]{3}$/).optional(),
 	/** Imported from a Notion series: the shot it came from and the details the card has no field for. */
 	source: z.object({
 		notion_page_id: z.string().min(1).max(64), scene_page_id: z.string().min(1).max(64),
@@ -531,6 +534,8 @@ export const productionStateSchema = z.object({
 	theme: z.string().max(2000).default(''),
 	/** Reviewed deliverable outline, separate from the existing footage pool and episode imports. */
 	story_plan: storyPlanSchema.optional(),
+	/** Which story plan levels the operator has approved, and the codes the brief fixed. Written only by approving a level. */
+	story_levels: storyLevelsSchema.optional(),
 	cards: z.array(storyCardSchema).max(400).default([]),
 	assets: z.array(productionAssetSchema).max(500).default([]),
 	/** Spine links on the board (from 'seed' or a beat, to a beat). Absent = seed then beats in card order. */
@@ -878,7 +883,9 @@ export const ledgerEventSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('project.take_stored.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	z.object({ type: z.literal('project.shot_references_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
 	// Trailer House: seeds, logline rounds, the pick and its blueprint.
-	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
+	z.object({ type: z.literal('project.trailer_house_set.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema }),
+	// A story plan level approved (brief, acts, scenes, story beats, shot list): its codes are fixed from here on.
+	z.object({ type: z.literal('project.story_level_approved.v1'), event_id: idSchema, project_id: idSchema, timestamp: rfc3339Schema, payload: projectSchema })
 ]);
 
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;

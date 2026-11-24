@@ -98,6 +98,14 @@ async function sceneTree(
 		for (const [at, card] of cards.entries()) {
 			const have = numberOf(card.card_id);
 			if (have !== null) { last = have; continue; }
+			// A shot the approved shot list already named is stored under that name, whichever scene it sits in now.
+			if (card.scene_code && card.shot_number) {
+				const code = `${input.show_code}_${input.code}_${card.scene_code}_${shotNumberText(card.shot_number)}`;
+				if (Object.values(shots).some((shot) => shot.code === code)) throw new Error(`${code} already names another shot in Review Room`);
+				shots[card.card_id] = { code, folder_id: folderId };
+				if (card.scene_code === want.code) { used.add(card.shot_number); last = card.shot_number; }
+				continue;
+			}
 			const after = cards.slice(at + 1).map((c) => numberOf(c.card_id)).find((n): n is number => n !== null);
 			const planned = plannedShot(card.title);
 			const shot = planned !== null && planned > last && (after === undefined || planned < after) && !used.has(planned) ? planned

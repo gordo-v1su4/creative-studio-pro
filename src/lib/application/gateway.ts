@@ -44,6 +44,7 @@ import type { Generation, ProductionAsset, StillSend, StoryCard, TrailerHouse } 
 import { storyCardSchema, trailerHouseSchema } from '$lib/domain/schemas';
 import { FIT_MAX_SHOTS, insertIntoGroup, removeFitted } from '$lib/domain/episode-fit';
 import { CODE_PATTERN, fillEpisodeCodes } from '$lib/domain/shot-codes';
+import { applyLevelApproval, keepFixedNames, lockViolations, planNames, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
 import { z } from 'zod';
 import { applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
@@ -86,6 +87,9 @@ function withCodes(project: Project): Project {
 	const filled = fillEpisodeCodes(project.series.scenes, project.production.cards);
 	return { ...project, series: { ...project.series, scenes: filled.scenes }, production: { ...project.production, cards: filled.cards } };
 }
+
+/** Marks a store error raised because a save would change a fixed name. */
+const NAME_LOCKED = 'NAME_LOCKED: ';
 
 const invalid = (message: string): CommandFailure => ({
 	ok: false,
@@ -285,12 +289,38 @@ export class ProjectCommandGateway {
 				parsed.data.project_id,
 				parsed.data.expected_version,
 				// Cuts change only through cut commands: a whole-production save keeps the stored ones.
-				(current) => ({ ...current, ...(syncedReviewRoom ? { review_room: syncedReviewRoom } : {}), production: { ...keepStoredCuts(parsed.data.production, current.production), updated_at: new Date().toISOString() } }),
+				// Names fixed by an approved story plan level hold too: one that is missing is put back, one that is changed is refused.
+				(current) => {
+					const next = { ...current, ...(syncedReviewRoom ? { review_room: syncedReviewRoom } : {}), production: { ...keepFixedNames(current.production, keepStoredCuts(parsed.data.production, current.production)), updated_at: new Date().toISOString() } };
+					const broken = lockViolations(current.production.story_levels?.approved ?? {}, planNames(current), planNames(next));
+					if (broken.length) throw new Error(`${NAME_LOCKED}${broken[0]}`);
+					return next;
+				},
 				'project.production_updated.v1'
 			);
 			return { ok: true, data: project };
 		} catch (e) {
+			const message = e instanceof Error ? e.message : '';
+			if (message.startsWith(NAME_LOCKED)) return invalid(`${message.slice(NAME_LOCKED.length)}: its level is approved, so only the title can change`);
 			return this.storeError(e);
+		}
+	}
+
+	/**
+	 * Approve a story plan level (decision 22, ADR 0010): record it and give that level's things their codes, once.
+	 * `syncedReviewRoom` carries the Review Room folders made for a connected trailer's new scenes and shots.
+	 */
+	async approveStoryLevel(projectId: string, expectedVersion: number, input: { level: StoryLevel; show_code?: string; project_code?: string }, syncedReviewRoom?: Project['review_room']): Promise<CommandOutcome<Project>> {
+		if (!STORY_LEVELS.includes(input.level)) return invalid(`Unknown story plan level: ${String(input.level)}`);
+		let refusal = '';
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				try { return { ...applyLevelApproval(current, input.level, new Date().toISOString(), input), ...(syncedReviewRoom ? { review_room: syncedReviewRoom } : {}) }; }
+				catch (cause) { refusal = cause instanceof Error ? cause.message : 'That level cannot be approved yet'; throw cause; }
+			}, 'project.story_level_approved.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			return refusal ? invalid(refusal) : this.storeError(e);
 		}
 	}
 
