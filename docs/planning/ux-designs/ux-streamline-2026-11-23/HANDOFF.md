@@ -3,6 +3,69 @@
 Written 2026-11-24 so each remaining slice can be carried on in its own thread. Read this first, then the slice's
 section in `PLAN.md` (same folder), which holds the dated status notes for everything already built.
 
+## Start here: the change of course on 2026-11-24 (evening)
+
+The operator looked at the local copy beside the agreed mocks and said the app is "a mix of a hot mess": new pieces around old screens, wrong names, and stale test material. Everything below this section is still true as a record of what was built, but **the way of working has changed**. Read this section first; it wins where it disagrees with the rest.
+
+### How to work now
+
+- **One screen at a time, finished completely before the next.** Finished means: it works, it matches its mock on the canvas (https://claude.ai/artifact/GcSURykGvjJGXujETaqa1m), it shows the right names, and the operator has looked at it with real TR130 material and said yes. No more wrapping new chrome round an old screen and calling the slice built. Their words: "this whole mix and match thing was not the best approach."
+- **Order:** Shots (grid, takes, viewer), Prep, Story, Canvas, Cut, Settings. New features (the render queue's remaining steps, voice) wait for the screens they live on.
+- **The main session orchestrates; subagents build.** The operator asked that the main session only plan, brief, review and report, and that implementation go to subagents or sessions on Opus 5.5 at medium effort. Check their report against the diff and in the browser before telling the operator it is done.
+- **Say plainly when a screen does not yet look like its mock.** "Built" in the status notes below meant "works and tested", and the operator read it as "looks like the mock". That gap is what caused the surprise.
+- Still true: no release and no push to `main` without their word; no PR unless they say so; never change real data on Hosted Studio.
+
+### The real material is now on this Mac
+
+- **TR130 — Teaser Trailer** (`?project=01a2067a-6cdc-7d1f-b28c-19429297cb80`) was copied down from Hosted Studio on 2026-11-24, one way, read only on the server. 57 shots, 120 takes (all files in its own folder), one cut. **Judge every screen with this project**, not with "Blood Rush — Teaser Trailer", which is the old TR100 source pool the operator calls garbage.
+- **It is connected to the real TR130 in Review Room.** A pick or a review made locally changes Review Room. Look; do not press.
+- The series record and its reference cache (`data/series/`) were refreshed from the server too (the local character sheets were out of date). What was replaced is in `data/series/archive/before-hosted-copy-2026-11-24/`.
+- **TR110 is not here, and TR130's Prep needs it**: TR130's references come from TR110's Prep (`story_plan.prep_source_project_id`), which points at TR105, which points at The Late Shift. Copying TR110 (3.0 GB) and TR105 (540 MB) down is needed before Prep can be judged. Not done; ask first.
+- **The route to the server** is in the vault note `04-Projects/Proxmox Home/Tailscale Agent Access.md`: Tailscale SSH, `gordo@app-vm`, data at `/opt/creative-studio-pro/data/`. Tailscale has to be running on this Mac, and the first connection asks the operator to approve a check in the browser. The LAN address refuses this Mac's key.
+- The operator has not confirmed the current sheets look right here (grey background, headshot on the far right, headless body not scaled up).
+
+### Names (the operator's rule; a subagent was fixing the display when this was written)
+
+- A shot is `BLR_TR130_DRP_0010`: show, trailer (`TR` stands where `EP` would), scene code, shot number in four digits counting in tens. A take adds `_v001`. These already exist for 56 of TR130's 57 shots, but **only in the Review Room connection** (`project.review_room.shots[card_id].code`, and `asset.review_room.code` / `.version`); the cards have no `scene_code` or `shot_number`, so the app showed "01" and file names.
+- **Scene codes are set in Review Room and must never be changed**: `DRP MRN SUN KAI VHV RMT TER PTY PCK RFS CAM`.
+- A scene is shown one way everywhere: `DRP · The sealed drop and the hood`. The board group's name "TR130 01 · …" (the "01" is only the scene's order) means nothing to the operator and is not shown.
+- A subagent was given this on 2026-11-24: shots and takes called by their code everywhere, the Story page's shot list showing the board's shots under their scenes, scenes labelled by code and title; display only, nothing written to the project. **Check `git log` and `git status` for whether it landed**; if its work is uncommitted or half done, finish or redo it before anything else.
+- Not settled: what a take that is not yet stored in Review Room shows for its version, and how a single longer video that covers several shots without being split is named. Follow what Review Room shows.
+
+### The Story page: proposed, liked, not yet approved in so many words
+
+The operator finds five levels (Brief, Acts, Scenes, Story beats, Shot list) "a little convoluted"; of the proposal below they said "this looks a lot clearer" and asked for it to be fleshed out before it is built.
+
+- **Three steps instead of five: Brief, Scenes, Shot list.** Acts become plain headings over the scenes. Story beats stop being a step: by the glossary and the story-interview skill they are the season's Save the Cat moments from the Bible, and a scene carries them; show them on the scenes that carry them.
+- Each scene shows its code, its name, a line or two on what happens (its Action), and the story beats it carries. Approving Scenes locks scene codes; approving the Shot list locks shot numbers.
+- The shot list is the board's shots, by scene, with their names. In TR130 the plan holds no shots and no beats; its 57 shots are board cards whose group is the scene's group.
+- The Bible (Notion, imported as read-only text in `story_plan.source`) should fill the brief and each scene's "what happens" as a draft for the operator to approve. It must not rename scenes or change codes. TR130's brief is empty and its acts carry placeholder text.
+- **Do not carry the story across from TR110.** The operator said so explicitly. TR110 has 26 written beats and no scenes; TR130 has 11 scenes and no beats; leave it that way.
+- To flesh out: how levels and approvals in `src/lib/domain/story-levels.ts` and `production.story_levels` change, what happens to episodes (which may keep all five), and a mock of the three-step page agreed before it is built.
+
+### The look: what was decided today and what is still open
+
+- **The Agent's panel is decided and built** (`0935565`): a chat and nothing else, a purple wash rising from the composer, the word "Agent" in muted purple, no pink, no boxes, everything else behind "More". `DECISIONS.md` ("the Agent chat's look, decided again") has the rules; the mocks still show the earlier pink version. It has not been seen with a real conversation in it.
+- **The selection green goes.** The dark green selection fill (`--color-selected`, `#10221f`, taken from Review Room) clashes with the teal; the operator regrets pointing at Review Room for it. Proposed and not yet chosen: a neutral grey fill, teal kept for the pick, approved and the main button. Show options on a mock before changing the token.
+- **No outlines, no boxes, rounded not square.** Every screen not yet rebuilt still has the old square, bordered, blue-green style: most of Story below the plan, Prep, the canvas's left panel and its Seed, Voice and Scene cards, Settings. That is unfinished work, not a design choice.
+- The Story page does not make its steps obvious; the operator only understood it once it was spelled out.
+- Earlier-round mocks (options A, B, C) exist only in an old session's scratch folder and may be gone; the canvas holds the seven agreed look-B screens. Cut was never on the canvas.
+
+### Where the code stands
+
+- `ux-streamline` was pushed to GitHub for the first time on 2026-11-24 at `12a751b` (a backup; no PR, `main` untouched at `337de5e`, nothing released). Anything committed after that is local until pushed again.
+- **Slice 7 (Cut) was merged into `ux-streamline` by its own session** (`6c651bb`, `12a751b`). Nobody has reviewed that merge; its session says lock, mix, export and QC were not pressed for real. Review it when Cut's turn comes.
+- **Slice 6 (Prep intake) is on `refs/heads/slice-6-prep-intake`**, five commits, unmerged and unreviewed; its session says only stand-ins have sorted anything, not the real model.
+- **Slice 8 (render queue) is paused** with steps 1 to 4 and 9 built (see its status note in `PLAN.md`): a take marked Needs changes can be queued and its prompt change approved, draft mode and Finalize are gone, and nothing can be priced or sent yet.
+
+### Questions waiting on the operator
+
+1. Three-step Story page: go ahead as described?
+2. Selection colour: which option, once shown.
+3. Copy TR110 and TR105 down so Prep can be judged?
+4. Unstored takes and unsplit grouped videos: how are they named?
+5. Does the operator want `ux-streamline` pushed after each piece from now on? They said "I thought we were pushing as we went."
+
 ## What to read, in order
 
 1. This file: where things stand, the rules, and your slice's section below.
