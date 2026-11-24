@@ -486,13 +486,35 @@ export const cutSchema = z.object({
 });
 export type Cut = z.infer<typeof cutSchema>;
 
-/** A generation sent from a beat (Animate) until its result lands as a take. */
+/** Where a render is made (CONTEXT.md: Render provider). */
+export const RENDER_PROVIDERS = ['higgsfield', 'fal', 'swarmui'] as const;
+export type RenderProviderId = (typeof RENDER_PROVIDERS)[number];
+/** A render's state, from waiting for its prompt change to done (slice 8, decision 35). */
+export const RENDER_STATES = ['drafting', 'to_approve', 'approved', 'queued', 'rendering', 'done', 'failed', 'refused'] as const;
+/** A still or reference a render attaches: a file in the project folder, or the provider's id of an earlier upload. */
+export const renderMediaSchema = z.object({ url: z.string().max(2000).optional(), media_id: z.string().max(200).optional(), role: z.string().max(40).optional() });
+/** A price in the render provider's own unit. Credits and dollars are never added. */
+export const renderPriceSchema = z.object({
+	amount: z.number().nonnegative(),
+	unit: z.enum(['credits', 'usd']),
+	/** The settings it was asked for (priceKey); a price for other settings does not open Confirm. */
+	key: z.string().max(400),
+	at: rfc3339Schema
+});
+
+/**
+ * A render (CONTEXT.md: Render): one request to a render provider, from the
+ * moment it is asked for until it lands as a take or fails. It grew out of the
+ * record of a generation sent from a shot, so everything the render queue
+ * added is optional and stored projects still load. `request_id` is the
+ * render's own id; for records made before the queue it is the Higgsfield job id.
+ */
 export const generationSchema = z.object({
 	/** Identity declaration at submission time, retained even if the shot is later edited. */
 	identity_tags: identityTagsSchema.optional(),
 	request_id: z.string().min(1).max(200),
 	card_id: idSchema,
-	provider: z.literal('higgsfield'),
+	provider: z.enum(RENDER_PROVIDERS),
 	model: z.string().min(1),
 	prompt: z.string().min(1).max(10_000),
 	duration_s: z.number().positive(),
@@ -506,7 +528,36 @@ export const generationSchema = z.object({
 	take_id: idSchema.optional(),
 	/** A finalize: on completion its 1080p video replaces this take's media instead of adding a take. */
 	finalizes: idSchema.optional(),
-	error: z.string().max(2000).optional()
+	error: z.string().max(2000).optional(),
+	/** Absent on records made before the render queue; `renderState` reads those from `status`. */
+	state: z.enum(RENDER_STATES).optional(),
+	/** A re-render: the take it answers. It is added beside that take and never replaces it. */
+	answers_take_id: idSchema.optional(),
+	/** The operator's own words on what must change. */
+	requested_change: z.string().max(4000).optional(),
+	/** "Render again unchanged": the earlier request with the earlier prompt. */
+	unchanged: z.boolean().optional(),
+	/** The reviewers' open notes it answered, as read from Review Room when it was queued. */
+	notes: z.array(z.object({ text: z.string().max(4000), at_s: z.number().nonnegative().optional(), author: z.string().max(200).optional() })).max(100).optional(),
+	/** The prompt of the take it answers; `prompt` is the prompt as it will be (or was) sent. */
+	prompt_before: z.string().max(10_000).optional(),
+	/** What the skill's check still finds in `prompt` (empty = clean; absent = not checked). */
+	check: z.array(z.string().max(500)).max(40).optional(),
+	generate_audio: z.boolean().optional(),
+	/** The still and references sent, so every later take can be re-rendered from the app's own record. */
+	still: renderMediaSchema.optional(),
+	references: z.array(renderMediaSchema).max(12).optional(),
+	/** The earlier Higgsfield job whose request is read back and whose media is sent again by id. */
+	reuse_job_id: z.string().min(1).max(200).optional(),
+	price: renderPriceSchema.optional(),
+	/** The render provider's job id, once sent. */
+	job_id: z.string().min(1).max(200).optional(),
+	/** The provider's answer: an HTTP status where it gives one, otherwise its status word. */
+	answer_code: z.union([z.number().int(), z.string().max(40)]).optional(),
+	/** The Trigger.dev run carrying it (ADR 0011); a report from any other run is out of date. */
+	run_id: z.string().max(200).optional(),
+	approved_at: rfc3339Schema.optional(),
+	sent_at: rfc3339Schema.optional()
 });
 export type Generation = z.infer<typeof generationSchema>;
 
