@@ -12,6 +12,8 @@
 	import { playItemFor } from '$lib/domain/slate';
 	import { droppedFiles } from '$lib/ui/dropped-files';
 	import { SHOT_DRAG } from '$lib/ui/shots/SelectionStrip.svelte';
+	import { page } from '$app/state';
+	import { sceneRoomLink } from '$lib/domain/review-room-links';
 
 	let { project, openGroupId, onOpenGroup, onMoveShots, onAddFiles }: {
 		project: Project | null; openGroupId: string; onOpenGroup: (groupId: string) => void;
@@ -96,6 +98,8 @@
 				<span class="name">{group.name}</span><span class="count">{group.count}</span>
 			</button>
 			{#if open}
+				{@const roomHref = project ? sceneRoomLink(page.data.reviewRoomUrl, project, group.group_id) : null}
+				{#if roomHref}<a class="cp room" href={roomHref} target="_blank" rel="noopener" title="Open this scene's folder in Review Room">Open in Review Room</a>{/if}
 				<ul>
 					{#each shots as shot (shot.id)}
 						<li data-status={shot.status} title={shot.title} draggable="true" ondragstart={(event) => { event.dataTransfer?.setData(SHOT_DRAG, shot.id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove'; }}><span class="num">{shot.number}</span><span class="name">{shot.title}</span></li>
@@ -110,6 +114,8 @@
 	.outline { display: flex; height: 100%; min-height: 0; flex-direction: column; overflow-y: auto; padding: 6px; }
 	.head { display: flex; min-width: 0; gap: 8px; margin: 0; overflow: hidden; padding: 4px 8px 6px; color: var(--color-ink-3); }
 	.said { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; color: var(--color-teal-ink); letter-spacing: 0.02em; text-transform: none; }
+	.room { display: block; flex: none; padding: 2px 8px 3px 16px; color: var(--color-amber); }
+	.room:hover { color: var(--color-ink); }
 	.group.over { background: var(--color-teal-deep); color: var(--color-teal-ink); }
 	.none { margin: 0; padding: 4px 8px; color: var(--color-ink-3); font-size: 12px; white-space: nowrap; }
 	.group { display: flex; width: 100%; height: 24px; flex: none; align-items: center; gap: 8px; overflow: hidden; border: 0; border-radius: 5px; background: none; padding: 0 8px; color: var(--color-ink-2); font: 12.5px var(--font-sans); text-align: left; white-space: nowrap; cursor: pointer; }

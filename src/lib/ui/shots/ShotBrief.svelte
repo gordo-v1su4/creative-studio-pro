@@ -11,11 +11,14 @@
 	import { SIZE_WORDS } from '$lib/domain/shot-spec';
 	import PromptSections from '$lib/ui/shots/PromptSections.svelte';
 	import MakeTake from '$lib/ui/shots/MakeTake.svelte';
+	import { page } from '$app/state';
+	import { shotRoomLink } from '$lib/domain/review-room-links';
 
 	let { project, card, code = null, onUpdated }: { project: Project; card: StoryCard | null; code?: string | null; onUpdated: (project: Project) => void } = $props();
 
 	const pick = $derived(card ? pickFor(project.production, card) : null);
 	const facts = $derived(card ? shotCardFacts(card, project.production.assets, pick?.asset_id ?? null) : null);
+	const roomHref = $derived(card ? shotRoomLink(page.data.reviewRoomUrl, project, card.card_id, pick) : null);
 	const specRows = $derived.by((): PromptSection[] => {
 		const spec = card?.fit?.spec;
 		if (!spec) return [];
@@ -45,7 +48,7 @@
 	{#if !card || !facts}
 		<p class="cp none">Select one shot on the canvas to see its details</p>
 	{:else}
-		<p class="cp head"><b>{code ?? facts.number}</b><span data-status={facts.status}>{facts.statusLabel}</span><span>{facts.length}</span></p>
+		<p class="cp head"><b>{code ?? facts.number}</b><span data-status={facts.status}>{facts.statusLabel}</span><span>{facts.length}</span>{#if roomHref}<a class="room" href={roomHref} target="_blank" rel="noopener" title="Open this in Review Room, where clients review">Review Room</a>{/if}</p>
 		<p class="title">{card.title}</p>
 		<p class="cp">Story beat</p>
 		<p class="text">{card.beat}</p>
@@ -65,6 +68,8 @@
 	.none { margin: 0; white-space: normal; line-height: 1.6; }
 	.head { display: flex; gap: 10px; margin: 0; }
 	.head b { font-weight: 400; color: var(--color-teal); }
+	.head .room { margin-left: auto; color: var(--color-amber); }
+	.head .room:hover { color: var(--color-ink); }
 	.head [data-status='approved'] { color: var(--color-teal); }
 	.head [data-status='awaiting'] { color: var(--color-amber); }
 	.head [data-status='changes'] { color: #ff7a6b; }

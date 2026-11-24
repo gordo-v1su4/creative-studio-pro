@@ -54,3 +54,12 @@ test('a timeline opens from what is already known and reads its files while it p
 	// The clip at the playhead shows a frame of its strip until its own frames are in memory.
 	expect(player).toContain('stripFrameStyle(strip, stripIndex(playhead, current.duration))');
 });
+
+test('notes from Review Room are amber rectangles on the bar and rows in the review block, and a click seeks', () => {
+	expect(viewer).toContain('{#each marks as mark (mark.id)}<button type="button" class="note"');
+	expect(styles).toMatch(/\.track \.note \{[^}]*width: 4px; height: 12px;[^}]*background: var\(--color-amber\);/);
+	expect(viewer).toContain('onclick={() => seek(mark.at)}');
+	expect(viewer).toContain('onclick={() => note.timecodeSec !== null && seek(note.timecodeSec)}');
+	// A click on a mark is a seek to the note, not a scrub of the bar underneath it.
+	expect(viewer).toContain('onpointerdown={(event) => event.stopPropagation()}');
+});

@@ -11,9 +11,10 @@
 	import { posterUrl, proxyUrl, stripUrl } from '$lib/media/gpu/clipBanks';
 	import { laneFrames, stripFrameStyle, stripIndex } from '$lib/media/strips';
 	import { loadPeaks, waveColumns, wavePath } from '$lib/media/waveform';
+	import { noteMarks, orderedNotes, type ReviewNote } from '$lib/domain/review-notes';
 	import { referenceImageUrl } from '$lib/media/reference-images';
 
-	let { production, cards, shotId = $bindable(), busy = false, reviewHost = null, onclose, onpick, onreview }: {
+	let { production, cards, shotId = $bindable(), busy = false, reviewHost = null, roomHref = null, notesFor = null, notesStamp = 0, onclose, onpick, onreview }: {
 		production: ProductionState;
 		/** The shots in the order the grid shows them; arrow keys walk this list. */
 		cards: StoryCard[];
@@ -21,6 +22,12 @@
 		busy?: boolean;
 		/** Where the review controls are drawn: the dock. */
 		reviewHost?: HTMLElement | null;
+		/** The address of a shot's take in Review Room, when it has one there. */
+		roomHref?: ((cardId: string, take: Take | null) => string | null) | null;
+		/** Reads the notes reviewers left on a take's shot in Review Room. */
+		notesFor?: ((take: Take) => Promise<ReviewNote[]>) | null;
+		/** Changes when Review Room reports a change, so the notes on screen are read again. */
+		notesStamp?: number;
 		onclose: () => void;
 		onpick: (cardId: string, takeId: string) => void;
 		onreview: (take: ProductionAsset, change: { status?: ReviewStatus; excluded?: boolean }) => void;
@@ -54,6 +61,18 @@
 	const strip = $derived(shown?.kind === 'video' ? stripUrl(shown.url) : null);
 	const tiles = $derived(laneFrames(laneWidth / (FRAME_LANE * aspect)));
 	const played = $derived(length ? Math.min(100, (time / length) * 100) : 0);
+	// Notes from Review Room for the shot on screen: listed in the dock and marked on the scrub bar at their timecodes.
+	let notes = $state<{ asset: string; list: ReviewNote[] }>({ asset: '', list: [] });
+	const noteAsset = $derived(shown?.review_room?.asset_id ?? '');
+	$effect(() => {
+		void notesStamp;
+		const take = shown, asset = noteAsset;
+		if (!take || !asset || !notesFor) { if (notes.asset !== asset) notes = { asset, list: [] }; return; }
+		if (notes.asset !== asset) notes = { asset, list: [] };
+		void notesFor(take).then((list) => { if (noteAsset === asset) notes = { asset, list }; }).catch(() => null);
+	});
+	const noteList = $derived(orderedNotes(notes.list));
+	const marks = $derived(noteMarks(notes.list, length));
 	let sound = $state<{ take: string; path: string; columns: number } | 'none' | null>(null);
 	$effect(() => {
 		const take = shown?.kind === 'video' ? shown : null;
@@ -184,7 +203,7 @@
 		<div class="frames" style:height={`${FRAME_LANE}px`}>
 			{#if strip}{#each tiles as frame, i (i)}<i style={stripFrameStyle(strip, frame)}></i>{/each}{/if}
 		</div>
-		<div class="track"><i style:width={`${played}%`}></i></div>
+		<div class="track"><i style:width={`${played}%`}></i>{#each marks as mark (mark.id)}<button type="button" class="note" class:done={mark.done} style:left={`${mark.left}%`} title={mark.title} aria-label={`Note at ${timecode(mark.at)}`} onpointerdown={(event) => event.stopPropagation()} onclick={() => seek(mark.at)}></button>{/each}</div>
 		<div class="wave">
 			{#if sound && sound !== 'none'}
 				<svg viewBox={`0 0 ${sound.columns} 2`} preserveAspectRatio="none" aria-hidden="true"><path d={sound.path} /></svg>
@@ -240,6 +259,19 @@
 			<p class="cp">Review Room</p>
 			<p class="code stored">{shown.review_room.code}_{shownMark?.label}</p>
 		{/if}
+		{#if noteList.length}
+			<p class="cp">Notes <span class="code">{noteList.length}</span></p>
+			<div class="notes">
+				{#each noteList as note (note.id)}
+					<button type="button" class="nt" class:done={note.completedAt !== null} title={`${note.authorName}: ${note.body}`} disabled={note.timecodeSec === null || note.timecodeSec > length + 0.05} onclick={() => note.timecodeSec !== null && seek(note.timecodeSec)}>
+						<span class="code tc">{note.timecodeSec === null ? '—' : timecode(note.timecodeSec)}</span><span class="who">{note.authorName}</span><span class="body">{note.body}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+		{#if roomHref?.(card.card_id, shown)}
+			<div class="row"><a class="key" href={roomHref(card.card_id, shown)} target="_blank" rel="noopener" title="Open this in Review Room, where clients review">Open in Review Room</a></div>
+		{/if}
 	</div>
 {/if}
 
@@ -261,6 +293,9 @@
 	.track { position: relative; height: 3px; flex: none; background: #1f1f23; transition: height 110ms ease-out, margin 110ms ease-out; }
 	.scrub:hover .track { height: 8px; margin: -2.5px 0; }
 	.track i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #123a35, #8be0c6); }
+	/* A note from Review Room: an amber rectangle on the bar at its timecode. */
+	.track .note { position: absolute; top: 50%; width: 4px; height: 12px; margin: -6px 0 0 -2px; border: 0; background: var(--color-amber); padding: 0; cursor: pointer; }
+	.track .note.done { opacity: 0.4; }
 	.wave { position: relative; display: flex; height: 22px; flex: none; align-items: center; }
 	.wave svg { position: absolute; inset: 0; width: 100%; height: 100%; fill: #34343b; }
 	.wave svg.played { fill: var(--color-teal); opacity: 0.85; }
@@ -303,5 +338,13 @@
 	.st .code { margin-left: auto; }
 	.hint { margin: 0; color: var(--color-ink-3); font-size: 12px; line-height: 1.5; }
 	.row { display: flex; gap: 4px; margin-top: 4px; }
+	.notes { display: flex; max-height: 132px; flex-direction: column; overflow-y: auto; }
+	.nt { display: flex; height: 22px; min-width: 0; flex: none; align-items: center; gap: 8px; overflow: hidden; border: 0; border-radius: 5px; background: none; padding: 0 6px; text-align: left; white-space: nowrap; cursor: pointer; }
+	.nt:hover:not(:disabled) { background: var(--color-control); }
+	.nt:disabled { cursor: default; }
+	.nt .tc { width: 54px; flex: none; color: var(--color-amber); }
+	.nt .who { flex: none; color: var(--color-ink-3); font-size: 11.5px; }
+	.nt .body { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; color: var(--color-ink-2); font-size: 12px; }
+	.nt.done .body, .nt.done .tc { opacity: 0.45; }
 	.stored { margin: 0; color: var(--color-ink); }
 </style>

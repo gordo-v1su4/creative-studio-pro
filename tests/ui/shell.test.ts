@@ -58,3 +58,16 @@ test('unsaved edits survive an arriving change, and a review that could not be s
 	expect(workspaceSource).toContain("text: 'Not sent', tone: 'bad'");
 	expect(pageSource).toContain('for (const entry of [...roomState.outbox])');
 });
+
+test('a shot, a take and a scene each link to themselves in Review Room, opening in a new tab', () => {
+	const viewer = readFileSync('src/lib/ui/shots/Viewer.svelte', 'utf8');
+	const outline = readFileSync('src/lib/ui/shell/Outline.svelte', 'utf8');
+	const layoutLoad = readFileSync('src/routes/+layout.server.ts', 'utf8');
+	expect(workspaceSource).toContain('shotRoomLink(page.data.reviewRoomUrl, project, card.card_id, selectedPick)');
+	expect(viewer).toContain('>Open in Review Room</a>');
+	expect(outline).toContain('sceneRoomLink(page.data.reviewRoomUrl, project, group.group_id)');
+	for (const source of [workspaceSource, viewer, outline]) expect(source).toContain('target="_blank" rel="noopener"');
+	// The browser is told the address only; the key never leaves the server.
+	expect(layoutLoad).toContain('env.CSP_REVIEW_ROOM_URL');
+	expect(layoutLoad).not.toContain('API_KEY');
+});

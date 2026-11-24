@@ -247,7 +247,30 @@ Status, part one, 2026-11-23 (steps 2 and 3 in this repository; local test copy,
 
 Checked in the browser: the line moves from "checking" to "in step", checks go out about every ten seconds, and the version stays put when nothing changed. The first check after opening brought in changes that had been waiting in Review Room (version 437 to 439), which is the catch-up working. Not exercised live: a failed send and its retry, and an edit surviving an arriving change; both are covered by tests (19 new) rather than by taking Review Room offline.
 
-Still open in slice 3: notes at their timecodes in the viewer (step 4, needs the read endpoint in `review-room-svelte`), "Open in Review Room" links (step 5, needs addresses there), and the three changes in `review-room-svelte` itself (steps 6 to 8). The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
+Released to Hosted Studio the same day as `a1482a7`. On hosted TR130 the top bar reads "in step", checks go out about every ten seconds and take about 0.7 s each, and the "Sync reviews" button is gone. The first check there took the project from version 346 to 348 (what had been waiting in Review Room, and its place in the feed); it has stayed at 348 since.
+
+Status, part two, 2026-11-23 (step 5 in this repository; local test copy):
+
+- **Links to Review Room** (`src/lib/domain/review-room-links.ts`). A shot's Details (grid and canvas) carries "Review Room"; the viewer's review block carries "Open in Review Room" for the take on screen; the open group in the outline carries "Open in Review Room" for its folder. Each opens in a new tab. The address is `/?project=…&folder=…&asset=…&version=…`, carrying as much as this app knows: the exact version when the take is stored there, else the shot's folder, else the project's folder.
+- The browser now learns where Review Room is from the layout (`reviewRoomUrl`, the address only, never the key).
+- Until Review Room understands these addresses (step 6), a link opens Review Room on its first project. Episodes of a series get no link yet: their Review Room project id is held in the series record, not on the project.
+
+Survey of `review-room-svelte` (read-only, 2026-11-23), what steps 6 to 8 take there:
+
+- **Addresses (step 6).** Everything that is "open" lives in runes in one file, `src/routes/+page.svelte`; nothing is in the URL, and every owner action reloads the page back to the first project. All data is already on the client after load, so a link only has to apply ids after mount; `openInboxNote` is the existing model. Query parameters on `/` fit (`?sharing=1` already works that way). A shot can be found by its code within a project. Sign-in drops the target today, so a cold link needs a validated `next`.
+- **Link back (step 7).** Folders have `ownerApp` but no URL field. One optional field on `projectFolders`, written by the owning credential and limited to https on this app's host, then shown beside the lock.
+- **Notes (step 8).** Reviewer comments belong to the shot, not to one version; the timecode is seconds, optional. A read endpoint under the existing key scheme (`media:read`) is one handler and one route. Notes per version would need a new field, and comments already written could not be attributed to a take.
+- **How it ships.** A merge to `main` there deploys the app and its database functions to production at once, and a failed check does not undo the database half. Its own rules ask for a written spec and a Linear ticket id in the branch and commit names.
+
+Status, part three, 2026-11-23 (step 4 in this repository; local test copy):
+
+- **Notes in the viewer** (`src/lib/domain/review-notes.ts`, `Viewer.svelte`). The notes reviewers left on the shot in Review Room are listed in the viewer's review block in the order of the picture (timecode, who, text) and marked on the scrub bar as amber rectangles at their timecodes. A click on a row or a mark goes to that moment. A note already dealt with is dimmed; a note with no timecode is listed last and does not seek; a timecode past the end of the take on screen is listed but not marked.
+- They are read through this app's server (`action: "notes"` on the Review Room route, then `GET /api/v1/assets/{id}/notes` there) when a shot is opened and again when Review Room reports a change to it. A take that is not stored there, or a Review Room without that address yet, simply shows no notes: the viewer never gets an error for it.
+- Notes belong to the shot in Review Room, not to one take, so every take of a shot shows the same notes.
+
+Checked in the browser with stand-in notes fed to the page (Review Room cannot return any until step 8 ships): three marks at the right places, four rows in order, a click moved the picture to the note. Against the real Review Room today the answer is "none available", as intended.
+
+Still open in slice 3: the three changes in `review-room-svelte` itself (steps 6 to 8), being built on a branch there, and after them writing each locked folder's address in this app into Review Room, which needs this app to know its own public address. The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
 
 ### 4 · Front door and story plan
 

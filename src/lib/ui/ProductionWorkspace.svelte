@@ -28,6 +28,8 @@
 	import TakesBand from '$lib/ui/shots/TakesBand.svelte';
 	import SelectionStrip from '$lib/ui/shots/SelectionStrip.svelte';
 	import { roomState } from '$lib/ui/review-room-state.svelte';
+	import { page } from '$app/state';
+	import { shotRoomLink } from '$lib/domain/review-room-links';
 	import { mergeProduction } from '$lib/domain/merge-production';
 	import PromptSections from '$lib/ui/shots/PromptSections.svelte';
 	import MakeTake from '$lib/ui/shots/MakeTake.svelte';
@@ -429,6 +431,13 @@
 		finally { pickBusy = false; }
 	}
 
+	/** The notes reviewers left on a take's shot in Review Room; none when it is not stored there or cannot be read. */
+	async function notesFor(take: { asset_id: string }) {
+		const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'notes', take_id: take.asset_id }) });
+		const body = (await response.json().catch(() => null)) as { ok?: boolean; notes?: import('$lib/domain/review-notes').ReviewNote[] } | null;
+		return body?.ok ? (body.notes ?? []) : [];
+	}
+
 	function openViewer(cardId?: string) {
 		const target = cardId ?? selectedShotId ?? draft.cards[0]?.card_id;
 		if (!target) return;
@@ -749,7 +758,7 @@
 		</div>
 	{/if}
 	{#if viewerOpen && tab === 'beats'}
-		<Viewer production={draft} cards={draft.cards} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)} />
+		<Viewer production={draft} cards={draft.cards} {notesFor} notesStamp={roomState.marks[selectedShotId] ?? 0} roomHref={(cardId, take) => shotRoomLink(page.data.reviewRoomUrl, project, cardId, take)} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)} />
 	{/if}
 	{#if detailsHost}
 		<div class="shot-details" use:portal={detailsHost}>
@@ -758,7 +767,8 @@
 			{:else}
 				{@const card = selectedShot}
 				{@const tagged = selectedPick}
-				<p class="cp head"><b>{selectedFacts.number}</b><span data-status={selectedFacts.status}>{selectedFacts.statusLabel}</span><span>{selectedFacts.length}</span></p>
+				{@const roomHref = shotRoomLink(page.data.reviewRoomUrl, project, card.card_id, selectedPick)}
+				<p class="cp head"><b>{selectedFacts.number}</b><span data-status={selectedFacts.status}>{selectedFacts.statusLabel}</span><span>{selectedFacts.length}</span>{#if roomHref}<a class="room" href={roomHref} target="_blank" rel="noopener" title="Open this in Review Room, where clients review">Review Room</a>{/if}</p>
 				<label class="cp" for="detail-title">Title</label>
 				<input id="detail-title" value={card.title} oninput={(event) => updateCard(card.card_id, { title: event.currentTarget.value })} />
 				<label class="cp" for="detail-beat">Story beat</label>
@@ -796,6 +806,8 @@
 	.shot-details .none { margin: 0; white-space: normal; line-height: 1.6; }
 	.shot-details .head { display: flex; gap: 10px; margin: 0; }
 	.shot-details .head b { font-weight: 400; color: var(--color-teal); }
+	.shot-details .head .room { margin-left: auto; color: var(--color-amber); }
+	.shot-details .head .room:hover { color: var(--color-ink); }
 	.shot-details .head [data-status='approved'] { color: var(--color-teal); }
 	.shot-details .head [data-status='awaiting'] { color: var(--color-amber); }
 	.shot-details .head [data-status='changes'] { color: #ff7a6b; }

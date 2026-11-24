@@ -140,3 +140,14 @@ test('a check that finds a change names the shots it touched', async () => {
 	if (!again.ok) throw new Error(again.message);
 	expect(again.changed).toEqual([]);
 });
+
+test('notes are read from the shot in Review Room on its notes address', async () => {
+	const calls: string[] = [];
+	const client = createReviewRoomClient({ baseUrl: 'https://review.test', apiKey: 'test', fetch: (async (url, init) => {
+		calls.push(`${init?.method} ${String(url)}`);
+		return new Response(JSON.stringify({ assetId: 'shot', assetCode: 'BLR_TR100_SHT_0010', notes: [{ id: 'n1', body: 'Too dark', timecodeSec: 2.5, authorName: 'Ana', authorRole: 'client', createdAt: 1, completedAt: null }] }), { status: 200 });
+	}) as typeof fetch });
+	const result = await client.assetNotes('shot');
+	expect(calls).toEqual(['GET https://review.test/api/v1/assets/shot/notes']);
+	expect(result.notes[0]).toMatchObject({ body: 'Too dark', timecodeSec: 2.5 });
+});

@@ -24,7 +24,9 @@ const bodySchema = z.discriminatedUnion('action', [
 	// Store every take of this episode that isn't in Review Room yet.
 	z.object({ action: z.literal('push_all') }),
 	// Pull takes added in Review Room, follow its current version as the pick, report misfiled drops.
-	z.object({ action: z.literal('pull') })
+	z.object({ action: z.literal('pull') }),
+	// The notes reviewers left on a take's shot in Review Room, with their timecodes. Reads only.
+	z.object({ action: z.literal('notes'), take_id: idSchema })
 ]);
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 503 ? 'NOT_CONFIGURED' : 'INVALID_COMMAND', message } }, { status });
@@ -39,6 +41,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		if (body.data.status === undefined && body.data.excluded === undefined) return fail(400, 'Choose a review decision');
 		try { return json({ ok: true, data: await reviewTake({ store: getProjectStore(), client: deps?.client }, projectId.data, body.data) }); }
 		catch (cause) { return fail(400, cause instanceof Error ? cause.message : 'Review could not be saved'); }
+	}
+	if (body.data.action === 'notes') {
+		// Never an error for the viewer: a take that is not stored there, or a Review Room without this endpoint
+		// yet, simply has no notes to show (`available` says which).
+		if (!deps) return json({ ok: true, available: false, notes: [] });
+		const takeId = body.data.take_id;
+		const project = await deps.store.readProject(projectId.data);
+		const take = project?.production.assets.find((asset) => asset.asset_id === takeId);
+		if (!take?.review_room) return json({ ok: true, available: true, notes: [] });
+		try { return json({ ok: true, available: true, notes: (await deps.client.assetNotes(take.review_room.asset_id)).notes ?? [] }); }
+		catch { return json({ ok: true, available: false, notes: [] }); }
 	}
 	if (!deps) return fail(503, 'Add CSP_REVIEW_ROOM_URL and CSP_REVIEW_ROOM_API_KEY to .env.local first');
 	if (body.data.action === 'connect_trailer') {

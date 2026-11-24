@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { ReviewNote } from '$lib/domain/review-notes';
 import { planTree, type RemoteFolder, type TreeFolder } from '$lib/domain/series-tree';
 
 /**
@@ -74,6 +75,10 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 		},
 		async changes(projectId: string, since: number | string) {
 			return request<ChangeFeed>('GET', `/api/v1/projects/${encodeURIComponent(projectId)}/changes?since=${encodeURIComponent(String(since))}`);
+		},
+		/** The notes reviewers left on a shot there, with their timecodes (scope media:read). */
+		async assetNotes(assetId: string) {
+			return request<{ assetId: string; assetCode: string | null; notes: ReviewNote[] }>('GET', `/api/v1/assets/${encodeURIComponent(assetId)}/notes`);
 		},
 		async setReviewStatus(assetId: string, status: 'awaiting_review' | 'in_progress' | 'needs_changes' | 'approved'): Promise<void> {
 			await request('PUT', `/api/v1/assets/${encodeURIComponent(assetId)}/review-status`, { status }, idempotencyKey('review-status', assetId, crypto.randomUUID()));
