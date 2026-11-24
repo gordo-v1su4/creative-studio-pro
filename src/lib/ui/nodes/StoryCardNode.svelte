@@ -249,7 +249,7 @@
 	}}
 >
 	{#if card && facts}
-		<ShotCard {card} {facts} pick={shown} {selected} dropTarget={dropping || referenceOver} position={inSequence} draggable={false} {tag} onselect={(shift) => { if (shift) gather(); }} onopen={() => {}} />
+		<ShotCard {card} {facts} {takes} onpick={(takeId) => story.onPick?.(takeId)} pick={shown} {selected} dropTarget={dropping || referenceOver} position={inSequence} draggable={false} {tag} onselect={(shift) => { if (shift) gather(); }} onopen={() => {}} />
 	{:else}
 		<div class="awaiting" aria-label={`Shot ${story.order + 1}, awaiting draft`}>
 			<span class="cp">Awaiting story draft</span>

@@ -660,7 +660,9 @@ export const projectSchema = z.object({
 		scenes: z.record(z.string(), z.object({ code: z.string().regex(/^[A-Z]{3}$/), folder_id: idSchema })).optional(),
 		/** The trailer's own _Deliverables folder: each cut sent there is the next version of BLR_TR110_TRL01. */
 		deliverables_folder_id: idSchema.optional(),
-		cursor: z.union([z.string(), z.number()]).optional()
+		cursor: z.union([z.string(), z.number()]).optional(),
+		/** The link back written into Review Room's locked folders: this app's address for the project, and how many folders carry it. */
+		link: z.object({ url: z.string().max(500), folders: z.number().int().nonnegative() }).optional()
 	}).optional(),
 	/** An episode imported from a Notion series: which one, and its scene outline (one board group per scene). */
 	series: z.object({

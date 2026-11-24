@@ -25,6 +25,12 @@ class RoomState {
 	marked(cardId: string): boolean { return (this.marks[cardId] ?? 0) > this.now; }
 	/** A review of this shot has not reached Review Room yet; the message says why. */
 	waiting(cardId: string): string | null { return this.outbox.find((entry) => entry.card_id === cardId)?.error ?? null; }
+	/** A pick was saved here but did not reach Review Room: keep it to send again with the next check. */
+	keepPick(answer: object): void {
+		const { room_error: error, room_take: take } = answer as { room_error?: unknown; room_take?: { take_id?: string; card_id?: string | null } };
+		if (typeof error !== 'string' || !take?.take_id || !take.card_id) return;
+		this.outbox = queued(this.outbox, { take_id: take.take_id, card_id: take.card_id, current: true }, error);
+	}
 	reset(): void { this.lastAt = null; this.error = null; this.checking = false; this.outbox = []; this.marks = {}; }
 
 	/**
@@ -34,17 +40,25 @@ class RoomState {
 	async send(project: Project, change: ReviewChange): Promise<{ ok: true; project: Project } | { ok: false; message: string; kept: boolean }> {
 		let status = 0, message = 'Review Room could not be reached';
 		try {
-			const response = await fetch(`/api/projects/${project.project_id}/review-room`, {
+			const review = {
 				method: 'POST', headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ action: 'review', take_id: change.take_id, expected_version: project.version, ...(change.status !== undefined ? { status: change.status } : {}), ...(change.excluded !== undefined ? { excluded: change.excluded } : {}) })
-			});
-			status = response.status;
-			const text = await response.text();
-			let body: { ok?: boolean; data?: Project; error?: { message?: string } } = {};
-			// A server in front of the app can answer with its own page; that is "not reached", not a refusal.
-			try { body = JSON.parse(text); } catch { status = status < 500 ? 502 : status; message = `HTTP ${response.status}`; }
-			if (body.ok && body.data) { this.outbox = settled(this.outbox, change.take_id); return { ok: true, project: body.data }; }
-			if (body.error?.message) message = body.error.message;
+			};
+			const post = async (payload: RequestInit) => {
+				const response = await fetch(`/api/projects/${project.project_id}/review-room`, payload);
+				status = response.status;
+				const text = await response.text();
+				let body: { ok?: boolean; data?: Project; error?: { message?: string } } = {};
+				// A server in front of the app can answer with its own page; that is "not reached", not a refusal.
+				try { body = JSON.parse(text); } catch { status = status < 500 ? 502 : status; message = `HTTP ${response.status}`; }
+				if (body.error?.message) message = body.error.message;
+				return body.ok && body.data ? body.data : null;
+			};
+			let latest: Project | null = project;
+			// A pick that never reached Review Room goes first; then any status or exclusion kept with it.
+			if (change.current) latest = await post({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'current', take_id: change.take_id }) });
+			if (latest && (change.status !== undefined || change.excluded !== undefined)) latest = await post({ ...review, body: JSON.stringify({ ...JSON.parse(review.body), expected_version: latest.version }) });
+			if (latest) { this.outbox = settled(this.outbox, change.take_id); return { ok: true, project: latest }; }
 		} catch (cause) { message = cause instanceof Error ? cause.message : message; }
 		const kept = worthKeeping({ status, message });
 		if (kept) this.outbox = queued(this.outbox, change, message);

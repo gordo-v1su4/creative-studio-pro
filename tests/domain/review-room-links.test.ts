@@ -38,3 +38,15 @@ test('a scene links to its folder, and a group that is not a scene there to the 
 	expect(sceneRoomLink(base, project, 'g1')).toBe('https://review.example/?project=proj1&folder=scene-1');
 	expect(sceneRoomLink(base, project, 'main')).toBe('https://review.example/?project=proj1&folder=root');
 });
+
+test('every locked folder of a connected project gets one link back to the project here', async () => {
+	const { folderLinks } = await import('../../src/lib/domain/review-room-links');
+	const linked = folderLinks({ ...project, project_id: 'local-1' } as unknown as Project, 'https://studio.example/');
+	expect(linked).toEqual({ url: 'https://studio.example/?project=local-1', folders: ['root', 'scene-1', 'folder-a'] });
+});
+
+test('no link is written from a copy that is not served over https, or for a project with nothing there', async () => {
+	const { folderLinks } = await import('../../src/lib/domain/review-room-links');
+	for (const origin of [undefined, '', 'http://localhost:5174', 'not a url']) expect(folderLinks({ ...project, project_id: 'local-1' } as unknown as Project, origin)).toBeNull();
+	expect(folderLinks({ ...project, project_id: 'local-1', review_room: undefined } as unknown as Project, 'https://studio.example')).toBeNull();
+});

@@ -20,16 +20,27 @@ export function roomLine(input: { connected: boolean; lastAt: number | null; err
 }
 
 export type ReviewStatus = 'awaiting_review' | 'in_progress' | 'needs_changes' | 'approved';
-/** A review decision on one take: the shot's status, excluding or restoring the take, or both. */
-export interface ReviewChange { take_id: string; card_id: string; status?: ReviewStatus; excluded?: boolean }
+/**
+ * A review decision on one take: the shot's status, excluding or restoring the take, making it the pick (Review
+ * Room's current version), or several of these.
+ */
+export interface ReviewChange { take_id: string; card_id: string; status?: ReviewStatus; excluded?: boolean; current?: true }
 /** Decisions that could not be sent, one entry per take, with why the last try failed. */
 export type Outbox = Array<ReviewChange & { error: string }>;
 
 /** Keep a decision that could not be sent. A later decision on the same take replaces the same part of it. */
 export function queued(outbox: Outbox, change: ReviewChange, error: string): Outbox {
-	const at = outbox.findIndex((entry) => entry.take_id === change.take_id);
-	if (at < 0) return [...outbox, { ...change, error }];
-	return outbox.with(at, { ...outbox[at], ...change, error });
+	// A shot has one pick: a newer pick on the same shot withdraws an older one that is still waiting.
+	const base = change.current
+		? outbox.flatMap((entry) => {
+				if (entry.card_id !== change.card_id || entry.take_id === change.take_id || !entry.current) return [entry];
+				const { current: _withdrawn, ...rest } = entry;
+				return rest.status === undefined && rest.excluded === undefined ? [] : [rest];
+			})
+		: outbox;
+	const at = base.findIndex((entry) => entry.take_id === change.take_id);
+	if (at < 0) return [...base, { ...change, error }];
+	return base.with(at, { ...base[at], ...change, error });
 }
 
 /** A kept decision was sent: it leaves the list. */

@@ -532,6 +532,8 @@
 					if (fresh.project) result = (await (await send(fresh.project)).json()) as Answer;
 				}
 				if (!result.ok) throw new Error(result.error.message);
+				// A pick saved here that did not reach Review Room is kept and sent again with the next check.
+				roomState.keepPick(result);
 				adopted?.(result);
 				if (activeProject?.project_id === project.project_id) adoptProject(withPendingPicks(result.data));
 			} catch (e) {
@@ -567,6 +569,17 @@
 					roomState.mark(body.changed ?? []);
 				}
 				roomState.error = null;
+				// Once per opened project: make sure Review Room's locked folders link back here (a no-op when they do).
+				if (!linkedBack.has(project.project_id) && project.review_room) {
+					linkedBack.add(project.project_id);
+					void fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'link_back' }) })
+						.then((response) => response.json())
+						.then((answer: { ok?: boolean; data?: Project; pending?: string }) => {
+							if (answer.pending) linkedBack.delete(project.project_id);
+							if (answer.ok && answer.data && activeProject?.project_id === project.project_id && answer.data.version > activeProject.version) adoptProject(withPendingPicks(answer.data));
+						})
+						.catch(() => linkedBack.delete(project.project_id));
+				}
 				// Reviews that could not be sent earlier go out again, oldest first.
 				for (const entry of [...roomState.outbox]) {
 					const current = activeProject;
@@ -583,6 +596,8 @@
 			}
 		})();
 	}
+	/** Projects whose link back has been checked in this session. */
+	const linkedBack = new Set<string>();
 	/** Changes only when another project is opened, so the check below is not restarted by every update of this one. */
 	const roomProjectId = $derived(activeProject?.project_id ?? '');
 	$effect(() => {

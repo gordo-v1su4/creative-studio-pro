@@ -118,7 +118,7 @@ const node = readFileSync('src/lib/ui/nodes/StoryCardNode.svelte', 'utf8');
 const brief = readFileSync('src/lib/ui/shots/ShotBrief.svelte', 'utf8');
 
 test('a shot on the canvas is the grid card, and its actions float beside it instead of changing its size', () => {
-	expect(markup(node)).toContain('<ShotCard {card} {facts} pick={shown} {selected}');
+	expect(markup(node)).toContain('<ShotCard {card} {facts} {takes} onpick={(takeId) => story.onPick?.(takeId)} pick={shown} {selected}');
 	expect(markup(node)).toContain('draggable={false}');
 	expect(markup(node)).toContain('<NodeToolbar position={Position.Bottom}');
 	// Everything the old card carried is in the bar: takes, bench, hold, animate, finalize, split, exclude, references.
@@ -133,4 +133,26 @@ test('on the canvas the dock shows the selected shot read-only, and canvas drops
 	expect(brief).not.toContain('onedit');
 	expect(page).toContain("dropMeaning({ kind: 'shots', cardIds: beats }, { kind: 'group', groupId: target }, dropContext)");
 	expect(page).toContain("cardId ? { kind: 'shot', cardId } : { kind: 'space', groupId: space }, dropContext)");
+});
+
+test('takes can be seen and chosen on the card itself: marks open into chips, with nothing added or removed on click', () => {
+	const cardStyle = card.slice(card.indexOf('<style>'));
+	// The chips are always in the card; hovering, selecting or focusing it only shows them in place of the marks.
+	expect(cardStyle).toMatch(/\.chips \{[^}]*position: absolute;[^}]*display: none;/);
+	expect(cardStyle).toContain('.shot:hover .chips, .shot.selected .chips, .shot:focus-within .chips { display: flex; }');
+	expect(markup(card)).toContain("onpointerenter={() => (looking = take.id)}");
+	expect(markup(card)).toContain('if (choosable) onpick(take.id);');
+	// The pick and excluded takes cannot be chosen, and nothing can while a pick is being saved.
+	expect(markup(card)).toContain('{@const choosable = !take.pick && !take.excluded && !pickBusy}');
+	expect(workspace).toContain('onpick={(takeId) => void makePick(card.card_id, takeId)}');
+});
+
+test('a pick that does not reach Review Room is reported, kept and sent again', () => {
+	const board = readFileSync('src/routes/api/projects/[projectId]/board/+server.ts', 'utf8');
+	const state = readFileSync('src/lib/ui/review-room-state.svelte.ts', 'utf8');
+	expect(board).toContain('room_error: failed');
+	expect(board).not.toContain('.catch(() => {})');
+	expect(state).toContain("JSON.stringify({ action: 'current', take_id: change.take_id })");
+	expect(workspace).toContain('roomState.keepPick(result);');
+	expect(page).toContain('roomState.keepPick(result);');
 });

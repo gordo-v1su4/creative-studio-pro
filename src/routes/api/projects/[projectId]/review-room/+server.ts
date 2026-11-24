@@ -7,6 +7,10 @@ import { connectTrailer } from '$lib/server/review-room-trailer';
 import { join, resolve, sep } from 'node:path';
 import { pullTakes, pushDeliverable, pushTake } from '$lib/server/review-room-takes';
 import { reviewTake } from '$lib/server/review-room-review';
+import { idempotencyKey } from '$lib/server/review-room';
+import { pickFor } from '$lib/domain/takes';
+import { folderLinks } from '$lib/domain/review-room-links';
+import { env } from '$env/dynamic/private';
 import { qcCut } from '$lib/server/qc-cut';
 
 const bodySchema = z.discriminatedUnion('action', [
@@ -25,6 +29,10 @@ const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('push_all') }),
 	// Pull takes added in Review Room, follow its current version as the pick, report misfiled drops.
 	z.object({ action: z.literal('pull') }),
+	// Write this app's address into the project's locked folders in Review Room, once (and again when folders are added).
+	z.object({ action: z.literal('link_back') }),
+	// Send a pick again: make this take Review Room's current version, if it is still the pick here.
+	z.object({ action: z.literal('current'), take_id: idSchema }),
 	// The notes reviewers left on a take's shot in Review Room, with their timecodes. Reads only.
 	z.object({ action: z.literal('notes'), take_id: idSchema })
 ]);
@@ -54,6 +62,32 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		catch { return json({ ok: true, available: false, notes: [] }); }
 	}
 	if (!deps) return fail(503, 'Add CSP_REVIEW_ROOM_URL and CSP_REVIEW_ROOM_API_KEY to .env.local first');
+	if (body.data.action === 'link_back') {
+		const project = await deps.store.readProject(projectId.data);
+		if (!project) return fail(404, 'Project not found');
+		const wanted = folderLinks(project, env.ORIGIN);
+		// Nothing to write (a local copy, or no folders there), or already written for these folders.
+		if (!wanted || !project.review_room || (project.review_room.link?.url === wanted.url && project.review_room.link.folders === wanted.folders.length)) return json({ ok: true, data: project, linked: 0 });
+		const remote = project.review_room.project_id;
+		let linked = 0;
+		try { for (const folderId of wanted.folders) { await deps.client.setFolderLink(remote, folderId, wanted.url); linked += 1; } }
+		catch (cause) { return json({ ok: true, data: project, linked, pending: cause instanceof Error ? cause.message : 'Review Room could not be reached' }); }
+		const saved = await deps.store.updateProject(projectId.data, project.version, (current) => (current.review_room ? { ...current, review_room: { ...current.review_room, link: { url: wanted.url, folders: wanted.folders.length } } } : current));
+		return json({ ok: true, data: saved, linked });
+	}
+	if (body.data.action === 'current') {
+		const takeId = body.data.take_id;
+		const project = await deps.store.readProject(projectId.data);
+		if (!project) return fail(404, 'Project not found');
+		const take = project.production.assets.find((asset) => asset.asset_id === takeId);
+		const card = take && project.production.cards.find((entry) => entry.card_id === take.card_id);
+		// Another take has become the pick since, or this one is not stored there: nothing left to send.
+		if (!take?.review_room || take.kind === 'audio' || !card || pickFor(project.production, card)?.asset_id !== take.asset_id) return json({ ok: true, data: project });
+		try {
+			await deps.client.setCurrentVersion(take.review_room.asset_id, take.review_room.version_id, idempotencyKey('current', take.review_room.asset_id, take.review_room.version_id, crypto.randomUUID()));
+			return json({ ok: true, data: project });
+		} catch (cause) { return fail(400, cause instanceof Error ? cause.message : 'Review Room could not be reached'); }
+	}
 	if (body.data.action === 'connect_trailer') {
 		const project = await deps.store.readProject(projectId.data);
 		if (!project) return fail(404, 'Project not found');

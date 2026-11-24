@@ -55,3 +55,14 @@ test('a review is kept to try again only when Review Room could not be reached, 
 	expect(worthKeeping({ status: 400, message: 'Take not found' })).toBe(false);
 	expect(worthKeeping({ status: 400, message: 'Choose a review decision' })).toBe(false);
 });
+
+test('a pick that could not be sent is kept like any other review, alongside a status on the same take', () => {
+	let box: Outbox = [];
+	box = queued(box, { take_id: 't1', card_id: 'a', current: true }, 'offline');
+	box = queued(box, { take_id: 't1', card_id: 'a', status: 'approved' }, 'offline');
+	expect(box).toEqual([{ take_id: 't1', card_id: 'a', current: true, status: 'approved', error: 'offline' }]);
+	// Another take of the same shot becoming the pick replaces the earlier pick: only the last choice is sent.
+	box = queued(box, { take_id: 't2', card_id: 'a', current: true }, 'offline');
+	expect(box.filter((entry) => entry.current).map((entry) => entry.take_id)).toEqual(['t2']);
+	expect(box.find((entry) => entry.take_id === 't1')).toEqual({ take_id: 't1', card_id: 'a', status: 'approved', error: 'offline' });
+});

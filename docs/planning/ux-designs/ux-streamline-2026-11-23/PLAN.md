@@ -281,7 +281,19 @@ Checked after the deploy: an anonymous request to `/` still goes to plain sign-i
 
 Not done there: no Linear ticket exists for the work, so the commits carry no ticket id; the unmerged "keep me signed in" branch (`origin/feat/keep-signed-in`) will meet two small conflicts in the sign-in page, each resolved by keeping both changes; the in-app agents page was not updated (the API document and OpenAPI file were).
 
-Still open in slice 3: releasing this app's links and notes to Hosted Studio (they are on `main` as `743be11`), and writing each locked folder's address in this app into Review Room, which needs this app to know its own public address. The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
+This app's links and notes were released to Hosted Studio the same day as `337de5e`: on hosted TR130 the three links appear and the notes read answers for 25 stored takes (none has a note yet).
+
+Status, part five, 2026-11-23 (the operator's requirement: "see and select between the takes easily, and the current take must update live between the two"; plus the link back):
+
+- **Takes on the card.** A shot with more than one take shows them as marks at rest. While the card is hovered, selected or focused the marks open into one labelled chip per take (`v001`, `v002`, or `T1` for a take not stored yet). Hovering a chip shows that take in the frame; clicking it makes it the pick. The card never changes size. It works the same in the grid and on the canvas (`ShotCard.svelte`).
+- **A pick always reaches Review Room or says so.** Making a take the pick sets Review Room's current version at once. Before, a failure there was swallowed; now the answer reports it, the shot shows "Not sent", and the pick is sent again with every check until it lands (`action: "current"`). A newer pick on the same shot withdraws an older one still waiting.
+- **Review Room to here** was already in place from part one: its current version becomes the pick here within ten seconds, and at once on coming back to this window.
+- **Review Room's own screen** did not notice changes made elsewhere until reloaded. That is being built in `review-room-svelte` on a branch (`live-current-version`): an open workspace follows the current version, status and exclusions within about ten seconds and on focus.
+- **The link back** (step 7, this app's half). Once per opened project, this app writes its own address for the project into every locked folder it owns in Review Room (`action: "link_back"`, then one PATCH per folder), so "Open in Creative Studio Pro" appears there. The address comes from `ORIGIN`, the setting the server already has; a copy without an https address (a local test copy) writes nothing. What was written is remembered on the project (`review_room.link`), so it is not repeated until folders are added.
+
+Checked on the local test copy: a two-take shot showed chips on selection, hovering the other chip showed its frame, clicking it made it the pick with nothing left waiting, the pick held through the next check, and clicking back restored it; the card stayed 158px tall throughout. Not exercised: a pick failing to reach Review Room (covered by tests), and the link back, which only a copy with an https address performs.
+
+Still open in slice 3: watching a link land on its version after Review Room's sign-in, and shipping Review Room's live refresh. The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
 
 ### 4 · Front door and story plan
 

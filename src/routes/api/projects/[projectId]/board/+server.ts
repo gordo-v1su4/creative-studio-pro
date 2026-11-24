@@ -27,13 +27,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 	const outcome = await getGateway().handle({ ...body, project_id: params.projectId });
 	if (!outcome.ok) return json(outcome, { status: commandStatus(outcome.error) });
-	// A series take stored in Review Room: the pick here is Review Room's current version (V1S-276). Best effort;
-	// the board change stands even if Review Room is unreachable, and the next push or sync settles it.
+	// A take stored in Review Room: the pick here is Review Room's current version (V1S-276). The board change
+	// stands even if Review Room cannot be reached; the answer then says so (`room_error`), and the screen keeps the
+	// pick to send again, so the two apps never silently disagree (ADR 0008).
 	if (body.command === 'set_pick' && typeof body.take_id === 'string') {
-		const take = (outcome.data as { production?: { assets?: Array<{ asset_id: string; review_room?: { asset_id: string; version_id: string } }> } }).production?.assets?.find((asset) => asset.asset_id === body.take_id);
+		const take = (outcome.data as { production?: { assets?: Array<{ asset_id: string; card_id?: string; review_room?: { asset_id: string; version_id: string } }> } }).production?.assets?.find((asset) => asset.asset_id === body.take_id);
 		const config = take?.review_room ? getReviewRoomConfig() : null;
 		if (take?.review_room && config) {
-			await createReviewRoomClient(config).setCurrentVersion(take.review_room.asset_id, take.review_room.version_id, idempotencyKey('current', take.review_room.asset_id, take.review_room.version_id)).catch(() => {});
+			const failed = await createReviewRoomClient(config).setCurrentVersion(take.review_room.asset_id, take.review_room.version_id, idempotencyKey('current', take.review_room.asset_id, take.review_room.version_id, crypto.randomUUID()))
+				.then(() => null, (cause) => (cause instanceof Error ? cause.message : 'Review Room could not be reached'));
+			if (failed) return json({ ...outcome, room_error: failed, room_take: { take_id: take.asset_id, card_id: take.card_id ?? null } });
 		}
 	}
 	return json(outcome);

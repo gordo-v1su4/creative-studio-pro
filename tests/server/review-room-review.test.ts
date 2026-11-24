@@ -151,3 +151,13 @@ test('notes are read from the shot in Review Room on its notes address', async (
 	expect(calls).toEqual(['GET https://review.test/api/v1/assets/shot/notes']);
 	expect(result.notes[0]).toMatchObject({ body: 'Too dark', timecodeSec: 2.5 });
 });
+
+test("a folder's link back is one PATCH carrying only the address", async () => {
+	const calls: Array<{ line: string; body: unknown }> = [];
+	const client = createReviewRoomClient({ baseUrl: 'https://review.test', apiKey: 'test', fetch: (async (url, init) => {
+		calls.push({ line: `${init?.method} ${String(url)}`, body: JSON.parse(String(init?.body)) });
+		return new Response('{}', { status: 200 });
+	}) as typeof fetch });
+	await client.setFolderLink('proj', 'folder-1', 'https://studio.example/?project=p1');
+	expect(calls).toEqual([{ line: 'PATCH https://review.test/api/v1/projects/proj/folders/folder-1', body: { externalUrl: 'https://studio.example/?project=p1' } }]);
+});

@@ -12,7 +12,7 @@
 	import { SHOT_DRAG } from '$lib/ui/shots/SelectionStrip.svelte';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 
-	let { card, facts, pick, selected = false, dropTarget = false, position = 0, draggable = true, tag = null, onselect, onopen }: {
+	let { card, facts, pick, selected = false, dropTarget = false, position = 0, draggable = true, tag = null, takes = [], pickBusy = false, onpick, onselect, onopen }: {
 		card: StoryCard;
 		facts: ShotCardFacts;
 		pick: Take | null;
@@ -23,6 +23,12 @@
 		position?: number;
 		/** Whether the card can be picked up and dropped (off on the canvas, where the canvas moves cards itself). */
 		draggable?: boolean;
+		/** The shot's takes, for choosing between them on the card (hover a take to see it, click to make it the pick). */
+		takes?: Take[];
+		/** A pick is being saved, or the workspace has unsaved edits: takes can be looked at but not chosen. */
+		pickBusy?: boolean;
+		/** Make this take the pick. Without it the card only shows its takes as marks. */
+		onpick?: (takeId: string) => void;
 		/** One short note over the frame, e.g. a draft's time left or "Under 2K". */
 		tag?: { text: string; tone?: 'warn' | 'bad'; title?: string } | null;
 		/** Clicked; `gather` is true for a shift-click, which also adds it to the selection or takes it out. */
@@ -43,6 +49,14 @@
 		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		along = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
 	}
+
+	// Choosing between takes on the card: its marks open into one labelled chip per take while the card is hovered
+	// or selected. Hovering a chip shows that take in the frame; clicking it makes it the pick. Nothing changes size.
+	/** The take being looked at through its chip, or null. */
+	let looking = $state<string | null>(null);
+	const lookingAt = $derived(looking ? (takes.find((take) => take.asset_id === looking) ?? null) : null);
+	const stillOf = (take: Take) => (take.kind === 'video' ? (posterUrl(take.url, take.in_s ?? 0) ?? '') : referenceImageUrl(take.url, 'small'));
+	const chipLabel = (label: string) => label.replace(/^Take /, 'T');
 
 	/** Fetches the strip once the card is on screen, so the first hover does not wait for it. */
 	function onScreen(node: HTMLElement) {
@@ -83,8 +97,22 @@
 		{:else}
 			<span class="none">No take · planned {facts.length}</span>
 		{/if}
+		{#if lookingAt && stillOf(lookingAt)}<img class="looking" src={stillOf(lookingAt)} alt="" draggable="false" />{/if}
 		{#if facts.takes.length > 1}
-			<span class="marks" aria-hidden="true">{#each facts.takes as take (take.id)}<i class:pick={take.pick} class:excluded={take.excluded}></i>{/each}</span>
+			<span class={['marks', onpick && 'opens']} aria-hidden="true">{#each facts.takes as take (take.id)}<i class:pick={take.pick} class:excluded={take.excluded}></i>{/each}</span>
+			{#if onpick}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<span class="chips" role="group" aria-label={`Takes of ${card.title}`} onpointermove={(event) => { event.stopPropagation(); along = null; }} onpointerleave={() => (looking = null)}>
+					{#each facts.takes as take (take.id)}
+						{@const choosable = !take.pick && !take.excluded && !pickBusy}
+						<button type="button" class="chip" class:pick={take.pick} class:excluded={take.excluded} aria-pressed={take.pick} aria-disabled={!choosable}
+							title={take.pick ? `${take.label} is the pick` : take.excluded ? `${take.label} is excluded` : pickBusy ? 'Save the workspace before changing the pick' : `Make ${take.label} the pick`}
+							onpointerenter={() => (looking = take.id)} onfocus={() => (looking = take.id)} onblur={() => (looking = null)}
+							onclick={(event) => { event.stopPropagation(); if (choosable) onpick(take.id); }} ondblclick={(event) => event.stopPropagation()}
+							onkeydown={(event) => event.stopPropagation()}>{chipLabel(take.label)}</button>
+					{/each}
+				</span>
+			{/if}
 		{/if}
 		{#if position}<span class="place" title="Its place in the selection">{position}</span>{/if}
 		{#if tag}<span class="tag" data-tone={tag.tone} title={tag.title}>{tag.text}</span>{/if}
@@ -114,6 +142,18 @@
 	.marks i { width: 3px; height: 9px; background: rgb(255 255 255 / 0.35); }
 	.marks i.pick { background: var(--color-teal); }
 	.marks i.excluded { background: rgb(255 255 255 / 0.14); }
+	/* While the card is hovered, selected or focused, the marks give way to one chip per take. */
+	.chips { position: absolute; bottom: 4px; left: 4px; display: none; max-width: calc(100% - 50px); gap: 2px; overflow: hidden; }
+	.shot:hover .chips, .shot.selected .chips, .shot:focus-within .chips { display: flex; }
+	.shot:hover .marks.opens, .shot.selected .marks.opens, .shot:focus-within .marks.opens { display: none; }
+	.chip { height: 18px; flex: none; border: 0; border-radius: 3px; background: rgb(0 0 0 / 0.72); padding: 0 5px; color: var(--color-ink-2); font: 10.5px var(--font-mono); cursor: pointer; }
+	.chip:hover:not([aria-disabled='true']) { background: var(--color-control); color: var(--color-ink); }
+	.chip.pick { background: var(--color-teal-deep); color: var(--color-teal-ink); cursor: default; }
+	.chip.excluded { color: var(--color-ink-3); text-decoration: line-through; cursor: default; }
+	.chip[aria-disabled='true']:not(.pick) { cursor: default; }
+	.chip:focus-visible { outline: 2px solid var(--color-teal); outline-offset: -1px; }
+	.frame img.looking { z-index: 1; }
+	.chips, .marks, .length, .place, .tag { z-index: 2; }
 	.length { position: absolute; right: 4px; bottom: 4px; border-radius: 3px; background: rgb(0 0 0 / 0.72); padding: 0 4px; color: var(--color-ink); font: 10.5px var(--font-mono); pointer-events: none; }
 	.place { position: absolute; top: 4px; left: 4px; border-radius: 3px; background: var(--color-teal-deep); padding: 0 5px; color: var(--color-teal-ink); font: 10.5px var(--font-mono); pointer-events: none; }
 	.tag { position: absolute; top: 4px; right: 4px; border-radius: 3px; background: rgb(0 0 0 / 0.72); padding: 0 4px; color: var(--color-ink-2); font: 10.5px var(--font-mono); pointer-events: none; }

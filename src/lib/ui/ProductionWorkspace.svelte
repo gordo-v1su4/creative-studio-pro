@@ -70,8 +70,9 @@
 	let shotNotice = $state<{ text: string; undo?: { production: ProductionState; version: number } } | null>(null);
 
 	async function boardCommand(body: Record<string, unknown>): Promise<Project> {
-		const result = (await (await fetch(`/api/projects/${project.project_id}/board`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, expected_version: project.version }) })).json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+		const result = (await (await fetch(`/api/projects/${project.project_id}/board`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, expected_version: project.version }) })).json()) as ({ ok: true; data: Project } | { ok: false; error: { message: string } }) & Record<string, unknown>;
 		if (!result.ok) throw new Error(result.error.message);
+		roomState.keepPick(result);
 		onUpdated(result.data);
 		return result.data;
 	}
@@ -656,7 +657,7 @@
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-0.5 px-2 pb-2 pt-1">
 			{#each draft.cards as card (card.card_id)}
 				{@const pick = pickFor(draft, card)}
-				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} dropTarget={card.card_id === dropCard} position={reviewSequence.position(card.card_id)} tag={roomState.waiting(card.card_id) ? { text: 'Not sent', tone: 'bad', title: `This review has not reached Review Room yet (${roomState.waiting(card.card_id)}); it is tried again every few seconds` } : roomState.marked(card.card_id) ? { text: 'Review Room', tone: 'warn', title: 'Changed in Review Room a moment ago' } : null} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
+				<ShotCard {card} {pick} takes={takesFor(draft, card.card_id, true)} pickBusy={pickBusy || unsaved || shotBusy !== null} onpick={(takeId) => void makePick(card.card_id, takeId)} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} dropTarget={card.card_id === dropCard} position={reviewSequence.position(card.card_id)} tag={roomState.waiting(card.card_id) ? { text: 'Not sent', tone: 'bad', title: `This review has not reached Review Room yet (${roomState.waiting(card.card_id)}); it is tried again every few seconds` } : roomState.marked(card.card_id) ? { text: 'Review Room', tone: 'warn', title: 'Changed in Review Room a moment ago' } : null} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>

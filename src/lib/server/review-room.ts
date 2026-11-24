@@ -76,6 +76,10 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 		async changes(projectId: string, since: number | string) {
 			return request<ChangeFeed>('GET', `/api/v1/projects/${encodeURIComponent(projectId)}/changes?since=${encodeURIComponent(String(since))}`);
 		},
+		/** This app's address for a locked folder it owns, shown there as "Open in Creative Studio Pro". */
+		async setFolderLink(projectId: string, folderId: string, externalUrl: string): Promise<void> {
+			await request('PATCH', `/api/v1/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folderId)}`, { externalUrl }, idempotencyKey('folder-link', folderId, externalUrl));
+		},
 		/** The notes reviewers left on a shot there, with their timecodes (scope media:read). */
 		async assetNotes(assetId: string) {
 			return request<{ assetId: string; assetCode: string | null; notes: ReviewNote[] }>('GET', `/api/v1/assets/${encodeURIComponent(assetId)}/notes`);
