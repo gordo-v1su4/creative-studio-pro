@@ -66,7 +66,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const plan = project.production.story_plan;
 		const seriesId = plan?.source?.series_id;
 		if (!plan?.source || !seriesId) return json({ ok: false, error: { message: 'This story was not imported from a Notion series' } }, { status: 400 });
-		const token = getNotionToken();
+		const token = await getNotionToken();
 		if (!token) return json({ ok: false, error: { message: 'Connect Notion in Settings first' } }, { status: 503 });
 		const record = await getSeriesStore().read(seriesId);
 		if (!record) return json({ ok: false, error: { message: 'The linked Notion series is no longer connected' } }, { status: 404 });

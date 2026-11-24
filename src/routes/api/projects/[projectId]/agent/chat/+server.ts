@@ -34,7 +34,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const provider = createOpenAICompatible({ name: resolved.connection.choice.provider, apiKey: resolved.connection.apiKey, baseURL: resolved.connection.baseURL });
 	const seriesId = project.series?.series_id ?? null;
 	const record = seriesId ? await getSeriesStore().read(seriesId) : null;
-	const token = getNotionToken();
+	const token = await getNotionToken();
 	const writer = record && token ? createStoryWriter({ api: createNotionApi(token), record, episodePageId: project.series?.episode_page_id ?? null }) : null;
 
 	const tools: ToolSet = {};

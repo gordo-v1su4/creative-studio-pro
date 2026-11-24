@@ -175,3 +175,21 @@ export async function readEpisode(api: NotionApi, sources: SeriesSources, episod
 	const shots = (await all((cursor) => api.query(sources.shots!, cursor))).map(toShot);
 	return layoutEpisode(episode, scenes, shots);
 }
+
+/**
+ * Ask Notion whether it accepts a key, before it is saved in Settings. `refused` is Notion saying no to the key
+ * itself; any other failure (Notion not reachable, an answer that cannot be read) leaves the key unjudged.
+ */
+export async function checkNotionKey(
+	token: string,
+	me: (auth: string) => Promise<{ name?: string | null }> = async (auth) => (await new Client({ auth }).users.me({})) as { name?: string | null }
+): Promise<{ ok: true; name: string | null } | { ok: false; refused: boolean; message: string }> {
+	try {
+		const bot = await me(token);
+		return { ok: true, name: bot.name?.trim() || null };
+	} catch (cause) {
+		const code = (cause as { code?: string })?.code, status = (cause as { status?: number })?.status;
+		if (code === 'unauthorized' || status === 401) return { ok: false, refused: true, message: 'Notion refused that key. Copy the connection token again.' };
+		return { ok: false, refused: false, message: cause instanceof Error ? cause.message : 'Notion could not be reached' };
+	}
+}

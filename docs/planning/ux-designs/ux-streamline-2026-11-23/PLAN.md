@@ -363,6 +363,21 @@ Checked in the browser on scratch projects, with the page answering in the model
 
 **Not exercised live, because each costs money:** every call to the Agent's model (drafting the brief, pitching, the teaser, proposing acts, scenes, story beats and shots, the interview) and the teaser's price and render. They are covered by tests with the suite's fake model (`tests/integration/story-propose.test.ts`, `brief-draft`, `trailer-house`, `stage-agent-handler`), which check what is asked, what is accepted, and what is refused; whether the real model's answers are any good has not been seen.
 
+Status, part five, 2026-11-24 (step 5; local test copy):
+
+- **The Notion key is a setting** (Settings → Notion, `src/lib/ui/settings/NotionSettings.svelte`, `/api/settings/notion`). It is entered once, kept in the server-side settings file beside the provider keys (never in a project, never sent back to the browser), and can be replaced or removed. A new key is checked with Notion before it is saved: one Notion refuses is not kept; if Notion cannot be reached it is saved and the answer says it was not checked.
+- **`NOTION_TOKEN` is the fallback.** The key in Settings is used when there is one, else the variable; the panel says which is in use. With neither, nothing is read from Notion or written to it. Every route that opens the Notion API checks for a key first (a test walks the routes), and the messages that used to say "add NOTION_TOKEN to .env.local" now point at Settings.
+- **The template's public address is a setting too**, marked "Not set" until it is given. The front door shows "Notion template · view or duplicate" once it is, "not published yet" until then, and says "No Notion key yet" beside a series link when there is no key.
+- No new environment variable. `.env.example` now says what `NOTION_TOKEN` is for.
+
+Checked in the browser: the panel reports the key as coming from the server variable on this copy; an `http://` template address is refused; an `https://` one is saved and reaches the front door's data; it was cleared again afterwards, so the copy is as it was. No key was entered or removed.
+
+Not exercised: entering a real key (it would replace the one this copy uses) and Notion's answer to it; the check is covered by tests with a stand-in for Notion.
+
+**Step 6 is still the operator's:** publish the series template as a public Notion page and paste its address into Settings → Notion. Nothing else waits on it.
+
+Slice 4 against its "Done when", 2026-11-24, on the local test copy: a project went from one sentence to an approved shot list with no Notion and no Review Room, twice (once by hand, once with the Agent's proposals stood in for), and a request to change an approved scene code was refused. What that does not show is in the notes above: no real model call, no real file drop, no key entered, and nothing against Review Room.
+
 ### 5 · Voice
 
 Goal: talk to the Agent and hear it.

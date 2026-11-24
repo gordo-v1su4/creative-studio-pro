@@ -70,8 +70,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return outcome.ok ? json({ ok: true, data: record, project: outcome.data }) : json(outcome, { status: outcome.error.code === 'VERSION_CONFLICT' ? 409 : 400 });
 	}
 
-	const token = getNotionToken();
-	if (!token) return json({ ok: false, error: { code: 'NOT_CONFIGURED', message: 'Add NOTION_TOKEN to .env.local first' } }, { status: 503 });
+	const token = await getNotionToken();
+	if (!token) return json({ ok: false, error: { code: 'NOT_CONFIGURED', message: 'Enter your Notion key in Settings first' } }, { status: 503 });
 	const api = createNotionApi(token);
 	try {
 		if (body.data.action === 'refresh') {

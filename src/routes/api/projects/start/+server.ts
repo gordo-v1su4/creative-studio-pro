@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (input.prep_source_project_id && !(await getProjectStore().readProject(input.prep_source_project_id))) return json({ ok: false, error: { message: 'The reference project was not found' } }, { status: 404 });
 	try {
 		if (input.notion_root || record) {
-			const token = getNotionToken();
+			const token = await getNotionToken();
 			if (!token) throw new Error('Connect Notion in Settings before importing a series');
 			const root = input.notion_root ? pageIdOf(input.notion_root) : record!.notion_root_id;
 			if (!root) throw new Error('Paste a valid Notion series page link');

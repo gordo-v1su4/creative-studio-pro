@@ -61,8 +61,8 @@ async function trashRemoved(before: Project, after: Project): Promise<{ shots_tr
 	const record = pages.length && before.series ? await store.read(before.series.series_id) : null;
 	if (!record) return { shots_trashed: 0, trash_error: null };
 	const queued = await store.write({ ...record, notion_trash: [...new Set([...(record.notion_trash ?? []), ...pages])] });
-	const token = getNotionToken();
-	if (!token) return { shots_trashed: 0, trash_error: 'NOTION_TOKEN is not set; the shot pages go to Trash on the next Sync' };
+	const token = await getNotionToken();
+	if (!token) return { shots_trashed: 0, trash_error: 'No Notion key is set; the shot pages go to Trash on the next Sync after one is entered in Settings' };
 	const trash = await drainNotionTrash(createNotionApi(token), queued);
 	await store.write(trash.record);
 	return { shots_trashed: trash.trashed, trash_error: trash.error };

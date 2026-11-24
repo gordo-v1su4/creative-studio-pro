@@ -10,7 +10,7 @@ import { createStageAgent } from '$lib/server/stage-agent';
 import type { StageAgentResolution } from '$lib/server/stage-agent-handler';
 import { createStoryBuilder } from '$lib/server/story-builder';
 import type { StoryBuilder } from '$lib/server/story-builder';
-import { AppSettingsStore, appSettingsPath } from '$lib/server/app-settings';
+import { AppSettingsStore, appSettingsPath, notionSettingsView, notionTokenFrom, type NotionSettingsView } from '$lib/server/app-settings';
 import { SeriesStore } from '$lib/server/series';
 import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/model-provider';
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
@@ -172,16 +172,24 @@ export async function getSfxFolder(): Promise<string | null> {
 }
 
 /** Animate's dependencies. */
-/** The Notion integration token (server-side only; the integration sees only the series root shared with it). */
-export function getNotionToken(): string | null {
-	return env.NOTION_TOKEN?.trim() || null;
+/**
+ * The Notion key (server-side only; the integration sees only the pages shared with it): the one entered in
+ * Settings, else the NOTION_TOKEN variable. Null means no Notion: nothing is read from it or written to it.
+ */
+export async function getNotionToken(): Promise<string | null> {
+	return notionTokenFrom(await getAppSettingsStore().read(), env.NOTION_TOKEN);
+}
+
+/** What the browser may know about Notion: whether a key is set and the public template's address. */
+export async function getNotionView(): Promise<NotionSettingsView> {
+	return notionSettingsView(await getAppSettingsStore().read(), env.NOTION_TOKEN);
 }
 
 /** Prep (V1S-374): references made from approved specs with the app's ONE SHOT skill, through the still path. */
 export async function getPrepDeps(): Promise<PrepDeps> {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	const animate = await getAnimateDeps();
-	const token = getNotionToken();
+	const token = await getNotionToken();
 	return {
 		store: getProjectStore(), gateway: getGateway(), projectRoot: getProjectRoot(), series: getSeriesStore(),
 		images: bin ? createHiggsfieldImages(cliRunner(bin)) : null, download: animate.download,

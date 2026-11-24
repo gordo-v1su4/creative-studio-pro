@@ -77,7 +77,7 @@
 					<li>Open <a href="https://developers.notion.com" target="_blank" rel="noreferrer">developers.notion.com</a> → <b>Developer portal</b> → <b>Build</b> → <b>Internal connections</b> → <b>Create a new connection</b>, named <b>Creative Studio Pro</b>.</li>
 					<li><b>Configuration</b>: turn on <b>Read</b>, <b>Update</b> and <b>Insert content</b> only (no comments, no user information, no agent access), and copy the installation access token.</li>
 					<li><b>Content access</b> → <b>Edit access</b> → select only the top-level <i>Creative Studio Pro</i> page. Each show is a child page under it (duplicate its <i>Series Template</i> for a new one). Nothing else is shared.</li>
-					<li>Add <code>NOTION_TOKEN=…</code> to <code>.env.local</code> and restart the app. The token stays on this machine.</li>
+					<li>Paste the token into <a href="/settings">Settings → Notion</a>. It is kept on the server and never shown again. (A <code>NOTION_TOKEN</code> variable in the server environment still works as a fallback.)</li>
 				</ol>
 			</section>
 		{/if}

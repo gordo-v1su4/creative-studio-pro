@@ -21,7 +21,12 @@ export const appSettingsSchema = z.object({
 	/** Last pick-time test per provider|endpoint|model. */
 	model_tests: z.record(z.string(), modelTestResultSchema).default({}),
 	/** The local sound-effects folder the Agent picks hits, whooshes and risers from (V1S-129). */
-	sfx_folder: z.string().trim().max(1000).nullable().default(null)
+	sfx_folder: z.string().trim().max(1000).nullable().default(null),
+	/**
+	 * Notion (decision 23, ADR 0010): the operator's one key, entered in Settings and never shown again, and the
+	 * address of the public series template. Both optional: a project can be made with no Notion at all.
+	 */
+	notion: z.object({ api_key: key, template_url: z.string().trim().max(500).nullable().default(null) }).default({ api_key: null, template_url: null })
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
@@ -35,6 +40,37 @@ export function publicAppSettings(settings: AppSettings): PublicAppSettings {
 		default_model: settings.default_model,
 		model_tests: settings.model_tests
 	};
+}
+
+/** The Notion key in use: the one entered in Settings, else the NOTION_TOKEN variable (the fallback from before Settings held it). */
+export function notionTokenFrom(settings: AppSettings, envToken: string | null | undefined): string | null {
+	return settings.notion.api_key?.trim() || envToken?.trim() || null;
+}
+
+/** Browser-safe view of the Notion settings: whether there is a key and where it comes from, never the key. */
+export interface NotionSettingsView { has_key: boolean; source: 'settings' | 'environment' | null; template_url: string | null }
+export function notionSettingsView(settings: AppSettings, envToken: string | null | undefined): NotionSettingsView {
+	const source = settings.notion.api_key?.trim() ? 'settings' : envToken?.trim() ? 'environment' : null;
+	return { has_key: source !== null, source, template_url: settings.notion.template_url };
+}
+
+/**
+ * A change to the Notion settings. A field left out is kept; null or an empty string clears it.
+ * The template address must be a public https page, since anyone is meant to open it.
+ */
+export function applyNotionSettings(settings: AppSettings, input: { api_key?: string | null; template_url?: string | null }): { ok: true; settings: AppSettings } | { ok: false; message: string } {
+	const notion = { ...settings.notion };
+	if (input.api_key !== undefined) notion.api_key = input.api_key?.trim() || null;
+	if (input.template_url !== undefined) {
+		const url = input.template_url?.trim() || null;
+		if (url) {
+			let parsed: URL;
+			try { parsed = new URL(url); } catch { return { ok: false, message: 'The template address is not a web address' }; }
+			if (parsed.protocol !== 'https:') return { ok: false, message: 'The template address must start with https://' };
+		}
+		notion.template_url = url;
+	}
+	return { ok: true, settings: { ...settings, notion } };
 }
 
 /**

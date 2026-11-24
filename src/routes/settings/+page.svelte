@@ -5,6 +5,7 @@
 	import ModelProviderSettings from '$lib/ui/settings/ModelProviderSettings.svelte';
 	import GenerationSettings from '$lib/ui/settings/GenerationSettings.svelte';
 	import SfxSettings from '$lib/ui/settings/SfxSettings.svelte';
+	import NotionSettings from '$lib/ui/settings/NotionSettings.svelte';
 
 	const stateColor: Record<CapabilityState, string> = {
 		available: 'var(--color-gate-approved)',
@@ -74,6 +75,7 @@
 		<ModelProviderSettings />
 		<GenerationSettings />
 		<SfxSettings />
+		<NotionSettings />
 
 		<div class="meta-label mt-8">Endpoint configuration</div>
 		<p class="mt-1 text-text-muted">
@@ -86,6 +88,7 @@
 			<li><b class="text-text-primary">CSP_DESKTOP_URL</b> — desktop generation stack health endpoint</li>
 			<li><b class="text-text-primary">KIMI_API_KEY / KIMI_API_BASE / KIMI_MODEL</b> — fallback Agent model when no app default is picked</li>
 			<li><b class="text-text-primary">CSP_APP_SETTINGS_PATH</b> — optional; where provider keys are stored (default: beside CSP_PROJECT_ROOT, never inside it)</li>
+			<li><b class="text-text-primary">NOTION_TOKEN</b> — optional fallback for the Notion key; the key entered above takes its place</li>
 		</ul>
 	</div>
 </div>
