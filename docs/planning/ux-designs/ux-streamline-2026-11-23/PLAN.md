@@ -22,6 +22,7 @@ What to build is in [SPEC.md](SPEC.md); how it looks is in [DESIGN.md](DESIGN.md
 | 5 | Voice | Talk to the Agent and hear it | 4 |
 | 6 | Prep intake | Drop everything, sorted for you, found-in-story suggestions | 0 |
 | 7 | Cut | Cuts, Sound and Export inside the shell | 1 |
+| 8 | Re-render queue | "Needs changes" can queue a re-render: the Agent drafts the prompt change, the queue shows what was rendered, where and how | 1, 3 |
 
 Slices 2, 3, 4 and 6 do not depend on each other and can be taken in any order after their prerequisite.
 
@@ -339,6 +340,17 @@ Goal: Cuts, Sound and Export in the shell, with the viewer's lanes.
 3. The cut timeline reuses the viewer's lanes with a music lane added.
 
 Done when: a cut can be opened, locked, mixed and exported without leaving the Cut stage.
+
+### 8 · Re-render queue
+
+Added 2026-11-24 at the operator's request; not designed yet. Their words: "there should be a choice when you say needs revision on the right panel, to say 'add to queue for re-render' and we come up with a system to queue files and ai write the new prompt changes and just have it queued for rerendering it would then show complete in the render queue and where/how it was rendered ie. (higgsfield, fal.ai, local or cloud comfyui)".
+
+Goal (to be confirmed in the design): from "Needs changes" to a new take without leaving the review.
+
+1. Grill the design with the operator and write the decisions down before any code (the `grilling` and `domain-modeling` skills): what a queue entry is, who may spend, how a provider is chosen, what "where and how it was rendered" shows, per project or across projects, whether a finished re-render becomes the pick.
+2. The rest of the steps come out of step 1.
+
+What exists to build on, and the open questions, are in `HANDOFF.md` under slice 8.
 
 ## Not in this plan
 

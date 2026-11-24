@@ -141,3 +141,10 @@ Every reference, image prompt, video prompt and score prompt the app writes come
 26. **Cut is mocked when its slice comes up.** It reuses the viewer's lanes with a music lane added.
 
 The design tree is now fully settled. The written spec and plan are `DESIGN.md`, `SPEC.md` and `PLAN.md` beside this file.
+
+## 2026-11-24: asked for, not yet decided
+
+- **Re-render queue.** The operator asked that choosing "Needs changes" in the review panel offer "Add to queue for re-render": the Agent writes the prompt change, the shot waits in a render queue, and the queue shows when it is done and where and how it was rendered (Higgsfield, fal.ai, local or cloud ComfyUI). It is slice 8 in `PLAN.md`; the design questions are listed in `HANDOFF.md`.
+- **One thread per slice.** The operator asked that each slice be carried on in its own thread, started from a written handoff (`HANDOFF.md`).
+- **Takes.** The operator's requirement, in their words: "we have to be able to see and select between the takes easily on the app and the 'current' take choice must update live between the two, or sync at changes." Built so far: take chips on the shot card, a pick that is kept and resent until Review Room has it, and Review Room's current version followed here within ten seconds. Open: Review Room's own screen following a change made here without a reload.
+
