@@ -60,7 +60,7 @@
 		{#if chat.error}<p class="error" role="alert">{chat.error.message}</p>{/if}
 	</div>
 	<form class="composer" onsubmit={(event) => { event.preventDefault(); send(); }}>
-		<textarea bind:value={input} rows="2" placeholder="Your idea, or an answer…" aria-label="Message the Agent" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}></textarea>
+		<textarea bind:value={input} rows="1" placeholder="Your idea, or an answer…" aria-label="Message the Agent" onkeydown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }}></textarea>
 		{#if busy}
 			<button type="button" class="key" onclick={() => void chat.stop()}>Stop</button>
 		{:else}
@@ -71,25 +71,22 @@
 
 <style>
 	.story-chat { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 8px; height: 100%; min-height: 0; }
-	.log { display: grid; align-content: start; gap: 10px; overflow-y: auto; padding-right: 4px; }
-	.hint { color: var(--color-nr-dim); font-size: 12px; line-height: 1.6; }
+	.log { display: grid; align-content: start; gap: 12px; overflow-y: auto; padding-right: 4px; scrollbar-color: #26262b transparent; }
+	.hint { color: var(--color-ink-3); font-size: 12px; line-height: 1.6; }
 	.msg { display: grid; gap: 6px; }
-	.msg.user .text { justify-self: end; max-width: 85%; border: 1px solid var(--color-nr-line); border-radius: 2px; padding: 6px 9px; color: var(--color-nr-ink); }
-	.msg.assistant .text { color: var(--color-nr-text); }
-	.text { font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
-	.tool { border: 1px solid var(--color-nr-line-soft); border-radius: 2px; padding: 4px 8px; font-size: 11px; color: var(--color-nr-dim); }
-	.tool summary { cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; font-size: 9.5px; }
-	.tool pre { margin-top: 6px; max-height: 220px; overflow: auto; color: var(--color-nr-muted); font: 10.5px/1.5 var(--font-mono); white-space: pre-wrap; }
-	.write { border-left: 2px solid var(--color-nr-accent-deep); padding: 2px 8px; font-size: 11px; color: var(--color-nr-muted); }
-	.write span { font: 600 9.5px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-nr-dim); }
-	.write a { color: var(--color-nr-accent); text-decoration: underline; text-underline-offset: 2px; }
-	.write.refused { border-left-color: var(--color-nr-danger-line); }
-	.write.refused span { color: var(--color-nr-danger-text); text-transform: none; letter-spacing: 0; }
-	.error { color: var(--color-nr-danger-text); font-size: 12px; }
-	.composer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
-	textarea { resize: none; border: 1px solid var(--color-nr-line); border-radius: 2px; background: var(--color-nr-deep); padding: 6px 9px; color: var(--color-nr-ink); font: 12.5px/1.5 var(--font-sans); outline: none; }
-	textarea:focus { border-color: color-mix(in srgb, var(--color-nr-accent) 50%, transparent); }
-	.key { display: inline-flex; align-items: center; border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 10px; color: var(--color-nr-muted); font: 600 9px/26px var(--font-sans); letter-spacing: 0.12em; text-transform: uppercase; }
-	.key.accent { border-color: color-mix(in srgb, var(--color-nr-accent) 45%, transparent); color: var(--color-nr-accent); }
-	.key:disabled { opacity: 0.4; }
+	.msg.user .text { justify-self: end; max-width: 85%; border-radius: 9px; background: var(--color-control); padding: 4px 9px; color: var(--color-ink); }
+	.msg.assistant .text { color: #c8c8ce; }
+	.text { font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; }
+	.tool { color: var(--color-ink-3); font-size: 11px; }
+	.tool summary { cursor: pointer; font: 9.5px var(--font-mono); letter-spacing: 0.11em; text-transform: uppercase; }
+	.tool pre { max-height: 220px; margin-top: 6px; overflow: auto; border-radius: 6px; background: var(--color-raised); padding: 6px 8px; color: var(--color-ink-2); font: 10.5px/1.5 var(--font-mono); white-space: pre-wrap; }
+	.write { color: var(--color-ink-2); font-size: 11.5px; }
+	.write span { color: var(--color-ink-3); font: 9.5px var(--font-mono); letter-spacing: 0.11em; text-transform: uppercase; }
+	.write a { color: var(--color-ink); text-decoration: underline; text-underline-offset: 2px; }
+	.write.refused span { color: #ff7a6b; letter-spacing: 0; text-transform: none; }
+	.error { color: #ff7a6b; font-size: 12px; }
+	.composer { display: flex; align-items: center; gap: 4px; border-radius: 9px; background: #ffffff0d; padding: 4px 4px 4px 10px; }
+	textarea { min-width: 0; flex: 1; resize: none; border: 0; background: none; padding: 3px 0; color: var(--color-ink); font: 12.5px/1.5 var(--font-sans); outline: none; caret-color: var(--color-agent-purple); }
+	textarea::placeholder { color: var(--color-ink-3); }
+	.key.accent { background: var(--color-agent-purple-deep); color: #d8cffc; }
 </style>

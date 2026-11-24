@@ -89,7 +89,7 @@ test('the Agent prepares and never confirms a spend (decision 17): its actions d
 
 test('the same actions are offered in the dock and in place', () => {
 	for (const call of ['agentWork.pitch(project)', 'agentWork.teaserFor(project', 'agentWork.draftBrief(project)', 'agentWork.propose(project']) expect(dock).toContain(call);
-	expect(chat).toContain('<AgentActions {project} />');
+	expect(chat).toContain('<AgentActions {project} buttons={more} />');
 	expect(pitch).toContain('agentWork.pick(project, at, i)');
 	expect(plan).toContain('agentWork.propose(project, proposable');
 	expect(sheet).toContain('agentWork.draftBrief(project)');

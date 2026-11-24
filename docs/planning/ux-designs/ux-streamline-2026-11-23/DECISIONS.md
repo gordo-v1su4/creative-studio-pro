@@ -182,6 +182,17 @@ Not asked, so assumed, and easy to change: a re-render leaves the shot's own vid
 - **Takes.** The operator's requirement, in their words: "we have to be able to see and select between the takes easily on the app and the 'current' take choice must update live between the two, or sync at changes." Built so far: take chips on the shot card, a pick that is kept and resent until Review Room has it, and Review Room's current version followed here within ten seconds. Open: Review Room's own screen following a change made here without a reload.
 
 
+## 2026-11-24: the Agent chat's look, decided again
+
+The operator looked at the chat in the app and at every earlier mock of it side by side, and chose this. It replaces "The Agent chat carries the Charm colours" above and is the one exception to "No gradients as decoration".
+
+- **No pink anywhere.** "Let's not make a lot of colours with this. It's too busy with all these colours."
+- **Purple is the Agent's only colour, and it shows in three places:** a wash that rises from the composer and fades to black about halfway up the panel, the word "Agent" over its messages (a muted purple), and Send with the talk button.
+- **Everything else in the chat is grey**: the operator's message is a grey bubble on the right, codes are plain, tabs and mode buttons are grey. No teal in the chat except a proposal's main button.
+- **No boxes.** The Agent's text and its proposals sit on the panel with nothing drawn round them, all lined up on the left edge. No borders, no pattern behind the text, no row of slashes.
+- **The panel is a chat and nothing else.** "Why is there so many things in this chat menu? There's too much stuff in that chat window." What shows: the messages, one button to start or continue the interview, and the composer. The mode (Brief, Story), Focus, Close, the model and the Agent's actions (pitch three loglines, quick teaser, draft the brief, propose a level) are folded behind one "More" at the top right. What the Agent says about an action it is running still shows without opening it. The old header (wordmark, path, model) and the line under the composer ("Enter sends", version, status) are gone.
+- Teal instead of purple was looked at and not chosen.
+
 ## 2026-11-24: decided while building slice 4
 
 - **Level approvals live on the production** (`production.story_levels`): when each of the five levels was approved, plus the show code and project code the brief fixed. Scene codes stay on the story plan's scenes; a shot's code is on the shot (`scene_code` and `shot_number`).

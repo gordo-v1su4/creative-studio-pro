@@ -131,7 +131,7 @@ What is left:
    outside this checkout).
 4. Not built: the front door has no Agent of its own before a project exists (the dock belongs to the open
    project); a code freed by removing a scene is not remembered; episodes imported from a series keep their own
-   codes and show no levels; the Agent's dock and the Settings page still carry the old look; the teaser's video
+   codes and show no levels; the Settings page still carries the old look (the Agent's dock was restyled on 2026-11-24: purple wash, no pink, no boxes; DECISIONS.md has the rules, and the mocks in `mockups/` still show the earlier pink version); the teaser's video
    model and aspect are fixed, and the Trailer House panel's character image and live prompt highlighting were
    not carried over.
 5. Checking tip: buttons that call the model run at once, and the local copy has a model configured. The checks
