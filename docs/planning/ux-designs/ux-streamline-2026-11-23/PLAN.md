@@ -198,7 +198,21 @@ Status, part one, 2026-11-23 (steps 2 and 3; local test copy):
 
 Checked in the browser: the hints over a shot and over open space, a move from the grid to an outline group and the "Already in this scene" refusal, and G in the grid on two shots. The test project was put back afterwards. Not exercised: an actual file drop on a shot (it would add a file to the project) and G on the canvas; both go through code paths that already existed (`importFiles` with a shot, `create_group` and `move_beats`).
 
-Still open in slice 2: the canvas card restyled (step 1), "Unplaced" in the outline (step 4, waits for scene codes, which arrive with the story plan in slice 4), references as canvas cards (step 5), and the canvas and its rail asking the same resolver for their drops.
+Released to Hosted Studio the same day as `07105a2`, the first release made with `scripts/release-studio.sh`. On hosted TR130 the hints appear over a shot, over open space and over an outline group; nothing was dropped there, so the project was not changed.
+
+Status, part two, 2026-11-23 (steps 1 and 2; local test copy, checked in the browser at 1440px):
+
+- **The canvas card is the grid card** (`src/lib/ui/nodes/StoryCardNode.svelte` now draws `ShotCard`): the pick as a frame with hover-scrub, take marks, title, shot code, status and version. The two face tabs are gone.
+- **Its actions float beside it.** Selecting a card shows a bar under it: previous and next take, Bench, Hold, Animate, Finalize, Split, excluded takes, Exclude or Restore, and (in a series) its references and "Prev frame". The card itself never changes size. A draft's time left, "Under 2K", "Excluded" and "Animating…" show as one note over the frame.
+- **Details on the canvas.** With one shot selected, the dock's Details tab shows its code, status, story beat, purpose, spec and prompts by section, and the two-step make-a-take block (`src/lib/ui/shots/ShotBrief.svelte`). It is read-only there; the text is edited in Grid.
+- **Canvas drops use the same rules.** Files dropped on a card or on open space, and cards dragged onto a group in the side panel, now ask `dropMeaning` like the grid, the outline and the strip do.
+- An image prompt is split into shot, action, place and light only when it opens the way ONE SHOT writes it (shot size, angle, dash); a line that merely contains a dash stays one row.
+
+Checked in the browser: the cards and connectors render, selecting one tints it and shows the bar, Details fills in, and Bench then Unbench from the bar changed the shot and put it back. Not exercised, because each would change the test project for good or needs a real pointer drag: the bar's other actions, a file drop on the canvas, and dragging a card onto a side-panel group. Their handlers are the ones the old card used; only the drop decisions were rerouted.
+
+Open questions for the operator: the old Animate window (with its session cap) still opens from the bar, beside the new two-step block in Details; and Space or a double-click does not open the viewer from the canvas yet.
+
+Still open in slice 2: references as canvas cards linked to the shots that use them (step 5), the viewer from the canvas, and "Unplaced" in the outline (step 4, which waits for scene codes from the story plan in slice 4). The canvas's side panel and its other node kinds still carry the old look.
 
 ### 3 · Review Room
 

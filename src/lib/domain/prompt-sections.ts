@@ -4,6 +4,7 @@
  * light. Splitting never changes the text: putting the sections back gives the prompt that will be sent.
  */
 import { GHOST_SECTIONS } from './ghost-qc';
+import { SIZE_WORDS } from './shot-spec';
 
 export interface PromptSection {
 	/** Stable id of the section within its prompt. */
@@ -82,7 +83,8 @@ export function withGhostSection(prompt: string, key: string, text: string): str
  */
 export function imageSections(prompt: string): PromptSection[] | null {
 	const dash = prompt.indexOf(' — ');
-	if (dash < 1 || dash > 80 || /[.\n]/.test(prompt.slice(0, dash))) return null;
+	// It opens with the shot size in words and the angle (shot-spec's specLine), then a dash.
+	if (dash < 1 || dash > 240 || /\n/.test(prompt.slice(0, dash)) || !Object.values(SIZE_WORDS).some((size) => prompt.startsWith(`${size}, `))) return null;
 	const rest = prompt.slice(dash + 3).trim();
 	const place = /(^|[.!?"”]\s+)In ([^.\n]+)\.\s*/.exec(rest);
 	if (!place) return [{ key: 'shot', label: 'Shot', text: prompt.slice(0, dash).trim() }, { key: 'action', label: 'Action', text: rest }];

@@ -67,6 +67,9 @@ test('an image prompt splits into shot, action, place and light', () => {
 	]);
 	expect(imageSections('Close-up, low angle — A thumb rests on a red vial.')!.map((section) => section.label)).toEqual(['Shot', 'Action']);
 	expect(imageSections('A thumb rests on a red vial in a dim room.')).toBeNull();
+	// A dash alone does not make it ONE SHOT's form: it has to open with the shot size and angle.
+	expect(imageSections('Seedance 20s v6 trailer (job 4bbbdde6) — see trailer/prompts/SEEDANCE-20s-v6.txt')).toBeNull();
+	expect(imageSections('Medium shot, over the shoulder of @Kai — He reads the label. In @Store.')!.map((section) => section.text)).toEqual(['Medium shot, over the shoulder of @Kai', 'He reads the label.', '@Store', '']);
 });
 
 test('an edited image section goes back into the same sentence order', () => {

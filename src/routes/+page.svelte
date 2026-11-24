@@ -37,6 +37,8 @@
 	import { shortShotCode } from '$lib/domain/story-plan';
 	import { benchedBeats } from '$lib/domain/bench';
 	import { mediaKind } from '$lib/domain/media';
+	import { dropMeaning, type DropContext } from '$lib/domain/drops';
+	import ShotBrief from '$lib/ui/shots/ShotBrief.svelte';
 	import { droppedFiles } from '$lib/ui/dropped-files';
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
@@ -625,6 +627,14 @@
 		groupBoxed();
 	}
 
+	/** What the one drop resolver needs to know about this project (domain/drops). */
+	const dropContext = $derived<DropContext>({
+		groupOf: (cardId) => { const card = activeProject?.production.cards.find((entry) => entry.card_id === cardId); return card ? groupOf(card) : null; },
+		playable: (cardId) => { const card = activeProject?.production.cards.find((entry) => entry.card_id === cardId); return !!activeProject && !!card && !!playItemFor(activeProject, card); }
+	});
+	/** The one shot boxed on the canvas, for the dock's Details tab. */
+	const briefCard = $derived(canvasOpen && selectedBeats.length === 1 ? (activeProject?.production.cards.find((card) => card.card_id === selectedBeats[0]) ?? null) : null);
+
 	function moveSelectedTo(groupId: string, ids: string[] = selectedBeats) {
 		const moving = ids.filter((id) => { const card = activeProject?.production.cards.find((c) => c.card_id === id); return card && groupOf(card) !== groupId; });
 		if (!moving.length) return;
@@ -673,7 +683,12 @@
 		const beats = dragged.filter((node) => isBeat(node.id)).map((node) => node.id);
 		if (target && beats.length) {
 			nodes = nodes.map((node) => { const from = dragStart.get(node.id); return from ? { ...node, position: from } : node; });
-			moveSelectedTo(target, readingOrder(dragged.filter((node) => isBeat(node.id)).map((node) => ({ id: node.id, ...(dragStart.get(node.id) ?? node.position) }))).map((item) => item.id));
+			// The same rule as everywhere else: a shot dropped on a scene moves there.
+			const meaning = dropMeaning({ kind: 'shots', cardIds: beats }, { kind: 'group', groupId: target }, dropContext);
+			if (meaning.kind === 'move') {
+				const moving = new Set(meaning.cardIds);
+				moveSelectedTo(meaning.groupId, readingOrder(dragged.filter((node) => moving.has(node.id)).map((node) => ({ id: node.id, ...(dragStart.get(node.id) ?? node.position) }))).map((item) => item.id));
+			} else if (meaning.kind === 'nothing') notify(meaning.why);
 			return;
 		}
 		// An assembly keeps where its scene nodes sit (their reading order is the scene order).
@@ -817,7 +832,14 @@
 		const cardId = nodeId && activeProject.production.cards.some((card) => card.card_id === nodeId) ? nodeId : null;
 		const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const at = { x: (event.clientX - box.left - viewport.x) / viewport.zoom, y: (event.clientY - box.top - viewport.y) / viewport.zoom };
-		void droppedFiles(event.dataTransfer).then((files) => importFiles(files, cardId ? { cardId } : { at, groupId: isBoardView(activeGroup) ? MAIN_GROUP : activeGroup }));
+		const space = isBoardView(activeGroup) ? MAIN_GROUP : activeGroup;
+		void droppedFiles(event.dataTransfer).then((files) => {
+			// The same rule as the grid: files on a shot are new takes of it, files on open space are new shots here.
+			const meaning = dropMeaning({ kind: 'files', media: files.map((file) => mediaKind(file.name) ?? 'other') }, cardId ? { kind: 'shot', cardId } : { kind: 'space', groupId: space }, dropContext);
+			if (meaning.kind === 'new-take') importFiles(files, { cardId: meaning.cardId });
+			else if (meaning.kind === 'new-shots') importFiles(files, { at, groupId: meaning.groupId });
+			else if (meaning.kind === 'nothing') notify(meaning.why);
+		});
 	}
 
 	/**
@@ -1722,7 +1744,9 @@
 					<AgentChat bind:open={ui.chatOpen} projectTitle={ui.activeProjectTitle} project={activeProject} />
 				</div>
 				<!-- The selected shot's details are drawn here by the Shots workspace. -->
-				<div bind:this={detailsHost} class={['min-h-0 grow overflow-y-auto max-lg:hidden', dockTab !== 'details' && 'hidden']}></div>
+				<div bind:this={detailsHost} class={['min-h-0 grow overflow-y-auto max-lg:hidden', dockTab !== 'details' && 'hidden']}>
+					{#if canvasOpen && activeProject}<ShotBrief project={activeProject} card={briefCard} code={briefCard ? (activeProject.review_room?.shots[briefCard.card_id]?.code ?? null) : null} onUpdated={(project) => adoptProject(project, layout)} />{/if}
+				</div>
 			</aside>
 		{/if}
 	</div>

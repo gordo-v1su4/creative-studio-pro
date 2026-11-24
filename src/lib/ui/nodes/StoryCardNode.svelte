@@ -1,18 +1,23 @@
 <script lang="ts">
+	/**
+	 * A shot on the canvas (DESIGN.md: Canvas): the same card the grid shows, at rest. Its actions (takes, bench,
+	 * hold, animate, finalize, split, exclude, references) sit in a bar that floats beside the card while it is
+	 * selected, so the card itself never changes size. The story beat and prompts are in the dock's Details tab.
+	 */
 	import { referenceImageUrl } from '$lib/media/reference-images';
 	import type { NodeProps } from '@xyflow/svelte';
-	import { Handle, Position } from '@xyflow/svelte';
+	import { Handle, NodeToolbar, Position } from '@xyflow/svelte';
 	import { untrack } from 'svelte';
 	import type { StoryCard } from '$lib/domain/schemas';
 	import type { Take } from '$lib/domain/takes';
-	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
+	import ShotCard from '$lib/ui/shots/ShotCard.svelte';
+	import { shotCardFacts } from '$lib/domain/shot-card';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import { isUnder2K } from '$lib/domain/media';
 	import { draftWindow, timeLeft } from '$lib/domain/finalize';
 	import { clock } from '$lib/ui/clock.svelte';
 
-	type CardFace = 'beat' | 'take';
 	type StoryCardNodeData = {
 		card: StoryCard | null;
 		order: number;
@@ -71,9 +76,6 @@
 	let cycle = $derived(showRejected ? takes : takes.filter((take) => !take.rejected));
 	let shown = $derived(cycle.find((take) => take.asset_id === viewingId) ?? pick);
 	let shownIndex = $derived(shown ? cycle.indexOf(shown) : -1);
-	// Open on the result when there is one, else the shot text.
-	let face = $state<CardFace>(untrack(() => (story.pickId ? 'take' : 'beat')));
-	const faces: CardFace[] = ['beat', 'take'];
 	let inSequence = $derived(card ? reviewSequence.position(card.card_id) : 0);
 
 	// What you see is what plays: a selected shot follows its pick, and leaves the selection when benched.
@@ -90,7 +92,6 @@
 	function step(direction: -1 | 1) {
 		if (cycle.length < 2) return;
 		const next = cycle[(Math.max(shownIndex, 0) + direction + cycle.length) % cycle.length];
-		face = 'take';
 		if (next.rejected) { viewingId = next.asset_id; return; }
 		viewingId = null;
 		story.onPick?.(next.asset_id);
@@ -123,7 +124,6 @@
 	function openHold() {
 		holdLength = Math.min(30, Math.max(0.5, (card?.duration_ms ?? 3000) / 1000));
 		holdOpen = true;
-		face = 'take';
 	}
 
 	function makeHold() {
@@ -131,13 +131,27 @@
 		holdOpen = false;
 	}
 
-	// Shift-click adds the beat's pick to the review selection (click order = play order).
-	function select(event: MouseEvent) {
-		const item = event.shiftKey ? playItem() : null;
-		if (!item) return;
-		event.stopPropagation();
-		reviewSequence.toggle(item);
+	// Shift-click adds the shot's pick to the selection (click order = play order).
+	function gather() {
+		const item = playItem();
+		if (item) reviewSequence.toggle(item);
 	}
+
+	// What the card shows at rest: the grid's facts, numbered by its shot code or its place on the spine.
+	let facts = $derived.by(() => {
+		if (!card) return null;
+		const base = shotCardFacts(card, takes, story.pickId ?? null);
+		return { ...base, number: story.code ?? (number ? String(number).padStart(2, '0') : '--') };
+	});
+	/** One note over the frame: a draft's time left, an excluded or under-2K take, or a generation still running. */
+	let tag = $derived.by(() => {
+		if (shownFinalizing) return { text: '1080p · finalizing…', tone: 'warn' as const, title: 'Finalizing to 1080p from the same render' };
+		if (shownWindow.state === 'open' || shownWindow.state === 'closing') return { text: `1080p · ${timeLeft(shownWindow.ms_left)}`, tone: shownWindow.state === 'closing' ? 'bad' as const : 'warn' as const, title: `480p draft: finalizable to 1080p until ${new Date(shownWindow.closes_at).toLocaleString()}` };
+		if (shown?.rejected) return { text: 'Excluded', tone: 'bad' as const };
+		if (shown && isUnder2K(shown)) return { text: 'Under 2K', tone: 'bad' as const, title: `${shown.width}×${shown.height}: under 2K on the long edge` };
+		if (story.animating) return { text: 'Animating…', tone: 'warn' as const, title: 'A Seedance generation from this shot is running' };
+		return null;
+	});
 
 	/** What this shot plays as: its video pick, or its text card while it is a missing shot. */
 	function playItem() {
@@ -150,9 +164,81 @@
 <Handle type="target" position={Position.Left} />
 <Handle type="source" position={Position.Right} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-<article
-	onclick={select}
+{#if card && facts}
+	<NodeToolbar position={Position.Bottom} offset={6}>
+		<div class="bar nodrag nopan" role="toolbar" aria-label={`Actions for ${card.title}`}>
+			<div class="row">
+				{#if cycle.length >= 2}
+					<button type="button" class="tg" onclick={() => step(-1)} aria-label={`Previous take for ${card.title}`}>‹</button>
+					<span class="count" aria-live="polite" aria-label={`Take ${shownIndex + 1} of ${cycle.length}`}>Take {shownIndex + 1}/{cycle.length}</span>
+					<button type="button" class="tg" onclick={() => step(1)} aria-label={`Next take for ${card.title}`}>›</button>
+				{/if}
+				<button type="button" class="tg" aria-pressed={benched} onclick={() => story.onBench?.(!benched)} title={benched ? 'Unbench: play this shot again' : 'Bench: keep it here but skip it'}>{benched ? 'Unbench' : 'Bench'}</button>
+				{#if canHold}
+					<button type="button" class="tg" aria-pressed={holdOpen} onclick={() => (holdOpen ? (holdOpen = false) : openHold())} title="Make a video take from this still (local, no credits)">Hold</button>
+					<button type="button" class="tg" onclick={() => story.onAnimate?.()} aria-label={`Animate ${card.title}'s still`} title="Send this still to Seedance as the start frame (costs credits; you see the price first)">Animate</button>
+				{/if}
+				{#if (shownWindow.state === 'open' || shownWindow.state === 'closing') && shown}
+					<button type="button" class="tg" onclick={() => story.onFinalize?.(shown.asset_id)} aria-label={`Finalize this take of ${card.title} to 1080p`} title="Re-render this draft at 1080p from the same generation (costs credits; you see the price first)">Finalize</button>
+				{/if}
+				{#if shown && shown.kind === 'video' && !shown.rejected && !shown.source_take && story.onSplit}
+					<!-- Two steps: a stray click only arms it. -->
+					<button
+						type="button"
+						class="tg"
+						aria-pressed={armedSplit === shown.asset_id}
+						onclick={() => { if (armedSplit === shown.asset_id) { armedSplit = null; story.onSplit?.(shown.asset_id); } else armedSplit = shown.asset_id; }}
+						onblur={() => (armedSplit = null)}
+						disabled={!!story.splitting}
+						aria-label={armedSplit === shown.asset_id ? `Confirm: split this take of ${card.title} into shots` : `Split this take of ${card.title} into shots`}
+						title="Split this take into shots by scene detection: a new group, one card per shot"
+					>{story.splitting === shown.asset_id ? 'Splitting…' : armedSplit === shown.asset_id ? 'Split?' : 'Split'}</button>
+				{/if}
+				{#if rejectedCount > 0}
+					<button type="button" class="tg" aria-pressed={showRejected} onclick={() => (showRejected = !showRejected)}>{rejectedCount} excluded</button>
+				{/if}
+				{#if shown?.rejected}
+					<button type="button" class="tg" onclick={restore}>Restore</button>
+				{:else if shown}
+					<button type="button" class="tg" onclick={reject} aria-label={`Exclude this take of ${card.title}`}>Exclude</button>
+				{/if}
+			</div>
+			{#if holdOpen && canHold}
+				<form class="row" onsubmit={(event) => { event.preventDefault(); makeHold(); }} aria-label={`Make a Hold of ${card.title}`}>
+					<label class="cp">Length <input type="number" min="0.5" max="30" step="0.5" bind:value={holdLength} /></label>
+					<span class="cp opt"><Toggle label="Push-in" bind:checked={holdPushIn} /> Push-in</span>
+					<span class="cp opt"><Toggle label="Fade" bind:checked={holdFade} /> Fade</span>
+					<button type="submit" class="key go">Make Hold</button>
+				</form>
+			{/if}
+			{#if story.series}
+				<div class="row refs" aria-label={`References on ${card.title}`}>
+					{#each story.references ?? [] as reference (reference.key)}
+						<span class={['ref', reference.kind === 'previous_frame' && 'prev', reference.label === 'Missing reference' && 'missing']} title={reference.kind === 'previous_frame' ? "The previous shot's last frame, attached after the other references" : reference.label}>
+							{#if reference.url}<img src={referenceImageUrl(reference.url, 'small')} alt="" />{/if}
+							<span class="name">{reference.label}</span>
+							<button type="button" onclick={() => story.onRemoveReference?.(reference.key)} aria-label={`Remove ${reference.label} from ${card.title}`}>×</button>
+						</span>
+					{:else}
+						<span class="cp none">No references · drag one from References</span>
+					{/each}
+					<button
+						type="button"
+						class="tg"
+						onclick={() => story.onAttachPrevious?.()}
+						disabled={!story.canAttachPrevious}
+						aria-label={`Attach the last frame of the previous shot to ${card.title}`}
+						title={story.canAttachPrevious ? (hasPreviousFrame ? "Take the previous shot's last frame again (its pick may have changed)" : "Attach the last frame of the previous shot's pick as a reference") : 'The previous shot has no pick yet'}
+					>{hasPreviousFrame ? 'Prev frame ↻' : 'Prev frame'}</button>
+				</div>
+			{/if}
+		</div>
+	</NodeToolbar>
+{/if}
+
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="node"
 	ondragenter={(event) => { if (card && event.dataTransfer?.types.includes('Files')) dropping = true; if (card && story.series && event.dataTransfer?.types.includes(REFERENCE_DRAG)) referenceOver = true; }}
 	ondragover={(event) => { if (card && story.series && event.dataTransfer?.types.includes(REFERENCE_DRAG)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
 	ondragleave={(event) => { if (!(event.currentTarget as Element).contains(event.relatedTarget as Node)) { dropping = false; referenceOver = false; } }}
@@ -161,185 +247,33 @@
 		const pageId = event.dataTransfer?.getData(REFERENCE_DRAG);
 		if (card && story.series && pageId) { event.preventDefault(); event.stopPropagation(); story.onDropReference?.(pageId); }
 	}}
-	class={[
-		'story-node w-[240px] overflow-hidden rounded-md border bg-nr-card',
-		benched && 'benched',
-		dropping && 'dropping',
-		referenceOver && 'dropping',
-		inSequence ? 'border-nr-mark shadow-[0_0_18px_rgba(242,193,78,.18)]' : selected ? 'border-nr-accent shadow-[0_0_18px_rgba(85,223,213,.14)]' : 'border-nr-line'
-	]}
-	aria-label={card ? `Story card ${number ?? 'off the spine'}, ${card.title}` : `Story card ${story.order + 1}, awaiting draft`}
 >
-	<header class="flex items-center gap-2 border-b border-nr-line px-2 py-1.5">
-		{#if inSequence}<span class="bg-nr-mark px-1 font-mono text-[10px] font-bold text-black" title="Sequence position">{inSequence}</span>{/if}
-		<span class={['font-mono text-[10px] font-bold', number ? 'text-nr-accent' : 'text-nr-dim']} title={number ? 'Place on the spine' : 'Off the spine: hook a connector in to give it a place'}>{number ? String(number).padStart(2, '0') : '--'}</span>
-		<strong class="min-w-0 grow truncate text-[11px] text-nr-text" title={story.code ? `${story.code} · ${card?.title}` : card?.title}>{#if story.code}<span class="font-mono text-nr-accent">{story.code}</span>{' · '}{/if}{card?.title ?? `Shot ${story.order + 1}`}</strong>
-		{#if benched}<span class="benched-mark">Benched</span>{/if}
-		{#if story.animating}<span class="benched-mark" title="A Seedance generation from this shot is running">Animating…</span>{/if}
-		<span class="font-mono text-[9px] uppercase text-nr-dim">{card ? `${card.duration_ms / 1000}s` : 'placeholder'}</span>
-		{#if card}
-			<button
-				type="button"
-				class="nodrag take-btn"
-				onclick={(event) => { event.stopPropagation(); story.onBench?.(!benched); }}
-				aria-pressed={benched}
-				aria-label={benched ? `Unbench ${card.title}` : `Bench ${card.title}`}
-				title={benched ? 'Unbench: play this shot again' : 'Bench: keep it here but skip it'}
-			>{benched ? 'Unbench' : 'Bench'}</button>
-		{/if}
-	</header>
-
-	<nav class="nodrag grid grid-cols-2 bg-nr-deep px-1 py-0.5" aria-label="Card face">
-		{#each faces as item}
-			<button
-				type="button"
-				class:active={face === item}
-				class="face-tab"
-				onclick={() => (face = item)}
-				aria-pressed={face === item}
-			>{item === 'beat' ? 'shot' : item}</button>
-		{/each}
-	</nav>
-
-	<div class="aspect-video bg-nr-deep" aria-live="polite">
-		{#key face}
-			<div class="card-face relative h-full">
-				{#if !card}
-					<div class="flex h-full flex-col items-center justify-center px-6 text-center">
-						<span class="font-mono text-[9px] uppercase tracking-[.12em] text-nr-dim">Awaiting story draft</span>
-						<p class="mt-2 text-[11px] leading-5 text-nr-dim">This slot becomes a connected shot when the Agent builds the spine.</p>
-					</div>
-				{:else if face === 'beat'}
-					<div class="h-full overflow-auto p-3">
-						<p class="text-[11px] leading-5 text-nr-muted">{card.beat}</p>
-						<p class="mt-3 border-l border-nr-accent-deep pl-2 font-mono text-[9px] leading-4 text-nr-dim"><b class="text-nr-accent">PURPOSE</b> · {card.purpose}</p>
-					</div>
-				{:else if shown}
-					{#key shown.asset_id}
-						<div class={['h-full', shown.rejected && 'opacity-40']}>
-							{#if shown.kind === 'video'}
-								<ClipHoverPlayer src={shown.url} label={card.title} inS={shown.in_s} outS={shown.out_s} speed={shown.speed} />
-							{:else}
-								<img src={referenceImageUrl(shown.url)} alt={`${card.title} take`} class="h-full w-full object-contain" />
-							{/if}
-						</div>
-					{/key}
-					{#if shownFinalizing}
-						<span class="draft-badge" title="Finalizing to 1080p from the same render">1080p · finalizing…</span>
-					{:else if shownWindow.state === 'open' || shownWindow.state === 'closing'}
-						<span class={['draft-badge', shownWindow.state === 'closing' && 'closing']} title={`480p draft: finalizable to 1080p until ${new Date(shownWindow.closes_at).toLocaleString()}`}>1080p · {timeLeft(shownWindow.ms_left)}</span>
-					{/if}
-					{#if shown.rejected}<span class="rejected-mark">Rejected</span>{:else if isUnder2K(shown)}<span class="rejected-mark" title={`${shown.width}×${shown.height}: under 2K on the long edge`}>Under 2K</span>{/if}
-					{#if holdOpen && canHold}
-						<form class="hold-form nodrag" onsubmit={(event) => { event.preventDefault(); makeHold(); }} aria-label={`Make a Hold of ${card.title}`}>
-							<label>Length <input type="number" min="0.5" max="30" step="0.5" bind:value={holdLength} />s</label>
-							<span class="flex items-center gap-[5px]"><Toggle label="Push-in" bind:checked={holdPushIn} /> Push-in</span>
-							<span class="flex items-center gap-[5px]"><Toggle label="Fade" bind:checked={holdFade} /> Fade</span>
-							<span class="flex gap-1">
-								<button type="submit" class="take-btn active">Make Hold</button>
-								<button type="button" class="take-btn" onclick={() => (holdOpen = false)}>Cancel</button>
-							</span>
-						</form>
-					{/if}
-				{:else}
-					<div class="no-take flex h-full flex-col justify-end p-3">
-						<span class="no-take-badge">No take yet</span>
-						<span class="font-mono text-[9px] text-nr-blue">VIDEO PROMPT</span>
-						<p class="mt-2 line-clamp-6 text-[10px] leading-4 text-nr-dim">{card.video_prompt}</p>
-					</div>
-				{/if}
-			</div>
-		{/key}
-	</div>
-
-	{#if card && story.series}
-		<div class="nodrag flex flex-wrap items-center gap-1 border-t border-nr-line px-1.5 py-1" aria-label={`References on ${card.title}`}>
-			{#each story.references ?? [] as reference (reference.key)}
-				<span class={['ref-chip', reference.kind === 'previous_frame' && 'prev', reference.label === 'Missing reference' && 'missing']} title={reference.kind === 'previous_frame' ? "The previous shot's last frame, attached after the other references" : reference.label}>
-					{#if reference.url}<img src={referenceImageUrl(reference.url, 'small')} alt="" class="h-3 w-5 object-cover" />{/if}
-					<span class="max-w-[120px] truncate">{reference.label}</span>
-					<button type="button" onclick={(event) => { event.stopPropagation(); story.onRemoveReference?.(reference.key); }} aria-label={`Remove ${reference.label} from ${card.title}`}>×</button>
-				</span>
-			{:else}
-				<span class="font-mono text-[9px] text-nr-dim">No references · drag one from References</span>
-			{/each}
-			<span class="grow"></span>
-			<button
-				type="button"
-				class="take-btn"
-				onclick={(event) => { event.stopPropagation(); story.onAttachPrevious?.(); }}
-				disabled={!story.canAttachPrevious}
-				aria-label={`Attach the last frame of the previous shot to ${card.title}`}
-				title={story.canAttachPrevious ? (hasPreviousFrame ? "Take the previous shot's last frame again (its pick may have changed)" : "Attach the last frame of the previous shot's pick as a reference") : 'The previous shot has no pick yet'}
-			>{hasPreviousFrame ? 'Prev ↻' : '+ Prev frame'}</button>
+	{#if card && facts}
+		<ShotCard {card} {facts} pick={shown} {selected} dropTarget={dropping || referenceOver} position={inSequence} draggable={false} {tag} onselect={(shift) => { if (shift) gather(); }} onopen={() => {}} />
+	{:else}
+		<div class="awaiting" aria-label={`Shot ${story.order + 1}, awaiting draft`}>
+			<span class="cp">Awaiting story draft</span>
+			<p>This slot becomes a shot when the Agent builds the story.</p>
 		</div>
 	{/if}
-
-	{#if card && (cycle.length >= 2 || shown || rejectedCount > 0)}
-		<footer class="nodrag flex items-center gap-1 border-t border-nr-line px-1 py-0.5">
-			{#if cycle.length >= 2}
-				<button type="button" class="take-btn" onclick={() => step(-1)} aria-label={`Previous take for ${card.title}`}>‹</button>
-				<span class="shrink-0 whitespace-nowrap font-mono text-[9px] text-nr-muted" aria-live="polite" aria-label={`Take ${shownIndex + 1} of ${cycle.length}`} title={`Take ${shownIndex + 1} of ${cycle.length}`}>TK {shownIndex + 1}/{cycle.length}</span>
-				<button type="button" class="take-btn" onclick={() => step(1)} aria-label={`Next take for ${card.title}`}>›</button>
-			{/if}
-			<span class="grow"></span>
-			{#if canHold}
-				<button type="button" class="take-btn" onclick={openHold} aria-label={`Make a Hold of ${card.title}'s still`} title="Make a video take from this still (local, no credits)">Hold</button>
-				<button type="button" class="take-btn" onclick={() => story.onAnimate?.()} aria-label={`Animate ${card.title}'s still`} title="Send this still to Seedance as the start frame (costs credits; you see the price first)">Animate</button>
-			{/if}
-			{#if (shownWindow.state === 'open' || shownWindow.state === 'closing') && shown}
-				<button type="button" class="take-btn" onclick={() => story.onFinalize?.(shown.asset_id)} aria-label={`Finalize this take of ${card.title} to 1080p`} title="Re-render this draft at 1080p from the same generation (costs credits; you see the price first)">Finalize</button>
-			{/if}
-			{#if shown && shown.kind === 'video' && !shown.rejected && !shown.source_take && story.onSplit}
-				<!-- Two steps: a stray click only arms it. -->
-				<button
-					type="button"
-					class={['take-btn', armedSplit === shown.asset_id && 'active']}
-					onclick={(event) => { event.stopPropagation(); if (armedSplit === shown.asset_id) { armedSplit = null; story.onSplit?.(shown.asset_id); } else armedSplit = shown.asset_id; }}
-					onblur={() => (armedSplit = null)}
-					disabled={!!story.splitting}
-					aria-label={armedSplit === shown.asset_id ? `Confirm: split this take of ${card.title} into shots` : `Split this take of ${card.title} into shots`}
-					title="Split this take into shots by scene detection: a new group, one card per shot"
-				>{story.splitting === shown.asset_id ? 'Splitting…' : armedSplit === shown.asset_id ? 'Split?' : 'Split'}</button>
-			{/if}
-			{#if rejectedCount > 0}
-				<button type="button" class="take-btn" class:active={showRejected} onclick={() => (showRejected = !showRejected)} aria-pressed={showRejected}>{rejectedCount} rejected</button>
-			{/if}
-			{#if shown?.rejected}
-				<button type="button" class="take-btn" onclick={restore}>Restore</button>
-			{:else if shown}
-				<button type="button" class="take-btn" onclick={reject} aria-label={`Reject this take of ${card.title}`}>Reject</button>
-			{/if}
-		</footer>
-	{/if}
-</article>
+</div>
 
 <style>
-	.face-tab { border: 0; background: transparent; padding: 3px 4px; color: var(--color-nr-dim); font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
-	.face-tab:hover { background: var(--color-nr-raised); color: var(--color-nr-muted); }
-	.face-tab.active { background: var(--color-nr-raised); box-shadow: inset 0 -1px 0 var(--color-nr-accent); color: var(--color-nr-accent); }
-	.take-btn { flex: none; border: 0; background: transparent; padding: 2px 6px; white-space: nowrap; color: var(--color-nr-dim); font: 600 9px var(--font-mono); text-transform: uppercase; transition: background 120ms ease, color 120ms ease; }
-	.take-btn:hover, .take-btn.active { background: var(--color-nr-raised); color: var(--color-nr-muted); }
-	.rejected-mark { position: absolute; top: 6px; left: 6px; border: 1px solid var(--color-nr-danger-line); background: var(--color-nr-danger-bg); padding: 1px 5px; color: var(--color-nr-danger-text); font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.hold-form { position: absolute; inset: auto 6px 6px 6px; display: grid; gap: 4px; border: 1px solid var(--color-nr-accent-deep); background: color-mix(in srgb, var(--color-nr-deep) 95%, transparent); padding: 6px; color: var(--color-nr-muted); font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.hold-form label { display: flex; align-items: center; gap: 5px; }
-	.hold-form input[type='number'] { width: 52px; border: 1px solid var(--color-nr-line); background: var(--color-nr-card); padding: 1px 4px; color: var(--color-nr-text); font: inherit; }
-	.draft-badge { position: absolute; top: 6px; right: 6px; border: 1px solid var(--color-nr-mark-line); background: var(--color-nr-mark-bg); padding: 1px 5px; color: var(--color-nr-mark); font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.draft-badge.closing { border-color: var(--color-nr-danger-line); background: var(--color-nr-danger-bg); color: var(--color-nr-danger); }
-	.ref-chip { display: inline-flex; align-items: center; gap: 3px; border: 1px solid var(--color-nr-accent-deep); padding: 0 2px 0 4px; color: var(--color-nr-muted); font: 600 9px var(--font-mono); }
-	.ref-chip.prev { border-color: var(--color-nr-blue); }
-	.ref-chip.missing { border-color: var(--color-nr-danger-line); color: var(--color-nr-danger-text); }
-	.ref-chip button { border: 0; background: transparent; padding: 0 2px; color: var(--color-nr-dim); font: inherit; }
-	.ref-chip button:hover { color: var(--color-nr-text); }
-	.take-btn:disabled { opacity: .35; cursor: default; background: transparent; }
-	.dropping { outline: 1px dashed var(--color-nr-accent); outline-offset: 3px; }
-	.benched > :not(header) { opacity: .4; }
-	.benched header { opacity: .7; }
-	.benched-mark { border: 1px solid var(--color-nr-mark-line); padding: 0 4px; color: var(--color-nr-mark-dim); font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.card-face { animation: face-in 140ms ease-out; }
-	@keyframes face-in { from { opacity: .35; transform: translateX(4px); } }
-	@media (prefers-reduced-motion: reduce) { .card-face { animation: none; } }
-	/* A shot with no take yet: slate stripes, never black (black reads as a fade from black). */
-	.no-take { position: relative; background: repeating-linear-gradient(135deg, #1b2830 0 8px, #16212a 8px 16px); }
-	.no-take-badge { position: absolute; left: 8px; top: 8px; border-radius: 3px; background: rgb(10 12 14 / .7); padding: 1px 5px; color: #84cbd0; font: 600 8px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+	.node { width: 240px; border-radius: 9px; background: var(--color-panel); }
+	.awaiting { display: flex; aspect-ratio: 16 / 10; flex-direction: column; justify-content: center; gap: 6px; border-radius: 9px; background: var(--color-raised); padding: 0 18px; text-align: center; color: var(--color-ink-3); }
+	.awaiting p { margin: 0; font-size: 11.5px; line-height: 1.5; }
+	.bar { display: flex; flex-direction: column; gap: 3px; border-radius: 8px; background: var(--color-raised); padding: 4px; box-shadow: 0 10px 24px rgb(0 0 0 / 0.6); }
+	.row { display: flex; align-items: center; gap: 2px; white-space: nowrap; }
+	.count { padding: 0 4px; color: var(--color-ink-2); font: 10.5px var(--font-mono); }
+	.row label, .opt { display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; color: var(--color-ink-3); }
+	.row input[type='number'] { width: 46px; height: 20px; border: 0; border-radius: 5px; background: var(--color-control); padding: 0 4px; color: var(--color-ink); font: 11px var(--font-mono); }
+	.refs { max-width: 420px; flex-wrap: wrap; }
+	.ref { display: inline-flex; height: 20px; align-items: center; gap: 4px; border-radius: 5px; background: var(--color-control); padding: 0 2px 0 4px; color: var(--color-ink-2); font-size: 11px; }
+	.ref.prev { color: #7fb2ff; }
+	.ref.missing { color: #ff7a6b; }
+	.ref img { width: 22px; height: 13px; border-radius: 2px; object-fit: cover; }
+	.ref .name { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+	.ref button { border: 0; background: none; padding: 0 3px; color: var(--color-ink-3); font: inherit; cursor: pointer; }
+	.ref button:hover { color: var(--color-ink); }
+	.none { padding: 0 6px; color: var(--color-ink-3); }
 </style>

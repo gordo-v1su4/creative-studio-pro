@@ -12,7 +12,7 @@
 	import { SHOT_DRAG } from '$lib/ui/shots/SelectionStrip.svelte';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 
-	let { card, facts, pick, selected = false, dropTarget = false, position = 0, onselect, onopen }: {
+	let { card, facts, pick, selected = false, dropTarget = false, position = 0, draggable = true, tag = null, onselect, onopen }: {
 		card: StoryCard;
 		facts: ShotCardFacts;
 		pick: Take | null;
@@ -21,6 +21,10 @@
 		dropTarget?: boolean;
 		/** Its place in the selection (1 = first), or 0 when it is not in it. */
 		position?: number;
+		/** Whether the card can be picked up and dropped (off on the canvas, where the canvas moves cards itself). */
+		draggable?: boolean;
+		/** One short note over the frame, e.g. a draft's time left or "Under 2K". */
+		tag?: { text: string; tone?: 'warn' | 'bad'; title?: string } | null;
 		/** Clicked; `gather` is true for a shift-click, which also adds it to the selection or takes it out. */
 		onselect: (gather: boolean) => void;
 		/** Asked to play the shot in the viewer (double-click, Enter or Space). */
@@ -57,8 +61,8 @@
 	aria-label={`Shot ${facts.number}, ${card.title}, ${facts.statusLabel}`}
 	aria-pressed={selected}
 	tabindex="0"
-	draggable="true"
-	ondragstart={(event) => { event.dataTransfer?.setData(SHOT_DRAG, card.card_id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove'; along = null; }}
+	draggable={draggable ? 'true' : 'false'}
+	ondragstart={(event) => { if (!draggable) return; event.dataTransfer?.setData(SHOT_DRAG, card.card_id); if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copyMove'; along = null; }}
 	onclick={(event) => onselect(event.shiftKey)}
 	ondblclick={(event) => { if (!event.shiftKey) onopen(); }}
 	onkeydown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); onselect(false); onopen(); } }}
@@ -83,6 +87,7 @@
 			<span class="marks" aria-hidden="true">{#each facts.takes as take (take.id)}<i class:pick={take.pick} class:excluded={take.excluded}></i>{/each}</span>
 		{/if}
 		{#if position}<span class="place" title="Its place in the selection">{position}</span>{/if}
+		{#if tag}<span class="tag" data-tone={tag.tone} title={tag.title}>{tag.text}</span>{/if}
 		{#if pick}<span class="length">{facts.length}</span>{/if}
 	</div>
 	<div class="line"><span class="title">{card.title}</span><span class="code">{facts.number}</span></div>
@@ -111,6 +116,9 @@
 	.marks i.excluded { background: rgb(255 255 255 / 0.14); }
 	.length { position: absolute; right: 4px; bottom: 4px; border-radius: 3px; background: rgb(0 0 0 / 0.72); padding: 0 4px; color: var(--color-ink); font: 10.5px var(--font-mono); pointer-events: none; }
 	.place { position: absolute; top: 4px; left: 4px; border-radius: 3px; background: var(--color-teal-deep); padding: 0 5px; color: var(--color-teal-ink); font: 10.5px var(--font-mono); pointer-events: none; }
+	.tag { position: absolute; top: 4px; right: 4px; border-radius: 3px; background: rgb(0 0 0 / 0.72); padding: 0 4px; color: var(--color-ink-2); font: 10.5px var(--font-mono); pointer-events: none; }
+	.tag[data-tone='warn'] { color: var(--color-amber); }
+	.tag[data-tone='bad'] { color: #ff7a6b; }
 	.line { display: flex; align-items: baseline; gap: 8px; overflow: hidden; padding: 0 1px; white-space: nowrap; }
 	.title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; color: var(--color-ink); font-size: 12px; }
 	.shot.selected .title { color: var(--color-teal-ink); }

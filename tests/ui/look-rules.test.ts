@@ -8,7 +8,9 @@ import { join } from 'node:path';
  * added here as they are restyled.
  */
 const FOLDERS = ['src/lib/ui/shots', 'src/lib/ui/shell'];
-const files = FOLDERS.flatMap((folder) => readdirSync(folder).filter((name) => name.endsWith('.svelte')).map((name) => join(folder, name)));
+/** Single components restyled inside a folder that still carries the old look. */
+const FILES = ['src/lib/ui/nodes/StoryCardNode.svelte'];
+const files = [...FOLDERS.flatMap((folder) => readdirSync(folder).filter((name) => name.endsWith('.svelte')).map((name) => join(folder, name))), ...FILES];
 const styleOf = (file: string) => { const source = readFileSync(file, 'utf8'); const at = source.indexOf('<style>'); return at < 0 ? '' : source.slice(at); };
 
 test('the new screens are found', () => {

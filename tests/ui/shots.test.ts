@@ -113,3 +113,24 @@ test('G makes a group with no dialog, in the grid and on the canvas', () => {
 	expect(boxed).toContain('nextGroupName(activeProject.production)');
 	expect(boxed).not.toContain('newGroupName');
 });
+
+const node = readFileSync('src/lib/ui/nodes/StoryCardNode.svelte', 'utf8');
+const brief = readFileSync('src/lib/ui/shots/ShotBrief.svelte', 'utf8');
+
+test('a shot on the canvas is the grid card, and its actions float beside it instead of changing its size', () => {
+	expect(markup(node)).toContain('<ShotCard {card} {facts} pick={shown} {selected}');
+	expect(markup(node)).toContain('draggable={false}');
+	expect(markup(node)).toContain('<NodeToolbar position={Position.Bottom}');
+	// Everything the old card carried is in the bar: takes, bench, hold, animate, finalize, split, exclude, references.
+	const bar = markup(node).slice(markup(node).indexOf('<NodeToolbar'), markup(node).indexOf('</NodeToolbar>'));
+	for (const action of ['step(-1)', 'onBench', 'openHold', 'onAnimate', 'onFinalize', 'onSplit', 'restore', 'reject', 'onAttachPrevious', 'onRemoveReference']) expect(bar).toContain(action);
+	expect(node).not.toContain('face-tab');
+});
+
+test('on the canvas the dock shows the selected shot read-only, and canvas drops ask the one resolver', () => {
+	expect(page).toContain('<ShotBrief project={activeProject} card={briefCard}');
+	expect(brief.match(/readonly/g)!.length).toBeGreaterThanOrEqual(3);
+	expect(brief).not.toContain('onedit');
+	expect(page).toContain("dropMeaning({ kind: 'shots', cardIds: beats }, { kind: 'group', groupId: target }, dropContext)");
+	expect(page).toContain("cardId ? { kind: 'shot', cardId } : { kind: 'space', groupId: space }, dropContext)");
+});
