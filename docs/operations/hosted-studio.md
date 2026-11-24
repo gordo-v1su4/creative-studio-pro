@@ -13,7 +13,16 @@ originals are preserved during migration.
 
 `scripts/build-studio-gateway.ts` reads protected build settings and emits private
 routing output: external rewrite, overwritten proof header, disabled caching.
-Never commit or share that generated output. The origin requires the proof on
+Never commit or share that generated output.
+
+Caching, decided 2026-11-23: Vercel's CDN stores nothing on any route. The
+signed-in browser may keep derived media only: a take's 480p proxy (`?proxy=1`),
+poster (`?poster=1`) and frame strip (`?strip=1`), and a picture's thumbnail
+(`?variant=`), each on a project file. On those requests the gateway leaves the
+origin's own `Cache-Control` in place (`private`, a day at most; an hour for
+thumbnails); errors carry no such header and are not kept. Pages, project data and
+original files stay `private, no-store`. Before this, every hover and every cut
+reopen downloaded its media again at 0.2–1.6 s a file. The origin requires the proof on
 **every** request, including media and writes. Missing credentials fail closed.
 Provider, Notion and Review Room keys belong only on the origin.
 
