@@ -206,6 +206,14 @@ test('editing the prompt of an approved render sends it back to approval', () =>
 	expect(drafted.render.state).toBe('to_approve');
 });
 
+test('an entry queued unchanged stops saying so once its prompt is edited', () => {
+	const unchanged = render({ state: 'to_approve', unchanged: true, prompt: 'Before.', prompt_before: 'Before.' });
+	const same = withPrompt(unchanged, 'Before.', []);
+	const edited = withPrompt(unchanged, 'After.', []);
+	if (!same.ok || !edited.ok) throw new Error('not editable');
+	expect([same.render.unchanged, edited.render.unchanged]).toEqual([true, undefined]);
+});
+
 test('the total is per render provider, and credits are never added to dollars', () => {
 	const a = withPrice(render({ request_id: 'a' }), { amount: 12, unit: 'credits' }, NOW);
 	const b = withPrice(render({ request_id: 'b' }), { amount: 30, unit: 'credits' }, NOW);

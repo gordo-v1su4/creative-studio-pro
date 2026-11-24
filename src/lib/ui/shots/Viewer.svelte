@@ -14,7 +14,7 @@
 	import { noteMarks, orderedNotes, type ReviewNote } from '$lib/domain/review-notes';
 	import { referenceImageUrl } from '$lib/media/reference-images';
 
-	let { production, cards, shotId = $bindable(), busy = false, reviewHost = null, roomHref = null, notesFor = null, notesStamp = 0, onclose, onpick, onreview }: {
+	let { production, cards, shotId = $bindable(), busy = false, reviewHost = null, roomHref = null, notesFor = null, notesStamp = 0, rerender = null, onclose, onpick, onreview }: {
 		production: ProductionState;
 		/** The shots in the order the grid shows them; arrow keys walk this list. */
 		cards: StoryCard[];
@@ -31,6 +31,8 @@
 		onclose: () => void;
 		onpick: (cardId: string, takeId: string) => void;
 		onreview: (take: ProductionAsset, change: { status?: ReviewStatus; excluded?: boolean }) => void;
+		/** "Queue re-render" for a take marked Needs changes (slice 8): drawn under the review decisions. */
+		rerender?: import('svelte').Snippet<[ProductionAsset]> | null;
 	} = $props();
 
 	const index = $derived(Math.max(0, cards.findIndex((card) => card.card_id === shotId)));
@@ -255,6 +257,7 @@
 			<button type="button" class="key go" disabled={busy || !shown || !!shown.rejected || shown.asset_id === pick?.asset_id} onclick={() => card && shown && onpick(card.card_id, shown.asset_id)}>{shown && shown.asset_id === pick?.asset_id ? 'This is the pick' : 'Make pick'}</button>
 			<button type="button" class="key" disabled={busy || !shown} onclick={() => shown && onreview(shown, { excluded: !shown.rejected })}>{shown?.rejected ? 'Restore' : 'Exclude'}</button>
 		</div>
+		{#if shown && rerender}{@render rerender(shown)}{/if}
 		{#if shown?.review_room}
 			<p class="cp">Review Room</p>
 			<p class="code stored">{shown.review_room.code}_{shownMark?.label}</p>

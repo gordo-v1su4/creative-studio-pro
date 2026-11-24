@@ -50,6 +50,19 @@ const RULES = [
 	'Return only the requested JSON object, with no markdown fences or commentary.'
 ].join(' ');
 
+/**
+ * What the skill's check finds in a changed prompt that the earlier prompt did not already carry. The take it
+ * answers was rendered from the earlier prompt, so its old findings do not hold the re-render up; the change must
+ * bring in none. Ghost's check for a prompt in sections, the Seedance linter's errors for any other.
+ */
+export function promptChangeCheck(before: string, after: string, input: Pick<PromptChangeInput, 'duration_s' | 'references' | 'banned'>): string[] {
+	const found = ghostSections(before)
+		? (prompt: string) => ghostQc(prompt, { duration_s: input.duration_s, references: input.references, banned: input.banned })
+		: (prompt: string) => lintPrompt(prompt, 'seedance', input.banned ?? []).issues.filter((issue) => issue.severity === 'error').map((issue) => issue.message);
+	const old = new Set(found(before));
+	return [...new Set(found(after))].filter((finding) => !old.has(finding));
+}
+
 const KEYS = ['header', ...GHOST_SECTIONS] as const;
 const keyOf = (value: string): string | null => KEYS.find((key) => key.toLowerCase() === value.trim().toLowerCase()) ?? null;
 
@@ -67,10 +80,7 @@ export async function draftPromptChange(client: AgentModelClient, input: PromptC
 	const sections = ghostSections(input.prompt);
 
 	if (!sections) {
-		const banned = input.banned ?? [];
-		const found = (prompt: string) => lintPrompt(prompt, 'seedance', banned).issues.filter((issue) => issue.severity === 'error').map((issue) => issue.message);
-		const before = new Set(found(input.prompt));
-		const check = (prompt: string) => [...new Set(found(prompt))].filter((message) => !before.has(message));
+		const check = (prompt: string) => promptChangeCheck(input.prompt, prompt, input);
 		const schema = z.object({ prompt: z.string().trim().min(1).max(10_000) });
 		const ask = (extra = '') => generateStructured(client, { system, prompt: `This prompt is not written in sections, so edit it as it stands. Return JSON {"prompt"}: the whole prompt with the change made.${extra}\n\nPROMPT:\n${input.prompt}\n\nWHAT TO CHANGE:\n${evidence(input)}`, maxOutputTokens: 4000, timeoutMs: 120_000 }, (value) => schema.parse(value));
 		let prompt = (await ask()).prompt;
@@ -83,9 +93,7 @@ export async function draftPromptChange(client: AgentModelClient, input: PromptC
 		return { prompt, changed: ['prompt'], check: findings };
 	}
 
-	const qc = (prompt: string) => ghostQc(prompt, { duration_s: input.duration_s, references: input.references, banned: input.banned });
-	const before = new Set(qc(input.prompt));
-	const check = (prompt: string) => qc(prompt).filter((finding) => !before.has(finding));
+	const check = (prompt: string) => promptChangeCheck(input.prompt, prompt, input);
 	const schema = z.object({ sections: z.array(z.object({ key: z.string().min(1).max(60), text: z.string().trim().min(1).max(6000) })).max(KEYS.length) });
 	const apply = (prompt: string, edits: Array<{ key: string; text: string }>) => edits.reduce((text, edit) => { const key = keyOf(edit.key); return key ? withGhostSection(text, key, edit.text) : text; }, prompt);
 	const ask = (current: string, extra = '') => generateStructured(client, {

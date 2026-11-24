@@ -16,7 +16,7 @@ const ghost = `6 s. Upload: image 1 = Kai\n\n${GHOST_SECTIONS.map((name) => `${n
 function fakeModel(...answers: unknown[]) {
 	const asked: Array<{ system: string; prompt: string }> = [];
 	const client: AgentModelClient = {
-		choice: { provider: 'test', model: 'fake' } as AgentModelClient['choice'],
+		choice: { provider: 'custom', model: 'fake', base_url: null },
 		async generate(input) {
 			asked.push({ system: input.system, prompt: input.prompt });
 			const next = answers.shift();
