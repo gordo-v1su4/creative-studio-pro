@@ -17,7 +17,7 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 | | |
 | --- | --- |
 | Working branch | `ux-streamline`, local only (never pushed as a branch) |
-| Branch tip | `d81b3cc` plus this handoff commit |
+| Branch tip | `d81b3cc` plus the handoff commits |
 | `main` on GitHub | `337de5e` |
 | Hosted Studio (studio.v1su4.com) | gateway and app both at `337de5e`; rollback image `rollback-a1482a7` |
 | Not released | everything after `337de5e`: `d81b3cc` (take chips on the card, picks that are kept and resent, the link back) |
@@ -97,9 +97,7 @@ a parked draft test for slice 4. Slice 8 is new and has no design yet.
    operator's requirement "the current take choice must update live between the two". Unfinished work is on local
    branch `live-current-version` in `review-room-svelte` at `43be65a`: a pure merge rule (`src/lib/live-refresh.ts`
    with tests), a feed helper (`convex/lib/seriesAssets.ts`, `convex/personal.ts`) and a Convex test; it is **not
-   wired into the page** and not verified. Its worktree is at
-   `/private/tmp/claude-501/-Users-robertspaniolo-Documents-Github-creative-studio-pro/467834a1-064e-4536-9e20-f421cbddd9e7/scratchpad/rr-live-current`
-   and may have been cleaned up; if so, make a new worktree from the branch. What it has to do:
+   wired into the page** and not verified. The branch has no worktree; make one from it. What it has to do:
    - While the owner workspace is open and visible, pick up changes made elsewhere within about ten seconds and at
      once on focus, without a reload and without losing what is open: the current version (and so what "current"
      shows), review status, a version's exclusion, new versions.
