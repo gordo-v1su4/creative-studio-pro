@@ -322,6 +322,21 @@ Checked: 28 new tests (rules, the gateway on a real store, Review Room registrat
 
 Not done here: an episode imported from a Notion series keeps its own codes and lock (`setShotCodes`, the series' "codes locked"); the levels read the story plan, which such an episode does not have. A code freed by removing its scene is not remembered, so a later scene could be given it; Review Room already refuses that for scenes it holds.
 
+Status, part two, 2026-11-24 (steps 3 and 4 on screen; local test copy, checked in the browser at 1440px and 375px):
+
+- **The story plan is one level at a time** (`src/lib/ui/StoryPlan.svelte`, rewritten in the look). Its bar carries the five levels, where the open one stands ("5 proposed"), the level's Add button, Save while something is unsaved, and one approve button ("Approve 5 scenes", "Approve 1 new scene"). Approving saves what is on screen first. A row is selected with a teal fill and edited in a pane beside the list, so the list never moves.
+- **The notice comes before the button.** The line under the bar reads "Names lock on approve · Approving the scenes fixes each scene code. Titles can still change." whenever the level can be approved, says why when it cannot ("Approve the acts first"), and after approval says what is now fixed. A fixed code is shown as text, never as a field.
+- **The brief is a level, not a form to lock** (`src/lib/ui/story/BriefSheet.svelte`): drafted by the Agent or typed, saved, approved. The show code and project code sit above it, suggested (from the brief's title, `TR100`) and editable until the brief is approved.
+- **By hand as well as by the Agent.** Acts, scenes, story beats and planned shots can each be added, changed and removed here; the Agent's existing proposals (story beats from the source, shots for a beat) are buttons in the same places.
+- **The outline** (`src/lib/ui/shell/Outline.svelte`) lists the five levels with their state on top; clicking one opens it on the Story stage. Under them, scenes with their scene codes in story order, then **Unplaced** for groups that are not scenes (slice 2, step 4). A shot shows its own number even after it has moved.
+- **The "Next" line** follows the levels while a project is being planned here ("Approve the scenes, then story beats"), then goes back to the line about shots.
+- A plan route action, `approve_level`, approves through the gateway; for a trailer stored in Review Room, approving the shot list also makes its scene folders and registers the shots there, as "Add to Board" did.
+- Fixed on the way: the outline panel had a one-pixel frame since slice 0 (its class was named `outline`, which is also a Tailwind utility). A test now refuses local classes named after layout utilities in the new screens.
+
+Checked in the browser on a scratch project made for this ("Slice 4 check (scratch)", no Notion, no Review Room): brief typed and approved (codes `LTF`, `TR100`), three acts approved, a scene added and approved (`VHA`), a story beat added and approved, two shots added and the shot list approved (`VHA_0010`, `VHA_0020`, benched on the board). A request that tried to change the approved scene code was refused with "Scene code VHA is fixed: its level is approved, so only the title can change". At 375px nothing overflows; the pane sits under the list.
+
+Not exercised: the two Agent buttons (they call the model), and approving the shot list of a trailer connected to Review Room (it would create folders there); the second is covered by tests with a fake client.
+
 ### 5 · Voice
 
 Goal: talk to the Agent and hear it.

@@ -1,15 +1,32 @@
 <script lang="ts">
+	/**
+	 * The story plan, one level at a time (decision 3): brief, acts, scenes, story beats, shot list. Each level is
+	 * proposed (by the Agent or by hand), read and changed here, then approved; approving it fixes that level's
+	 * names (decision 22), and the line under the bar says so before the button is pressed. The row that is
+	 * selected is edited in the pane beside the list, so nothing in the list moves.
+	 */
 	import type { Project } from '$lib/domain/schemas';
-	import { boardCardFor, currentEdit, groupMeasures, sceneGroupId, shortShotCode, type GroupMeasure, type StoryPlan, type PlanScene } from '$lib/domain/story-plan';
-	import { cutLength } from '$lib/domain/cuts';
-	let { project, onUpdated, onPrep, onBoard }: { project: Project; onUpdated: (project: Project) => void; onPrep: () => void; onBoard: () => void } = $props();
+	import { boardCardFor, currentEdit, groupMeasures, sceneGroupId, type GroupMeasure, type PlanScene, type StoryPlan } from '$lib/domain/story-plan';
+	import { approveLabel, canApprove, levelCounts, levelLabel, levelOpen, levelStates, levelSummary, lockNotice, nextLevel, projectCodes, shortCodeOf, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
+	import { suggestCode } from '$lib/domain/shot-codes';
+	import { ui } from '$lib/ui/app-state.svelte';
+	import BriefSheet from '$lib/ui/story/BriefSheet.svelte';
+
+	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
+
+	type Section = StoryPlan['sections'][number];
+	type Beat = Section['moments'][number];
+	type Shot = Beat['shots'][number];
+
 	let plan = $state<StoryPlan | null>(null);
 	let loadedVersion = $state(-1);
-	let busy = $state(false);
 	let dirty = $state(false);
-	let error = $state('');
-	let note = $state('');
-	let targetSeconds = $state(105);
+	let briefDirty = $state(false);
+	let busy = $state('');
+	let said = $state<{ text: string; bad?: boolean } | null>(null);
+	let selected = $state('');
+	let targetSeconds = $state(30);
+	let sheet = $state<ReturnType<typeof BriefSheet> | null>(null);
 	$effect(() => {
 		if (project.version !== loadedVersion) {
 			loadedVersion = project.version;
@@ -17,160 +34,387 @@
 			dirty = false;
 		}
 	});
-	type Section = StoryPlan['sections'][number];
-	type Beat = Section['moments'][number];
-	const beats = $derived(plan?.sections.flatMap(section => section.moments) ?? []);
-	const shots = $derived(beats.filter(beat => beat.approved).flatMap(beat => beat.shots));
-	const seconds = $derived(beats.reduce((sum, beat) => sum + beat.duration_s, 0));
-	const added = $derived(shots.filter(shot => boardCardFor(project.production, shot)).length);
+
+	// Where each level stands. Counts follow what is on screen (the unsaved draft included); names come from the saved project.
+	const approvals = $derived(project.production.story_levels?.approved ?? {});
+	const counts = $derived({ ...levelCounts(project), brief: project.brief_state.versions.length || briefDirty ? 1 : 0, ...(plan ? { acts: plan.sections.length, scenes: plan.sections.reduce((sum, section) => sum + section.scenes.length, 0), beats: plan.sections.reduce((sum, section) => sum + section.moments.length, 0), shots: project.production.cards.length + plan.sections.flatMap((section) => section.moments).flatMap((beat) => beat.shots).filter((shot) => !boardCardFor(project.production, shot)).length } : {}) });
+	const open = $derived(levelOpen(project));
+	const states = $derived(levelStates(counts, approvals, open));
+	const level = $derived<StoryLevel>(ui.storyLevel ?? nextLevel(states) ?? 'shots');
+	const allowed = $derived(canApprove(level, states));
+	const codes = $derived(projectCodes(project));
+
+	// The two codes the brief fixes: suggested until then, and the operator may change them.
+	let showCode = $state(''), projectCode = $state('');
+	/** The project whose codes the operator has typed over: a suggestion never replaces what they typed. */
+	let typed = $state({ project: '', show: false, code: false });
+	$effect(() => {
+		const mine = typed.project === project.project_id;
+		if (!(mine && typed.show)) showCode = codes.show ?? suggestCode(project.brief_state.versions.at(-1)?.title ?? project.title);
+		if (!(mine && typed.code)) projectCode = codes.project ?? 'TR100';
+	});
+	const typeCode = (which: 'show' | 'code') => { typed = { project: project.project_id, show: (typed.project === project.project_id && typed.show) || which === 'show', code: (typed.project === project.project_id && typed.code) || which === 'code' }; };
+	const codesFixed = $derived(!!approvals.brief || !!project.review_room);
+
 	const room = $derived(project.review_room);
-	/** The Review Room scene a scene's board group already has (codes never change once given). */
-	const storedScene = (scene: PlanScene) => room?.scenes?.[sceneGroupId(scene)];
-	const groupName = (groupId?: string) => project.production.groups?.find(group => group.group_id === groupId)?.name ?? 'Main board';
-	const boardGroups = $derived(project.production.groups ?? []);
-	const boardShots = $derived(project.production.cards.toSorted((a, b) => groupName(a.group_id).localeCompare(groupName(b.group_id)) || a.order - b.order));
-	const codeOf = (cardId: string) => room?.shots?.[cardId]?.code;
-	const shortCode = (cardId: string) => shortShotCode(codeOf(cardId));
-	// Real length and shots from the board and the current edit (the cut worked on last), not only from story beats.
+	const beats = $derived(plan?.sections.flatMap((section) => section.moments) ?? []);
 	const edit = $derived(currentEdit(project.production));
 	const measures = $derived(groupMeasures(project.production));
-	const editSeconds = $derived(edit ? cutLength(edit) : 0);
-	const inEdit = $derived(new Set(edit?.entries.map(entry => entry.card_id) ?? []).size);
-	/** A scene's board group, once it has one (linked, or made by Add to Board). */
-	const sceneGroup = (scene: PlanScene) => scene.group_id ?? (project.production.groups?.some(group => group.group_id === sceneGroupId(scene)) ? sceneGroupId(scene) : undefined);
+	const sceneGroup = (scene: PlanScene) => scene.group_id ?? (project.production.groups?.some((group) => group.group_id === sceneGroupId(scene)) ? sceneGroupId(scene) : undefined);
 	const sceneMeasure = (scene: PlanScene): GroupMeasure | null => { const id = sceneGroup(scene); return id ? measures.get(id) ?? { shots: 0, in_edit: 0, edit_s: 0 } : null; };
-	const sectionMeasure = (section: Section): GroupMeasure => [...new Set(section.scenes.map(sceneGroup).filter((id): id is string => !!id))]
-		.reduce((sum, id) => { const m = measures.get(id); return m ? { shots: sum.shots + m.shots, in_edit: sum.in_edit + m.in_edit, edit_s: sum.edit_s + m.edit_s } : sum; }, { shots: 0, in_edit: 0, edit_s: 0 });
-	/** An act's length: its scenes' time in the edit when there is an edit, else its story beats' planned time. */
-	const actSeconds = (section: Section) => edit ? sectionMeasure(section).edit_s : total(section);
-	const totalSeconds = $derived(edit ? editSeconds : seconds);
-	/** Once scenes or shots exist, the length comes from the edit: the target and the Bible draft step away. */
-	const started = $derived(project.production.cards.length > 0 || (plan?.sections.some(section => section.scenes.length) ?? false));
+	const beatsOf = (section: Section, scene: PlanScene | null) => section.moments.filter((beat) => (scene ? beat.scene_id === scene.id : !beat.scene_id || !section.scenes.some((entry) => entry.id === beat.scene_id)));
+	const seconds = (list: Beat[]) => list.reduce((sum, beat) => sum + beat.duration_s, 0);
+	const sceneSeconds = (section: Section, scene: PlanScene) => { const m = sceneMeasure(scene); return edit && m ? m.edit_s : seconds(beatsOf(section, scene)); };
+	const sceneShots = (section: Section, scene: PlanScene) => sceneMeasure(scene)?.shots || beatsOf(section, scene).reduce((sum, beat) => sum + beat.shots.length, 0);
+	const stamp = (s: number) => (s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${Math.round(s * 10) / 10}s`);
 	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-	const stamp = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-	const total = (section: Section) => section.moments.reduce((sum, beat) => sum + beat.duration_s, 0);
-	const start = (index: number) => plan?.sections.slice(0, index).reduce((sum, section) => sum + actSeconds(section), 0) ?? 0;
-	/** Story beats in scene order: each scene's beats under it, then any beat not yet in a scene. */
-	const grouped = (section: Section): Array<{ scene: PlanScene | null; beats: Beat[] }> => [
-		...section.scenes.map(scene => ({ scene, beats: section.moments.filter(beat => beat.scene_id === scene.id) })),
-		{ scene: null, beats: section.moments.filter(beat => !beat.scene_id || !section.scenes.some(scene => scene.id === beat.scene_id)) }
-	].filter(entry => entry.scene || entry.beats.length);
+	/** A scene's code: Review Room's for its board group when it has one there, else the plan's. */
+	const storedScene = (scene: PlanScene) => room?.scenes?.[sceneGroupId(scene)];
 	const sceneCode = (scene: PlanScene) => storedScene(scene)?.code ?? scene.scene_code;
+	/** A scene code can still be typed until the scenes are approved or Review Room holds it. */
+	const sceneCodeFixed = (scene: PlanScene) => !!storedScene(scene) || (!!approvals.scenes && !!project.production.story_plan?.sections.some((section) => section.scenes.some((entry) => entry.id === scene.id && entry.scene_code)));
+	const groupName = (groupId?: string) => project.production.groups?.find((group) => group.group_id === groupId)?.name ?? 'Main';
+	const boardShots = $derived(project.production.cards.toSorted((a, b) => groupName(a.group_id).localeCompare(groupName(b.group_id)) || a.order - b.order));
+	const cardOf = (shot: Shot) => boardCardFor(project.production, shot);
+	const shotCode = (shot: Shot) => { const card = cardOf(shot); return card ? shortCodeOf(project, card) : null; };
+	const totalSeconds = $derived(edit ? [...measures.values()].reduce((sum, m) => sum + m.edit_s, 0) : seconds(beats));
+
+	// The selected row, found again in the draft so the pane edits the draft itself.
+	const picked = $derived.by(() => {
+		if (!plan || !selected) return null;
+		for (const section of plan.sections) {
+			if (section.id === selected) return { kind: 'act' as const, section };
+			for (const scene of section.scenes) if (scene.id === selected) return { kind: 'scene' as const, section, scene };
+			for (const beat of section.moments) {
+				if (beat.id === selected) return { kind: 'beat' as const, section, beat };
+				for (const shot of beat.shots) if (shot.id === selected) return { kind: 'shot' as const, section, beat, shot };
+			}
+		}
+		return null;
+	});
+	const paneFor: Record<StoryLevel, string[]> = { brief: [], acts: ['act'], scenes: ['scene'], beats: ['beat'], shots: ['beat', 'shot'] };
+	const pane = $derived(picked && paneFor[level].includes(picked.kind) ? picked : null);
+
+	const touch = () => { dirty = true; said = null; };
+	/** A story beat that changes goes back to proposed, and its planned shots are cleared: they covered the old beat. */
+	const touchBeat = (beat: Beat) => { beat.approved = false; beat.shots = []; touch(); };
+	const id = () => crypto.randomUUID();
+
+	function addAct() { if (!plan) return; const section: Section = { id: id(), title: `Act ${plan.sections.length + 1}`, summary: '', scenes: [], moments: [] }; plan.sections.push(section); selected = section.id; touch(); }
+	function addScene() {
+		if (!plan) return;
+		const section = picked?.section ?? plan.sections[0];
+		const scene: PlanScene = { id: id(), title: 'New scene' };
+		section.scenes.push(scene); selected = scene.id; touch();
+	}
+	function addBeat() {
+		if (!plan) return;
+		const section = picked?.section ?? plan.sections[0];
+		const scene = picked?.kind === 'scene' ? picked.scene : picked?.kind === 'beat' ? section.scenes.find((entry) => entry.id === picked.beat.scene_id) : section.scenes.at(-1);
+		const beat: Beat = { id: id(), title: 'New story beat', beat: 'What happens, and what the audience should think.', duration_s: 6, characters: [], location: '', scene_id: scene?.id, approved: false, shots: [] };
+		section.moments.push(beat); selected = beat.id; touch();
+	}
+	function addShot(beat: Beat) { const shot: Shot = { id: id(), title: 'New shot', beat: 'What we see.', duration_s: 3 }; beat.shots.push(shot); selected = shot.id; touch(); }
+	function remove() {
+		if (!plan || !picked) return;
+		if (picked.kind === 'act') plan.sections = plan.sections.filter((section) => section.id !== picked.section.id);
+		else if (picked.kind === 'scene') picked.section.scenes = picked.section.scenes.filter((scene) => scene.id !== picked.scene.id);
+		else if (picked.kind === 'beat') picked.section.moments = picked.section.moments.filter((beat) => beat.id !== picked.beat.id);
+		else picked.beat.shots = picked.beat.shots.filter((shot) => shot.id !== picked.shot.id);
+		selected = ''; touch();
+	}
 	function setCode(scene: PlanScene, input: HTMLInputElement) {
 		const code = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
-		input.value = code; scene.scene_code = code.length === 3 ? code : undefined; dirty = true;
+		input.value = code; scene.scene_code = code.length === 3 ? code : undefined; touch();
 	}
 	function mapGroup(scene: PlanScene, groupId: string) {
 		scene.group_id = groupId || undefined;
 		const stored = scene.group_id ? room?.scenes?.[scene.group_id] : undefined;
 		if (stored) scene.scene_code = stored.code;
-		dirty = true;
+		touch();
 	}
-	async function send(action: 'save' | 'board' | 'approve' | 'breakdown' | 'moments' | 'refresh_source', moment_id?: string) {
-		busy = true; error = ''; note = '';
+
+	type Action = 'save' | 'approve_level' | 'breakdown' | 'moments' | 'refresh_source';
+	/** One request to the plan; resolves to the project it left, or null when it failed (the line says why). */
+	async function send(action: Action, body: Record<string, unknown> = {}, version = project.version): Promise<Project | null> {
+		busy = action; said = null;
 		try {
-			const response = await fetch(`/api/projects/${project.project_id}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, expected_version: project.version, ...(action === 'save' ? { plan } : {}), ...(action === 'moments' ? { target_s:targetSeconds } : {}), ...(moment_id ? { moment_id } : {}) }) });
+			const response = await fetch(`/api/projects/${project.project_id}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, expected_version: version, ...body }) });
 			const result = await response.json();
-			if (!result.ok) throw new Error(result.error?.message ?? 'Could not save the plan');
-			onUpdated(result.data); dirty = false;
-			note = action === 'refresh_source' ? `Bible refreshed from Notion: ${result.source?.title ?? 'current story'}.` : action === 'moments' ? 'Story beats proposed for your review. No shots or media were created.' : action === 'save' ? 'Story plan saved.' : action === 'approve' ? 'Story beat approved. You can now draft its shots.' : action === 'breakdown' ? 'Shot breakdown drafted for review; no media was generated.' : `Planned shots added to their scenes' board groups, benched until you use them.${project.review_room ? ' Scenes with a scene code now have their Review Room folders.' : ''}`;
-		} catch (cause) { error = cause instanceof Error ? cause.message : 'Could not save the plan'; }
-		finally { busy = false; }
+			if (!result.ok) throw new Error(result.error?.message ?? 'The story plan could not be saved');
+			onUpdated(result.data);
+			return result.data as Project;
+		} catch (cause) { said = { text: cause instanceof Error ? cause.message : 'The story plan could not be saved', bad: true }; return null; }
+		finally { busy = ''; }
+	}
+	async function save(): Promise<Project | null> {
+		const saved = await send('save', { plan });
+		if (saved) said = { text: 'Saved' };
+		return saved;
+	}
+	/** Approve the open level. Anything not saved yet is saved first, so what is approved is what is on screen. */
+	async function approve() {
+		if (!allowed.ok || busy) return;
+		const approving = level;
+		let version = project.version;
+		if (approving === 'brief' && (briefDirty || !project.brief_state.versions.length)) { const saved = await sheet?.save(); if (!saved) return; version = saved.version; }
+		if (dirty) { const saved = await send('save', { plan }, version); if (!saved) return; version = saved.version; }
+		// Keep the level on screen while it is approved; then move on to the next one that waits.
+		ui.storyLevel = approving;
+		const done = await send('approve_level', { level: approving, ...(approving === 'brief' && !codesFixed ? { show_code: showCode, project_code: projectCode } : {}) }, version);
+		if (!done) return;
+		const next = nextLevel(levelStates(levelCounts(done), done.production.story_levels?.approved ?? {}, levelOpen(done)));
+		ui.storyLevel = next ? null : approving;
+		said = { text: next ? `${levelLabel(approving)} approved. ${levelLabel(next)} next.` : `${levelLabel(approving)} approved. The whole story plan is approved.` };
+	}
+	async function draftShots(beat: Beat) {
+		if (dirty && !(await save())) return;
+		if (await send('breakdown', { moment_id: beat.id }, project.version)) said = { text: 'Shots drafted for you to read. Nothing was made.' };
+	}
+	async function proposeBeats() {
+		if (dirty && !(await save())) return;
+		if (await send('moments', { target_s: targetSeconds }, project.version)) said = { text: 'Story beats proposed for you to read.' };
 	}
 </script>
 
-{#snippet beatRow(beat: Beat, j: number, section: Section)}
-	<details class="shot">
-		<summary><span class="number">{String(j + 1).padStart(2, '0')}</span><span class="shot-name">{beat.title}</span><span class="length">{beat.duration_s}s</span><span class="state">{beat.approved ? 'Approved story beat' : 'Proposed story beat'}</span></summary>
-		<div class="shot-body">
-			<label>Story beat<input bind:value={beat.title} oninput={() => { dirty = true; beat.approved = false; beat.shots = []; }} maxlength="180" /></label>
-			<label>What happens and what the audience should think<textarea bind:value={beat.beat} oninput={() => { dirty = true; beat.approved = false; beat.shots = []; }} rows="4" maxlength="4000"></textarea></label>
-			<div class="shot-facts"><label>Trailer time (seconds)<input type="number" min="0.001" max="120" step="0.001" bind:value={beat.duration_s} oninput={() => { dirty = true; beat.approved = false; beat.shots = []; }} /></label><p>Longer source performances can be cut across this story beat.</p></div>
-			{#if section.scenes.length}<label>Scene<select value={beat.scene_id ?? ''} onchange={(event) => { beat.scene_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">Not in a scene yet</option>{#each section.scenes as scene (scene.id)}<option value={scene.id}>{sceneCode(scene) ? `${sceneCode(scene)} · ` : ''}{scene.title}</option>{/each}</select></label>{/if}
-			<label>Characters (comma separated)<input value={beat.characters.join(', ')} oninput={(event) => { beat.characters = event.currentTarget.value.split(',').map(name => name.trim()).filter(Boolean); dirty = true; beat.approved = false; beat.shots = []; }} /></label>
-			<label>Location<input bind:value={beat.location} oninput={() => { dirty = true; beat.approved = false; beat.shots = []; }} maxlength="200" /></label>
-			<label>Candidate footage<select value={beat.candidate_asset_id ?? ''} onchange={(event) => { beat.candidate_asset_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">New coverage / choose later</option>{#each project.production.assets.filter(asset => asset.kind === 'video') as asset (asset.asset_id)}<option value={asset.asset_id}>{asset.name}</option>{/each}</select></label>
-			{#if beat.candidate_asset_id}{@const asset = project.production.assets.find(asset => asset.asset_id === beat.candidate_asset_id)}{#if asset}<a href={asset.url} target="_blank" rel="noreferrer">Review candidate clip</a>{/if}{/if}
-			<div class="actions">{#if !beat.approved}<button type="button" class="primary" disabled={dirty || busy} onclick={() => void send('approve', beat.id)}>Approve this story beat</button>{:else if !beat.shots.length}<button type="button" class="primary" disabled={dirty || busy} onclick={() => void send('breakdown', beat.id)}>{busy ? 'Drafting…' : 'Draft shots for this story beat'}</button>{/if}</div>
-			{#if beat.shots.length}<p class="hint">Shot breakdown · {beat.shots.reduce((sum, entry) => sum + entry.duration_s, 0)}s. Review before adding to Board.</p>{#each beat.shots as entry (entry.id)}{@const covered = boardCardFor(project.production, entry)}<div class="breakdown"><b>{entry.title} · {entry.duration_s}s</b><p>{entry.beat}</p>
-					<label>Covered by board shot<select value={entry.card_id ?? ''} onchange={(event) => { entry.card_id = event.currentTarget.value || undefined; dirty = true; }}><option value="">New shot on Add to Board</option>{#each boardShots as card (card.card_id)}<option value={card.card_id}>{shortCode(card.card_id) ? `${shortCode(card.card_id)} · ` : ''}{card.title} · {groupName(card.group_id)}</option>{/each}</select></label>
-					{#if covered}<p class="on-board">On board · {groupName(covered.group_id)} · {shortCode(covered.card_id) ? `${shortCode(covered.card_id)} · ` : ''}{covered.title}{codeOf(covered.card_id) ? '' : ' · no Review Room code yet'}</p>{/if}</div>{/each}{/if}
-		</div>
-	</details>
-{/snippet}
-
 {#if plan}
-<section class="plan" aria-label="Trailer story and shot plan">
-	<header>
-			<div><p class="eyebrow">BIBLE · ACTS · SCENES · STORY BEATS · SHOTS</p><h2>{plan.title}</h2><p class="intro">Choose the story beats first. Put each in its scene, approve it, draft its shots, then prepare references and add shots to the Board.</p></div>
-		<div class="metrics"><strong title={edit ? `Length of the edit ${edit.name}` : 'Planned length of the story beats'}>{stamp(totalSeconds)}</strong><span>{plural(project.production.cards.length, 'shot')} on board{#if edit}{` · ${inEdit} in the edit`}{/if}<br />{#if edit}<span class="edit-name">Edit · {edit.name}</span>{:else}{beats.length} story beats · {beats.filter(beat => beat.approved).length} approved{/if}</span></div>
-	</header>
-	{#if plan.footage_source_project_id}<p class="hint"><a href={`/?project=${plan.footage_source_project_id}&tab=beats`} target="_blank" rel="noreferrer">Review the original test footage</a> · The existing project remains the source pool.</p>{/if}
-	{#if plan.source}<details class="act"><summary>Source Bible · {plan.source.title}</summary><p class="hint">Imported {new Date(plan.source.imported_at).toLocaleDateString()}. The trailer plan follows this source; its proposals do not change canon.</p>{#if plan.source.url}<a href={plan.source.url} target="_blank" rel="noreferrer">Open Bible in Notion</a>{/if}{#if plan.source.series_id}<button type="button" class="agent-mini" disabled={busy || dirty} onclick={() => send('refresh_source')} title={dirty ? 'Save your plan edits first' : 'Read the current Bible from Notion again (the page marked CURRENT)'}>Refresh from Notion</button>{/if}<pre class="bible">{plan.source.text}</pre></details>{/if}
-	<div class="actions">
-		{#if !beats.length && !started}<label>Trailer target (seconds)<input type="number" min="15" max="600" step="1" bind:value={targetSeconds} /></label><button type="button" class="primary" disabled={busy || dirty} onclick={() => void send('moments')}>{busy ? 'Proposing story beats…' : 'Draft proposed story beats from Bible'}</button>{/if}
-		<button type="button" class="primary" onclick={onPrep} disabled={dirty || busy}>Continue to Prep</button>
-		{#if shots.length}<button type="button" onclick={() => void send('board')} disabled={dirty || busy || added === shots.length}>Add {shots.length - added} missing shots to Board</button>{/if}
-		{#if added || project.production.cards.length}<button type="button" onclick={onBoard} disabled={dirty || busy}>Open trailer Board</button>{/if}
-		{#if dirty}<button type="button" class="primary" onclick={() => void send('save')} disabled={busy}>Save story plan</button>{/if}
-	</div>
-	<details class="how">
-		<summary>What each step does</summary>
-		<ol>
-			<li><b>Acts → scenes → story beats → shots.</b> Each act holds scenes; each scene is one board group{#if room} and one Review Room folder{/if}; each story beat sits in one scene.</li>
-			<li><b>Add scene</b> names a scene in an act. Give it a three-letter <b>scene code</b>{#if room} (its Review Room folder; its shots are named like {room.show_code}_{room.code}_ABC_0010){/if}, or point it at a <b>board group</b> that already exists so it keeps that group's shots and code.</li>
-			<li><b>Approve this story beat</b> marks a proposed story beat as yours. Nothing else changes.</li>
-			<li><b>Draft shots for this story beat</b> splits it into planned shots with times. No media is made.</li>
-			<li><b>Covered by board shot</b> (on a planned shot) points it at a shot that already exists, so Add to Board makes no duplicate.</li>
-			<li><b>Add missing shots to Board</b> puts one benched card per planned shot that isn't covered yet into its scene's group, making the group if needed. Each new shot gets its permanent code then. It never removes or replaces anything.</li>
-			<li><b>Continue to Prep</b> only opens the references step (character and location sheets). It creates nothing.</li>
-		</ol>
-	</details>
-	<p class="hint">Existing boards and footage stay intact. Candidate takes are suggestions; they do not change picks. New planned shots are added benched for review.</p>
-	{#if dirty}<p class="hint">Save your story-plan edits before continuing. Story text uses Save workspace.</p>{/if}
-	{#if error}<p class="error" role="alert">{error}</p>{/if}
-	{#if note}<p role="status">{note}</p>{/if}
-	{#each plan.sections as section, i (section.id)}
-		{@const sm = sectionMeasure(section)}
-		<section class="act" aria-label={section.title}>
-			<div class="act-heading"><span class="time">{stamp(start(i))}–{stamp(start(i) + actSeconds(section))}</span><h3>{section.title}</h3><span>{plural(section.scenes.length, 'scene')} · {plural(sm.shots || section.moments.flatMap(beat => beat.shots).length, 'shot')}{#if edit}{` · ${sm.in_edit} in the edit`}{/if}{#if section.moments.length}{` · ${plural(section.moments.length, 'story beat')}`}{/if}</span></div>
-			<p class="summary">{section.summary}</p>
-			{#each grouped(section) as entry, g (entry.scene?.id ?? `loose-${g}`)}
-				{#if entry.scene}
-					{@const scene = entry.scene}
-					{@const stored = storedScene(scene)}
-					{@const m = sceneMeasure(scene)}
-					<div class="scene">
-						<div class="scene-heading">
-							<span class="code">{sceneCode(scene) ?? '···'}</span>
-							<input class="scene-title" value={scene.title} maxlength="200" aria-label="Scene title" oninput={(event) => { scene.title = event.currentTarget.value; dirty = true; }} />
-							<span class="scene-meta">{#if m}{plural(m.shots, 'shot')}{#if edit}{` · ${m.in_edit} in the edit · ${stamp(m.edit_s)}`}{/if}{/if}{#if entry.beats.length || !m}{`${m ? ' · ' : ''}${plural(entry.beats.length, 'story beat')}`}{/if}</span>
-						</div>
-						<div class="scene-fields">
-							{#if stored && scene.group_id}<p class="linked">Board group · <b>{groupName(scene.group_id)}</b> · Review Room scene folder <b>{stored.code}</b></p>{:else}<label>Board group<select value={scene.group_id ?? ''} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">New group on Add to Board</option>{#each boardGroups as group (group.group_id)}<option value={group.group_id}>{group.name}{room?.scenes?.[group.group_id] ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>{/if}
-							{#if room}{#if stored}{#if !scene.group_id}<p class="hint">Review Room scene folder · <b>{stored.code}</b> (permanent)</p>{/if}{:else}<label class="scene-code">Scene code<input value={scene.scene_code ?? ''} maxlength="3" placeholder="e.g. PCK" oninput={(event) => setCode(scene, event.currentTarget)} /><span>Three capital letters. Add to Board makes this scene's Review Room folder.</span></label>{/if}{/if}
-						</div>
-						{#each entry.beats as beat, j (beat.id)}{@render beatRow(beat, j, section)}{/each}
-					</div>
-				{:else}
-					{#if section.scenes.length}<p class="hint loose">Not in a scene yet</p>{/if}
-					{#each entry.beats as beat, j (beat.id)}{@render beatRow(beat, j, section)}{/each}
-				{/if}
+<section class="plan" aria-label="Story plan">
+	<div class="bar">
+		<nav class="levels" aria-label="Story plan levels">
+			{#each STORY_LEVELS as entry, i (entry)}
+				<button type="button" class="tg" aria-pressed={entry === level} data-state={states[entry]} onclick={() => { ui.storyLevel = entry; selected = ''; said = null; }} title="{levelLabel(entry)}{levelSummary(entry, states[entry], counts[entry], open[entry], !!approvals[entry]) ? ` · ${levelSummary(entry, states[entry], counts[entry], open[entry], !!approvals[entry])}` : ''}"><span class="n">{String(i + 1).padStart(2, '0')}</span>{levelLabel(entry)}</button>
 			{/each}
-			<div class="actions">
-				<button type="button" disabled={busy} onclick={() => { section.scenes.push({ id: crypto.randomUUID(), title: 'New scene' }); dirty = true; }}>Add scene</button>
-				<button type="button" disabled={busy} onclick={() => { section.moments.push({ id: crypto.randomUUID(), title: 'New story beat', beat: 'Describe what happens and what the audience should suspect.', duration_s: 8, characters: [], location: '', scene_id: section.scenes.at(-1)?.id, approved: false, shots: [] }); dirty = true; }}>Add story beat</button>
-			</div>
-		</section>
-	{/each}
+		</nav>
+		<span class="meta">{levelSummary(level, states[level], counts[level], open[level], !!approvals[level]) || 'Nothing yet'}{#if level !== 'brief' && totalSeconds > 0}{` · ${stamp(totalSeconds)}`}{/if}</span>
+		<span class="actions">
+			{#if level === 'acts'}<button type="button" class="key" disabled={!!busy} onclick={addAct}>Add act</button>{/if}
+			{#if level === 'scenes'}<button type="button" class="key" disabled={!!busy} onclick={addScene}>Add scene</button>{/if}
+			{#if level === 'beats'}<button type="button" class="key" disabled={!!busy} onclick={addBeat}>Add story beat</button>{/if}
+			{#if dirty}<button type="button" class="key" disabled={!!busy} onclick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save'}</button>{/if}
+			{#if states[level] === 'approved'}
+				<span class="cp done">Approved</span>
+			{:else}
+				<button type="button" class="key go" disabled={!allowed.ok || !!busy} onclick={() => void approve()} title={allowed.ok ? lockNotice(level) : allowed.why}>{busy === 'approve_level' ? 'Approving…' : approveLabel(level, counts[level], open[level], !!approvals[level])}</button>
+			{/if}
+		</span>
+	</div>
+	<p class={['lockn', said?.bad && 'bad']} aria-live="polite">
+		{#if said}{said.text}
+		{:else if states[level] === 'approved'}<b>Approved</b> · {level === 'brief' ? 'the show code and the project code are fixed' : level === 'scenes' ? 'each scene code is fixed' : level === 'shots' ? 'each shot code is fixed' : 'nothing more to do here'}{#if level === 'brief' || level === 'scenes' || level === 'shots'}; titles can still change{/if}
+		{:else if !allowed.ok}{allowed.why}
+		{:else}<b>Names lock on approve</b> · {lockNotice(level)}{/if}
+	</p>
+
+	<div class={['body', level === 'brief' && 'one']}>
+		<div class="list">
+			{#if level === 'brief'}
+				<div class="codes">
+					<label class="cp" for="show-code">Show code</label>
+					{#if codesFixed}<span class="kept">{codes.show ?? showCode}</span>{:else}<input id="show-code" class="code-in" value={showCode} maxlength="3" oninput={(event) => { showCode = event.currentTarget.value = event.currentTarget.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3); typeCode('show'); }} />{/if}
+					<label class="cp" for="project-code">Project code</label>
+					{#if codesFixed}<span class="kept">{codes.project ?? projectCode}</span>{:else}<input id="project-code" class="code-in wide" value={projectCode} maxlength="5" oninput={(event) => { projectCode = event.currentTarget.value = event.currentTarget.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); typeCode('code'); }} />{/if}
+					<span class="cp eg">{codesFixed ? (room && !approvals.brief ? 'From Review Room' : 'Fixed') : 'Fixed when you approve'} · shots read {codes.show ?? (showCode || 'AAA')}_{codes.project ?? (projectCode || 'TR100')}_VHS_0010</span>
+				</div>
+				<BriefSheet bind:this={sheet} {project} {onUpdated} bind:dirty={briefDirty} />
+				{#if plan.source}
+					<details class="source">
+						<summary class="cp">Source · {plan.source.title}</summary>
+						<p class="hint">Read {new Date(plan.source.imported_at).toLocaleDateString()}. The plan follows this source; nothing proposed here changes it.{#if plan.source.url}{' '}<a href={plan.source.url} target="_blank" rel="noreferrer">Open in Notion</a>{/if}</p>
+						{#if plan.source.series_id}<button type="button" class="key" disabled={!!busy || dirty} onclick={() => void send('refresh_source').then((done) => { if (done) said = { text: 'Source read again from Notion' }; })} title={dirty ? 'Save your changes first' : 'Read the current story from Notion again'}>{busy === 'refresh_source' ? 'Reading…' : 'Read again from Notion'}</button>{/if}
+						<pre>{plan.source.text}</pre>
+					</details>
+				{/if}
+			{:else if level === 'acts'}
+				{#each plan.sections as section, i (section.id)}
+					<button type="button" class="sc" data-sel={selected === section.id ? '' : undefined} onclick={() => (selected = section.id)}>
+						<span class="code">{String(i + 1).padStart(2, '0')}</span><span class="n">{section.title}</span><span class="d">{section.summary}</span><span class="x">{stamp(seconds(section.moments))} · {plural(section.scenes.length, 'scene')}</span>
+					</button>
+				{/each}
+			{:else}
+				{#each plan.sections as section (section.id)}
+					<section>
+						<div class="ah cp"><span>{section.title}</span><span class="t">{stamp(seconds(section.moments))}</span></div>
+						{#if level === 'scenes'}
+							{#each section.scenes as scene (scene.id)}
+								<button type="button" class="sc" data-sel={selected === scene.id ? '' : undefined} onclick={() => (selected = scene.id)}>
+									<span class="code" data-none={sceneCode(scene) ? undefined : ''}>{sceneCode(scene) ?? '···'}</span><span class="n">{scene.title}</span><span class="d">{beatsOf(section, scene).map((beat) => beat.title).join(' · ')}</span><span class="x">{stamp(sceneSeconds(section, scene))} · {plural(sceneShots(section, scene), 'shot')}</span>
+								</button>
+							{:else}
+								<p class="none">No scenes in this act yet</p>
+							{/each}
+						{:else}
+							{#each [...section.scenes, null] as scene (scene?.id ?? 'loose')}
+								{@const own = beatsOf(section, scene)}
+								{#if scene || own.length}
+									<div class="sh cp"><span class="code" data-none={scene && sceneCode(scene) ? undefined : ''}>{scene ? sceneCode(scene) ?? '···' : '···'}</span><span>{scene ? scene.title : 'Not in a scene yet'}</span></div>
+									{#each own as beat, j (beat.id)}
+										<button type="button" class="sc" data-sel={selected === beat.id ? '' : undefined} data-sub={level === 'shots' ? '' : undefined} onclick={() => (selected = beat.id)}>
+											<span class="code num">{String(j + 1).padStart(2, '0')}</span><span class="n">{beat.title}</span><span class="d">{beat.beat}</span><span class="x">{stamp(beat.duration_s)}{#if level === 'beats'}{' · '}<i data-ok={beat.approved ? '' : undefined}>{beat.approved ? 'Approved' : 'Proposed'}</i>{:else}{` · ${plural(beat.shots.length, 'shot')}`}{/if}</span>
+										</button>
+										{#if level === 'shots'}
+											{#each beat.shots as shot (shot.id)}
+												{@const code = shotCode(shot)}
+												<button type="button" class="sc shot" data-sel={selected === shot.id ? '' : undefined} onclick={() => (selected = shot.id)}>
+													<span class="code" data-none={code ? undefined : ''}>{code ?? '····'}</span><span class="n">{shot.title}</span><span class="d">{shot.beat}</span><span class="x">{stamp(shot.duration_s)} · <i data-ok={cardOf(shot) ? '' : undefined}>{cardOf(shot) ? 'On the list' : 'Proposed'}</i></span>
+												</button>
+											{/each}
+										{/if}
+									{/each}
+								{/if}
+							{/each}
+							{#if !section.moments.length}<p class="none">No story beats in this act yet</p>{/if}
+						{/if}
+					</section>
+				{/each}
+				{#if level === 'beats' && !beats.length}
+					<div class="ask">
+						<label class="cp" for="target-s">Length</label><input id="target-s" class="code-in wide" type="number" min="15" max="600" step="1" bind:value={targetSeconds} /><span class="cp">seconds</span>
+						<button type="button" class="key agent" disabled={!!busy} onclick={() => void proposeBeats()} title="The Agent proposes story beats from the source. Nothing is approved and nothing is made.">{busy === 'moments' ? 'Proposing…' : 'Propose story beats'}</button>
+					</div>
+				{/if}
+			{/if}
+		</div>
+
+		{#if level !== 'brief'}
+			<aside class="edit" aria-label="Selected row">
+				{#if !pane}
+					<p class="none">Select a row to change it</p>
+				{:else if pane.kind === 'act'}
+					<p class="cp head">Act</p>
+					<label class="f"><span class="cp">Title</span><input bind:value={pane.section.title} oninput={touch} maxlength="200" /></label>
+					<label class="f"><span class="cp">What it does</span><textarea bind:value={pane.section.summary} oninput={touch} rows="5" maxlength="2000"></textarea></label>
+					{#if plan.sections.length > 1 && !pane.section.scenes.length && !pane.section.moments.length}<button type="button" class="key" onclick={remove}>Remove act</button>{/if}
+				{:else if pane.kind === 'scene'}
+					{@const scene = pane.scene}
+					<p class="cp head">Scene</p>
+					<label class="f"><span class="cp">Title</span><input bind:value={scene.title} oninput={touch} maxlength="200" /></label>
+					<div class="f">
+						<span class="cp">Scene code</span>
+						{#if sceneCodeFixed(scene)}<span class="kept" title="Fixed: this code names the scene everywhere, and in Review Room">{sceneCode(scene)}</span>
+						{:else}<input class="code-in" value={scene.scene_code ?? ''} maxlength="3" placeholder={suggestCode(scene.title, plan.sections.flatMap((section) => section.scenes).flatMap((entry) => (entry.scene_code && entry.id !== scene.id ? [entry.scene_code] : [])))} oninput={(event) => setCode(scene, event.currentTarget)} />{/if}
+					</div>
+					<p class="hint">{sceneCodeFixed(scene) ? 'The code is fixed. The title can still change.' : 'Leave it empty and approving the scenes gives it the code shown.'}</p>
+					{#if !storedScene(scene) && (scene.group_id || !sceneGroup(scene)) && (project.production.groups?.length ?? 0) > 0}
+						<label class="f"><span class="cp">Shots already on the board</span><select value={scene.group_id ?? ''} onchange={(event) => mapGroup(scene, event.currentTarget.value)}><option value="">None: a new group for this scene</option>{#each project.production.groups ?? [] as group (group.group_id)}<option value={group.group_id}>{group.name}{room?.scenes?.[group.group_id] ? ` · ${room.scenes[group.group_id].code}` : ''}</option>{/each}</select></label>
+					{/if}
+					{#if !beatsOf(pane.section, scene).length && !sceneCodeFixed(scene)}<button type="button" class="key" onclick={remove}>Remove scene</button>{/if}
+				{:else if pane.kind === 'beat' && level === 'beats'}
+					{@const beat = pane.beat}
+					<p class="cp head">Story beat</p>
+					<label class="f"><span class="cp">Title</span><input bind:value={beat.title} oninput={() => touchBeat(beat)} maxlength="180" /></label>
+					<label class="f"><span class="cp">What happens</span><textarea bind:value={beat.beat} oninput={() => touchBeat(beat)} rows="5" maxlength="4000"></textarea></label>
+					<div class="two">
+						<label class="f"><span class="cp">Seconds</span><input type="number" min="0.5" max="120" step="0.5" bind:value={beat.duration_s} oninput={() => touchBeat(beat)} /></label>
+						{#if pane.section.scenes.length}<label class="f"><span class="cp">Scene</span><select value={beat.scene_id ?? ''} onchange={(event) => { beat.scene_id = event.currentTarget.value || undefined; touch(); }}><option value="">Not in a scene yet</option>{#each pane.section.scenes as scene (scene.id)}<option value={scene.id}>{sceneCode(scene) ? `${sceneCode(scene)} · ` : ''}{scene.title}</option>{/each}</select></label>{/if}
+					</div>
+					<label class="f"><span class="cp">Who is in it</span><input value={beat.characters.join(', ')} oninput={(event) => { beat.characters = event.currentTarget.value.split(',').map((name) => name.trim()).filter(Boolean); touchBeat(beat); }} placeholder="Names, comma separated" /></label>
+					<label class="f"><span class="cp">Where</span><input bind:value={beat.location} oninput={() => touchBeat(beat)} maxlength="200" /></label>
+					{#if project.production.assets.some((asset) => asset.kind === 'video')}
+						<label class="f"><span class="cp">Footage to try</span><select value={beat.candidate_asset_id ?? ''} onchange={(event) => { beat.candidate_asset_id = event.currentTarget.value || undefined; touch(); }}><option value="">None yet</option>{#each project.production.assets.filter((asset) => asset.kind === 'video') as asset (asset.asset_id)}<option value={asset.asset_id}>{asset.name}</option>{/each}</select></label>
+					{/if}
+					<p class="hint">Changing a story beat sends it back to proposed and clears its planned shots.</p>
+					<button type="button" class="key" onclick={remove}>Remove story beat</button>
+				{:else if pane.kind === 'beat'}
+					{@const beat = pane.beat}
+					<p class="cp head">Story beat</p>
+					<p class="read">{beat.title}</p>
+					<p class="hint">{beat.beat}</p>
+					<div class="row">
+						<button type="button" class="key" disabled={!!busy} onclick={() => addShot(beat)}>Add shot</button>
+						{#if !beat.shots.length}<button type="button" class="key agent" disabled={!!busy || !beat.approved} onclick={() => void draftShots(beat)} title={beat.approved ? 'The Agent splits this story beat into shots with their lengths. Nothing is made.' : 'Approve the story beats first'}>{busy === 'breakdown' ? 'Drafting…' : 'Draft shots'}</button>{/if}
+					</div>
+				{:else if pane.kind === 'shot'}
+					{@const shot = pane.shot}
+					{@const card = cardOf(shot)}
+					<p class="cp head">Shot{#if shotCode(shot)}<span class="kept">{shotCode(shot)}</span>{/if}</p>
+					<label class="f"><span class="cp">Title</span><input bind:value={shot.title} oninput={touch} maxlength="180" /></label>
+					<label class="f"><span class="cp">What we see</span><textarea bind:value={shot.beat} oninput={touch} rows="5" maxlength="4000"></textarea></label>
+					<label class="f"><span class="cp">Seconds</span><input type="number" min="0.5" max="120" step="0.5" bind:value={shot.duration_s} oninput={touch} /></label>
+					{#if boardShots.length}
+						<label class="f"><span class="cp">Already on the board as</span><select value={shot.card_id ?? ''} onchange={(event) => { shot.card_id = event.currentTarget.value || undefined; touch(); }}><option value="">A new shot</option>{#each boardShots as entry (entry.card_id)}<option value={entry.card_id}>{shortCodeOf(project, entry) ? `${shortCodeOf(project, entry)} · ` : ''}{entry.title} · {groupName(entry.group_id)}</option>{/each}</select></label>
+					{/if}
+					<p class="hint">{card ? 'On the shot list. Its code is fixed; change its text on the Shots stage.' : 'Approving the shot list puts it on the board, benched, with its shot code.'}</p>
+					{#if !card}<button type="button" class="key" onclick={remove}>Remove shot</button>{/if}
+				{/if}
+			</aside>
+		{/if}
+	</div>
 </section>
 {/if}
 
 <style>
-	.how {margin:8px 0;font-size:12px;color:#9fbcc0;} .how summary::before {content:none;} .how summary {padding:6px 0;color:#7bd7c6;} .how ol {margin:4px 0 8px 18px;line-height:1.8;} .how b {color:#c9e2df;font-weight:600;}
-	.scene-code {max-width:520px;} .scene-code input {max-width:90px;text-transform:uppercase;font-family:var(--font-mono,monospace);letter-spacing:.12em;} .scene-code span {display:block;margin-top:4px;font-size:10.5px;color:#6f8f95;}
-	.on-board {font-size:11px;color:#7bd7c6;margin-top:4px;}
-	.scene {margin:14px 0 6px;padding:10px 12px 6px;background:#0e171c;border:1px solid #1f3138;} .scene-heading {display:flex;align-items:center;gap:12px;} .scene-heading .code {font:12px var(--font-mono,monospace);letter-spacing:.14em;color:#7bd7c6;min-width:34px;} .scene-title {flex:1;margin:0;border:1px solid transparent;background:transparent;font-size:13px;color:#d1e8e6;padding:4px 6px;} .scene-title:hover,.scene-title:focus {border-color:#30434b;background:#0c141a;} .scene-meta {font-size:10px;color:#6f8f95;white-space:nowrap;} .scene-fields {display:flex;flex-wrap:wrap;gap:0 18px;align-items:start;} .scene-fields>label:first-child {flex:1;min-width:240px;} .loose {margin-top:14px;}
-	.bible {white-space:pre-wrap;max-height:380px;overflow:auto;font:12px/1.8 var(--font-sans);padding:16px;background:#10191f;} .breakdown {padding:10px 0;border-top:1px solid #294047;font-size:12px;line-height:1.7;} .breakdown p {color:#8ba6ae;}
-	.plan { color: #b9d0d2; margin-bottom: 36px; } header { display:flex; justify-content:space-between; gap:24px; align-items:start; } h2 { font-size:24px; color:#d7efed; margin:8px 0; font-weight:600; } .eyebrow,.time,.number,.state,.metrics span { font:10px var(--font-mono,monospace); letter-spacing:.08em; } .eyebrow {color:#66d9ca;} .intro,.hint,.summary {font-size:12px;line-height:1.7;color:#819fa5;} .metrics {display:flex;gap:14px;align-items:center;white-space:nowrap;} .metrics strong {font-size:30px;font-weight:400;color:#b8eee5;} .metrics span {line-height:1.9;} .actions {display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:16px 0 8px;} button {flex:none;width:auto;border:1px solid #355155;padding:4px 10px;line-height:1.4;color:#b3d5d4;font-size:11px;background:#101b20;cursor:pointer;} .actions label {margin:0;} .linked {flex:1;min-width:240px;font-size:11px;color:#91afb3;margin:10px 0;} .linked b {color:#c9e2df;font-weight:600;} .edit-name {color:#8fbbbc;} button.primary {background:#16483f;border-color:#2c7c6c;color:#c5f7e8;} button:disabled {opacity:.45;cursor:default;} .hint {font-size:11px;} .act {border-top:1px solid #294047;margin-top:26px;padding-top:15px;} .act-heading {display:flex;align-items:center;gap:16px;} .act-heading h3 {font-size:16px;color:#c9e2df;flex:1;} .act-heading>span:last-child {font-size:11px;color:#83a6aa;white-space:nowrap;} .time {color:#5cbcaf;min-width:90px;} .summary {margin:8px 0 12px;} .shot {border-top:1px solid #1d2d35;} summary {display:flex;gap:12px;align-items:center;padding:12px 2px;cursor:pointer;font-size:12px;list-style:none;} summary::before {content:'+';color:#629b9e;} details[open]>summary::before {content:'−';} .number {color:#587c86;} .shot-name {flex:1;} .length {color:#8fbbbc;min-width:30px;} .state {color:#8b9c99;width:125px;text-align:right;font-size:9px;} .shot-body {padding:8px 18px 18px;background:#10191f;} label {display:block;font-size:11px;color:#91afb3;margin:10px 0;} input,textarea,select {display:block;width:100%;border:1px solid #30434b;background:#0c141a;padding:8px;color:#bed3d5;font-size:12px;margin-top:5px;} .shot-facts {display:flex;gap:24px;align-items:center;font-size:11px;} .shot-facts label {max-width:180px;} a {font-size:12px;color:#7bd7c6;} .error {color:#f6a6a2;font-size:12px;} :is(button,input,textarea,select,summary,a):focus-visible {outline:2px solid #7bd7c6;outline-offset:3px;} @media(max-width:600px) {header {flex-direction:column;gap:10px;} .act-heading {flex-wrap:wrap;gap:8px;} .time {min-width:auto;} .state {width:85px;font-size:8px;} .shot-facts {flex-direction:column;align-items:start;gap:0;}}
+	.plan { display: flex; min-height: 100%; flex-direction: column; color: var(--color-ink-2); font: 12.5px/1.35 var(--font-sans); }
+	.bar { position: sticky; top: 0; z-index: 2; display: flex; min-height: 36px; flex-wrap: wrap; align-items: center; gap: 2px 10px; background: var(--color-panel); padding: 4px 10px; }
+	.levels { display: flex; min-width: 0; flex-wrap: wrap; gap: 1px; }
+	.levels .n { margin-right: 5px; color: #52525b; }
+	.levels [data-state='approved'] .n, .levels [aria-pressed='true'] .n { color: var(--color-teal); }
+	.levels [data-state='approved'] { color: var(--color-ink-2); }
+	.meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink-3); font: 10.5px var(--font-mono); letter-spacing: 0.01em; }
+	.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-left: auto; }
+	.done { color: var(--color-teal); padding: 0 4px; }
+	.lockn { min-height: 18px; margin: 0 14px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink-3); font: 9.5px/18px var(--font-mono); letter-spacing: 0.11em; text-transform: uppercase; }
+	.lockn b { color: var(--color-teal); font-weight: 400; }
+	.lockn.bad { color: #ff7a6b; }
+
+	.body { display: grid; min-height: 0; flex: 1; grid-template-columns: minmax(0, 1fr) 280px; gap: 3px; padding: 0 8px 12px; }
+	.body.one { grid-template-columns: minmax(0, 1fr); }
+	.list { display: flex; min-width: 0; flex-direction: column; gap: 6px; }
+	.body.one .list { gap: 12px; padding: 0 6px; }
+	section > .ah { display: flex; align-items: baseline; gap: 12px; padding: 8px 6px 4px; color: var(--color-teal); }
+	.ah .t { margin-left: auto; color: var(--color-ink-3); font: 10.5px var(--font-mono); letter-spacing: 0.01em; text-transform: none; }
+	.sh { display: flex; align-items: baseline; gap: 14px; overflow: hidden; padding: 6px 6px 2px; color: var(--color-ink-3); }
+	.sc { display: flex; width: 100%; height: 30px; align-items: center; gap: 14px; overflow: hidden; border: 0; border-radius: 5px; background: none; padding: 0 6px; color: inherit; font: inherit; text-align: left; white-space: nowrap; cursor: pointer; }
+	.sc:hover { background: #101012; }
+	.sc[data-sel] { background: var(--color-selected); }
+	.sc:focus-visible { outline: 2px solid var(--color-teal); outline-offset: -2px; }
+	.sc.shot { height: 26px; padding-left: 20px; }
+	.sc[data-sub] .n { color: var(--color-ink-2); }
+	.code { width: 62px; flex: none; color: var(--color-teal); font: 10.5px var(--font-mono); letter-spacing: 0.01em; text-transform: none; }
+	.code[data-none] { color: #52525b; }
+	.code.num { color: var(--color-ink-3); }
+	.sc.shot .code { width: 74px; }
+	.sc .n { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; color: var(--color-ink); }
+	.sc[data-sel] .n { color: var(--color-teal-ink); }
+	.sc .d { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; color: var(--color-ink-3); }
+	.sc .x { flex: none; color: var(--color-ink-3); font: 10.5px var(--font-mono); letter-spacing: 0.01em; }
+	.sc .x i { font-style: normal; }
+	.sc .x i[data-ok] { color: var(--color-teal); }
+	.none { margin: 0; padding: 4px 6px; color: var(--color-ink-3); font-size: 12px; }
+
+	.edit { position: sticky; top: 44px; display: flex; max-height: calc(100vh - 150px); min-width: 0; flex-direction: column; gap: 8px; align-self: start; overflow-y: auto; border-radius: 8px; background: #101012; padding: 10px; }
+	.head { display: flex; align-items: baseline; gap: 10px; margin: 0; color: var(--color-ink-3); }
+	.f { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+	.f > .cp { color: var(--color-ink-3); }
+	.f input, .f textarea, .f select { width: 100%; box-sizing: border-box; border: 0; border-radius: 5px; background: var(--color-raised); padding: 5px 8px; color: var(--color-ink); font: 12.5px/1.45 var(--font-sans); outline: none; resize: vertical; }
+	.f input, .f select { height: 26px; padding-block: 0; }
+	.f input:focus, .f textarea:focus, .f select:focus { background: var(--color-control); }
+	.two { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 8px; }
+	.row { display: flex; flex-wrap: wrap; gap: 4px; }
+	.edit > .key { align-self: flex-start; }
+	.read { margin: 0; color: var(--color-ink); }
+	.hint { margin: 0; color: var(--color-ink-3); font-size: 11.5px; line-height: 1.45; }
+	.hint a { color: var(--color-teal); }
+	/* Not "fixed": that name is a Tailwind utility (position). */
+	.kept { color: var(--color-teal); font: 10.5px var(--font-mono); letter-spacing: 0.01em; text-transform: none; }
+	.code-in { width: 52px; height: 22px; box-sizing: border-box; flex: none; border: 0; border-radius: 5px; background: var(--color-raised); padding: 0 6px; color: var(--color-teal); font: 10.5px var(--font-mono); letter-spacing: 0.06em; outline: none; text-transform: uppercase; }
+	.code-in.wide { width: 64px; }
+	.code-in:focus { background: var(--color-control); }
+	.code-in::placeholder { color: #52525b; }
+	.codes { display: flex; max-width: 760px; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--color-ink-3); }
+	.codes .eg { min-width: 0; flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; text-transform: none; letter-spacing: 0.02em; }
+	.codes .kept { margin-right: 8px; }
+	.ask { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 6px; color: var(--color-ink-3); }
+	.key.agent { background: var(--color-agent-purple-deep); color: #ddd6fe; }
+	.source { max-width: 760px; }
+	.source summary { cursor: pointer; color: var(--color-ink-3); }
+	.source pre { max-height: 360px; margin: 6px 0 0; overflow: auto; border-radius: 8px; background: #101012; padding: 12px; color: var(--color-ink-2); font: 12px/1.6 var(--font-sans); white-space: pre-wrap; }
+	.source .key { margin-top: 6px; }
+
+	@media (max-width: 900px) {
+		.body { grid-template-columns: minmax(0, 1fr); }
+		.edit { position: static; max-height: none; }
+		.sc .d { display: none; }
+		.sc .n { max-width: none; flex: 1; }
+	}
+	@media (pointer: coarse) { .sc { height: 36px; } .f input, .f select { height: 36px; } }
 </style>

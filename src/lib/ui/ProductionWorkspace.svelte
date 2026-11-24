@@ -308,13 +308,6 @@
 		catch (cause) { error = cause instanceof Error ? cause.message : 'Production save failed'; }
 		finally { saving = false; }
 	}
-	async function continueToPrep() {
-		saving = true; error = null;
-		try { await request({ mode: 'save', expected_version: project.version, production: draft }); tab = 'prep'; }
-		catch (cause) { error = cause instanceof Error ? cause.message : 'Could not save before continuing'; }
-		finally { saving = false; }
-	}
-
 	// The selected shot: the grid marks it, the band shows its takes, the dock's Details tab edits it.
 	let selectedShotId = $state('');
 	let pickBusy = $state(false);
@@ -559,18 +552,21 @@
 <svelte:window onkeydown={gridKey} />
 
 <section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
+	<!-- The story plan carries its own bar (levels, Save, Approve); every other view keeps the workspace strip. -->
+	{#if !(tab === 'story' && project.production.story_plan)}
 	<div class="sticky top-0 z-10 flex min-w-max items-center justify-end gap-3 border-b border-[#26333a] bg-[#10141a]/95 px-4 py-2 backdrop-blur">
 		<span class="meta-label text-[#63838c]">{draft.cards.length} shots · {(totalDuration / 1000).toFixed(0)}s</span>
 		<button type="button" class="btn btn-accent" onclick={() => void save()} disabled={saving || busy}>{saving ? 'Saving…' : 'Save workspace'}</button>
 	</div>
+	{/if}
 
 	{#if error}<div class="mx-4 mt-3 border border-gate-failed/50 bg-gate-failed/5 px-3 py-2 text-gate-failed" role="alert">{error}</div>{/if}
 
 	{#if tab === 'story'}
+		{#if project.production.story_plan}
+			<StoryPlan {project} {onUpdated} />
+		{/if}
 		<div class="mx-auto max-w-4xl p-5">
-			{#if project.production.story_plan}
-				<StoryPlan {project} {onUpdated} onPrep={() => void continueToPrep()} onBoard={() => onOpenBoard?.(`plan-section-${project.production.story_plan?.sections[0].id}`)} />
-			{/if}
 			{#if project.series}
 				<SeasonStructure {project} />
 			<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} {onUpdated} /></div>

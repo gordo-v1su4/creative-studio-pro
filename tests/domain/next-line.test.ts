@@ -51,3 +51,8 @@ test("a shot's status is the strongest of its takes' statuses", () => {
 	expect(shotStatus([{ card_id: 'a', kind: 'video', review_status: 'approved' }, { card_id: 'a', kind: 'video' }])).toBe('approved');
 	expect(shotStatus([{ card_id: 'a', kind: 'video', review_status: 'approved' }, { card_id: 'a', kind: 'video', review_status: 'needs_changes' }])).toBe('changes');
 });
+
+test('while the story plan is being approved, its next step is the line', () => {
+	expect(nextLine({ ...project([], []), story: 'Approve the scenes, then story beats' })).toBe('Approve the scenes, then story beats');
+	expect(nextLine({ ...project([], []), story: null })).toBe('Write the story, then the shot list');
+});

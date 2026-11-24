@@ -8,7 +8,10 @@ import { connectSeries } from '$lib/server/series';
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient, generateStructured } from '$lib/server/model-provider';
 import { readAgentSkill } from '$lib/server/agent-skills';
-import { savePlannedBoard } from '$lib/server/planned-board';
+import { plannedScenes, savePlannedBoard } from '$lib/server/planned-board';
+import { connectTrailer } from '$lib/server/review-room-trailer';
+import { applyLevelApproval, STORY_LEVELS } from '$lib/domain/story-levels';
+import type { Project } from '$lib/domain/schemas';
 import { createReviewRoomClient } from '$lib/server/review-room';
 
 const requestSchema = z.discriminatedUnion('action', [
@@ -17,6 +20,8 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('breakdown'), expected_version: z.number().int().nonnegative(), moment_id: z.string() }),
 	z.object({ action: z.literal('save'), expected_version: z.number().int().nonnegative(), plan: storyPlanSchema }),
 	z.object({ action: z.literal('board'), expected_version: z.number().int().nonnegative() }),
+	// Approve a story plan level: its names are fixed from here on (decision 22).
+	z.object({ action: z.literal('approve_level'), expected_version: z.number().int().nonnegative(), level: z.enum(STORY_LEVELS), show_code: z.string().max(10).optional(), project_code: z.string().max(10).optional() }),
 	// Re-read the linked Notion series and replace the Bible snapshot (Notion stays the story master).
 	z.object({ action: z.literal('refresh_source'), expected_version: z.number().int().nonnegative() })
 ]);
@@ -28,6 +33,24 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!project) return json({ ok: false, error: { message: 'Project not found' } }, { status: 404 });
 	const input = parsed.data;
 	if (project.version !== input.expected_version) return json({ ok: false, error: { message: 'Project changed. Reload before continuing.' } }, { status: 409 });
+	if (input.action === 'approve_level') {
+		const { level, show_code, project_code } = input;
+		const codes = { ...(show_code ? { show_code } : {}), ...(project_code ? { project_code } : {}) };
+		try {
+			// A trailer stored in Review Room gets its new scene folders and shot names there in the same step.
+			let connection: Project['review_room'];
+			if (level === 'shots' && project.review_room) {
+				const config = getReviewRoomConfig();
+				if (!config) return json({ ok: false, error: { message: 'Review Room must be configured before this trailer’s shot list is approved' } }, { status: 503 });
+				const preview = applyLevelApproval(project, level, new Date().toISOString(), codes);
+				connection = await connectTrailer(createReviewRoomClient(config), preview, { ...project.review_room, scenes: plannedScenes(project, preview.production) });
+			}
+			const outcome = await getGateway().approveStoryLevel(project.project_id, input.expected_version, { level, ...codes }, connection);
+			return json(outcome, { status: outcome.ok ? 200 : commandStatus(outcome.error) });
+		} catch (cause) {
+			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : 'That level could not be approved' } }, { status: 400 });
+		}
+	}
 	if (input.action === 'refresh_source') {
 		const plan = project.production.story_plan;
 		const seriesId = plan?.source?.series_id;

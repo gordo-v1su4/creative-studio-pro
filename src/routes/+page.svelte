@@ -28,6 +28,7 @@
 	import { STAGES, restoreTab, stageOfTab, tabForStage, viewsOfStage } from '$lib/domain/stages';
 	import type { StageId, WorkspaceTab } from '$lib/domain/stages';
 	import { nextLine } from '$lib/domain/next-line';
+	import { storyNextLine } from '$lib/domain/story-levels';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName } from '$lib/domain/gates';
@@ -199,7 +200,7 @@
 	let agentRestored = $state(false);
 	const dockOpen = $derived(ui.chatOpen && ui.chatMode === 'dock');
 	$effect(() => { if (agentRestored) localStorage.setItem('csp.agent-open', ui.chatOpen ? '1' : '0'); });
-	const next = $derived(nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room) } : null));
+	const next = $derived(nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room), story: storyNextLine(activeProject) } : null));
 	const secondaryNav = [
 		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
 		{ label: 'Watch', href: '/watch', hint: 'The public, read-only pages: what you have published' },
@@ -1061,6 +1062,7 @@
 			if (!response.ok) throw new Error(`GET /api/projects/${projectId} failed: ${response.status}`);
 			const body = (await response.json()) as { project: Project; layout: CanvasLayout | null };
 			const switching = activeProject?.project_id !== projectId;
+			if (switching) ui.storyLevel = null;
 			adoptProject(body.project, body.layout);
 			viewport = body.layout?.viewport ?? { x: 0, y: 0, zoom: 1 };
 			// A project (or group, in showGroup) that just opened is centered on its shots; a reload keeps the view.
@@ -1442,7 +1444,7 @@
 		{#if !canvasOpen}
 			<!-- The outline: the project's groups and shots. On the canvas the layers panel takes its place. -->
 			<aside class="wa-outline hidden min-h-0 overflow-hidden rounded-[10px] bg-panel md:mr-[3px] md:block">
-				<Outline project={activeProject} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} onMoveShots={(groupId, cardIds) => moveSelectedTo(groupId, cardIds)} onAddFiles={(groupId, files) => importFiles(files, { groupId, unbenched: true })} />
+				<Outline project={activeProject} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} onMoveShots={(groupId, cardIds) => moveSelectedTo(groupId, cardIds)} onAddFiles={(groupId, files) => importFiles(files, { groupId, unbenched: true })} level={currentTab === 'story' ? ui.storyLevel : null} onOpenLevel={(level) => { ui.storyLevel = level; openWorkspace('story'); }} />
 			</aside>
 		{/if}
 		<aside class={['rail wa-rail relative hidden bg-panel md:flex md:flex-col', canvasOpen && !railCollapsed ? 'rounded-[10px] md:mr-[3px]' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>

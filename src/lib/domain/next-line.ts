@@ -8,6 +8,8 @@ type NextLineProject = {
 	production: { cards: Array<{ card_id: string; benched?: boolean }>; assets: Take[] };
 	/** True when the project's takes are reviewed in Review Room. */
 	reviewed: boolean;
+	/** The story plan's own next step while its levels are still being approved (domain/story-levels). */
+	story?: string | null;
 };
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -27,6 +29,7 @@ export function shotStatus(takes: Take[]): ShotStatus {
 
 export function nextLine(project: NextLineProject | null): string {
 	if (!project) return 'Start a project';
+	if (project.story) return project.story;
 	const { cards, assets } = project.production;
 	if (cards.length === 0) return 'Write the story, then the shot list';
 

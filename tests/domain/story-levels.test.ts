@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import {
-	applyLevelApproval, assignSceneCodes, assignShotNumbers, canApprove, keepFixedNames, levelCounts, levelOpen, levelStates, levelsOf, lockNotice, lockViolations,
-	nextLevel, planNames, sceneCodeFor, sceneCodeOfGroup, shotCodeOf, STORY_LEVELS, type LevelApprovals
+	applyLevelApproval, approveLabel, assignSceneCodes, assignShotNumbers, canApprove, keepFixedNames, levelCounts, levelNextLine, levelOpen, levelStates, levelSummary, levelsOf, lockNotice, lockViolations,
+	nextLevel, placedGroups, planNames, sceneCodeFor, sceneCodeOfGroup, shotCodeOf, storyNextLine, STORY_LEVELS, type LevelApprovals
 } from '../../src/lib/domain/story-levels';
 import { projectSchema, type Project } from '../../src/lib/domain/schemas';
 
@@ -47,6 +47,31 @@ test('before a level is approved, it says which names will be fixed', () => {
 	expect(lockNotice('shots')).toBe('Approving the shot list fixes each shot code. Titles can still change.');
 	expect(lockNotice('acts')).toBe('Approving the acts fixes no names.');
 	expect(lockNotice('beats')).toBe('Approving the story beats fixes no names.');
+});
+
+test('each level says where it stands in a word or two, and its button says what approving covers', () => {
+	expect(levelSummary('scenes', 'empty', 0)).toBe('');
+	expect(levelSummary('scenes', 'proposed', 5)).toBe('5 proposed');
+	expect(levelSummary('acts', 'approved', 3)).toBe('3 approved');
+	expect(levelSummary('brief', 'proposed', 1)).toBe('Proposed');
+	expect(levelSummary('brief', 'approved', 1)).toBe('Approved');
+	expect(levelSummary('scenes', 'proposed', 6, 1, true)).toBe('1 new');
+	expect(approveLabel('brief', 1)).toBe('Approve brief');
+	expect(approveLabel('scenes', 5)).toBe('Approve 5 scenes');
+	expect(approveLabel('beats', 1)).toBe('Approve 1 story beat');
+	expect(approveLabel('shots', 20)).toBe('Approve 20 shots');
+	expect(approveLabel('beats', 0)).toBe('Approve story beats');
+	expect(approveLabel('scenes', 6, 1, true)).toBe('Approve 1 new scene');
+	expect(approveLabel('shots', 22, 2, true)).toBe('Approve 2 new shots');
+});
+
+test('the Next line follows the levels until all five are approved', () => {
+	expect(levelNextLine(levelStates(counts({ brief: 0 }), {}))).toBe('Say the idea, and the Agent drafts the brief');
+	expect(levelNextLine(levelStates(counts(), {}))).toBe('Approve the brief, then acts');
+	expect(levelNextLine(levelStates(counts(), { brief: NOW, acts: NOW }))).toBe('Approve the scenes, then story beats');
+	expect(levelNextLine(levelStates(counts({ beats: 0, shots: 0 }), { brief: NOW, acts: NOW, scenes: NOW }))).toBe('Propose the story beats');
+	expect(levelNextLine(levelStates(counts(), { brief: NOW, acts: NOW, scenes: NOW, beats: NOW }))).toBe('Approve the shot list');
+	expect(levelNextLine(levelStates(counts(), { brief: NOW, acts: NOW, scenes: NOW, beats: NOW, shots: NOW }))).toBeNull();
 });
 
 test('a scene code is three capitals made from its title, and each scene gets its own', () => {
@@ -249,4 +274,19 @@ test('a save that comes back without a fixed code gets it put back; nobody else 
 	changed.cards[0].shot_number = 40;
 	const after = { ...approved, production: keepFixedNames(approved.production, changed) };
 	expect(lockViolations(approved.production.story_levels!.approved, planNames(approved), planNames(after))).toEqual(['Shot code VHA_0010 is fixed']);
+});
+
+test('the Next line comes from the story plan while a project is being planned here', () => {
+	expect(storyNextLine(project())).toBe('Approve the brief, then acts');
+	expect(storyNextLine(approvedThrough('shots'))).toBeNull();
+	// A project whose shots came another way, with nothing approved, keeps the line about its shots.
+	expect(storyNextLine(project({ groups: [{ group_id: 'pool', name: 'Pool', created_at: NOW }], cards: [card('c1', 'pool', 0)] }))).toBeNull();
+});
+
+test('the outline lists scenes with their codes in story order, then the groups that are not scenes', () => {
+	const approved = approvedThrough('shots');
+	const groups = [{ group_id: '', name: 'Main' }, { group_id: 'pool', name: 'Clips from the shoot' }, { group_id: 'plan-scene-cmp', name: 'Campus' }, { group_id: 'plan-scene-vh', name: 'Video Haven' }];
+	const placed = placedGroups(approved, groups);
+	expect(placed.scenes.map((group) => [group.code, group.title])).toEqual([['VHA', 'Video Haven, 2:47 AM'], ['CMP', 'Campus']]);
+	expect(placed.unplaced.map((group) => group.name)).toEqual(['Main', 'Clips from the shoot']);
 });

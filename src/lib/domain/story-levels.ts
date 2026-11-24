@@ -288,3 +288,55 @@ export function keepFixedNames(stored: ProductionState, incoming: ProductionStat
 	}
 	return next;
 }
+
+// --- Words for the screens ------------------------------------------------------------------------------------
+
+const plural = (n: number, things: string) => `${n} ${n === 1 ? things.replace(/s$/, '') : things}`;
+
+/** What a level's row says beside its name: "5 proposed", "3 approved", "1 new", or nothing while it is empty. */
+export function levelSummary(level: StoryLevel, state: LevelState, count: number, open = 0, approvedBefore = false): string {
+	if (state === 'empty') return '';
+	if (state === 'approved') return level === 'brief' ? 'Approved' : `${count} approved`;
+	if (approvedBefore && open > 0) return `${open} new`;
+	return level === 'brief' ? 'Proposed' : `${count} proposed`;
+}
+
+/** The approve button of a level: "Approve 5 scenes", or "Approve 1 new scene" for what was added since. */
+export function approveLabel(level: StoryLevel, count: number, open = 0, approvedBefore = false): string {
+	if (level === 'brief') return 'Approve brief';
+	if (count === 0) return `Approve ${WORDS[level].things}`;
+	return approvedBefore && open > 0 ? `Approve ${plural(open, `new ${WORDS[level].things}`)}` : `Approve ${plural(count, WORDS[level].things)}`;
+}
+
+/** The "Next" line while the story plan is being approved; null once every level is. */
+export function levelNextLine(states: LevelStates): string | null {
+	const next = nextLevel(states);
+	if (!next) return null;
+	if (states[next] === 'empty') return next === 'brief' ? 'Say the idea, and the Agent drafts the brief' : `Propose ${WORDS[next].the}`;
+	const following = STORY_LEVELS[STORY_LEVELS.indexOf(next) + 1];
+	return `Approve ${WORDS[next].the}${following ? `, then ${WORDS[following].label.toLowerCase()}` : ''}`;
+}
+
+/**
+ * A project's "Next" line from its story plan: used until all five levels are approved, on a project that is
+ * being planned here (it has no shots yet, or a level has been approved). A project whose shots came some other
+ * way keeps the line about its shots.
+ */
+export function storyNextLine(project: Project): string | null {
+	if (!project.production.story_plan) return null;
+	const planning = project.production.cards.length === 0 || Object.keys(approvalsOf(project)).length > 0;
+	return planning ? levelNextLine(levelsOf(project)) : null;
+}
+
+/**
+ * Board groups as the outline lists them (decision 15): scenes first, each with its scene code, in story order;
+ * then the groups that are not scenes, whose shots are unplaced.
+ */
+export function placedGroups<G extends { group_id: string }>(project: Project, groups: G[]): { scenes: Array<G & { code: string; title?: string }>; unplaced: G[] } {
+	const coded = codedGroups(project);
+	const order = [...coded.keys()];
+	// A group made for a story plan scene reads by the scene's own title, which can change; a group that was there before keeps its name.
+	const titles = new Map(planScenes(project.production).flatMap((scene) => (scene.group_id ? [] : [[sceneGroupId(scene), scene.title] as const])));
+	const scenes = groups.flatMap((group) => { const code = coded.get(group.group_id); return code ? [{ ...group, code, title: titles.get(group.group_id) }] : []; }).toSorted((a, b) => order.indexOf(a.group_id) - order.indexOf(b.group_id));
+	return { scenes, unplaced: groups.filter((group) => !coded.has(group.group_id)) };
+}

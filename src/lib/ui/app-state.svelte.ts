@@ -1,4 +1,5 @@
 import type { CapabilityReport, Project } from '$lib/domain/schemas';
+import type { StoryLevel } from '$lib/domain/story-levels';
 
 /**
  * Shared UI chrome state (drawers, palette, capability cache). UI-only:
@@ -17,6 +18,8 @@ class AppUiState {
 	chatOpen = $state(false);
 	chatMode = $state<'focus' | 'dock'>('focus');
 	paletteOpen = $state(false);
+	/** The story plan level open on the Story stage; null follows the next level that is not approved. */
+	storyLevel = $state<StoryLevel | null>(null);
 	capabilitiesOpen = $state(false);
 	/** Canvas page context surfaced in global chrome (agent drawer). */
 	activeProjectTitle = $state('');
