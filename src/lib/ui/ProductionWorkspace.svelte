@@ -27,6 +27,8 @@
 	import ShotCard from '$lib/ui/shots/ShotCard.svelte';
 	import TakesBand from '$lib/ui/shots/TakesBand.svelte';
 	import SelectionStrip from '$lib/ui/shots/SelectionStrip.svelte';
+	import { roomState } from '$lib/ui/review-room-state.svelte';
+	import { mergeProduction } from '$lib/domain/merge-production';
 	import PromptSections from '$lib/ui/shots/PromptSections.svelte';
 	import MakeTake from '$lib/ui/shots/MakeTake.svelte';
 	import { ghostSections, imageSections, withGhostSection, withImageSection, type PromptSection } from '$lib/domain/prompt-sections';
@@ -59,19 +61,6 @@
 	} = $props();
 
 	let higgsfieldOpen = $state(false);
-	let roomBusy = $state(false);
-	let roomNote = $state<string | null>(null);
-	async function syncRoom() {
-		roomBusy = true; roomNote = null;
-		try {
-			const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'pull' }) });
-			const body = await response.json();
-			if (!body.ok) throw new Error(body.error?.message ?? 'Review sync failed');
-			onUpdated(body.data);
-			roomNote = `Reviews synced · ${body.added} new takes · ${body.picked} picks followed.`;
-		} catch (cause) { roomNote = cause instanceof Error ? cause.message : 'Review sync failed'; }
-		finally { roomBusy = false; }
-	}
 	const importedJobs = $derived(new Set(project.production.assets.flatMap((asset) => (asset.job_id ? [asset.job_id] : []))));
 
 	// --- Bench (keep it, but leave it out of plays and the Agent's cut) and remove (gone, with one undo).
@@ -274,12 +263,21 @@
 	let previewCardId = $state('');
 	const cloneProduction = (value: ProductionState): ProductionState => JSON.parse(JSON.stringify(value)) as ProductionState;
 
+	/** The production the draft was last loaded from: what an unsaved edit is measured against. */
+	let loadedProduction: ProductionState | null = null;
 	$effect(() => {
 		if (project.version !== loadedVersion || (draft.cards.length === 0 && project.production.cards.length > 0)) {
+			const incoming = cloneProduction(project.production);
+			// A change can arrive (from Review Room, every few seconds) while a shot is being edited: the edits are
+			// kept and everything else is taken from what arrived (domain/merge-production).
+			const sameProject = loadedProduction !== null && loadedVersion >= 0 && untrack(() => loadedProjectId) === project.project_id;
+			draft = sameProject ? untrack(() => mergeProduction(loadedProduction!, draft, incoming)) : incoming;
 			loadedVersion = project.version;
-			draft = cloneProduction(project.production);
+			loadedProduction = incoming;
+			loadedProjectId = project.project_id;
 		}
 	});
+	let loadedProjectId = '';
 
 	async function request(body: Record<string, unknown>) {
 		const response = await fetch(`/api/projects/${project.project_id}/production`, {
@@ -372,15 +370,13 @@
 
 	/** A review decision made in the viewer: the shot's status, or excluding one take. Sent to Review Room at once. */
 	async function reviewTake(take: ProductionAsset, change: { status?: ReviewStatus; excluded?: boolean }) {
-		if (pickBusy) return;
+		if (pickBusy || !take.card_id) return;
 		pickBusy = true; error = null;
-		try {
-			const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'review', take_id: take.asset_id, expected_version: project.version, ...change }) });
-			const body = await response.json();
-			if (!body.ok) throw new Error(body.error?.message ?? 'Review could not be saved');
-			onUpdated(body.data);
-		} catch (cause) { error = cause instanceof Error ? cause.message : 'Review could not be saved'; }
-		finally { pickBusy = false; }
+		// Sent at once; when Review Room cannot be reached it is kept, marked on the shot and tried again (ADR 0008).
+		const result = await roomState.send(project, { take_id: take.asset_id, card_id: take.card_id, ...change });
+		if (result.ok) onUpdated(result.project);
+		else if (!result.kept) error = result.message;
+		pickBusy = false;
 	}
 
 	// The selection (CONTEXT.md): shots gathered in the strip under the grid, played in order, pushed to a cut.
@@ -609,9 +605,7 @@
 				<label class="btn cursor-pointer">Add files…<input type="file" multiple accept="image/*,video/*" class="sr-only" onchange={shotsPicked} /></label>
 				<label class="btn cursor-pointer">Add folder…<input type="file" multiple webkitdirectory class="sr-only" onchange={shotsPicked} /></label>
 				{#if onImportRenders}<button type="button" class="btn" onclick={() => (higgsfieldOpen = true)}>From Higgsfield…</button>{/if}
-				{#if project.series || project.review_room}<button type="button" class="btn" onclick={() => void syncRoom()} disabled={roomBusy || unsaved} title="Pull Review Room status, exclusions, new takes and current picks">{roomBusy ? 'Syncing reviews…' : 'Sync reviews'}</button>{/if}
 			</div>
-			{#if roomNote}<p class="px-4 py-2 text-[12px] text-[#9fc9cf]" role="status">{roomNote}</p>{/if}
 			<div class="flex flex-wrap items-center gap-2 border-b border-[#223039] px-4 py-2.5" aria-label="Score">
 				<span class="meta-label text-[#59d9cf]">Score</span>
 				{#if score}
@@ -653,7 +647,7 @@
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-0.5 px-2 pb-2 pt-1">
 			{#each draft.cards as card (card.card_id)}
 				{@const pick = pickFor(draft, card)}
-				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} dropTarget={card.card_id === dropCard} position={reviewSequence.position(card.card_id)} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
+				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} dropTarget={card.card_id === dropCard} position={reviewSequence.position(card.card_id)} tag={roomState.waiting(card.card_id) ? { text: 'Not sent', tone: 'bad', title: `This review has not reached Review Room yet (${roomState.waiting(card.card_id)}); it is tried again every few seconds` } : roomState.marked(card.card_id) ? { text: 'Review Room', tone: 'warn', title: 'Changed in Review Room a moment ago' } : null} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>
@@ -785,7 +779,7 @@
 					<button type="button" class="key" onclick={() => void setBenched(card, !card.benched)} disabled={shotBusy !== null} title={card.benched ? 'Use this shot again in plays and the Agent\'s cut' : 'Keep this shot, but leave it out of plays and the Agent\'s first cut'}>{card.benched ? 'Unbench' : 'Bench'}</button>
 					<button type="button" class="key danger" onclick={() => void removeShot(card)} disabled={shotBusy !== null} title="Remove this shot and its takes from the project (you can undo right after; a shot a cut uses can't be removed)">{shotBusy === card.card_id ? '…' : 'Remove'}</button>
 				</div>
-				<TakeReview {project} cardId={card.card_id} {onUpdated} disabled={unsaved || roomBusy} />
+				<TakeReview {project} cardId={card.card_id} {onUpdated} disabled={unsaved} />
 			{/if}
 		</div>
 	{/if}

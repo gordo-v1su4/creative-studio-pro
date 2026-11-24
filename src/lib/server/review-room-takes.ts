@@ -103,7 +103,7 @@ type Pushed ={ ok: true; project: Project; code: string; version: number } | { o
  * shot, the asset's current version becomes the pick here, and misfiled drops in this episode's scene folders
  * are reported. Reads the changes feed from the series' stored cursor.
  */
-export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok: true; project: Project; added: number; picked: number; misfiled: Array<{ scene: string; title: string }> } | { ok: false; status: number; message: string }> {
+export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok: true; project: Project; added: number; picked: number; misfiled: Array<{ scene: string; title: string }>; changed: string[] } | { ok: false; status: number; message: string }> {
 	let project = await deps.store.readProject(projectId);
 	if (!project || (!project.series && !project.review_room)) return { ok: false, status: 400, message: 'Connect this project to Review Room first' };
 	const series = project.series;
@@ -119,6 +119,8 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 	const misfiled = feed.assets.filter((asset) => asset.misfiled && asset.folderId && sceneByFolder.has(asset.folderId)).map((asset) => ({ scene: sceneByFolder.get(asset.folderId!)!.title, title: asset.title }));
 	const known = new Set(project.production.assets.flatMap((asset) => (asset.review_room ? [asset.review_room.version_id] : [])));
 	let added = 0, picked = 0, processing = false;
+	/** The shots this pull changed here (a new take, a status, an exclusion, a pick), so the screen can mark them. */
+	const touched = new Set<string>();
 	for (const asset of feed.assets) {
 		const code = asset.assetCode ? parseShotCode(asset.assetCode) : null;
 		const trailerShot = project.review_room && Object.entries(project.review_room.shots).find(([, shot]) => shot.code === asset.assetCode);
@@ -141,7 +143,7 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 			const outcome = await deps.gateway.addTake({ command: 'add_take', project_id: projectId, expected_version: project.version, card_id: card.card_id,
 				take: { asset_id: uuid7ish(), kind, name, mime_type: version.mimeType, url: `/api/projects/${projectId}/files/review-room/${encodeURIComponent(name)}`, created_at: new Date(version.createdAt).toISOString(), review_room: { asset_id: asset.assetId, version_id: version.versionId, version: version.version, code: asset.assetCode! } } });
 			if (!outcome.ok) return { ok: false, status: 409, message: outcome.error.message };
-			project = outcome.data; known.add(version.versionId); added += 1;
+			project = outcome.data; known.add(version.versionId); added += 1; touched.add(card.card_id);
 		}
 	}
 	// Apply a feed's review decisions in one save. Project snapshots are ledger entries, so
@@ -153,9 +155,11 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 		const changed = (version.excluded ? applyRejectTake : applyRestoreTake)(reviewed, take.asset_id);
 		if (!changed.ok) return { ok: false, status: 400, message: changed.message };
 		reviewed = changed.production;
+		touched.add(take.card_id);
 	}
 	for (const asset of feed.assets) {
 		if (asset.status && reviewed.assets.some((entry) => entry.review_room?.asset_id === asset.assetId && entry.review_status !== asset.status)) {
+			for (const entry of reviewed.assets) if (entry.review_room?.asset_id === asset.assetId && entry.card_id) touched.add(entry.card_id);
 			reviewed = { ...reviewed, assets: reviewed.assets.map((entry) => entry.review_room?.asset_id === asset.assetId ? { ...entry, review_status: asset.status } : entry) };
 		}
 	}
@@ -167,13 +171,16 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 		const now = current && project.production.cards.find((entry) => entry.card_id === current.card_id);
 		if (current && !current.rejected && now && pickFor(project.production, now)?.asset_id !== current.asset_id) {
 			const set = await deps.gateway.handle({ command: 'set_pick', project_id: projectId, expected_version: project.version, card_id: now.card_id, take_id: current.asset_id });
-			if (set.ok) { project = set.data as Project; picked += 1; }
+			if (set.ok) { project = set.data as Project; picked += 1; touched.add(now.card_id); }
 		}
 	}
-	if (processing) { /* keep the stored cursor */ }
+	// The check runs every few seconds: a feed with nothing in it, or the cursor already stored, saves nothing
+	// (each save is a new project version in the ledger).
+	const quiet = feed.assets.length === 0 && feed.versions.length === 0 && (feed.removedAssets ?? []).length === 0;
+	if (processing || quiet || String(feed.cursor) === String(room.cursor ?? '')) { /* keep the stored cursor */ }
 	else if (project.review_room) project = await deps.store.updateProject(projectId, project.version, (current) => ({ ...current, review_room: { ...current.review_room!, cursor: feed.cursor } }));
 	else if (record?.review_room) await deps.series.write({ ...record, review_room: { ...record.review_room, cursor: feed.cursor } });
-	return { ok: true, project, added, picked, misfiled };
+	return { ok: true, project, added, picked, misfiled, changed: [...touched] };
 }
 
 export async function pushTake(deps: PushDeps, projectId: string, takeId: string): Promise<Pushed> {

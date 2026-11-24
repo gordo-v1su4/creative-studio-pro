@@ -31,3 +31,30 @@ test('the stages come from the domain list, not from a list in the page', () => 
 test('the docked Agent waits to be asked before it calls the model', () => {
 	expect(chat).toContain('if (open && !docked && loadedVersion !== project.version && !busy) void start(project);');
 });
+
+// Slice 3 (ADR 0008): Review Room keeps in step without a button.
+const pageSource = readFileSync('src/routes/+page.svelte', 'utf8');
+const workspaceSource = readFileSync('src/lib/ui/ProductionWorkspace.svelte', 'utf8');
+
+test('there is no sync button on the Shots grid; a check runs on a timer and on coming back to the window', () => {
+	expect(workspaceSource).not.toContain('Sync reviews');
+	expect(workspaceSource).not.toContain("action: 'pull'");
+	expect(pageSource).toContain("body: JSON.stringify({ action: 'pull' })");
+	expect(pageSource).toContain("window.addEventListener('focus', back);");
+	expect(pageSource).toContain("document.addEventListener('visibilitychange', back);");
+	expect(pageSource).toContain('if (due({ connected: true, visible: document.visibilityState ===');
+});
+
+test("the check never holds up the operator's own requests, and a collision is retried once", () => {
+	const check = pageSource.slice(pageSource.indexOf('function checkRoom()'), pageSource.indexOf('const roomProjectId'));
+	expect(check).not.toContain('takeQueue');
+	expect(check).toContain('if (body.data.version > activeProject.version)');
+	expect(pageSource).toContain("result.error.code === 'VERSION_CONFLICT'");
+});
+
+test('unsaved edits survive an arriving change, and a review that could not be sent is kept and shown', () => {
+	expect(workspaceSource).toContain('mergeProduction(loadedProduction!, draft, incoming)');
+	expect(workspaceSource).toContain('await roomState.send(project,');
+	expect(workspaceSource).toContain("text: 'Not sent', tone: 'bad'");
+	expect(pageSource).toContain('for (const entry of [...roomState.outbox])');
+});

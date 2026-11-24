@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import {
 		SvelteFlow,
 		Background,
@@ -39,6 +39,8 @@
 	import { mediaKind } from '$lib/domain/media';
 	import { dropMeaning, type DropContext } from '$lib/domain/drops';
 	import ShotBrief from '$lib/ui/shots/ShotBrief.svelte';
+	import { roomState } from '$lib/ui/review-room-state.svelte';
+	import { due, roomLine } from '$lib/domain/review-poll';
 	import { droppedFiles } from '$lib/ui/dropped-files';
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
@@ -521,7 +523,14 @@
 			const project = activeProject;
 			if (!project) return;
 			try {
-				const result = (await (await send(project)).json()) as ({ ok: true; data: Project } | { ok: false; error: { message: string } }) & Record<string, unknown>;
+				type Answer = ({ ok: true; data: Project } | { ok: false; error: { message: string; code?: string } }) & Record<string, unknown>;
+				let result = (await (await send(project)).json()) as Answer;
+				// The project can move on underneath a request (Review Room's changes arrive on their own): read it
+				// again and send once more before treating it as a failure.
+				if (!result.ok && result.error.code === 'VERSION_CONFLICT') {
+					const fresh = (await (await fetch(`/api/projects/${project.project_id}`)).json()) as { project?: Project };
+					if (fresh.project) result = (await (await send(fresh.project)).json()) as Answer;
+				}
 				if (!result.ok) throw new Error(result.error.message);
 				adopted?.(result);
 				if (activeProject?.project_id === project.project_id) adoptProject(withPendingPicks(result.data));
@@ -531,6 +540,65 @@
 			}
 		});
 	}
+
+	// --- Review Room (ADR 0008): no sync button. While a connected project is open and in view, its changes are
+	// read every ten seconds and on coming back to the window; reviews that could not be sent are tried again.
+	const roomConnected = $derived(!!(activeProject?.series || activeProject?.review_room));
+	const roomStatus = $derived(roomLine({ connected: roomConnected, lastAt: roomState.lastAt, error: roomState.error, waiting: roomState.outbox.length, now: roomState.now }));
+	/**
+	 * One check. It runs beside the board's own requests, never ahead of them in the queue, so a pick or a move
+	 * does not wait on Review Room; a request that collides with an arriving change is sent again (enqueueBoard).
+	 */
+	function checkRoom() {
+		if (roomState.checking) return;
+		roomState.checking = true;
+		void (async () => {
+			const project = activeProject;
+			try {
+				if (!project || !(project.series || project.review_room)) return;
+				const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'pull' }) });
+				const text = await response.text();
+				let body: { ok?: boolean; data?: Project; changed?: string[]; error?: { message?: string } };
+				try { body = JSON.parse(text); } catch { throw new Error(`HTTP ${response.status}`); }
+				if (!body.ok || !body.data) throw new Error(body.error?.message ?? 'Review Room could not be read');
+				if (activeProject?.project_id === project.project_id) {
+					// Only a newer project is taken; one of the operator's own requests may have landed meanwhile.
+					if (body.data.version > activeProject.version) adoptProject(withPendingPicks(body.data));
+					roomState.mark(body.changed ?? []);
+				}
+				roomState.error = null;
+				// Reviews that could not be sent earlier go out again, oldest first.
+				for (const entry of [...roomState.outbox]) {
+					const current = activeProject;
+					if (!current || current.project_id !== project.project_id) break;
+					const sent = await roomState.send(current, entry);
+					if (sent.ok) adoptProject(withPendingPicks(sent.project));
+					else break;
+				}
+			} catch (cause) {
+				roomState.error = cause instanceof Error ? cause.message : 'Review Room could not be read';
+			} finally {
+				roomState.lastAt = Date.now();
+				roomState.checking = false;
+			}
+		})();
+	}
+	/** Changes only when another project is opened, so the check below is not restarted by every update of this one. */
+	const roomProjectId = $derived(activeProject?.project_id ?? '');
+	$effect(() => {
+		if (!roomProjectId || !roomConnected) return;
+		untrack(() => roomState.reset());
+		const tick = (focused = false) => {
+			roomState.now = Date.now();
+			if (due({ connected: true, visible: document.visibilityState === 'visible', checking: roomState.checking, lastAt: roomState.lastAt, now: roomState.now, focused })) checkRoom();
+		};
+		const timer = setInterval(() => tick(), 1000);
+		const back = () => tick(true);
+		window.addEventListener('focus', back);
+		document.addEventListener('visibilitychange', back);
+		untrack(() => tick());
+		return () => { clearInterval(timer); window.removeEventListener('focus', back); document.removeEventListener('visibilitychange', back); };
+	});
 
 	function sendBoardCommand(body: Record<string, unknown>) {
 		for (const [cardId, pending] of pendingPicks) if (cardId !== body.card_id) flushPick(cardId, pending);
@@ -1316,7 +1384,7 @@
 				{/each}
 			</span>
 		{/if}
-		<span class="cp hidden shrink-0 text-ink-3 lg:inline" title="Every take's media is stored in Review Room">Review Room <b class="font-normal text-teal">{activeProject?.series || activeProject?.review_room ? 'connected' : 'not connected'}</b></span>
+		<span class="cp hidden shrink-0 text-ink-3 lg:inline" title={roomState.error ?? (roomState.outbox[0]?.error ? `Not sent: ${roomState.outbox[0].error}` : "Every take's media is stored in Review Room. Its changes are read every ten seconds; yours are sent at once.")} aria-live="polite">Review Room <b class={['font-normal', roomStatus.tone === 'ok' ? 'text-teal' : roomStatus.tone === 'bad' ? 'text-[#ff7a6b]' : 'text-ink-3']} style="display: inline-block; min-width: 9ch;">{roomStatus.text}</b></span>
 		<button type="button" class="shell-tab agent" disabled={!activeProject} aria-pressed={dockOpen} title="The Agent: your assistant for this project. It drafts the brief, shots and prompts, suggests effects, and makes judgment calls inside your rules." onclick={() => { ui.chatMode = 'dock'; ui.chatOpen = !ui.chatOpen; }}>Agent</button>
 		<span class="relative shrink-0">
 			<button type="button" class="tg" aria-haspopup="menu" aria-expanded={menuOpen} onclick={() => { menuOpen = !menuOpen; publishOpen = false; }}>Menu</button>

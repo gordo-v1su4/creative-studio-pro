@@ -210,6 +210,8 @@ Status, part two, 2026-11-23 (steps 1 and 2; local test copy, checked in the bro
 
 Checked in the browser: the cards and connectors render, selecting one tints it and shows the bar, Details fills in, and Bench then Unbench from the bar changed the shot and put it back. Not exercised, because each would change the test project for good or needs a real pointer drag: the bar's other actions, a file drop on the canvas, and dragging a card onto a side-panel group. Their handlers are the ones the old card used; only the drop decisions were rerouted.
 
+Released to Hosted Studio the same day as `23178da`. On hosted TR130 the canvas shows the new card; selecting it shows the bar and fills Details. Nothing was changed there. In TR130's Main view the one shot sits on top of the seed card; that is where the saved layout puts them, not something this release moved.
+
 Open questions for the operator: the old Animate window (with its session cap) still opens from the bar, beside the new two-step block in Details; and Space or a double-click does not open the viewer from the canvas yet.
 
 Still open in slice 2: references as canvas cards linked to the shots that use them (step 5), the viewer from the canvas, and "Unplaced" in the outline (step 4, which waits for scene codes from the story plan in slice 4). The canvas's side panel and its other node kinds still carry the old look.
@@ -233,6 +235,19 @@ In `review-room-svelte` (its own branch and deploy):
 8. A read endpoint for an asset's notes with timecodes, on the existing API-key scheme.
 
 Done when: a status set in either app shows in the other within 15 seconds, and a link from a shot opens that shot's version in Review Room.
+
+Status, part one, 2026-11-23 (steps 2 and 3 in this repository; local test copy, connected to the real Review Room):
+
+- **The check is automatic.** While a connected project is open and its window is in view, Review Room's changes are read every ten seconds and at once on coming back to the window (`src/lib/domain/review-poll.ts`, the check itself in `src/routes/+page.svelte`). It is the same merge the "Sync reviews" button ran (`pullTakes`), so new takes, statuses, exclusions and the current version all arrive the same way. The button is gone from the Shots grid.
+- **A quiet check costs nothing.** A feed with nothing in it, or the cursor already stored, saves no new project version; before, every pull wrote the cursor. Measured: three checks in 26 s, version unchanged.
+- **It never holds up the operator.** The check runs beside the board's own requests, not ahead of them (one takes about 1.6 s from this machine). If a pick or a move collides with an arriving change, it is read again and sent once more.
+- **Unsaved edits survive.** A change arriving while a shot is being edited no longer replaces the draft: the edits are kept and everything else is taken from what arrived, field by field (`src/lib/domain/merge-production.ts`). Before, any new project version discarded the unsaved text.
+- **A review that could not be sent is kept.** Status and exclusion go to Review Room at once; when it cannot be reached the decision is kept, the shot shows "Not sent", the top bar counts it, and it is tried again with every check (`src/lib/ui/review-room-state.svelte.ts`). A request that can never succeed (a take not stored there) is shown as an error and not kept.
+- **The top bar says where things stand:** "in step · 4s", "checking", "not reached · retrying", or how many changes are waiting. A shot Review Room has just changed carries a "Review Room" note for eight seconds.
+
+Checked in the browser: the line moves from "checking" to "in step", checks go out about every ten seconds, and the version stays put when nothing changed. The first check after opening brought in changes that had been waiting in Review Room (version 437 to 439), which is the catch-up working. Not exercised live: a failed send and its retry, and an edit surviving an arriving change; both are covered by tests (19 new) rather than by taking Review Room offline.
+
+Still open in slice 3: notes at their timecodes in the viewer (step 4, needs the read endpoint in `review-room-svelte`), "Open in Review Room" links (step 5, needs addresses there), and the three changes in `review-room-svelte` itself (steps 6 to 8). The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
 
 ### 4 · Front door and story plan
 

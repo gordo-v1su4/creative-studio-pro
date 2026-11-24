@@ -55,7 +55,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 	if (body.data.action === 'pull') {
 		const pulled = await pullTakes(deps, projectId.data);
-		return pulled.ok ? json({ ok: true, data: pulled.project, added: pulled.added, picked: pulled.picked, misfiled: pulled.misfiled }) : fail(pulled.status, pulled.message);
+		return pulled.ok ? json({ ok: true, data: pulled.project, added: pulled.added, picked: pulled.picked, misfiled: pulled.misfiled, changed: pulled.changed }) : fail(pulled.status, pulled.message);
 	}
 	if (body.data.action === 'push_deliverable') {
 		const { take_id, kind, index, cut, qc_cut } = body.data;

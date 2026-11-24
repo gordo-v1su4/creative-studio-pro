@@ -111,3 +111,32 @@ test('a bulk review refresh saves its decisions once and avoids rewriting unchan
 	expect(result.picked).toBe(0);
 	expect(writes).toBe(2); // One review update and one cursor update, independent of shot count.
 });
+
+// --- Slice 3: the pull runs every ten seconds, so a quiet check must cost nothing and a busy one must say what moved.
+
+test('a check that finds nothing writes nothing: no new project version, no cursor save', async () => {
+	const deps = await setup();
+	deps.client.changes = async () => ({ cursor: '99', assets: [], versions: [], removedAssets: [] });
+	let writes = 0;
+	const update = deps.store.updateProject.bind(deps.store);
+	deps.store.updateProject = async (...args: Parameters<ProjectStore['updateProject']>) => { writes++; return update(...args); };
+	const result = await pullTakes({ ...deps, series: { read: async () => null }, projectRoot: '/unused' } as unknown as PushDeps, deps.project.project_id);
+	if (!result.ok) throw new Error(result.message);
+	expect(writes).toBe(0);
+	expect(result.project.version).toBe(deps.project.version);
+	expect(result.changed).toEqual([]);
+});
+
+test('a check that finds a change names the shots it touched', async () => {
+	const deps = await setup();
+	deps.client.changes = async () => ({ cursor: '100', assets: [{ assetId: 'remote-shot', folderId: 'shot-folder', assetCode: 'BLR_TR100_SHT_0010', title: 'Shot', currentVersionId: 'v1', misfiled: false, copiedFromAssetId: null, updatedAt: 100, status: 'approved' }], versions: [], removedAssets: [] });
+	const pullDeps = { ...deps, series: { read: async () => null }, projectRoot: '/unused' } as unknown as PushDeps;
+	const first = await pullTakes(pullDeps, deps.project.project_id);
+	if (!first.ok) throw new Error(first.message);
+	expect(first.changed).toEqual(['shot']);
+	expect(first.project.review_room?.cursor).toBe('100');
+	// The same feed again changes nothing here, so it names nothing.
+	const again = await pullTakes(pullDeps, deps.project.project_id);
+	if (!again.ok) throw new Error(again.message);
+	expect(again.changed).toEqual([]);
+});
