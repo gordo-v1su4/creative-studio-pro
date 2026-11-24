@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cut</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/*SHARED*/
+.app+.app{margin-top:28px}
+.bar .m{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+a.btn{text-decoration:none}
+.hd .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.stagebox{flex:1;min-height:230px;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:2px 14px 4px}
+.stagebox img{height:100%;max-width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-radius:6px}
+.ctl{display:flex;flex-wrap:wrap;align-items:center;gap:2px;padding:6px 10px 2px}
+.ctl .mono{white-space:nowrap}
+.tc{margin:0 auto;display:flex;gap:6px;white-space:nowrap}
+.tc b{font-weight:400;color:var(--amber)}
+.sc{display:flex;gap:8px;padding:6px 14px 12px}
+.lbs{display:flex;flex-direction:column;gap:3px;width:24px;flex:none;color:var(--ink3)}
+.lbs span{display:flex;align-items:center}
+.lanes{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.cl{display:flex;gap:2px;height:34px}
+.cl span{position:relative;display:flex;gap:1px;min-width:0;overflow:hidden;border-radius:2px}
+.cl img{flex:1;min-width:0;height:100%;object-fit:cover;display:block;opacity:.55}
+.cl em{position:absolute;left:3px;top:2px;font-style:normal;white-space:nowrap;padding:0 3px;border-radius:2px;background:#000000b8;color:var(--ink2)}
+.cl [data-now] img{opacity:1}
+.cl [data-now] em{left:6px;background:var(--tealdeep);color:var(--tealink)}
+.cl [data-now]::before,.cl [data-now]::after{content:"";position:absolute;top:0;bottom:0;width:3px;background:var(--teal);z-index:1}
+.cl [data-now]::before{left:0}.cl [data-now]::after{right:0}
+.trk{position:relative;height:8px;background:#1f1f23}
+.trk i{position:absolute;left:0;top:0;bottom:0;width:30%;background:linear-gradient(90deg,#123a35,#8be0c6)}
+.trk u{position:absolute;top:-1px;width:2px;height:10px;background:var(--amber)}
+.wf{position:relative;height:22px;background:repeating-linear-gradient(90deg,#45454d 0 2px,transparent 2px 4px);clip-path:polygon(0.0% 42%,4.2% 24%,8.3% 34%,12.5% 12%,16.7% 28%,20.8% 6%,25.0% 36%,29.2% 16%,33.3% 4%,37.5% 32%,41.7% 14%,45.8% 40%,50.0% 22%,54.2% 8%,58.3% 30%,62.5% 16%,66.7% 36%,70.8% 10%,75.0% 24%,79.2% 6%,83.3% 38%,87.5% 20%,91.7% 28%,95.8% 12%,100.0% 42%,100.0% 58%,95.8% 88%,91.7% 72%,87.5% 80%,83.3% 62%,79.2% 94%,75.0% 76%,70.8% 90%,66.7% 64%,62.5% 84%,58.3% 70%,54.2% 92%,50.0% 78%,45.8% 60%,41.7% 86%,37.5% 68%,33.3% 96%,29.2% 84%,25.0% 64%,20.8% 94%,16.7% 72%,12.5% 88%,8.3% 66%,4.2% 76%,0.0% 58%)}
+.wf i{position:absolute;left:0;top:0;bottom:0;width:30%;background:repeating-linear-gradient(90deg,#7dd9c8 0 2px,transparent 2px 4px)}
+.wf.mu{clip-path:polygon(0% 44%,4.2% 30%,8.3% 10%,12.5% 26%,16.7% 8%,20.8% 22%,25% 4%,29.2% 20%,33.3% 10%,37.5% 28%,41.7% 6%,45.8% 18%,50% 8%,54.2% 26%,58.3% 4%,62.5% 16%,66.7% 8%,70.8% 24%,75% 6%,79.2% 20%,83.3% 10%,87.5% 30%,91.7% 14%,95.8% 34%,100% 46%,100% 54%,95.8% 66%,91.7% 86%,87.5% 70%,83.3% 90%,79.2% 80%,75% 94%,70.8% 76%,66.7% 92%,62.5% 84%,58.3% 96%,54.2% 74%,50% 92%,45.8% 82%,41.7% 94%,37.5% 72%,33.3% 90%,29.2% 80%,25% 96%,20.8% 78%,16.7% 92%,12.5% 74%,8.3% 90%,4.2% 70%,0% 56%)}
+.wf.lo{clip-path:polygon(0% 44%,10% 40%,22% 44%,34% 38%,48% 43%,60% 39%,74% 44%,88% 40%,100% 44%,100% 56%,88% 60%,74% 56%,60% 61%,48% 57%,34% 62%,22% 56%,10% 60%,0% 56%)}
+.ml{position:relative;flex:1 1 320px;min-width:0}
+.bars{position:absolute;inset:0;background:repeating-linear-gradient(90deg,#ffffff38 0 1px,transparent 1px 7.04%);pointer-events:none}
+.lp{position:absolute;top:0;bottom:0;left:52.8%;width:29.6%;background:#000000a6;display:flex;align-items:center;padding-left:4px;color:var(--ink2)}
+.spd{position:relative;height:14px}
+.spd span{position:absolute;left:22.6%;width:13.3%;top:0;bottom:0;background:#1a1a1e}
+.spd svg{position:absolute;inset:0;width:100%;height:100%}
+.spd b{position:absolute;width:4px;height:4px;margin:-2px 0 0 -2px;background:var(--teal)}
+.ph{position:absolute;left:30%;top:-2px;bottom:-2px;width:3px;margin-left:-1px;background:#d9f7ef;z-index:2}
+.side{flex:1;display:flex;flex-direction:column;gap:14px;padding:12px 8px 10px}
+.side>div>.cp:first-child{display:block;padding:0 6px 4px;color:var(--ink3)}
+.st{display:flex;align-items:center;width:100%;height:22px;padding:0 6px;border-radius:5px;color:var(--st);box-sizing:border-box}
+.st[aria-pressed="true"]{background:var(--sel)}
+.st .mono{margin-left:auto;color:var(--ink3);text-transform:none}
+.kv{display:flex;flex-direction:column;gap:3px}
+.kv>span,.kv>a{padding:0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side .spec{margin:0 6px 6px}
+.side .row{padding:0 6px;flex-wrap:wrap}
+.note{display:flex;gap:6px;padding:2px 6px;color:#c8c8ce;white-space:nowrap}
+.note .mono{color:var(--amber);flex:none}
+.note .t{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tab.d[aria-selected="true"]{color:var(--ink)}
+.srow .n{margin-left:auto;padding-left:8px;color:var(--ink3);flex:none}
+.srow .cp{color:var(--ink3)}
+.srow[data-sel] .cp{color:var(--teal)}
+.mx{display:flex;flex-direction:column;gap:3px;padding:8px 14px 6px}
+.mr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px}
+.mh{display:flex;align-items:center;gap:8px;flex:0 0 268px;min-width:0;height:22px}
+.mh .cp:first-child{width:66px;color:var(--ink3);flex:none}
+.mh .mono{width:50px;text-align:right;color:var(--ink);flex:none;white-space:nowrap}
+.sl{position:relative;flex:1;min-width:40px;height:3px;background:#27272a}
+.sl i{position:absolute;left:0;top:0;bottom:0;background:#2f6f66}
+.sl b{position:absolute;top:-5px;width:2px;height:13px;margin-left:-1px;background:#d9f7ef}
+.fx{position:relative;height:22px;background:#141417}
+.fx u{position:absolute;top:4px;bottom:4px;background:#2f6f66}
+.fx u[data-s]{background:#6d5bd0}
+.ln{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;min-height:24px;padding:0 14px}
+.ln>.cp:first-child{width:66px;color:var(--ink3);flex:none}
+.ln .t{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ln .d{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.fd{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:var(--ink3)}
+.fd input{width:46px;height:20px;box-sizing:border-box;border:0;border-radius:5px;background:var(--raise);color:var(--ink);font-family:"Geist Mono",ui-monospace,monospace;font-size:10.5px;text-align:right;padding:0 6px;outline:none}
+.sec{padding:12px 14px 0;display:flex;flex-direction:column;gap:4px;min-width:0}
+.sec>.cp:first-child,.hd>.cp:first-child{color:var(--ink3)}
+.sec p{margin:0;max-width:74ch;line-height:1.5}
+.hd{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;min-height:22px}
+.hd .w{color:var(--st)}
+.qc{display:flex;align-items:center;gap:10px;height:22px;padding:0 8px;margin:0 -8px;border-radius:5px;white-space:nowrap;overflow:hidden;font-size:12px}
+.qc[aria-pressed="true"]{background:var(--sel)}
+.qc .cp{width:34px;color:var(--st);flex:none}
+.qc .l{width:92px;color:var(--ink);flex:none}
+.qc[aria-pressed="true"] .l{color:var(--tealink)}
+.qc .s{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.qc .mono{color:var(--st)}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:3px 14px}
+.files a{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none}
+.sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:2px;padding-bottom:12px}
+.sheet img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-radius:2px}
+.prop .pl{display:flex;flex-wrap:wrap;align-items:center;gap:3px 6px;min-height:24px}
+.prop .pl .t{color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 100%;min-width:0}
+.prop .pl .mono{color:var(--ink2);white-space:nowrap}
+.prop p{margin:6px 0 0;color:var(--ink3);font-size:11.5px}
+</style>
+</helmet>
+
+<!-- 1 · Picture: the open cut, still being edited -->
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button">Shots</button>
+<button class="stage" type="button" aria-current="page">Cut</button>
+</nav>
+<span class="sync">Review Room <b>in step</b> · 12s</span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Cuts">
+<div class="cap">Cuts · 3</div>
+<button class="scene" type="button" aria-current="true"><span class="t">Teaser · rough</span><span class="mono">28.4s</span></button>
+<div class="srow" data-sel><span class="mono">v3</span><span class="cp">Editing</span><span class="mono n">8 entries</span></div>
+<div class="srow"><span class="mono">v2</span><span class="cp">Locked · mixed · exported</span><span class="mono n">28.4s</span></div>
+<div class="srow"><span class="mono">v1</span><span class="cp">Locked</span><span class="mono n">31.0s</span></div>
+<button class="scene" type="button"><span class="t">Teaser · alt open</span><span class="mono">v1 · 31.2s</span></button>
+<button class="scene" type="button"><span class="t">Cold open only</span><span class="mono">v2 · 45.0s</span></button>
+<div class="act">Entries · v3</div>
+<div class="srow" data-st="approved"><span class="mono">1</span><span class="t">CRT monitor, 2:47 AM</span><span class="mono n">4.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">2</span><span class="t">Storefront, 2:47 AM</span><span class="mono n">2.4s</span></div>
+<div class="srow" data-st="awaiting" data-sel><span class="mono">3</span><span class="t">Mara on the floor</span><span class="mono n">3.8s</span></div>
+<div class="srow" data-st="changes"><span class="mono">4</span><span class="t">The customer</span><span class="mono n">2.6s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">5</span><span class="t">Malachi in the doorway</span><span class="mono n">3.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">6</span><span class="t">The tableau</span><span class="mono n">4.2s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">7</span><span class="t">Kai on the landline</span><span class="mono n">6.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">8</span><span class="t">Thumb on the red vial</span><span class="mono n">2.4s</span></div>
+<div class="act">Assemblies</div>
+<button class="scene" type="button"><span class="t">Assembly 1</span><span class="mono">3 scenes</span></button>
+<button class="scene" type="button"><span class="t">Night shots</span><span class="mono">12 shots</span></button>
+</aside>
+<main class="work">
+<div class="bar">
+<span class="mono k">v3</span>
+<h1>Teaser · rough</h1>
+<span class="mono m">8 entries · 28.4s · edits save to this cut · saved</span>
+<button class="tg sp" type="button" aria-pressed="true">Picture</button><button class="tg" type="button" aria-pressed="false">Sound</button><button class="tg" type="button" aria-pressed="false">Export</button>
+<button class="btn" type="button">Suggest trims</button>
+<button class="btn go" type="button">Lock v3</button>
+</div>
+<div class="stagebox"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt="Entry 3 of the cut: Mara on the floor"></div>
+<div class="ctl">
+<button class="ib" type="button" aria-label="Previous clip"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="1.5" y="2" width="1.6" height="8"/><path d="M10.5 2v8L4 6z"/></svg></button>
+<button class="ib" type="button" aria-label="Back one frame"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M8.5 2v8L2.5 6z"/></svg></button>
+<button class="ib" type="button" aria-label="Pause"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="#e4e4e7"><rect x="2" y="1.5" width="3" height="9"/><rect x="7" y="1.5" width="3" height="9"/></svg></button>
+<button class="ib" type="button" aria-label="Forward one frame"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M3.5 2v8l6-4z"/></svg></button>
+<button class="ib" type="button" aria-label="Next clip"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="8.9" y="2" width="1.6" height="8"/><path d="M1.5 2v8L8 6z"/></svg></button>
+<span class="mono" style="padding-left:8px;color:var(--ink3)">clip 3 / 8 · frame 51 / 92</span>
+<span class="tc mono"><b>00:08.52</b><span>/ 00:28.40</span></span>
+<button class="tg" type="button" aria-pressed="true">Song on</button>
+<button class="tg" type="button" aria-label="Zoom out">−</button><span class="mono" style="color:var(--ink3)">1×</span><button class="tg" type="button" aria-label="Zoom in">+</button>
+</div>
+<div class="sc">
+<div class="lbs cp"><span style="height:34px">Pic</span><span style="height:8px"></span><span style="height:22px">Aud</span><span style="height:22px">Mus</span><span style="height:14px">Spd</span></div>
+<div class="lanes">
+<i class="ph"></i>
+<div class="cl mono">
+<span style="flex:40"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><em>1</em></span>
+<span style="flex:24"><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""><em>2</em></span>
+<span style="flex:38" data-now><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><em>3 · v003</em></span>
+<span style="flex:26"><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><em>4</em></span>
+<span style="flex:30"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><em>5</em></span>
+<span style="flex:42"><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><em>6</em></span>
+<span style="flex:60"><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><em>7</em></span>
+<span style="flex:24"><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""><em>8</em></span>
+</div>
+<div class="trk"><i></i><u style="left:35.2%"></u><u style="left:61.4%"></u></div>
+<div class="wf" aria-hidden="true"><i></i></div>
+<div style="position:relative;width:70.4%"><div class="wf mu" aria-hidden="true"><i style="width:42.6%"></i></div><div class="bars" style="background-size:100% 100%;background-image:repeating-linear-gradient(90deg,#ffffff38 0 1px,transparent 1px 10%)"></div></div>
+<div class="spd" aria-hidden="true"><span><svg viewBox="0 0 100 14" preserveAspectRatio="none"><polyline points="0,10 45,10 80,4 100,4" fill="none" stroke="#7dd9c8" stroke-width="1" vector-effect="non-scaling-stroke"/></svg><b style="left:45%;top:10px"></b><b style="left:80%;top:4px"></b></span></div>
+</div>
+</div>
+</main>
+<aside class="dock" aria-label="Agent and details">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="false">Agent</button><button class="tab d" type="button" role="tab" aria-selected="true">Details</button></div>
+<div class="side">
+<div class="kv">
+<span class="cp">Entry 3 / 8</span>
+<span style="color:var(--ink)">Mara on the floor</span>
+<span class="mono">BLR_TR100_VHS_0030</span>
+</div>
+<div>
+<span class="cp">Take in this cut</span>
+<button class="st cp" type="button" aria-pressed="false" data-st="missing">v001 · excluded<span class="mono">5.00s</span></button>
+<button class="st cp" type="button" aria-pressed="false">v002<span class="mono">5.00s</span></button>
+<button class="st cp" type="button" aria-pressed="true" data-st="approved">v003 · pick<span class="mono">5.00s</span></button>
+</div>
+<div>
+<span class="cp">Trim and speed</span>
+<dl class="spec"><dt>In</dt><dd class="mono">00:00.40</dd><dt>Out</dt><dd class="mono">00:04.60</dd><dt>Plays</dt><dd class="mono">3.80s of 5.00s</dd><dt>Speed</dt><dd class="mono">1.00× to 1.35×</dd></dl>
+<div class="row"><button class="btn" type="button">Drop entry</button></div>
+</div>
+<div>
+<span class="cp">Suggested trims · 2</span>
+<div class="note"><span class="mono">00:10.00</span><span class="t">Frozen frames at the tail. Out to 4.38s.</span></div>
+<div class="note"><span class="mono">00:17.44</span><span class="t">Stray frame at the head of entry 6.</span></div>
+<div class="row" style="padding-top:4px"><button class="btn" type="button">Accept</button><button class="btn" type="button">Dismiss</button><button class="btn" type="button">Accept all</button></div>
+</div>
+<div class="kv">
+<span class="cp">Song</span>
+<span style="color:var(--ink)">blood_rush_sting.mp3</span>
+<span class="mono">120 BPM · 20.0s · from the cut's start</span>
+<div class="row" style="padding-top:3px"><button class="btn" type="button">Match to music</button><button class="btn" type="button">Remove</button><button class="btn" type="button">Score prompt</button></div>
+</div>
+<div class="kv">
+<span class="cp">Source</span>
+<span class="mono">hf_20260914_0733…mp4 · 1920×1080</span>
+<span class="mono">Seedance 2.0 · 1080p</span>
+<span>Mara lies on the shop floor, one hand on the desk leg, VHS light…</span>
+</div>
+</div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · 2 trims suggested · lock v3 to lay sound against it</span><span class="mono sp">Space play · ←→ frame · ↑↓ clip · I O in and out · drag an edge to trim</span></footer>
+</div>
+
+<!-- 2 · Sound: the locked version, its layers as lanes -->
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button">Shots</button>
+<button class="stage" type="button" aria-current="page">Cut</button>
+</nav>
+<span class="sync">Review Room <b>in step</b> · 12s</span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Cuts">
+<div class="cap">Cuts · 3</div>
+<button class="scene" type="button" aria-current="true"><span class="t">Teaser · rough</span><span class="mono">28.4s</span></button>
+<div class="srow"><span class="mono">v3</span><span class="cp">Editing</span><span class="mono n">8 entries</span></div>
+<div class="srow" data-sel><span class="mono">v2</span><span class="cp">Locked · mixed · exported</span><span class="mono n">28.4s</span></div>
+<div class="srow"><span class="mono">v1</span><span class="cp">Locked</span><span class="mono n">31.0s</span></div>
+<button class="scene" type="button"><span class="t">Teaser · alt open</span><span class="mono">v1 · 31.2s</span></button>
+<button class="scene" type="button"><span class="t">Cold open only</span><span class="mono">v2 · 45.0s</span></button>
+<div class="act">Entries · v2</div>
+<div class="srow" data-st="approved"><span class="mono">1</span><span class="t">CRT monitor, 2:47 AM</span><span class="mono n">4.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">2</span><span class="t">Storefront, 2:47 AM</span><span class="mono n">2.4s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">3</span><span class="t">Mara on the floor</span><span class="mono n">3.8s</span></div>
+<div class="srow" data-st="changes"><span class="mono">4</span><span class="t">The customer</span><span class="mono n">2.6s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">5</span><span class="t">Malachi in the doorway</span><span class="mono n">3.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">6</span><span class="t">The tableau</span><span class="mono n">4.2s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">7</span><span class="t">Kai on the landline</span><span class="mono n">6.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">8</span><span class="t">Thumb on the red vial</span><span class="mono n">2.4s</span></div>
+<div class="act">Assemblies</div>
+<button class="scene" type="button"><span class="t">Assembly 1</span><span class="mono">3 scenes</span></button>
+<button class="scene" type="button"><span class="t">Night shots</span><span class="mono">12 shots</span></button>
+</aside>
+<main class="work">
+<div class="bar">
+<span class="mono k">v2</span>
+<h1>Teaser · rough</h1>
+<span class="mono m">Picture locked 22 Nov · 28.4s · saved</span>
+<button class="tg sp" type="button" aria-pressed="false">Picture</button><button class="tg" type="button" aria-pressed="true">Sound</button><button class="tg" type="button" aria-pressed="false">Export</button>
+<button class="btn go" type="button">Rebuild mix</button>
+</div>
+<div class="stagebox"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt="The locked cut at the playhead"></div>
+<div class="ctl">
+<button class="ib" type="button" aria-label="Play"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="#e4e4e7"><path d="M3 1.5v9l7-4.5z"/></svg></button>
+<span class="mono" style="padding-left:8px;color:var(--ink3)">Mix v2 · built 23 Nov 21:14</span>
+<span class="tc mono"><b>00:08.52</b><span>/ 00:28.40</span></span>
+<button class="tg" type="button" aria-pressed="true">Mix on</button>
+</div>
+<div class="mx">
+<div class="mr"><div class="mh"><span class="cp">Picture</span></div><div class="ml"><i class="ph"></i><div class="cl mono" style="height:26px"><span style="flex:40"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""></span><span style="flex:24"><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""></span><span style="flex:38"><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""></span><span style="flex:26"><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""></span><span style="flex:30"><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""></span><span style="flex:42"><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""></span><span style="flex:60"><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""></span><span style="flex:24"><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""></span></div></div></div>
+<div class="mr"><div class="mh"></div><div class="ml"><i class="ph"></i><div class="trk"><i></i></div></div></div>
+<div class="mr"><div class="mh"><span class="cp">Take audio</span><button class="tg" type="button" aria-pressed="true">On</button><span class="sl"><i style="width:66.7%"></i><b style="left:66.7%"></b></span><span class="mono">0.0 dB</span></div><div class="ml"><i class="ph"></i><div class="wf" aria-hidden="true"><i></i></div></div></div>
+<div class="mr"><div class="mh"><span class="cp">Ambience</span><button class="tg" type="button" aria-pressed="true">On</button><span class="sl"><i style="width:33.3%"></i><b style="left:33.3%"></b></span><span class="mono">−12.0 dB</span></div><div class="ml"><i class="ph"></i><div class="wf lo" aria-hidden="true"><i></i></div></div></div>
+<div class="mr"><div class="mh"><span class="cp">Music</span><button class="tg" type="button" aria-pressed="true">On</button><span class="sl"><i style="width:58.3%"></i><b style="left:58.3%"></b></span><span class="mono">−3.0 dB</span></div><div class="ml"><i class="ph"></i><div class="wf mu" aria-hidden="true"><i></i></div><span class="lp cp">Loop</span></div></div>
+<div class="mr"><div class="mh"><span class="cp">Effects</span><button class="tg" type="button" aria-pressed="true">On</button><span class="sl"><i style="width:54.2%"></i><b style="left:54.2%"></b></span><span class="mono">−4.0 dB</span></div><div class="ml"><i class="ph"></i><div class="fx"><u style="left:14%;width:2.4%"></u><u style="left:22.5%;width:3%" data-s></u><u style="left:44.3%;width:1.6%"></u><u style="left:60.6%;width:2.2%" data-s></u><u style="left:91.5%;width:5%"></u></div></div></div>
+</div>
+<div class="ln"><span class="cp">Ambience</span><span class="t">rain_bed_01.wav</span><button class="btn" type="button">Remove</button><button class="btn" type="button">Choose file</button></div>
+<div class="ln"><span class="cp">Music</span><span class="t">blood_rush_sting.mp3 · 120 BPM</span><label class="fd cp">Loop from<input type="text" value="5.0" aria-label="Loop from, seconds"></label><label class="fd cp">To<input type="text" value="15.0" aria-label="Loop to, seconds"></label><label class="fd cp">Loop level<input type="text" value="−6" aria-label="Loop level, dB"></label><button class="btn" type="button">Default</button></div>
+<div class="ln"><span class="cp">Effects</span><span class="t">3 placed · 2 suggested</span><label class="fd cp">Add at<input type="text" value="8.52" aria-label="Add effect at, seconds"></label><button class="btn" type="button">Choose file</button><button class="btn ag" type="button">Suggest effects</button></div>
+<div class="ln" style="padding-bottom:12px"><span class="cp">Auto-mix</span><label class="fd cp">Crossfade ms<input type="text" value="40" aria-label="Crossfade, milliseconds"></label><label class="fd cp">Duck music dB<input type="text" value="−8" aria-label="Duck music, dB"></label><label class="fd cp">Limiter dBFS<input type="text" value="−1.0" aria-label="Limiter, dBFS"></label><span class="d">Peaks at −1.0 dBFS · music ducked under 6 lines</span></div>
+</main>
+<aside class="dock" aria-label="Agent and details">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="true">Agent</button><button class="tab" type="button" role="tab" aria-selected="false">Details</button></div>
+<div class="chat">
+<div class="msg me">Suggest effects for v2.</div>
+<div class="msg"><span class="who">Agent</span>v2 has seven cuts and two impacts. Two effects in your folder fit, and one I would have to <b>generate</b>.
+<div class="prop">
+<div class="pl"><span class="t">whoosh_short_03.wav</span><span class="mono">00:06.40 · −6 dB</span><button class="btn ag" type="button">Keep</button><button class="btn" type="button">Remove</button></div>
+<div class="pl"><span class="t">hit_low_01.wav</span><span class="mono">00:17.20 · −3 dB</span><button class="btn ag" type="button">Keep</button><button class="btn" type="button">Remove</button></div>
+<div class="pl"><span class="t">Generate “low riser”</span><span class="mono">2.0s at 00:24.00</span><button class="btn" type="button">Price it</button><button class="btn" type="button">Skip</button></div>
+<p>Suggested effects stay out of the mix until you keep them.</p>
+</div>
+</div>
+</div>
+<div class="compose"><label style="position:absolute;left:-9999px" for="askS">Message the Agent</label><input id="askS" type="text" placeholder="Type, or hold V to talk"><button class="mic" type="button" aria-label="Talk to the Agent"><i style="height:6px"></i><i style="height:12px"></i><i style="height:8px"></i></button><button class="btn ag" type="button">Send</button></div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · keep or remove 2 suggested effects, then rebuild the mix</span><span class="mono sp">Space play · ←→ frame · ↑↓ clip</span></footer>
+</div>
+
+<!-- 3 · Export: the locked, mixed version, its files and its QC report -->
+<div class="app">
+<header class="top">
+<span class="wm">Studio</span>
+<button class="crumb" type="button">Blood Rush<i>/</i><em>Teaser Trailer</em></button>
+<nav class="stages" aria-label="Stages">
+<button class="stage" type="button">Story</button>
+<button class="stage" type="button">Prep</button>
+<button class="stage" type="button">Shots</button>
+<button class="stage" type="button" aria-current="page">Cut</button>
+</nav>
+<span class="sync">Review Room <b>in step</b> · 12s</span>
+<button class="ib" type="button" aria-label="Search and commands"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></button>
+</header>
+<div class="body">
+<aside class="outline" aria-label="Cuts">
+<div class="cap">Cuts · 3</div>
+<button class="scene" type="button" aria-current="true"><span class="t">Teaser · rough</span><span class="mono">28.4s</span></button>
+<div class="srow"><span class="mono">v3</span><span class="cp">Editing</span><span class="mono n">8 entries</span></div>
+<div class="srow" data-sel><span class="mono">v2</span><span class="cp">Locked · mixed · exported</span><span class="mono n">28.4s</span></div>
+<div class="srow"><span class="mono">v1</span><span class="cp">Locked</span><span class="mono n">31.0s</span></div>
+<button class="scene" type="button"><span class="t">Teaser · alt open</span><span class="mono">v1 · 31.2s</span></button>
+<button class="scene" type="button"><span class="t">Cold open only</span><span class="mono">v2 · 45.0s</span></button>
+<div class="act">Entries · v2</div>
+<div class="srow" data-st="approved"><span class="mono">1</span><span class="t">CRT monitor, 2:47 AM</span><span class="mono n">4.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">2</span><span class="t">Storefront, 2:47 AM</span><span class="mono n">2.4s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">3</span><span class="t">Mara on the floor</span><span class="mono n">3.8s</span></div>
+<div class="srow" data-st="changes"><span class="mono">4</span><span class="t">The customer</span><span class="mono n">2.6s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">5</span><span class="t">Malachi in the doorway</span><span class="mono n">3.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">6</span><span class="t">The tableau</span><span class="mono n">4.2s</span></div>
+<div class="srow" data-st="awaiting"><span class="mono">7</span><span class="t">Kai on the landline</span><span class="mono n">6.0s</span></div>
+<div class="srow" data-st="approved"><span class="mono">8</span><span class="t">Thumb on the red vial</span><span class="mono n">2.4s</span></div>
+<div class="act">Assemblies</div>
+<button class="scene" type="button"><span class="t">Assembly 1</span><span class="mono">3 scenes</span></button>
+<button class="scene" type="button"><span class="t">Night shots</span><span class="mono">12 shots</span></button>
+</aside>
+<main class="work">
+<div class="bar">
+<span class="mono k">v2</span>
+<h1>Teaser · rough</h1>
+<span class="mono m">Picture locked 22 Nov · mix built 23 Nov · 28.4s</span>
+<button class="tg sp" type="button" aria-pressed="false">Picture</button><button class="tg" type="button" aria-pressed="false">Sound</button><button class="tg" type="button" aria-pressed="true">Export</button>
+<button class="btn go" type="button">Export again</button>
+</div>
+<div class="sec">
+<div class="hd"><span class="cp">Deliverable</span><button class="btn" type="button">TR100 cut → _Deliverables ▾</button><span class="mono">MP4 and a Resolve timeline</span></div>
+<p>Each entry is baked to its own file with its trim and speed ramp rendered in. The mix and one stem per layer ride under the picture.</p>
+</div>
+<div class="sec" data-st="awaiting">
+<div class="hd"><span class="cp w" style="color:var(--st)">1 take is not at full resolution</span></div>
+<div class="note"><span class="t" style="color:var(--ink)">The customer</span><span class="t">hf_20260912_0915…mp4 · 480p</span></div>
+</div>
+<div class="sec">
+<div class="hd"><span class="cp">Exported</span><span class="mono">23 Nov 21:40</span><a class="btn sp" href="#mp4">MP4</a><a class="btn" href="#fcpxml">Resolve timeline</a></div>
+<p>In Resolve: File → Import → Timeline… and pick the .fcpxml in <span class="mono" style="color:var(--ink)">exports/Teaser_rough_v2</span>. The clips and stems it uses are in the same folder.</p>
+<div class="files mono"><a href="#f">Teaser_rough_v2.mp4</a><a href="#f">Teaser_rough_v2.fcpxml</a><a href="#f">Teaser_rough_v2_mix.wav</a><a href="#f">stem_take_audio.wav</a><a href="#f">stem_ambience.wav</a><a href="#f">stem_music.wav</a><a href="#f">stem_effects.wav</a><a href="#f">01_BLR_TR100_VHS_0010.mp4</a><a href="#f">02_BLR_TR100_VHS_0020.mp4</a><a href="#f">and 6 more clips</a></div>
+</div>
+<div class="sec">
+<div class="hd" data-st="awaiting"><span class="cp">QC report</span><span class="cp w">2 warnings</span><span class="mono">23 Nov 21:42</span><button class="tg sp" type="button" aria-pressed="true">Speech check on</button><button class="btn" type="button">Check again</button></div>
+<button class="qc" type="button" aria-pressed="false" data-st="approved"><span class="cp">Pass</span><span class="l">Picture</span><span class="s">8 entries, no black or frozen frames</span></button>
+<button class="qc" type="button" aria-pressed="true" data-st="awaiting"><span class="cp">Warn</span><span class="l">Loudness</span><span class="s">−13.1 LUFS integrated, 0.9 above target</span><span class="mono">2</span></button>
+<button class="qc" type="button" aria-pressed="false" data-st="approved"><span class="cp">Pass</span><span class="l">Sync</span><span class="s">Picture and mix are the same length</span></button>
+<button class="qc" type="button" aria-pressed="false" data-st="awaiting"><span class="cp">Warn</span><span class="l">Dialogue</span><span class="s">1 line was not recognised</span><span class="mono">1</span></button>
+<button class="qc" type="button" aria-pressed="false" data-st="approved"><span class="cp">Pass</span><span class="l">File</span><span class="s">1920×1080 · 24 fps · H.264 · AAC 48 kHz</span></button>
+</div>
+<div class="sec">
+<div class="hd"><span class="cp">Contact sheet</span><span class="mono">one frame per entry, plus the first and last second</span></div>
+<div class="sheet"><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><img src="/_blob/86cc3b24963b74a637539a3e1f37b8b4" alt=""><img src="/_blob/3e0545fb1535ab1ba36ff21ba138465a" alt=""><img src="/_blob/ade564d09b1a700d01cf7171205ecd12" alt=""><img src="/_blob/8e5446a300d6fefdfd377a7c3fad1e9f" alt=""><img src="/_blob/beb36ceaa902783eef3219c1fe1b258c" alt=""><img src="/_blob/5cd6bb26b429b56f00b642f0bf33e9a2" alt=""><img src="/_blob/bf5fbceb19192beaa570c15b00abd324" alt=""><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""><img src="/_blob/2184ef317189dd707761cad516030f01" alt=""></div>
+</div>
+</main>
+<aside class="dock" aria-label="Agent and details">
+<div class="tabs" role="tablist"><button class="tab" type="button" role="tab" aria-selected="false">Agent</button><button class="tab d" type="button" role="tab" aria-selected="true">Details</button></div>
+<div class="side">
+<div class="kv" data-st="awaiting">
+<span class="cp">QC · Loudness</span>
+<span class="cp" style="color:var(--st)">Warn · 2 items</span>
+<span>−13.1 LUFS integrated, 0.9 above target</span>
+</div>
+<div>
+<span class="cp">Items</span>
+<div class="note"><span class="mono">00:17.20</span><span class="t">True peak −0.4 dBTP at the hit.</span></div>
+<div class="note"><span class="mono">00:24.00</span><span class="t">Short-term loudness −9.8 LUFS.</span></div>
+<div class="note"><span class="mono" style="color:var(--ink3)">all</span><span class="t" style="color:var(--ink3)">Loudness range 6.2 LU. Pass.</span></div>
+</div>
+<div class="kv">
+<span class="cp">Checked file</span>
+<span class="mono">Teaser_rough_v2.mp4</span>
+<span class="mono">28.40s · 41.2 MB</span>
+</div>
+</div>
+</aside>
+</div>
+<footer class="next"><span><b>Next</b> · 2 QC warnings on v2 · 1 take is still 480p</span><span class="mono sp">Space play · ←→ frame · ↑↓ clip</span></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2756}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
