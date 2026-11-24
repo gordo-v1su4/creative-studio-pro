@@ -27,6 +27,10 @@
 	import ShotCard from '$lib/ui/shots/ShotCard.svelte';
 	import TakesBand from '$lib/ui/shots/TakesBand.svelte';
 	import SelectionStrip from '$lib/ui/shots/SelectionStrip.svelte';
+	import PromptSections from '$lib/ui/shots/PromptSections.svelte';
+	import MakeTake from '$lib/ui/shots/MakeTake.svelte';
+	import { ghostSections, imageSections, withGhostSection, withImageSection, type PromptSection } from '$lib/domain/prompt-sections';
+	import { SIZE_WORDS } from '$lib/domain/shot-spec';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import { selectionEntries } from '$lib/domain/selection';
 	import { playItemFor } from '$lib/domain/slate';
@@ -293,6 +297,42 @@
 	const selectedShot = $derived(draft.cards.find((card) => card.card_id === selectedShotId) ?? null);
 	const selectedPick = $derived(selectedShot ? pickFor(draft, selectedShot) : null);
 	const selectedFacts = $derived(selectedShot ? shotCardFacts(selectedShot, draft.assets, selectedPick?.asset_id ?? null) : null);
+
+	// Details: the selected shot's spec and prompts in the sections of the skill that wrote them.
+	const specRows = $derived.by((): PromptSection[] => {
+		const spec = selectedShot?.fit?.spec;
+		if (!spec) return [];
+		return [
+			{ key: 'shot', label: 'Shot', text: `${SIZE_WORDS[spec.size]}, ${spec.angle}` },
+			{ key: 'who', label: 'Who', text: spec.subjects.join(', ') },
+			{ key: 'action', label: 'Action', text: spec.action },
+			{ key: 'says', label: 'Says', text: spec.dialogue },
+			{ key: 'where', label: 'Where', text: spec.location },
+			{ key: 'light', label: 'Light', text: spec.light },
+			{ key: 'camera', label: 'Camera', text: spec.camera_move },
+			{ key: 'length', label: 'Length', text: `${spec.duration_s}s` }
+		];
+	});
+	const videoRows = $derived(selectedShot ? (ghostSections(selectedShot.video_prompt) ?? [{ key: 'all', label: 'Prompt', text: selectedShot.video_prompt }]) : []);
+	const imageRows = $derived(selectedShot ? (imageSections(selectedShot.image_prompt) ?? [{ key: 'all', label: 'Prompt', text: selectedShot.image_prompt }]) : []);
+	/** Ghost's check on the video prompt as last written; an edit since then is checked again when the shot is sent. */
+	const videoCheck = $derived.by(() => {
+		const card = selectedShot;
+		if (!card) return null;
+		if (!ghostSections(card.video_prompt)) return { label: "Not in Ghost's sections", tone: 'note' as const };
+		const saved = project.production.cards.find((entry) => entry.card_id === card.card_id);
+		if (saved && saved.video_prompt !== card.video_prompt) return { label: 'Edited · checked on send', tone: 'note' as const };
+		const found = card.fit?.qc;
+		if (!found) return { label: 'Checked on send', tone: 'note' as const };
+		return found.length ? { label: `${found.length} to fix`, tone: 'fix' as const, lines: found } : { label: 'Check clean', tone: 'clean' as const };
+	});
+	function editVideoPrompt(card: StoryCard, key: string, text: string) {
+		const next = key === 'all' ? text : withGhostSection(card.video_prompt, key, text);
+		updateCard(card.card_id, { video_prompt: next, ...(card.fit ? { fit: { ...card.fit, prompt_edited: true } } : {}) });
+	}
+	function editImagePrompt(card: StoryCard, key: string, text: string) {
+		updateCard(card.card_id, { image_prompt: key === 'all' ? text : withImageSection(card.image_prompt, key, text) });
+	}
 
 	/** The viewer is open over the grid (Space, or a double-click on a shot). */
 	let viewerOpen = $state(false);
@@ -694,10 +734,10 @@
 					<p class="cp">Seen in the pick</p>
 					<p class="text" title={[tagged.tags.place && `Place: ${tagged.tags.place}`, tagged.tags.subjects.length ? `Who: ${tagged.tags.subjects.join(', ')}` : '', tagged.tags.shot_size && `Shot: ${tagged.tags.shot_size}`, `Motion ${tagged.tags.motion}${tagged.tags.cuts ? ` · ${tagged.tags.cuts} cuts inside` : ''}`, `Tagged by ${tagged.tags.source}`].filter(Boolean).join('\n')}>{tagged.tags.caption}{tagged.tags.cuts > 3 ? ' (already an edit)' : ''}</p>
 				{/if}
-				<p class="cp">Image prompt</p>
-				<p class="text prompt">{card.image_prompt}</p>
-				<p class="cp">Video prompt</p>
-				<p class="text prompt">{card.video_prompt}</p>
+				{#if specRows.length}<PromptSections title="Shot spec" skill="Ghost" sections={specRows} scope={card.card_id} readonly />{/if}
+				<PromptSections title="Image prompt" skill="ONE SHOT" sections={imageRows} scope={card.card_id} onedit={(key, text) => editImagePrompt(card, key, text)} />
+				<PromptSections title="Video prompt" skill="Ghost" sections={videoRows} scope={card.card_id} check={videoCheck} onedit={(key, text) => editVideoPrompt(card, key, text)} />
+				<MakeTake {project} {card} pick={selectedPick} {unsaved} {onUpdated} />
 				<div class="actions">
 					<button type="button" class="key" onclick={() => updateCard(card.card_id, { status: card.status === 'approved' ? 'draft' : 'approved' })} title="Whether this shot's writing is approved">{card.status === 'approved' ? 'Approved' : 'Draft'}</button>
 					{#if tagged?.tags}<button type="button" class={['key', tagged.tags.title_card && 'on']} onclick={() => void setTitleCard(tagged.asset_id, !tagged.tags?.title_card)} disabled={shotBusy !== null} title="The title card closes the first cut as its end tag, after the music">Title card</button>{/if}
@@ -728,7 +768,6 @@
 	.shot-details input, .shot-details textarea { width: 100%; border: 0; border-radius: 6px; background: var(--color-raised); padding: 6px 8px; color: var(--color-ink); font: 12.5px/1.5 var(--font-sans); outline: none; resize: vertical; }
 	.shot-details input:focus-visible, .shot-details textarea:focus-visible { background: var(--color-control); }
 	.shot-details .text { margin: 0; color: #c8c8ce; line-height: 1.5; }
-	.shot-details .prompt { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; }
 	.shot-details .actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 	.shot-details .key.on { background: var(--color-teal-deep); color: var(--color-teal-ink); }
 	.shot-details .key.danger { color: #ff7a6b; }

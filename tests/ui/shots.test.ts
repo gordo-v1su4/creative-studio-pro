@@ -52,3 +52,35 @@ test('a shot joins the selection by shift-click or by being dragged, and auditio
 	expect(strip).not.toContain('set_pick');
 	expect(strip).not.toContain('onpick');
 });
+
+const sections = readFileSync('src/lib/ui/shots/PromptSections.svelte', 'utf8');
+const make = readFileSync('src/lib/ui/shots/MakeTake.svelte', 'utf8');
+
+test('a prompt is one 20px row per section, and choosing a row never adds or removes anything', () => {
+	expect(sections).toMatch(/\.row \{[^}]*height: 20px;/);
+	// The editor is always there; only its text follows the chosen row.
+	expect(markup(sections)).toContain('<textarea rows="5" value={shown}');
+	expect(markup(sections)).not.toMatch(/\{#if [^}]*(chosen|current)/);
+	expect(workspace).toContain('<PromptSections title="Video prompt" skill="Ghost"');
+	expect(workspace).toContain('<PromptSections title="Image prompt" skill="ONE SHOT"');
+});
+
+test('Get price and Confirm are two buttons, and only Confirm can spend', () => {
+	const buttons = markup(make);
+	expect(buttons).toContain('>Get price</button>');
+	expect(buttons).toMatch(/class="key go" disabled=\{!open\} onclick=\{\(\) => void confirm\(\)\}/);
+	// Asking for a price is the estimate action; sending is the only request that carries a confirmed price.
+	expect(make.match(/action: 'estimate'/g)).toHaveLength(1);
+	expect(make.match(/action: 'send'/g)).toHaveLength(1);
+	expect(make).toContain("mode: { kind: 'confirm', confirmed_credits: credits }");
+	expect(make).not.toContain('yolo');
+	// The price step never sends.
+	const getPrice = make.slice(make.indexOf('async function getPrice'), make.indexOf('async function confirm'));
+	expect(getPrice).not.toContain("'send'");
+});
+
+test('the make-a-take block keeps its shape: every control is always drawn', () => {
+	const steps = markup(make).slice(markup(make).indexOf('class="set"'), markup(make).indexOf('class="why"'));
+	expect(steps).not.toContain('{#if');
+	expect(make).toMatch(/\.why \{[^}]*min-height: 18px;/);
+});

@@ -147,9 +147,26 @@ Status, part four, 2026-11-23 (step 7; local test copy, after a page reload so n
 | 62 clips, all video | 117 ms | 391 ms | 281 ms |
 | 68 clips, 9 stills | 72 ms | 281 ms | 509 ms |
 
-The 68-clip cut was still reading files when it started playing, and played through its first five clips without stopping. "Reopening downloads nothing" now rests on the browser keeping proxies (the gateway change above) and on the proxies held in memory for the session. Not yet measured on Hosted Studio: this part is not released.
+The 68-clip cut was still reading files when it started playing, and played through its first five clips without stopping. "Reopening downloads nothing" now rests on the browser keeping proxies (the gateway change above) and on the proxies held in memory for the session. Released to Hosted Studio the same day as `12fb779` and measured on TR130's 58-clip, 155 s cut after a page reload:
 
-Still open in slice 1: releasing and measuring part four on Hosted Studio (step 7), prompts by skill section, and the price and confirm steps (step 8). A still pick does not play in a selection yet.
+| | Before (`b9cea0d`) | After (`12fb779`) |
+| --- | --- | --- |
+| Timeline on screen | 3.0 s | 47 ms |
+| Playing | 4.3 s | 1.2 s |
+| Opened again, timeline / playing | not taken | 0.15 s / 0.31 s |
+
+It played through its first five clips without stopping. The "after" run came second in the same browser, which by then held what the "before" run had fetched, so its 1.2 s to playing is better than a truly cold open would be; the 47 ms does not depend on that.
+
+Status, part five, 2026-11-23 (step 8; local test copy, checked in the browser on a Ghost-written shot of "Blood Rush · The Late Shift"):
+
+- **Shot spec** in Details, read-only, as rows: shot, who, action, says, where, light, camera, length.
+- **Prompts by skill section** (`src/lib/domain/prompt-sections.ts`, `src/lib/ui/shots/PromptSections.svelte`). The video prompt shows Ghost's header and eleven sections, one 20px row each; the image prompt shows ONE SHOT's shot, action, place and light. Choosing a row shows that section in full in an editor that is always there, so nothing moves. Editing a section rewrites only that section; the rest of the prompt, headings included, stays as written. A prompt that is not written in sections shows as one row.
+- **The check beside the title.** Ghost's stored result reads "Check clean" or "N to fix" with the findings listed. After a hand edit it reads "Edited · checked on send", because the stored result no longer describes the text; the server runs the check again before anything is sent.
+- **Make a take: two steps** (`src/lib/domain/make-take.ts`, `src/lib/ui/shots/MakeTake.svelte`). Length, resolution and sound, then "Get price", then a separate "Confirm". Asking for a price spends nothing. Confirm opens only for a price asked for these exact settings and this shot, and only when the pick is a saved still of 2K or more with a prompt. It uses the existing animate route (`estimate`, then `send` with the confirmed price); no session cap or one-click send is offered here.
+
+Checked: on a real Ghost prompt the twelve rows, the four image rows and the spec appear; typing into one section changed only that section; "Get price" returned 12 credits from the provider. Not exercised: Confirm, which would spend credits; its rules are covered by tests.
+
+Still open in slice 1: stills in a selection. The older Animate window on the canvas (with its session cap) is still there beside this.
 
 ### 2 · Canvas
 
