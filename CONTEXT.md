@@ -302,15 +302,37 @@ _Avoid_: Rejected, invalid, orphan
 One 16:9 image holding a scene's stills in a square layout of 16:9 panels (2×2 keyframes for up to four approved shots; older grids 3×3), generated together for continuity and then split into still takes; spare panels hold closer angles, wide shots render alone instead, and the grid stays attached to its takes as a reference.
 _Avoid_: Contact sheet, storyboard, collage
 
+### Rendering
+
+**Render**:
+One request sent to a render provider to make a take, from the moment it is asked for until it comes back as a take or fails.
+_Avoid_: Generation, job, run (a run is the Agent's pipeline)
+
+**Render provider**:
+Where a render is made: Higgsfield, fal.ai, or SwarmUI on the desktop. Each render names its provider and the model used there.
+_Avoid_: Provider (alone; the Agent's is the model provider), backend, engine
+
+**Render queue**:
+A project's list of its renders, one line each, from waiting for approval through sent and rendering to done or failed; it says where and how each was made.
+_Avoid_: Job list, runs, history, render farm
+
+**Re-render**:
+A new take of a shot made by sending an earlier take's request again (the same still, references and settings) with a changed prompt, to answer review. It is added beside the take it answers and never replaces it.
+_Avoid_: Retake, regenerate, redo, revision
+
+**Requested change**:
+The operator's own words on what a re-render must change, typed when it is queued.
+_Avoid_: Note (those are the reviewers', from Review Room), comment, feedback
+
+**Prompt change**:
+The Agent's edit to a take's prompt for a re-render, written with the skill that wrote the prompt and shown as what was added and what was taken out; the operator approves it before anything is rendered.
+_Avoid_: Diff, patch, rewrite
+
 ### Finishing
 
 **Draft**:
-A low-resolution take (480p) used for review; it can be finalized to full resolution from the same render for a limited time.
-_Avoid_: Preview, proxy, temp
-
-**Finalize**:
-Re-rendering a draft at full resolution from the same generation, keeping its motion and timing.
-_Avoid_: Upscale, up-res (those are different processes)
+A take rendered at 480p first, for review. A higher-resolution take of the same shot is a new render and will not match it frame for frame.
+_Avoid_: Preview, proxy, temp; finalize (a draft can no longer be finished at full resolution from the same render)
 
 **QC report**:
 The automatic check of a rendered cut, run after every export and on demand on any rendered cut: picture (a contact sheet, one frame per entry plus the first and last second), sound present (gaps and loudness), song sync, lip sync against each take's own sound, and length against the plan, each pass, warn or fail with timecodes. A cut is not done until its QC report passes; the report rides into the deliverable's notes in Review Room.

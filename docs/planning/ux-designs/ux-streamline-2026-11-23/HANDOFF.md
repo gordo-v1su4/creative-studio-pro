@@ -7,9 +7,9 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 
 1. This file: where things stand, the rules, and your slice's section below.
 2. `PLAN.md`: the eight slices, their steps and "Done when", and a status note under each for what is built.
-3. `DESIGN.md`: the look (ten hard rules, tokens, components). `SPEC.md`: the 55 user stories and decisions.
+3. `DESIGN.md`: the look (ten hard rules, tokens, components). `SPEC.md`: the 70 user stories and decisions.
    `DECISIONS.md`: why. `mockups/`: the agreed screens (also https://claude.ai/artifact/GcSURykGvjJGXujETaqa1m).
-4. Root `CONTEXT.md` (glossary: Shot, Take, Pick, Selection, Cut, Stage, Viewer…) and `docs/adr/0007`–`0010`.
+4. Root `CONTEXT.md` (glossary: Shot, Take, Pick, Selection, Cut, Stage, Viewer, Render…) and `docs/adr/0007`–`0011`.
 5. `docs/operations/hosted-studio.md`, "Releasing".
 
 ## Where things stand (2026-11-24)
@@ -24,7 +24,7 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 | Review Room (`review-room-svelte`) | `main` at `c880092`, deployed; local branch `live-current-version` at `43be65a` is unfinished work, not pushed |
 
 Slices 0 and 1 are done and live. Slices 2 and 3 are mostly done and live. Slices 4 to 7 are not started, apart from
-a parked draft test for slice 4. Slice 8 is new and has no design yet.
+a parked draft test for slice 4. Slice 8 is designed (2026-11-24) and not built.
 
 ## Rules that are not written anywhere else
 
@@ -161,31 +161,32 @@ Steps in `PLAN.md`. Cut is not mocked. The Cut stage's views exist in the shell 
 what a cut already knows and reads files while playing), `SoundStage.svelte`, `ExportStage.svelte`. The spec says
 this pass only moves Cut into the shell and the look; how cuts, mixing, export and QC work does not change.
 
-### Slice 8 · Re-render queue: new, needs a design first
+### Slice 8 · Re-render queue: designed, nothing built
 
-Asked for by the operator on 2026-11-24, in their words: "there should be a choice when you say needs revision on the
-right panel, to say 'add to queue for re-render' and we come up with a system to queue files and ai write the new
-prompt changes and just have it queued for rerendering it would then show complete in the render queue and where/how
-it was rendered ie. (higgsfield, fal.ai, local or cloud comfyui)".
+Designed with the operator on 2026-11-24 in three rounds of questions. Read, in this order: decisions 27 to 40 and the facts under them in `DECISIONS.md`; slice 8 in `PLAN.md` (ten ordered steps and a "Done when"); stories 56 to 70 and the implementation decisions in `SPEC.md`; "Rendering" in the root `CONTEXT.md`; `docs/adr/0011`.
 
-Nothing is designed or built. Start with the `grilling` and `domain-modeling` skills, as the rest of this plan did,
-and write the decisions into `DECISIONS.md`, the glossary into `CONTEXT.md`, and a slice into `PLAN.md` before code.
-What already exists to build on:
+The design in one paragraph: a take marked Needs changes offers "Queue re-render" with one box for what to change. The re-render reuses that take's still, references and settings; the Agent rewrites only the prompt, with the skill that wrote it, and the operator sees the change highlighted and approves it. Everything approved is priced together and sent on one Confirm. Each render is a run on the operator's Trigger.dev, so it finishes with the browser closed; this app does the provider's work. A finished re-render is another take, here and in Review Room, awaiting review, never the pick. The Queue view (third view of Shots) is a sortable table, one line per render, saying where and how each was made.
 
-- "Needs changes" is one of four review statuses, set from the viewer's review block (keys 1 to 4) and stored in
-  Review Room. Notes with timecodes now arrive from Review Room (`src/lib/domain/review-notes.ts`): the natural input
-  for "AI writes the new prompt changes".
-- Prompts are held in their skill's sections (`src/lib/domain/prompt-sections.ts`), so a change can be made to one
-  section and checked again by the Ghost check.
-- One provider is wired: Higgsfield through its CLI (`src/lib/server/animate.ts`, `higgsfield.ts`, route `animate`
-  with `estimate`, `send`, `poll`; generations are recorded on the production and land as new takes). "Make a take"
-  (`src/lib/ui/shots/MakeTake.svelte`) is Get price, then Confirm. On Hosted Studio it fails: the server image has no
-  Higgsfield CLI.
-- fal.ai and ComfyUI (local or cloud) are not wired at all. Each needs its own settings, documented in the three places.
-- Open questions for the operator: whether a queued re-render may spend without a Confirm each (decision 17 says the
-  Agent never confirms a spend); who picks the provider and by what rule; what "where and how it was rendered" must
-  show; whether the queue is per project or across projects; whether a finished re-render becomes the pick or waits
-  for review.
+Start with step 1 (the render record and its rules, test-first); it needs nothing from anyone. Steps 2 to 5 can follow without the operator. What needs the operator:
+
+- **Step 6**: creating the Trigger.dev project and its production key (the dashboard asks only for a name; they are signed in at `trigger.v1su4.dev`). Do not create it for them without their word.
+- **The fal.ai key**: they add `FAL_KEY` to the environment file themselves, later. Until then fal.ai is listed as not set up.
+- **One real Confirm** at the end, to prove a render end to end. It spends credits: ask first.
+- **Step 10** (Higgsfield on Hosted Studio): on their urgent list, deliberately not part of this slice's "Done when".
+- **A mock of the Queue view** agreed before step 5 is built.
+
+Things that will trip you:
+
+- "Make a take" refuses a shot whose pick is a video, and a video take does not record the still it started from. Re-render cannot be built on `stillOf` in `src/lib/server/animate.ts` as it stands; the render record must carry the still and references (step 1), and older takes fall back to their Higgsfield job id.
+- `applySettleGeneration` in `src/lib/domain/animate.ts` makes a finished take the pick. A re-render must not (decision 34); `pushTake` already stores a take that is not the pick without making it current in Review Room.
+- The app still sends `draft` for every 480p render and offers Finalize. Both go (decision 33, step 9); the CLI still accepts `draft`, so nothing will fail to remind you.
+- The Higgsfield CLI has no seed setting. Nothing can promise that a second render matches the first.
+- Trigger.dev tasks share no files with the app and are built and deployed only on the App VM (`scripts/deploy-trigger-vm100.sh` in `review-room-svelte`). Keep the SDK, the build package and the CLI on the platform's version (4.8.8 on 2026-11-22); the runbook lists what broke before.
+- Pindeck and Stack Structure show live runs with React hooks; this app is Svelte, so the way to subscribe has to be read from Trigger.dev's documentation.
+- Costs come in two units, credits and dollars. Never add them.
+- `tests/ui/look-rules.test.ts` covers `src/lib/ui/shots` and `src/lib/ui/shell` automatically; put the Queue view's components there.
+
+The ADR number: `0011` was free on `ux-streamline` and on `main` when this was written; if another slice has taken it by the time this merges, renumber this one and its mentions.
 
 ## Threads
 

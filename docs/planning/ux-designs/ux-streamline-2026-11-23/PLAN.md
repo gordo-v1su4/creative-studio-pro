@@ -22,7 +22,7 @@ What to build is in [SPEC.md](SPEC.md); how it looks is in [DESIGN.md](DESIGN.md
 | 5 | Voice | Talk to the Agent and hear it | 4 |
 | 6 | Prep intake | Drop everything, sorted for you, found-in-story suggestions | 0 |
 | 7 | Cut | Cuts, Sound and Export inside the shell | 1 |
-| 8 | Re-render queue | "Needs changes" can queue a re-render: the Agent drafts the prompt change, the queue shows what was rendered, where and how | 1, 3 |
+| 8 | Re-render queue | "Needs changes" can queue a re-render: the Agent writes the prompt change, one Confirm sends everything approved, and a render queue shows what was made, where and how | 1, 3 |
 
 Slices 2, 3, 4 and 6 do not depend on each other and can be taken in any order after their prerequisite.
 
@@ -343,14 +343,65 @@ Done when: a cut can be opened, locked, mixed and exported without leaving the C
 
 ### 8 · Re-render queue
 
-Added 2026-11-24 at the operator's request; not designed yet. Their words: "there should be a choice when you say needs revision on the right panel, to say 'add to queue for re-render' and we come up with a system to queue files and ai write the new prompt changes and just have it queued for rerendering it would then show complete in the render queue and where/how it was rendered ie. (higgsfield, fal.ai, local or cloud comfyui)".
+Goal: from "Needs changes" to a new take without leaving the review, with one place that says where and how every take was made.
 
-Goal (to be confirmed in the design): from "Needs changes" to a new take without leaving the review.
+Designed with the operator on 2026-11-24: decisions 27 to 40 in `DECISIONS.md`, stories 56 to 70 and the implementation decisions in `SPEC.md`, the terms under "Rendering" in the root `CONTEXT.md`, and ADR 0011 for how it runs. Nothing is built.
 
-1. Grill the design with the operator and write the decisions down before any code (the `grilling` and `domain-modeling` skills): what a queue entry is, who may spend, how a provider is chosen, what "where and how it was rendered" shows, per project or across projects, whether a finished re-render becomes the pick.
-2. The rest of the steps come out of step 1.
+1. **The render record and its rules**, test-first, as pure functions in `src/lib/domain/render-queue.ts`:
+   - the states (drafting, to approve, approved, queued, rendering, done, failed, refused) and which moves are allowed;
+   - one open re-render per take;
+   - what may be confirmed (approved, check clean, priced for exactly these settings) and the total per render provider;
+   - where a re-render's request comes from (the app's own record, a Higgsfield job id, or neither, with the reason);
+   - the colour of an answer code.
 
-What exists to build on, and the open questions, are in `HANDOFF.md` under slice 8.
+   Grow `generationSchema` in `src/lib/domain/schemas.ts` into the render record with optional fields only, so stored projects still load.
+2. **Render providers behind one interface** (`src/lib/server/render-providers/`): set up or not and why, price, send, check, cancel.
+   - Higgsfield: the CLI adapter that exists in `src/lib/server/higgsfield.ts`, no longer sending `draft`, with 480p, 720p and 1080p. Reuse reads an earlier job back with `generate get` and sends its media again by id.
+   - fal.ai: read its queue and pricing documentation first. Seedance 2.5 image-to-video and reference-to-video; the price in dollars; the HTTP status kept as the answer code. Nano Banana Pro and GPT Image 2 are listed as still models and not wired to anything.
+   - SwarmUI on the desktop: listed, never set up.
+   - `FAL_KEY` is documented in the three places (`.env.example`, the vault note's table, proxmox-home) before this step is called done.
+3. **The prompt change.**
+   - A pure word-level compare for the highlight (`src/lib/domain/prompt-change.ts`), test-first.
+   - A server command that hands the Agent the skill's own text (through `src/lib/server/agent-skills.ts`), the earlier prompt by section, the shot spec, the requested change and the shot's open notes; applies the sections it returns with `withGhostSection`; and runs the Ghost check, asking once more if it finds something.
+   - A prompt that is not in sections is edited whole and checked by the Seedance linter.
+   - Tested with a fake model. The Agent has no command that approves, prices or confirms.
+4. **"Queue re-render" in the review block** (`src/lib/ui/shots/Viewer.svelte`, the block drawn into the dock). On a take marked Needs changes: the button, the box "What do you want to change?", and "Render again unchanged". The entry shows Drafting, then To approve with the highlight, an editor per section, and drop-downs for render provider, model and resolution (480p first). Approve is the only way forward.
+5. **The Queue view**, a third view of Shots in `src/lib/domain/stages.ts`.
+   - Read TanStack Table's current Svelte documentation first, then build the table: one fixed-height line per render, click a heading to sort, a header that stays put, nothing wraps. Pindeck's `src/components/pd/TableView.tsx` is the model for behaviour.
+   - The selected line's detail opens in the dock.
+   - Above the table: "Get price" for everything approved, the total per provider, and one Confirm.
+   - On a line: Remove, Cancel where the provider can, Try again, and "Render at another resolution".
+   - A count of open entries in the top bar.
+   - Mock the view in look B and agree it before building, as slice 7 does for Cut.
+6. **Trigger.dev** (ADR 0011). Read Trigger.dev's current documentation and `proxmox-home/docs/triggerdev-vm100-runbook.md` first.
+   - The operator creates the project "Creative Studio Pro" on `trigger.v1su4.dev` (it asks only for a name) and a production key; give them a short guided script (the `wizard` skill) for the key, the secrets and the deploy file on the App VM.
+   - Add `trigger.config.ts`, one render task and a queue per render provider (Higgsfield and fal.ai a few at a time, the desktop one at a time). Copy `scripts/deploy-trigger-vm100.sh` from `review-room-svelte`.
+   - Add the addresses the task calls on this app (send, check), accepting only the task's token, answering a repeated send with the job already started, and refusing a stale report.
+   - Confirm starts one run per render, keyed by the render and tagged with the project. The task never retries a send.
+   - Locally the task runs in Trigger.dev's dev mode on the same machine.
+   - Document every new setting in the three places.
+7. **Landing.** When a render is done the app collects the file, records the take with where and how it was made, and stores it in Review Room. A re-render is not made the pick and goes to Review Room as the next version, not the current one. Move "Make a take"'s Confirm onto the same path (its result stays the pick) and remove the browser-driven collection (`action: "poll"`) once nothing calls it.
+8. **Live lines.** The Queue view follows the project's record through the check that already runs every ten seconds, and moves sooner from Trigger.dev's live updates for the project's tag. Find the non-React way to subscribe in the documentation; Pindeck and Stack Structure use the React hooks.
+9. **Draft and Finalize leave the app**: the `draft` flag, the Finalize action and its route, the draft window and its notes on the card, and the glossary's old wording (already changed).
+10. **Higgsfield on Hosted Studio** (the operator's urgent list, not part of "Done when"): ship the CLI's package in the app's image and hand it the sign-in file as a secret, the way Stack Structure does (`src/lib/higgsfieldGateway.ts` there). Record it in proxmox-home.
+
+Done when, on the local test copy:
+
+- a take marked Needs changes is queued with a typed change, and its prompt change is shown highlighted, edited and approved;
+- it is priced and confirmed together with a second one, in one Confirm;
+- both render with the browser closed and land as new takes that are not the pick, here and in Review Room, awaiting review;
+- the Queue view shows for each where and how it was made;
+- a failed render shows its answer code and a Try again that asks for a new price.
+
+Confirm is exercised once for real, on the operator's word; everything else is proved with fake providers.
+
+Not in this slice: re-rendering stills, a working SwarmUI provider, cloud ComfyUI, a queue across projects, carrying a 480p take to 1080p with the same motion, and ticking off answered notes in Review Room.
+
+Open, to raise with the operator when they come up:
+
+- Whether the shot's own video prompt should follow an approved re-render (assumed: no).
+- What happens to the old Animate window and its session cap (not touched here).
+- The trial of a 480p take attached as a video reference for a 1080p render (decision 33).
 
 ## Not in this plan
 
