@@ -16,7 +16,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { isFlat, programElapsed } from '$lib/media/speed-curve';
 	import Filmstrip from './Filmstrip.svelte';
 	import SpeedLane from './SpeedLane.svelte';
@@ -45,7 +45,11 @@
 		marks = {},
 		locked = false,
 		beats = [],
-		song = null
+		song = null,
+		zoom = $bindable(1),
+		zoomMax = $bindable(1),
+		showZoom = true,
+		rows = 'all'
 	}: {
 		clips: TimelineClip[];
 		index: number;
@@ -67,6 +71,14 @@
 		beats?: number[];
 		/** The attached song's peaks: drawn as the main audio lane under the clips, from the cut's start. */
 		song?: number[] | null;
+		/** 1 = the whole cut fits the view; above 1 the track is that many views wide. Bindable, for zoom keys drawn elsewhere. */
+		zoom?: number;
+		/** The most the track may be zoomed, written here for zoom keys drawn elsewhere. */
+		zoomMax?: number;
+		/** Draw the zoom keys above the lanes. */
+		showZoom?: boolean;
+		/** 'all': picture, scrub, take audio, music and speed lanes. 'picture': picture and scrub only, always fitted. */
+		rows?: 'all' | 'picture';
 	} = $props();
 
 	/** Where a take time sits inside a clip's block, in pixels from its left edge (speed ramp included). */
@@ -83,8 +95,6 @@
 	let host = $state<HTMLDivElement>();
 	let scroller = $state<HTMLDivElement>();
 	let width = $state(900);
-	/** 1 = the whole cut fits the view; above 1 the track is that many views wide. */
-	let zoom = $state(1);
 	let zoomTouched = false;
 	type Gesture =
 		| { kind: 'trim'; clip: number; edge: 'in' | 'out'; startX: number; start: number; scale: number; starts: number[] }
@@ -100,11 +110,16 @@
 	const total = $derived(lengths.reduce((sum, length) => sum + length, 0));
 	// Freeze the layout mid-gesture so blocks don't slide under the pointer.
 	const scale = $derived(gesture && gesture.kind !== 'seek' ? gesture.scale : (width * zoom) / Math.max(1, total));
-	const maxZoom = $derived(Math.max(1, (MAX_PX_PER_S * Math.max(1, total)) / width));
+	const maxZoom = $derived(rows === 'picture' ? 1 : Math.max(1, (MAX_PX_PER_S * Math.max(1, total)) / width));
+	$effect(() => { zoomMax = maxZoom; });
+	// A zoom asked for from outside (the keys drawn elsewhere) counts as the operator's own.
+	let lastZoom = 1;
+	$effect(() => { if (Math.abs(zoom - lastZoom) > 1e-6 && untrack(() => clips.length)) zoomTouched = true; lastZoom = zoom; });
 	// A long cut opens readable, until the operator picks a zoom themselves.
 	$effect(() => {
+		if (rows === 'picture') { zoom = 1; return; }
 		if (zoomTouched || !clips.length) return;
-		zoom = Math.min(maxZoom, Math.max(1, (clips.length * OPEN_CLIP_PX) / width));
+		zoom = lastZoom = Math.min(maxZoom, Math.max(1, (clips.length * OPEN_CLIP_PX) / width));
 	});
 
 	/** Zoom keeping one program time (the pointer's, else the playhead's) at the same place in the view. */
@@ -116,14 +131,14 @@
 		const rect = view.getBoundingClientRect();
 		const offset = anchorClientX !== undefined ? anchorClientX - rect.left : Math.min(rect.width, Math.max(0, programTime * scale - view.scrollLeft));
 		const time = (view.scrollLeft + offset) / scale;
-		zoom = target;
+		zoom = lastZoom = target;
 		const nextScale = (width * target) / Math.max(1, total);
 		requestAnimationFrame(() => (view.scrollLeft = Math.max(0, time * nextScale - offset)));
 	}
 
 	function wheel(event: WheelEvent) {
 		// ⌘/Ctrl + wheel, and a trackpad pinch (which arrives as Ctrl + wheel), zoom; plain wheel scrolls.
-		if (!(event.ctrlKey || event.metaKey)) return;
+		if (!(event.ctrlKey || event.metaKey) || rows === 'picture') return;
 		event.preventDefault();
 		setZoom(zoom * Math.exp(-event.deltaY * 0.01), event.clientX);
 	}
@@ -137,8 +152,8 @@
 	});
 	const starts = $derived(gesture && gesture.kind !== 'seek' ? gesture.starts : liveStarts);
 
-	const tickStep = $derived([0.5, 1, 2, 5, 10, 15, 30].find((step) => step * scale >= 56) ?? 60);
-	const ticks = $derived(Array.from({ length: Math.floor(total / (tickStep / 2)) + 1 }, (_, i) => (i * tickStep) / 2));
+	/** Some clip has its own sound to draw. */
+	const heard = $derived(clips.some((clip) => clip.wave));
 
 	/** Where the dragged block would land, as an index into the sequence. */
 	const dropIndex = $derived.by(() => {
@@ -204,8 +219,6 @@
 		}
 	}
 
-	const fmt = (seconds: number) => (seconds >= 60 ? `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(0).padStart(2, '0')}` : `${seconds % 1 ? seconds.toFixed(1) : seconds.toFixed(0)}s`);
-
 	onMount(() => {
 		const resize = new ResizeObserver(([entry]) => (width = Math.max(200, entry.contentRect.width)));
 		resize.observe(scroller!);
@@ -215,127 +228,160 @@
 
 <svelte:window onpointermove={windowMove} onpointerup={windowUp} onpointercancel={windowUp} />
 
+<!-- The viewer's lanes (DESIGN.md: Viewer lanes): picture, an 8px scrub bar, the takes' own sound and the song, with
+     one rectangular playhead across them; the selected clip's speed ramp sits under it. -->
 <div class="timeline select-none">
-	<div class="zoombar" aria-label="Timeline zoom">
-		<button type="button" onclick={() => setZoom(zoom / 1.6)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out (⌘/Ctrl + scroll)">−</button>
-		<span class="readout" title="How many screens wide the cut is">{zoom < 1.05 ? 'fit' : `${zoom.toFixed(1)}×`}</span>
-		<button type="button" onclick={() => setZoom(zoom * 1.6)} disabled={zoom >= maxZoom} aria-label="Zoom in" title="Zoom in (⌘/Ctrl + scroll, or pinch)">+</button>
-		<button type="button" class="fit" onclick={() => setZoom(1)} disabled={zoom <= 1} title="Show the whole cut">fit</button>
-	</div>
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div bind:this={scroller} class="scroller" onwheel={wheel}>
-	<div class="content" style:width={`${Math.max(width, total * scale)}px`}>
-	<div bind:this={host} class="relative">
-		<!-- Ruler -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="ruler relative h-[38px] cursor-ew-resize touch-none border-b border-nr-line-soft" onpointerdown={seekDown}>
-			{#each beats.filter((b) => b <= total) as b, i (i)}
-				<div class="pointer-events-none absolute bottom-0 h-[5px] w-px bg-nr-mark/70" style:left={`${b * scale}px`}></div>
-			{/each}
-			{#each ticks as t (t)}
-				{@const major = Math.abs(t / tickStep - Math.round(t / tickStep)) < 1e-6}
-				<div class={['absolute bottom-0 w-px', major ? 'h-[10px] bg-nr-faint' : 'h-[5px] bg-nr-line']} style:left={`${t * scale}px`}></div>
-				{#if major}<span class="absolute top-[8px] font-mono text-[11px] text-nr-muted" style:left={`${t * scale + 5}px`}>{fmt(t)}</span>{/if}
-			{/each}
-		</div>
-
-		<!-- Video track -->
-		<div class="relative mt-2 h-[96px]">
-			{#each clips as clip, i (clip.id)}
-				{@const left = starts[i] * scale}
-				{@const w = Math.max(6, lengths[i] * scale - 2)}
-				{@const moving = gesture?.kind === 'move' && gesture.clip === i && gesture.moved}
-				{@const trimming = gesture?.kind === 'trim' && gesture.clip === i}
-				{#if trimming}
-					<!-- Ghosts of the media trimmed off each end -->
-					<div class="ghost absolute inset-y-0 rounded-l-[3px]" style:left={`${left - clip.in * scale}px`} style:width={`${clip.in * scale}px`}></div>
-					<div class="ghost absolute inset-y-0 rounded-r-[3px]" style:left={`${left + w + 2}px`} style:width={`${(clip.duration - clip.out) * scale}px`}></div>
-				{/if}
-				<!-- svelte-ignore a11y_no_static_element_interactions -->
-				<div
-					class={['block group absolute inset-y-0 overflow-hidden rounded-[3px] border', i === focus ? 'border-nr-accent/90' : i === index ? 'border-nr-accent/35' : 'border-nr-line', moving ? 'z-20 opacity-90 shadow-[0_6px_18px_rgba(0,0,0,.55)]' : 'z-10', !gesture && 'settle']}
-					style:left={`${left}px`}
-					style:width={`${w}px`}
-					style:transform={moving && gesture?.kind === 'move' ? `translateX(${gesture.dx}px)` : undefined}
-					onpointerdown={(event) => blockDown(event, i)}
-				>
-					<div class="pointer-events-none absolute inset-0 opacity-80"><Filmstrip bank={clip.bank} inS={clip.in} outS={clip.out} /></div>
-					{#if clip.wave}
-						<!-- The take's own audio, as it plays in the cut: line its peaks up with the song lane below. -->
-						<div class="pointer-events-none absolute inset-x-0 bottom-0 h-[16px] bg-black/55"><Waveform peaks={clip.wave} from={clip.in} to={clip.out} speed={clip.speed} color="var(--color-nr-accent)" mirror={false} /></div>
-					{/if}
-					<div class="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-1.5 bg-gradient-to-b from-black/80 to-transparent px-2 pb-2.5 pt-1.5 font-mono text-[10px] text-nr-ink">
-						<span class="text-nr-accent">{i + 1}</span>
-						<span class="truncate">{clip.title.split(' — ').slice(1).join(' — ') || clip.title}</span>
-						<span class="grow"></span>
-						{#if !isFlat(clip.speed)}<span class="text-nr-accent">⟿</span>{/if}
-						<span class="text-nr-muted">{lengths[i].toFixed(1)}s</span>
-					</div>
-					{#each marks[clip.id] ?? [] as mark, m (m)}
-						{@const x = markX(clip, mark.at)}
-						<!-- A suggested trim: the part it would cut is shaded, the new edge is a line. -->
-						<div class="mark-cut pointer-events-none absolute inset-y-0" style:left={`${mark.edge === 'in' ? 0 : x}px`} style:width={`${mark.edge === 'in' ? x : Math.max(0, w - x)}px`}></div>
-						<div class="mark-line pointer-events-none absolute inset-y-0 w-[2px]" style:left={`${x - 1}px`}></div>
-					{/each}
-					<div class="edge edge-in absolute inset-y-0 left-0 cursor-ew-resize" style:width={`${EDGE}px`}></div>
-					<div class="edge edge-out absolute inset-y-0 right-0 cursor-ew-resize" style:width={`${EDGE}px`}></div>
-				</div>
-			{/each}
-			{#if dropIndex !== null}
-				<div class="pointer-events-none absolute -inset-y-1 z-30 w-[2px] -translate-x-1/2 rounded bg-nr-accent" style:left={`${dropX}px`}></div>
-			{/if}
-		</div>
-
-		{#if song}
-			<!-- The song: the main audio the takes were made with, playing straight through under the cut. -->
-			<div class="relative mt-[4px] h-[30px] overflow-hidden rounded-[3px] border border-nr-mark-line bg-nr-mark-bg" aria-label="Song waveform">
-				<div class="absolute inset-y-0 left-0" style:width={`${total * scale}px`}><Waveform peaks={song} from={0} to={total} color="var(--color-nr-mark)" /></div>
-				<span class="pointer-events-none absolute left-1 top-0 font-mono text-[8px] tracking-[.12em] text-nr-mark-dim">SONG</span>
-			</div>
-		{/if}
-		<!-- Playhead -->
-		<div class="pointer-events-none absolute inset-y-0 z-30" style:left={`${programTime * scale}px`}>
-			<div class="absolute left-0 top-0 bottom-0 w-[2px] -translate-x-1/2 bg-nr-accent"></div>
-			<div class="playhead-tip absolute left-0 top-0 h-[10px] w-[14px] -translate-x-1/2 bg-nr-accent"></div>
-		</div>
-	</div>
-
-	<!-- Speed lane under the selected clip (inside the scrolling content, so it stays under its clip) -->
-	{#if clips[focus]}
-		<div class="relative mt-2 h-[86px] border-t border-nr-line-soft pt-1">
-			<span class="absolute left-0 top-1 font-mono text-[8px] tracking-[.12em] text-nr-faint">SPEED · {focus + 1}</span>
-			<div class="absolute top-1" style:left={`${starts[focus] * scale}px`} style:width={`${Math.max(60, lengths[focus] * scale - 2)}px`}>
-				{#key clips[focus].id}
-					<SpeedLane points={clips[focus].speed} phase={focus === index ? Math.min(1, Math.max(0, phase)) : null} onchange={(points) => onspeed(focus, points)} {locked} />
-				{/key}
-			</div>
+	{#if showZoom && rows === 'all'}
+		<div class="zoom" role="group" aria-label="Timeline zoom">
+			<button type="button" class="tg" onclick={() => setZoom(zoom / 1.6)} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out (⌘/Ctrl + scroll)">−</button>
+			<span class="code" title="How many screens wide the cut is">{zoom < 1.05 ? 'Fit' : `${zoom.toFixed(1)}×`}</span>
+			<button type="button" class="tg" onclick={() => setZoom(zoom * 1.6)} disabled={zoom >= maxZoom} aria-label="Zoom in" title="Zoom in (⌘/Ctrl + scroll, or pinch)">+</button>
 		</div>
 	{/if}
-	</div>
+	<div class="frame">
+		{#if rows === 'all'}
+			<div class="lbs cp" aria-hidden="true">
+				<span class="l-pic">Pic</span><span class="l-trk"></span>
+				{#if heard}<span class="l-wav">Aud</span>{/if}
+				{#if song}<span class="l-wav">Mus</span>{/if}
+				{#if clips[focus]}<span class="l-spd">Spd</span>{/if}
+			</div>
+		{/if}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div bind:this={scroller} class="scroller" onwheel={wheel}>
+		<div class="content" style:width={`${Math.max(width, total * scale)}px`}>
+		<div bind:this={host} class="lanes">
+			<!-- Picture: one block per clip, as long as it plays -->
+			<div class="pic">
+				{#each clips as clip, i (clip.id)}
+					{@const left = starts[i] * scale}
+					{@const w = Math.max(6, lengths[i] * scale - 2)}
+					{@const moving = gesture?.kind === 'move' && gesture.clip === i && gesture.moved}
+					{@const trimming = gesture?.kind === 'trim' && gesture.clip === i}
+					{#if trimming}
+						<!-- What the trim takes off each end -->
+						<div class="ghost" style:left={`${left - clip.in * scale}px`} style:width={`${clip.in * scale}px`}></div>
+						<div class="ghost" style:left={`${left + w + 2}px`} style:width={`${(clip.duration - clip.out) * scale}px`}></div>
+					{/if}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<div
+						class={['clip', !gesture && 'settle', moving && 'lifted']}
+						data-now={i === index ? '' : undefined}
+						data-focus={i === focus ? '' : undefined}
+						style:left={`${left}px`}
+						style:width={`${w}px`}
+						style:transform={moving && gesture?.kind === 'move' ? `translateX(${gesture.dx}px)` : undefined}
+						title={`${i + 1} · ${clip.title} · ${lengths[i].toFixed(1)}s${isFlat(clip.speed) ? '' : ' · ramped'}`}
+						onpointerdown={(event) => blockDown(event, i)}
+					>
+						<div class="strip"><Filmstrip bank={clip.bank} inS={clip.in} outS={clip.out} /></div>
+						<span class="num code">{i + 1}{isFlat(clip.speed) ? '' : ' ⟿'}</span>
+						{#each marks[clip.id] ?? [] as mark, m (m)}
+							{@const x = markX(clip, mark.at)}
+							<!-- A suggested trim: the part it would cut is shaded, the new edge is a line. -->
+							<div class="mark-cut" style:left={`${mark.edge === 'in' ? 0 : x}px`} style:width={`${mark.edge === 'in' ? x : Math.max(0, w - x)}px`}></div>
+							<div class="mark-line" style:left={`${x - 1}px`}></div>
+						{/each}
+						{#if !locked}
+							<div class="edge edge-in" style:width={`${EDGE}px`}></div>
+							<div class="edge edge-out" style:width={`${EDGE}px`}></div>
+						{/if}
+					</div>
+				{/each}
+				{#if dropIndex !== null}<div class="drop" style:left={`${dropX}px`}></div>{/if}
+			</div>
+
+			<!-- Scrub bar: press or drag to move the playhead -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="trk" onpointerdown={seekDown}><i style:width={`${programTime * scale}px`}></i></div>
+
+			{#if rows === 'all' && heard}
+				<!-- Each take's own sound, under its clip, through its ramp -->
+				<div class="wav">
+					{#each clips as clip, i (clip.id)}
+						{#if clip.wave}<div class="part" style:left={`${starts[i] * scale}px`} style:width={`${Math.max(2, lengths[i] * scale - 2)}px`}><Waveform peaks={clip.wave} from={clip.in} to={clip.out} speed={clip.speed} color="#45454d" /></div>{/if}
+					{/each}
+					<div class="played" style:width={`${programTime * scale}px`}>
+						{#each clips as clip, i (clip.id)}
+							{#if clip.wave}<div class="part" style:left={`${starts[i] * scale}px`} style:width={`${Math.max(2, lengths[i] * scale - 2)}px`}><Waveform peaks={clip.wave} from={clip.in} to={clip.out} speed={clip.speed} color="var(--color-teal)" /></div>{/if}
+						{/each}
+					</div>
+				</div>
+			{/if}
+			{#if rows === 'all' && song}
+				<!-- The song, straight through from the cut's start; its beats are the faint ticks -->
+				<div class="wav" aria-label="Song waveform">
+					<div class="part" style:left="0" style:width={`${total * scale}px`}><Waveform peaks={song} from={0} to={total} color="#45454d" /></div>
+					<div class="played" style:width={`${programTime * scale}px`}><div class="part" style:left="0" style:width={`${total * scale}px`}><Waveform peaks={song} from={0} to={total} color="var(--color-teal)" /></div></div>
+					{#each beats.filter((b) => b <= total) as b, i (i)}<i class="beat" style:left={`${b * scale}px`}></i>{/each}
+				</div>
+			{/if}
+			<!-- Playhead -->
+			<b class="head" style:left={`${programTime * scale}px`}></b>
+		</div>
+
+		{#if rows === 'all' && clips[focus]}
+			<!-- The selected clip's speed ramp, under the clip (inside the scrolling content, so it stays with it) -->
+			<div class="spd">
+				<div class="ramp" style:left={`${starts[focus] * scale}px`} style:width={`${Math.max(60, lengths[focus] * scale - 2)}px`}>
+					{#key clips[focus].id}
+						<SpeedLane points={clips[focus].speed} phase={focus === index ? Math.min(1, Math.max(0, phase)) : null} onchange={(points) => onspeed(focus, points)} {locked} />
+					{/key}
+				</div>
+			</div>
+		{/if}
+		</div>
+		</div>
 	</div>
 </div>
 
 <style>
-	.playhead-tip { clip-path: polygon(0 0, 100% 0, 50% 100%); }
-	.scroller { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+	.timeline { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+	.zoom { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+	.code { color: var(--color-ink-3); font: 10.5px var(--font-mono); letter-spacing: 0.01em; white-space: nowrap; }
+	.frame { display: flex; min-width: 0; gap: 8px; }
+	.lbs { display: flex; width: 24px; flex: none; flex-direction: column; gap: 3px; color: var(--color-ink-3); }
+	.lbs span { display: flex; align-items: center; }
+	.l-pic { height: 40px; }
+	.l-trk { height: 8px; }
+	.l-wav { height: 22px; }
+	.l-spd { height: 48px; }
+	.scroller { min-width: 0; flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #26262b transparent; }
 	.content { position: relative; }
-	.zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin-bottom: 6px; font: 10px var(--font-mono); color: var(--color-nr-muted); }
-	.zoombar button { min-width: 30px; height: 28px; border: 1px solid var(--color-nr-line); border-radius: 3px; background: transparent; color: var(--color-nr-muted); font: 600 12px/20px var(--font-mono); }
-	.zoombar button.fit { padding: 0 9px; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
-	.zoombar button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
-	.zoombar button:disabled { opacity: .35; }
-	.zoombar .readout { min-width: 34px; text-align: center; }
-	.timeline { background: var(--color-nr-deep); }
-	.ghost { background: repeating-linear-gradient(135deg, rgba(153, 246, 228, .07) 0 4px, transparent 4px 8px); border: 1px dashed rgba(153, 246, 228, .25); }
-	.block { background: var(--color-nr-surface); cursor: grab; }
-	.block:active { cursor: grabbing; }
+	.lanes { position: relative; display: flex; flex-direction: column; gap: 3px; }
+	.pic { position: relative; height: 40px; }
+	.clip { position: absolute; top: 0; bottom: 0; z-index: 1; overflow: hidden; border-radius: 2px; background: var(--color-raised); cursor: grab; }
+	.clip:active { cursor: grabbing; }
+	.clip .strip { position: absolute; inset: 0; opacity: 0.55; pointer-events: none; }
+	.clip[data-now] .strip { opacity: 1; }
+	/* The selected clip: a teal rectangle at each end. */
+	.clip[data-focus]::before, .clip[data-focus]::after { content: ''; position: absolute; top: 0; bottom: 0; z-index: 2; width: 3px; background: var(--color-teal); pointer-events: none; }
+	.clip[data-focus]::before { left: 0; }
+	.clip[data-focus]::after { right: 0; }
+	.clip.lifted { z-index: 3; opacity: 0.9; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55); }
+	.num { position: absolute; left: 3px; top: 2px; z-index: 2; border-radius: 2px; background: #000000b8; padding: 0 3px; color: var(--color-ink-2); pointer-events: none; }
+	.clip[data-focus] .num { left: 6px; background: var(--color-teal-deep); color: var(--color-teal-ink); }
 	/* After a drop or a swap the other clips slide to their new places instead of jumping. */
-	.block.settle { transition: left 180ms cubic-bezier(.2, .7, .2, 1), width 180ms cubic-bezier(.2, .7, .2, 1); }
-	@media (prefers-reduced-motion: reduce) { .block.settle, .edge::after { transition: none; } }
-	.mark-cut { background: repeating-linear-gradient(135deg, rgba(242, 193, 78, .28) 0 3px, rgba(242, 193, 78, .08) 3px 6px); }
-	.mark-line { background: var(--color-nr-mark); box-shadow: 0 0 6px rgba(242, 193, 78, .6); }
-	.edge::after { content: ''; position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-nr-accent); opacity: 0; transition: opacity 90ms ease; }
+	.clip.settle { transition: left 180ms cubic-bezier(0.2, 0.7, 0.2, 1), width 180ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+	.ghost { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: #7dd9c814; pointer-events: none; }
+	.mark-cut { position: absolute; top: 0; bottom: 0; z-index: 2; background: #f5b84a40; pointer-events: none; }
+	.mark-line { position: absolute; top: 0; bottom: 0; z-index: 2; width: 2px; background: var(--color-amber); pointer-events: none; }
+	.edge { position: absolute; top: 0; bottom: 0; z-index: 3; cursor: ew-resize; }
+	.edge-in { left: 0; }
+	.edge-out { right: 0; }
+	.edge::after { content: ''; position: absolute; top: 0; bottom: 0; width: 3px; background: var(--color-teal-ink); opacity: 0; transition: opacity 90ms ease; }
 	.edge-in::after { left: 0; }
 	.edge-out::after { right: 0; }
 	.edge:hover::after { opacity: 1; }
+	.drop { position: absolute; top: -3px; bottom: -3px; z-index: 4; width: 2px; margin-left: -1px; background: var(--color-teal); pointer-events: none; }
+	.trk { position: relative; height: 8px; background: #1f1f23; cursor: ew-resize; touch-action: none; }
+	.trk i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #123a35, #8be0c6); pointer-events: none; }
+	.wav { position: relative; height: 22px; overflow: hidden; pointer-events: none; }
+	.part { position: absolute; top: 0; bottom: 0; }
+	.played { position: absolute; inset: 0 auto 0 0; overflow: hidden; }
+	.beat { position: absolute; top: 0; bottom: 0; width: 1px; background: #ffffff26; }
+	.head { position: absolute; top: -2px; bottom: -2px; z-index: 5; width: 3px; margin-left: -1px; background: #d9f7ef; pointer-events: none; }
+	.spd { position: relative; min-height: 48px; margin-top: 3px; }
+	.ramp { position: absolute; top: 0; }
+	@media (prefers-reduced-motion: reduce) { .clip.settle, .edge::after { transition: none; } }
 </style>

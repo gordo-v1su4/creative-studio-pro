@@ -1,25 +1,19 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { referenceImageUrl } from '$lib/media/reference-images';
 	import { loadClipMetadata, proxyUrl } from '$lib/media/gpu/clipBanks';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
 	import { pickFor } from '$lib/domain/takes';
-	import { liveSpine } from '$lib/domain/spine';
-	import { cutLength, cutsOf } from '$lib/domain/cuts';
+	import { cutLength } from '$lib/domain/cuts';
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
-	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
-	import SoundStage from '$lib/ui/SoundStage.svelte';
-	import ExportStage from '$lib/ui/ExportStage.svelte';
+	import CutStage from '$lib/ui/cut/CutStage.svelte';
+	import { cutView } from '$lib/ui/cut/cut-view.svelte';
 	import BriefSheet from '$lib/ui/story/BriefSheet.svelte';
 	import Pitch from '$lib/ui/story/Pitch.svelte';
 	import EpisodeOutline from '$lib/ui/EpisodeOutline.svelte';
 	import PrepWorkspace from '$lib/ui/PrepWorkspace.svelte';
-	import ScorePromptPanel from '$lib/ui/ScorePromptPanel.svelte';
 	import SeasonStructure from '$lib/ui/SeasonStructure.svelte';
 	import StageGatePanel from '$lib/ui/StageGatePanel.svelte';
-	import { finalizable, finalizingIds, oneTakePerDraft } from '$lib/domain/finalize';
-	import { clock } from '$lib/ui/clock.svelte';
 	import { droppedFiles, pickedFiles } from '$lib/ui/dropped-files';
 	import HiggsfieldImport from '$lib/ui/HiggsfieldImport.svelte';
 	import TakeReview from '$lib/ui/TakeReview.svelte';
@@ -48,7 +42,7 @@
 	import { takesFor } from '$lib/domain/takes';
 
 	export type ProductionTab = 'story' | 'prep' | 'beats' | 'cuts' | 'sound' | 'export';
-	let { project, onUpdated, onAddFiles, onImportRenders, onOpenBoard, tab = $bindable('story'), detailsHost = null, onOpenDetails }: {
+	let { project, onUpdated, onAddFiles, onImportRenders, onOpenBoard, tab = $bindable('story'), detailsHost = null, onOpenDetails, onOpenAgent }: {
 		project: Project; onUpdated: (project: Project) => void;
 		/** Files dropped or picked on the Shots tab: each becomes a new shot (off the spine, not benched). */
 		onAddFiles?: (files: File[], place?: { cardId?: string }) => void;
@@ -59,7 +53,9 @@
 		/** Where the selected shot's details are shown: the Details tab of the shell's dock. */
 		detailsHost?: HTMLElement | null;
 		/** Asked to bring the Details tab forward. */
-		onOpenDetails?: () => void
+		onOpenDetails?: () => void;
+		/** Asked to bring the dock's Agent tab forward (Cut → Sound's effects pass answers there). */
+		onOpenAgent?: () => void;
 	} = $props();
 
 	let higgsfieldOpen = $state(false);
@@ -207,9 +203,9 @@
 			if (!body.ok) throw new Error(body.error.message);
 			onUpdated(body.data);
 			const cut = body.data.production.cuts?.find((entry) => entry.cut_id === body.cut_id);
-			notice = cut ? [`"${cut.name}": ${cut.entries.length} entries, ${cutLength(cut).toFixed(1)}s.`, ...body.notes].join(' · ') : null;
+			cutNotice = cut ? [`"${cut.name}": ${cut.entries.length} entries, ${cutLength(cut).toFixed(1)}s.`, ...body.notes].join(' · ') : null;
+			if (body.cut_id) cutView.open(body.cut_id);
 			tab = 'cuts';
-			if (body.cut_id) openCut = { cutId: body.cut_id, version: null };
 		} catch (cause) { scoreError = cause instanceof Error ? cause.message : 'The first cut failed'; }
 		finally { scoreBusy = null; }
 	}
@@ -257,13 +253,11 @@
 
 	let busy = $state(false);
 	/** V1S-378: the cut whose Score prompt panel is open. */
-	let scoring = $state<{ cutId: string; name: string } | null>(null);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 	let draft = $state<ProductionState>({ status: 'empty', title: '', logline: '', premise: '', theme: '', cards: [], assets: [], updated_at: null });
 	let loadedVersion = $state(-1);
 	const unsaved = $derived(JSON.stringify(draft) !== JSON.stringify(project.production));
-	let previewCardId = $state('');
 	const cloneProduction = (value: ProductionState): ProductionState => JSON.parse(JSON.stringify(value)) as ProductionState;
 
 	/** The production the draft was last loaded from: what an unsaved edit is measured against. */
@@ -491,14 +485,6 @@
 		draft.cards = draft.cards.map((card) => card.card_id === cardId ? { ...card, ...patch } : card);
 	}
 
-	/** The pick when it is of this kind, else the newest live take of the kind. */
-	function assetFor(cardId: string, kind: ProductionAsset['kind']) {
-		const card = draft.cards.find((entry) => entry.card_id === cardId);
-		const pick = card ? pickFor(draft, card) : null;
-		if (pick?.kind === kind) return pick;
-		return draft.assets.findLast((asset) => asset.card_id === cardId && asset.kind === kind && !asset.rejected) ?? null;
-	}
-
 	function downloadManifest() {
 		const payload = { schema: 'csp-production-manifest.v1', exported_at: new Date().toISOString(), project_id: project.project_id, project_version: project.version, production: draft };
 		const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
@@ -507,65 +493,18 @@
 	}
 
 	const totalDuration = $derived(draft.cards.reduce((sum, card) => sum + card.duration_ms, 0));
-	// The preview plays the spine: story order, benched shots skipped.
-	let spine = $derived(liveSpine(draft));
-	let previewCard = $derived(spine.find((card) => card.card_id === previewCardId) ?? spine[0] ?? null);
 
 	// Cuts are stored state, read from the project (not the draft) and changed only by cut commands.
-	const cuts = $derived(cutsOf(project.production));
-	/** The cut open in the player, and which version (null = the current one). */
-	let openCut = $state<{ cutId: string; version: number | null; mixUrl?: string } | null>(null);
-	let versionsOpen = $state<string | null>(null);
-	let locking = $state<string | null>(null);
-
-	/** Lock freezes the current version's picture; unlock opens the next version from it. */
-	async function setLocked(cutId: string, lock: boolean) {
-		locking = cutId; error = null;
-		try {
-			const response = await fetch(`/api/projects/${project.project_id}/cuts`, {
-				method: 'POST', headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ command: lock ? 'lock_cut' : 'unlock_cut', expected_version: project.version, cut_id: cutId })
-			});
-			const result = await response.json() as { ok: true; data: Project } | { ok: false; error: { message: string } };
-			if (!result.ok) throw new Error(result.error.message);
-			onUpdated(result.data);
-		} catch (cause) { error = cause instanceof Error ? cause.message : 'Lock failed'; }
-		finally { locking = null; }
-	}
-	let renaming = $state<{ cutId: string; name: string } | null>(null);
-	let finalizing = $state<{ takeIds: string[]; title: string } | null>(null);
-	let notice = $state<string | null>(null);
-
-	/** The cut's takes that are drafts still inside their finalize window (and not already finalizing). */
-	function cutDrafts(cut: (typeof cuts)[number]): string[] {
-		const sent = finalizingIds(project.production);
-		const takes = [...new Set(cut.entries.map((entry) => entry.asset_id))]
-			.flatMap((id) => project.production.assets.filter((asset) => asset.asset_id === id && !sent.has(id)));
-		return oneTakePerDraft(finalizable(takes, clock.now)).map((take) => take.asset_id);
-	}
-
-	async function rename() {
-		const target = renaming;
-		if (!target?.name.trim()) return;
-		error = null;
-		try {
-			const response = await fetch(`/api/projects/${project.project_id}/cuts`, {
-				method: 'POST', headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ command: 'rename_cut', expected_version: project.version, cut_id: target.cutId, name: target.name.trim() })
-			});
-			const result = await response.json() as { ok: true; data: Project } | { ok: false; error: { message: string } };
-			if (!result.ok) throw new Error(result.error.message);
-			onUpdated(result.data);
-			renaming = null;
-		} catch (cause) { error = cause instanceof Error ? cause.message : 'Rename failed'; }
-	}
+	/** What the first cut to the score did, said on the Cut stage. */
+	let cutNotice = $state<string | null>(null);
+	const onCutStage = $derived(tab === 'cuts' || tab === 'sound' || tab === 'export');
 </script>
 
 <svelte:window onkeydown={gridKey} />
 
-<section class="h-full overflow-y-auto bg-[#0b0d11]" aria-label="Production workspace">
+<section class={['h-full', onCutStage ? 'overflow-hidden' : 'overflow-y-auto bg-[#0b0d11]']} aria-label="Production workspace">
 	<!-- The story plan carries its own bar (levels, Save, Approve); every other view keeps the workspace strip. -->
-	{#if !(tab === 'story' && project.production.story_plan)}
+	{#if !(tab === 'story' && project.production.story_plan) && !onCutStage}
 	<div class="sticky top-0 z-10 flex min-w-max items-center justify-end gap-3 border-b border-[#26333a] bg-[#10141a]/95 px-4 py-2 backdrop-blur">
 		<span class="meta-label text-[#63838c]">{draft.cards.length} shots · {(totalDuration / 1000).toFixed(0)}s</span>
 		<button type="button" class="btn btn-accent" onclick={() => void save()} disabled={saving || busy}>{saving ? 'Saving…' : 'Save workspace'}</button>
@@ -679,99 +618,14 @@
 		</div></div>
 		{#if reviewSequence.playing}<SequencePlayer {project} {onUpdated} />{/if}
 		</div>
-	{:else if tab === 'cuts'}
-		<div class="mx-auto max-w-5xl p-5">
-			<div class="mb-4 border-b border-[#223039] pb-4">
-				<div class="meta-label text-[#59d9cf]">CUTS</div>
-				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Shift-click shots on the board, play the selection, and push it into a named cut. A cut keeps its own order, trims and ramps: board edits never change it, and editing it never changes the takes.</p>
-			</div>
-			{#if cuts.length === 0}
-				<p class="mb-6 border border-dashed border-[#29434a] p-4 text-[12px] text-[#668d98]">No cuts yet.</p>
-			{:else}
-				<ul class="mb-6 grid gap-2" aria-label="Cuts">
-					{#each cuts as cut (cut.cut_id)}
-						<li class="cut-row">
-							{#if renaming?.cutId === cut.cut_id}
-								<!-- svelte-ignore a11y_autofocus -->
-								<input class="cut-name" bind:value={renaming.name} onkeydown={(event) => { if (event.key === 'Enter') void rename(); else if (event.key === 'Escape') renaming = null; }} aria-label="Cut name" autofocus />
-								<button type="button" class="agent-mini" onclick={() => void rename()} disabled={!renaming.name.trim()}>save</button>
-								<button type="button" class="agent-mini" onclick={() => (renaming = null)}>cancel</button>
-							{:else}
-								<b>{cut.name}</b>
-								<button type="button" class="agent-mini" onclick={() => (renaming = { cutId: cut.cut_id, name: cut.name })}>rename</button>
-							{/if}
-							<span class="grow"></span>
-							<span class="meta-label text-[#63838c]">{cut.entries.length} {cut.entries.length === 1 ? 'take' : 'takes'} · {cutLength(cut).toFixed(1)}s</span>
-							{#if cutDrafts(cut).length}
-								<button type="button" class="btn shrink-0 whitespace-nowrap" onclick={() => (finalizing = { takeIds: cutDrafts(cut), title: `${cut.name}: all picks` })} title="Re-render this cut's 480p drafts at 1080p from the same generations (you see the price first)">Finalize all picks ({cutDrafts(cut).length})…</button>
-							{/if}
-							<span class={['version-tag', cut.locked && 'locked']} title={cut.locked ? `Picture locked ${new Date(cut.locked_at ?? cut.updated_at).toLocaleString()}` : 'The version being edited'}>v{cut.version}{cut.locked ? ' · locked' : ''}</span>
-							{#if (cut.versions ?? []).some((v) => v.version !== cut.version)}
-								<button type="button" class="agent-mini" onclick={() => (versionsOpen = versionsOpen === cut.cut_id ? null : cut.cut_id)} aria-expanded={versionsOpen === cut.cut_id}>versions</button>
-							{/if}
-							<button type="button" class="btn" onclick={() => void setLocked(cut.cut_id, !cut.locked)} disabled={locking === cut.cut_id} title={cut.locked ? `Unlock: start v${cut.version + 1} as a copy of v${cut.version}; v${cut.version} stays as it is` : `Lock v${cut.version}: freeze its picture (no trims, ramps, reorders, swaps or drops) so sound can be laid against it`}>{cut.locked ? `Unlock to v${cut.version + 1}` : 'Lock'}</button>
-							<button type="button" class="agent-mini" onclick={() => (scoring = scoring?.cutId === cut.cut_id ? null : { cutId: cut.cut_id, name: cut.name })} title="GhostSuno: Suno's three fields for this cut (nothing is sent; mainly for trailers)">score prompt</button>
-							<button type="button" class="btn btn-accent" onclick={() => (openCut = { cutId: cut.cut_id, version: null })}>Open</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
-			{#if scoring}<ScorePromptPanel projectId={project.project_id} cutId={scoring.cutId} cutName={scoring.name} onclose={() => (scoring = null)} />{/if}
-			{#if notice}<p class="mb-4 border border-[#29434a] bg-[#0d1418] px-3 py-2 text-[12px] text-[#9fc9cf]" role="status">{notice}</p>{/if}
-			{#if finalizing}<FinalizePanel {project} takeIds={finalizing.takeIds} title={finalizing.title} {onUpdated} onclose={() => (finalizing = null)} onsent={(message) => (notice = message)} />{/if}
-			{#if versionsOpen}
-				{@const vcut = cuts.find((c) => c.cut_id === versionsOpen)}
-				{#if vcut}
-					<ul class="mb-6 -mt-4 grid gap-1 border-l border-[#29434a] pl-3" aria-label={`Versions of ${vcut.name}`}>
-						{#each [...(vcut.versions ?? [])].reverse().filter((v) => v.version !== vcut.version) as v (v.version)}
-							<li class="flex items-center gap-2 text-[12px] text-[#9fc9cf]">
-								<span class="version-tag locked">v{v.version} · locked</span>
-								<span class="text-[#668d98]">{new Date(v.locked_at).toLocaleString()} · {v.entries.length} {v.entries.length === 1 ? 'take' : 'takes'} · {cutLength(v).toFixed(1)}s</span>
-								<button type="button" class="agent-mini" onclick={() => (openCut = { cutId: vcut.cut_id, version: v.version })}>open (read-only)</button>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{/if}
-			{#if openCut}
-				{#key `${openCut.cutId}:${openCut.version}`}
-					<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCut.cutId, version: openCut.version ?? undefined }} onclose={() => (openCut = null)} />
-				{/key}
-			{/if}
-			<div class="meta-label mb-2 text-[#59d9cf]">SPINE</div>
-			<div class="preview-stage">
-				{#if draft.cards.length === 0}<span>No cards to preview.</span>{:else}
-					{@const leadVideo = previewCard ? assetFor(previewCard.card_id, 'video') : null}
-					{@const leadImage = previewCard ? assetFor(previewCard.card_id, 'image') : null}
-					{#if leadVideo}<!-- svelte-ignore a11y_media_has_caption --><video src={proxyUrl(leadVideo.url)} controls class="h-full w-full object-contain"></video>{:else if leadImage && previewCard}<img src={referenceImageUrl(leadImage.url)} alt={previewCard.title} class="h-full w-full object-contain" />{:else if previewCard}<div><b>{previewCard.title}</b><p>{previewCard.beat}</p></div>{/if}
-				{/if}
-			</div>
-			<div class="mt-4 flex gap-2 overflow-x-auto pb-2">
-				{#each spine as card (card.card_id)}<button type="button" class="timeline-card" class:selected={previewCard?.card_id === card.card_id} onclick={() => (previewCardId = card.card_id)}><span>{String(card.order + 1).padStart(2, '0')}</span><b>{card.title}</b><small>{card.duration_ms / 1000}s</small></button>{/each}
-			</div>
-		</div>
-	{:else if tab === 'sound'}
-		<SoundStage {project} {onUpdated} onplay={(cutId, version, mixUrl) => (openCut = { cutId, version, mixUrl })} />
-		{#if openCut}
-			{#key `${openCut.cutId}:${openCut.version}:${openCut.mixUrl ?? ''}`}
-				<SequencePlayer {project} {onUpdated} source={{ kind: 'cut', cutId: openCut.cutId, version: openCut.version ?? undefined, mixUrl: openCut.mixUrl }} onclose={() => (openCut = null)} />
-			{/key}
-		{/if}
 	{:else}
-		<div class="mx-auto max-w-3xl p-6">
-			<ExportStage {project} {onUpdated} />
-			<div class="border border-[#29434a] bg-[#11171d] p-5">
-				<div class="meta-label text-[#59d9cf]">PORTABLE PROJECT PACKAGE</div>
-				<h2 class="mt-2 text-lg text-[#c7eef0]">Production manifest v1</h2>
-				<p class="mt-2 text-[12px] leading-5 text-[#789da7]">Exports the story spine, ordered cards, image/video prompts, returned asset URLs, durations, approval states, project ID, and canonical version as readable JSON.</p>
-				<button type="button" class="btn btn-accent mt-5" onclick={downloadManifest} disabled={draft.cards.length === 0}>Download manifest</button>
-			</div>
-		</div>
+		<!-- The Cut stage: Picture, Sound and Export (slice 7). -->
+		<CutStage {project} bind:tab {detailsHost} {onUpdated} onAgent={onOpenAgent} onManifest={draft.cards.length ? downloadManifest : undefined} notice={cutNotice} />
 	{/if}
 	{#if viewerOpen && tab === 'beats'}
 		<Viewer production={draft} cards={draft.cards} {notesFor} notesStamp={roomState.marks[selectedShotId] ?? 0} roomHref={(cardId, take) => shotRoomLink(page.data.reviewRoomUrl, project, cardId, take)} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)} />
 	{/if}
-	{#if detailsHost}
+	{#if detailsHost && !onCutStage}
 		<div class="shot-details" use:portal={detailsHost}>
 			{#if tab !== 'beats' || !selectedShot || !selectedFacts}
 				<p class="cp none">Select a shot in the Shots grid to see its details</p>
@@ -833,20 +687,7 @@
 	.workspace-field textarea { width: 100%; border: 1px solid #26383f; background: #0d1116; color: #a8cbd2; padding: 10px; outline: none; font: 12px/1.6 var(--font-mono); }
 	.workspace-field textarea:focus { border-color: #4ee8d2; }
 	.agent-mini { border: 1px solid #31565d; background: #101b20; color: #71c9cf; padding: 5px 8px; font: 600 9px var(--font-mono); text-transform: uppercase; }
-	.cut-row { display: flex; align-items: center; gap: 8px; border: 1px solid #26383f; background: #11161c; padding: 8px 10px; color: #bce6e8; }
-	.cut-row b { font-size: 12px; font-weight: 600; }
-	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
 	/* What letting go will do, said in one line above the bands; the shot under the pointer is tinted by its card. */
 	.shots-drop-hint { position: sticky; bottom: 128px; z-index: 6; width: fit-content; margin: 0 auto; border-radius: 6px; background: var(--color-selected); padding: 5px 10px; color: var(--color-teal-ink); pointer-events: none; }
-	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }
-	.preview-stage div { max-width: 520px; padding: 30px; }
-	.preview-stage b { color: #bcebee; }
-	.timeline-card { display: grid; min-width: 150px; gap: 4px; border: 1px solid #26383f; background: #11161c; padding: 9px; }
-	.timeline-card:hover { border-color: transparent; background: #16242a; }
-	.timeline-card.selected { border-color: transparent; background: linear-gradient(120deg, rgba(78,232,210,.16), rgba(72,189,245,.1), rgba(119,112,247,.08)); }
-	.timeline-card span, .timeline-card small { color: #62848c; font: 9px var(--font-mono); }
-	.timeline-card b { overflow: hidden; color: #9ec9cf; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-	.version-tag { border: 1px solid #29434a; padding: 0 5px; color: #84cbd0; font: 600 10px var(--font-mono); text-transform: uppercase; white-space: nowrap; }
-	.version-tag.locked { border-color: #6a5a26; color: #f2c14e; }
 </style>

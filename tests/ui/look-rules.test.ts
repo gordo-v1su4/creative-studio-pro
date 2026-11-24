@@ -7,7 +7,7 @@ import { join } from 'node:path';
  * new file in these folders is covered without writing its own test. Folders still carrying the old look are
  * added here as they are restyled.
  */
-const FOLDERS = ['src/lib/ui/shots', 'src/lib/ui/shell', 'src/lib/ui/story'];
+const FOLDERS = ['src/lib/ui/shots', 'src/lib/ui/shell', 'src/lib/ui/story', 'src/lib/ui/cut', 'src/lib/ui/timeline'];
 /** Single components restyled inside a folder that still carries the old look. */
 const FILES = ['src/lib/ui/nodes/StoryCardNode.svelte', 'src/lib/ui/StoryPlan.svelte'];
 const files = [...FOLDERS.flatMap((folder) => readdirSync(folder).filter((name) => name.endsWith('.svelte')).map((name) => join(folder, name))), ...FILES];

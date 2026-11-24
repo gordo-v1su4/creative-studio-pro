@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	import type { SpeedPoint } from '$lib/media/speed-curve';
 	/**
 	 * What the player plays and where its edits go. A selection (the shift-clicked beats)
 	 * saves trims and ramps onto the takes themselves, as their defaults, and can be pushed
@@ -6,17 +7,24 @@
 	 */
 	/** mixUrl: play this version's built sound mix instead of the takes' own audio and the song. */
 	export type PlayerSource = { kind: 'selection' } | { kind: 'cut'; cutId: string; version?: number; mixUrl?: string };
+	/** What lanes drawn under the player's picture lane (Sound's layers) need to line up with it. */
+	export type LaneView = {
+		/** Program seconds at the playhead, and the cut's length. */
+		time: number; total: number; seek: (seconds: number) => void;
+		/** Each entry where it plays, with its take's own peaks when it has sound. */
+		clips: Array<{ start: number; length: number; wave: number[] | null; in: number; out: number; speed: SpeedPoint[] | undefined }>;
+	};
 </script>
 
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount, untrack, type Snippet } from 'svelte';
 	import type { CutEntry, Project } from '$lib/domain/schemas';
 	import { cutVersionEntries, cutsOf, nextCutName } from '$lib/domain/cuts';
 	import { isSlateId, slateUrl } from '$lib/domain/slate';
 	import { attachCanvas, estimateBankBytes, getResidentBudget, loadBank, loadClipBlob, loadClipMetadata, pinBank, stripUrl, unpinBank } from '$lib/media/gpu/clipBanks';
 	import { stripFrameStyle, stripIndex } from '$lib/media/strips';
 	import { canOpenUnread, readTimes, unreadTimes } from '$lib/media/timeline-open';
-	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt, type SpeedPoint } from '$lib/media/speed-curve';
+	import { fractionAtProgram, isFlat, normalizeSpeed, programElapsed, rateAt } from '$lib/media/speed-curve';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import Timeline, { type TimelineClip } from '$lib/ui/timeline/Timeline.svelte';
 	import { acceptAll, type TrimSuggestion } from '$lib/domain/trim-suggest';
@@ -24,6 +32,9 @@
 	import { loadPeaks } from '$lib/media/waveform';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import Pick from '$lib/ui/controls/Pick.svelte';
+	import { timecode } from '$lib/domain/viewer-keys';
+	import { shotCardFacts } from '$lib/domain/shot-card';
+	import { pickFor } from '$lib/domain/takes';
 
 	/**
 	 * Rough-cut review of a selection or a cut: each clip's kept span (in → out) plays
@@ -32,15 +43,34 @@
 	 * Keys: space pause · ←/→ one frame (shift: 10) · ↑/↓ previous/next clip ·
 	 * I / O set in / out · Esc close.
 	 */
-	let { project, onUpdated, source = { kind: 'selection' }, onclose }: {
-		project: Project; onUpdated: (project: Project) => void; source?: PlayerSource; onclose?: () => void
+	let { project, onUpdated, source = { kind: 'selection' }, onclose, inline = false, lanes = 'edit', facts = '', actions, below, detailsHost = null, entry = $bindable(0), onscore }: {
+		project: Project; onUpdated: (project: Project) => void; source?: PlayerSource; onclose?: () => void;
+		/**
+		 * Drawn in the work area as a step of the Cut stage rather than over the page (slice 7): it opens paused,
+		 * Esc does not close it, and the selected entry's details go to the dock (detailsHost).
+		 */
+		inline?: boolean;
+		/** Inline only. 'edit': the full lanes (Picture). 'mix': the picture lane, then `below` (Sound's layers). */
+		lanes?: 'edit' | 'mix';
+		/** Inline only: the header's line of facts (domain/cut-stage cutBar). */
+		facts?: string;
+		/** Inline only: buttons at the end of the header (Lock, Build mix). */
+		actions?: Snippet;
+		/** Inline 'mix' only: rows under the picture lane, given where the playhead is. */
+		below?: Snippet<[LaneView]>;
+		detailsHost?: HTMLElement | null;
+		/** The entry at the playhead; set it to jump there (the Cut outline does). */
+		entry?: number;
+		/** Inline only: open the score prompt for this cut. */
+		onscore?: () => void;
 	} = $props();
 
 	const MAX_HEIGHT = 288;
 	const MIN_SPAN = 0.2;
 
 	let canvas = $state<HTMLCanvasElement>();
-	let seekPreview: HTMLVideoElement;
+	// Bound in either layout (over the page, or inline in the Cut stage), so it is state.
+	let seekPreview = $state() as unknown as HTMLVideoElement;
 	let previewVisible = $state(false);
 	let previewSource = '';
 	let previewTarget = -1;
@@ -710,11 +740,41 @@
 		}
 	}
 
+	// The entry at the playhead, both ways: playback moves it, and the Cut outline sets it to jump.
+	$effect(() => { const at = index; untrack(() => { if (entry !== at) entry = at; }); });
+	$effect(() => { const want = entry; untrack(() => { if (clips[want] && want !== index) startClip(want); }); });
+
+	/** Zoom of the edit lanes, driven by keys in the transport row. */
+	let zoom = $state(1);
+	let zoomMax = $state(1);
+
+	const laneClips = $derived(clips.map((clip, i) => ({ start: starts[i] ?? 0, length: lengths[i] ?? 0, wave: takePeaks[clip.src] ?? null, in: clip.in, out: clip.out, speed: clip.speed })));
+	/** The selected entry's takes with the labels the Shots stage gives them (v001…). */
+	const takeRows = $derived.by(() => {
+		if (!current || !currentCard) return [];
+		const pick = pickFor(project.production, currentCard)?.asset_id ?? null;
+		const labels = shotCardFacts(currentCard, project.production.assets, pick);
+		return takeChoices.map((take) => {
+			const mark = labels.takes.find((item) => item.id === take.asset_id);
+			return { id: take.asset_id, label: mark?.label ?? take.name, state: take.rejected ? 'Excluded' : mark?.pick ? 'Pick' : '', excluded: !!take.rejected };
+		});
+	});
+	const promptText = $derived(currentTake?.generation?.prompt ?? currentCard?.video_prompt ?? '');
+	const entryCode = $derived(current ? (project.review_room?.shots[current.cardId]?.code ?? null) : null);
+	/** Shows a node inside another element of the page (the dock), keeping it part of this component. */
+	function intoDock(node: HTMLElement, host: HTMLElement | null) {
+		const place = (target: HTMLElement | null) => { if (target && node.parentNode !== target) target.appendChild(node); };
+		place(host);
+		return { update: place, destroy: () => node.remove() };
+	}
+
 	const keyHints: [string, string][] = [['Space', 'play / pause'], ['← →', 'step a frame · shift 10'], ['↑ ↓', 'previous / next clip'], ['I  O', 'in / out at the playhead'], ['Esc', 'close']];
 
 	function key(event: KeyboardEvent) {
-		if (event.defaultPrevented || event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
-		if (event.key === 'Escape') close();
+		const target = event.target;
+		if (event.defaultPrevented || target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) return;
+		if (event.metaKey || event.ctrlKey || event.altKey) return;
+		if (event.key === 'Escape') { if (!inline) close(); }
 		else if (event.key === ' ') { event.preventDefault(); togglePause(); }
 		else if (event.key === 'ArrowRight') { event.preventDefault(); step(event.shiftKey ? 10 : 1); }
 		else if (event.key === 'ArrowLeft') { event.preventDefault(); step(event.shiftKey ? -10 : -1); }
@@ -831,16 +891,25 @@
 		return found;
 	}
 
+	let resized: ResizeObserver | null = null;
 	onMount(() => {
 		let disposed = false;
 		let everyClipRead = () => {};
 		allRead = new Promise<void>((resolve) => (everyClipRead = resolve));
 		(async () => {
 			try {
+				// In the Cut stage it waits for Space: opening a step must not start the sound.
+				if (inline) paused = true;
 				draw = await attachCanvas(canvas!);
 				const ratio = window.devicePixelRatio || 1;
 				canvas!.width = Math.round(canvas!.clientWidth * ratio);
 				canvas!.height = Math.round(canvas!.clientHeight * ratio);
+				if (inline && canvas) {
+					// The picture fills the work area, so it follows the window.
+					const sized = canvas;
+					resized = new ResizeObserver(() => { sized.width = Math.max(2, Math.round(sized.clientWidth * ratio)); sized.height = Math.max(2, Math.round(sized.clientHeight * ratio)); });
+					resized.observe(sized);
+				}
 				const items = sources();
 				expected = items.length;
 				const failed: string[] = [];
@@ -904,6 +973,7 @@
 		})();
 		return () => {
 			disposed = true;
+			resized?.disconnect();
 			cancelAnimationFrame(frame);
 			for (const voice of voices.values()) releaseVoice(voice);
 			voices.clear();
@@ -915,6 +985,148 @@
 
 <svelte:window onkeydown={key} />
 
+{#snippet transportKeys()}
+	<button type="button" class="ib" onclick={() => startClip(index - 1)} disabled={clips.length < 2} aria-label="Previous clip" title="Previous clip (↑)"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="1.5" y="2" width="1.6" height="8" /><path d="M10.5 2v8L4 6z" /></svg></button>
+	<button type="button" class="ib" onclick={() => step(-1)} disabled={!current} aria-label="Back one frame" title="Back one frame (←)"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M8.5 2v8L2.5 6z" /></svg></button>
+	<button type="button" class="ib play" onclick={togglePause} disabled={!clips.length} aria-label={paused ? 'Play' : 'Pause'} title="Play / pause (Space)">{#if paused}<svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5v9l7-4.5z" /></svg>{:else}<svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="2" y="1.5" width="3" height="9" /><rect x="7" y="1.5" width="3" height="9" /></svg>{/if}</button>
+	<button type="button" class="ib" onclick={() => step(1)} disabled={!current} aria-label="Forward one frame" title="Forward one frame (→)"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><path d="M3.5 2v8l6-4z" /></svg></button>
+	<button type="button" class="ib" onclick={() => startClip(index + 1)} disabled={clips.length < 2} aria-label="Next clip" title="Next clip (↓)"><svg aria-hidden="true" width="11" height="11" viewBox="0 0 12 12" fill="currentColor"><rect x="8.9" y="2" width="1.6" height="8" /><path d="M1.5 2v8L8 6z" /></svg></button>
+{/snippet}
+
+{#if inline}
+	<!-- A step of the Cut stage: header, picture, transport and lanes in the work area (slice 7). -->
+	<div class="inline" role="region" aria-label={lanes === 'mix' ? 'Sound' : 'Picture'}>
+		<div class="bar">
+			<span class="code teal">v{shownVersion}</span>
+			<h1>{cut?.name ?? ''}</h1>
+			<span class="code facts" title={facts}>{facts}{saveState === 'saving' ? ' · saving…' : saveState === 'saved' ? ' · saved' : ''}{unread > 0 ? ` · reading ${clips.length - unread}/${clips.length}` : ''}{buffering && !paused ? ' · buffering' : ''}{!clips.length && expected ? ` · loading ${loading}/${expected}` : ''}</span>
+			<span class="grow"></span>
+			{#if lanes === 'edit' && source.kind === 'cut' && !readOnly && !frozen}
+				{#if matchPreview}
+					<span class="cp amber" title="Previewing: nothing is saved until you keep it">Matched · {matchCounts}</span>
+					<button type="button" class="key go" onclick={keepMatch}>Keep</button>
+					<button type="button" class="key" onclick={undoMatch}>Undo</button>
+				{:else}
+					<button type="button" class="key" onclick={() => void suggestTrims()} disabled={suggesting === 'running' || !clips.length} title="Look for frozen frames, stutter, bad starts and stray frames in each entry's kept span (measured, not guessed). Nothing changes until you accept.">{suggesting === 'running' ? 'Looking…' : 'Suggest trims'}</button>
+				{/if}
+			{/if}
+			{@render actions?.()}
+		</div>
+		<div class="picture">
+			<div class="pin">
+				<canvas bind:this={canvas} class="screen" onclick={togglePause}></canvas>
+				{#if standIn}<div class="cover" style={standIn} aria-hidden="true"></div>{/if}
+				<video bind:this={seekPreview} muted playsinline preload="auto" aria-hidden="true" class="cover peek" style:visibility={previewVisible ? 'visible' : 'hidden'} onloadedmetadata={seekPreviewAfterMetadata} onseeked={showSeekPreview} onloadeddata={showSeekPreview}></video>
+			</div>
+		</div>
+		<div class="transport" role="group" aria-label="Transport">
+			{@render transportKeys()}
+			{#if current}<span class="code where">clip {index + 1} / {clips.length} · frame {frameNumber + 1} / {frameTotal}{rate > 1.001 ? ` · ${rate.toFixed(2)}×` : ''}</span>{/if}
+			<span class="tc code"><b>{timecode(programTime)}</b><span>/ {timecode(total)}</span></span>
+			{#if mixUrl}
+				<button type="button" class="tg" aria-pressed={songOn} onclick={() => { songOn = !songOn; syncSong(); }} title="The built mix of this locked version plays in place of the takes' own sound">Mix {songOn ? 'on' : 'off'}</button>
+			{:else if cut?.music}
+				<button type="button" class="tg" aria-pressed={songOn} onclick={() => { songOn = !songOn; syncSong(); }} title={`${cut.music.name} plays from the cut's start`}>Song {songOn ? 'on' : 'off'}</button>
+			{/if}
+			{#if lanes === 'edit'}
+				<button type="button" class="tg" onclick={() => (zoom = Math.max(1, zoom / 1.6))} disabled={zoom <= 1} aria-label="Zoom out" title="Zoom out (⌘/Ctrl + scroll)">−</button>
+				<span class="code zm">{zoom < 1.05 ? 'Fit' : `${zoom.toFixed(1)}×`}</span>
+				<button type="button" class="tg" onclick={() => (zoom = Math.min(zoomMax, zoom * 1.6))} disabled={zoom >= zoomMax} aria-label="Zoom in" title="Zoom in (⌘/Ctrl + scroll, or pinch)">+</button>
+			{/if}
+		</div>
+		{#if lanes === 'edit'}
+			<div class="lanes">
+				{#if clips.length}
+					<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} onseekstart={beginSeek} onseekend={endSeek} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} {marks} locked={frozen} beats={cut?.music?.beats ?? []} song={cut?.music && !mixUrl ? songPeaks : null} bind:zoom bind:zoomMax showZoom={false} />
+				{:else}
+					<div class="empty"></div>
+				{/if}
+			</div>
+		{:else}
+			<div class="mix">
+				<div class="mrow">
+					<div class="mh"><span class="cp">Picture</span></div>
+					<div class="ml">{#if clips.length}<Timeline clips={timelineClips} {index} {programTime} phase={fraction} onseek={seekProgram} onseekstart={beginSeek} onseekend={endSeek} ontrim={trim} ontrimend={trimEnd} onmove={move} onspeed={speed} locked rows="picture" />{/if}</div>
+				</div>
+				{@render below?.({ time: programTime, total, seek: seekProgram, clips: laneClips })}
+			</div>
+		{/if}
+		{#if error}<p class="said bad" role="alert">{error}</p>{/if}
+		{#if skipped.length}<p class="said">Not analysed: {skipped.join(' · ')}</p>{/if}
+	</div>
+
+	{#if detailsHost && lanes === 'edit' && source.kind === 'cut' && current}
+		<!-- The selected entry, in the dock's Details tab. Editing it pauses playback so the panel stays on it. -->
+		<div class="entry-details" role="group" aria-label="Selected entry" use:intoDock={detailsHost} onpointerdown={() => { if (!paused) togglePause(); }}>
+			<section>
+				<p class="cp">Entry {index + 1} / {clips.length}</p>
+				<p class="title">{current.title}</p>
+				{#if entryCode}<p class="code">{entryCode}</p>{/if}
+			</section>
+			<section>
+				<p class="cp">Take in this cut</p>
+				{#each takeRows as take (take.id)}
+					<button type="button" class="pickrow cp" class:excluded={take.excluded} aria-pressed={take.id === current.assetId} disabled={readOnly || frozen || swapping || take.id === current.assetId} onclick={() => void swapTake(index, take.id)}>
+						<span class="code v">{take.label}</span><span class="state">{take.state}</span>{#if take.id === current.assetId}<span class="code r">{current.duration.toFixed(2)}s</span>{/if}
+					</button>
+				{/each}
+				{#if swapping}<p class="hint">Loading the take…</p>{/if}
+			</section>
+			<section>
+				<p class="cp">Trim and speed</p>
+				<dl>
+					<dt>In</dt><dd class="code">{timecode(current.in)}</dd>
+					<dt>Out</dt><dd class="code">{timecode(current.out)}</dd>
+					<dt>Plays</dt><dd class="code">{(lengths[index] ?? 0).toFixed(2)}s of {current.duration.toFixed(2)}s</dd>
+					<dt>Speed</dt><dd class="code">{isFlat(current.speed) ? '1.00×' : `ramped, up to ${Math.max(...normalizeSpeed(current.speed).map((p) => p.rate)).toFixed(2)}×`}</dd>
+				</dl>
+				<div class="row"><button type="button" class="key" onclick={() => dropEntry(index)} disabled={readOnly || frozen || clips.length < 2} title={clips.length < 2 ? 'A cut keeps at least one entry' : 'Remove this entry from the cut; the take stays on its shot'}>Drop entry</button></div>
+			</section>
+			{#if matchReport[current.id]}
+				{@const r = matchReport[current.id]}
+				<section><p class="cp amber">Matched · {r.mode}</p><p class="hint">{r.note}</p></section>
+			{/if}
+			{#if suggestionCount || suggesting === 'done'}
+				<section>
+					<p class="cp">Suggested trims · {suggestionCount}</p>
+					{#if !suggestionCount}<p class="hint">No trims to suggest.</p>{/if}
+					{#each suggestions[current.id] ?? [] as suggestion (suggestion.frames.join('-') + suggestion.edge)}
+						<div class="sug">
+							<span class="line"><span class="code amber">{timecode(suggestion.at_s)}</span><span class="what">{kindLabel[suggestion.kind]}: {suggestion.note}</span></span>
+							<span class="row"><button type="button" class="key" onclick={() => acceptSuggestion(index, suggestion)}>Accept</button><button type="button" class="key" onclick={() => dismissSuggestion(current.id, suggestion)}>Dismiss</button></span>
+						</div>
+					{/each}
+					{#if suggestionCount && !(suggestions[current.id]?.length)}<p class="hint">None on this entry; the timeline marks them in amber.</p>{/if}
+					{#if suggestionCount}<div class="row"><button type="button" class="key" onclick={acceptAllSuggestions}>Accept all</button><button type="button" class="key" onclick={() => { suggestions = {}; suggesting = ''; }}>Dismiss all</button></div>{/if}
+				</section>
+			{/if}
+			<section>
+				<p class="cp">Song</p>
+				{#if cut?.music}
+					<p class="title">{cut.music.name}</p>
+					<p class="code">{cut.music.bpm} BPM · {cut.music.duration_s.toFixed(1)}s · from the cut's start</p>
+					<div class="row">
+						{#if !frozen && !readOnly && !matchPreview}<button type="button" class="key" onclick={() => void matchMusic()} disabled={matching || !clips.length} title="Slide each entry within its own footage to where its sound matches the song, keeping your order; entries that can't match confidently snap their cut to the nearest beat. You preview it before anything is saved.">{matching ? 'Matching…' : 'Match to music'}</button>{/if}
+						<button type="button" class="key" onclick={() => void removeSong()} title="Detach the song from this cut (the file stays in the project)">Remove</button>
+						{#if onscore}<button type="button" class="key" onclick={onscore} title="GhostSuno: Suno's three fields for this cut (nothing is sent)">Score prompt</button>{/if}
+					</div>
+				{:else}
+					<p class="hint">No song on this cut.</p>
+					<div class="row">
+						<label class={['key', attaching && 'busy']} title="Attach a song: it plays from the cut's start, and its beat grid is worked out for Match to music">{attaching ? 'Attaching…' : 'Attach song'}<input type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.aif,.aiff" class="file" disabled={attaching} onchange={(event) => { void attachSong(event.currentTarget.files?.[0]); event.currentTarget.value = ''; }} /></label>
+						{#if onscore}<button type="button" class="key" onclick={onscore} title="GhostSuno: Suno's three fields for this cut (nothing is sent)">Score prompt</button>{/if}
+					</div>
+				{/if}
+			</section>
+			<section>
+				<p class="cp">Source</p>
+				<p class="code cut1" title={currentTake?.name ?? current.assetId}>{currentTake?.name ?? current.assetId}{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</p>
+				{#if currentTake?.job_id}<p class="code cut1">{currentTake.generation?.model ?? 'job'} · {currentTake.generation?.resolution ?? ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}</p>{/if}
+				{#if promptText}<p class="prompt" title={promptText}>{promptText}</p>{/if}
+			</section>
+		</div>
+	{/if}
+{:else}
 <div class="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-nr-deep/95 px-4 pb-6 pt-5 sm:px-6" role="dialog" aria-label={source.kind === 'cut' ? 'Cut player' : 'Sequence player'}>
 	<div class="w-full max-w-[1320px]">
 		<div class="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 font-mono text-[11px] text-nr-muted">
@@ -1058,6 +1270,8 @@
 	</div>
 </div>
 
+{/if}
+
 <style>
 	.ctl { border: 1px solid var(--color-nr-line); border-radius: 2px; background: transparent; padding: 0 8px; color: var(--color-nr-muted); font: 600 9px/20px var(--font-sans); letter-spacing: .12em; text-transform: uppercase; transition: border-color 140ms ease, color 140ms ease; }
 	.ctl:hover:not(:disabled) { border-color: color-mix(in srgb, var(--color-nr-accent) 55%, transparent); color: var(--color-nr-ink); }
@@ -1095,4 +1309,67 @@
 	.source dd { margin: 0; color: var(--color-nr-muted); overflow-wrap: anywhere; }
 	.source .prompt { max-height: 3.6em; overflow-y: auto; }
 	.name { width: 160px; border: 1px solid var(--color-nr-accent-deep); background: var(--color-nr-surface); padding: 2px 6px; color: var(--color-nr-ink); outline: none; border-radius: 2px; }
+
+	/* The inline steps of the Cut stage (look B, DESIGN.md). */
+	.inline { display: flex; height: 100%; min-height: 0; flex-direction: column; color: var(--color-ink-2); font: 12.5px/1.35 var(--font-sans); }
+	.inline .bar { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 2px 7px; padding: 10px 14px 6px; }
+	.inline h1 { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink); font-size: 13px; font-weight: 400; }
+	.inline .code, .entry-details .code { color: var(--color-ink-3); font: 10.5px var(--font-mono); letter-spacing: 0.01em; white-space: nowrap; }
+	.inline .code.teal { color: var(--color-teal); }
+	.inline .facts { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+	.inline .grow { flex: 1; }
+	.amber { color: var(--color-amber) !important; }
+	.inline .picture { display: flex; min-height: 160px; flex: 1; align-items: center; justify-content: center; overflow: hidden; padding: 2px 14px 4px; }
+	.inline .pin { position: relative; height: 100%; max-width: 100%; aspect-ratio: 16 / 9; }
+	.inline .screen { display: block; width: 100%; height: 100%; border-radius: 6px; background: #000; cursor: pointer; }
+	.inline .cover { position: absolute; inset: 0; border-radius: 6px; background-color: #000; background-repeat: no-repeat; pointer-events: none; }
+	.inline .peek { width: 100%; height: 100%; object-fit: contain; }
+	.inline .transport { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 10px 2px; }
+	.ib { display: inline-flex; width: 22px; height: 22px; flex: none; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: none; padding: 0; color: var(--color-ink-3); cursor: pointer; }
+	.ib:hover:not(:disabled) { color: var(--color-ink); }
+	.ib.play { color: var(--color-ink); }
+	.ib:disabled { opacity: 0.4; cursor: default; }
+	.ib:focus-visible { outline: 2px solid var(--color-teal); outline-offset: -2px; }
+	.inline .where { padding-left: 8px; }
+	.inline .tc { display: flex; gap: 6px; margin: 0 auto; }
+	.inline .tc b { font-weight: 400; color: var(--color-amber); }
+	.inline .zm { min-width: 30px; text-align: center; }
+	.inline .lanes { flex: none; padding: 6px 14px 12px; }
+	.inline .empty { height: 100px; }
+	.inline .mix { display: flex; flex: none; flex-direction: column; gap: 3px; padding: 8px 14px 6px; }
+	.inline .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 10px; }
+	.inline .mh { display: flex; min-width: 0; height: 22px; flex: 0 0 284px; align-items: center; color: var(--color-ink-3); }
+	.inline .ml { position: relative; min-width: 0; flex: 1 1 320px; }
+	.inline .said { margin: 0; flex: none; padding: 0 14px 8px; color: var(--color-amber); font: 10.5px var(--font-mono); }
+	.inline .said.bad { color: #ff7a6b; }
+	@media (pointer: coarse) { .ib { width: 36px; height: 36px; } }
+
+	.entry-details { display: flex; flex-direction: column; gap: 14px; padding: 12px 8px 10px; color: var(--color-ink-2); font: 12.5px/1.35 var(--font-sans); }
+	.entry-details section { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+	.entry-details p { margin: 0; padding: 0 6px; }
+	.entry-details .cp { color: var(--color-ink-3); padding-bottom: 1px; }
+	.entry-details .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink); }
+	.entry-details .hint { color: var(--color-ink-3); font-size: 12px; line-height: 1.5; }
+	.entry-details .cut1 { overflow: hidden; text-overflow: ellipsis; }
+	.entry-details .prompt { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; color: var(--color-ink-2); font-size: 12px; line-height: 1.45; }
+	.pickrow { display: flex; width: 100%; height: 22px; align-items: center; gap: 8px; border: 0; border-radius: 5px; background: none; padding: 0 6px; color: var(--color-ink-2); text-align: left; cursor: pointer; }
+	.pickrow:hover:not(:disabled) { color: var(--color-ink); }
+	.pickrow[aria-pressed='true'] { background: var(--color-selected); color: var(--color-teal-ink); cursor: default; }
+	.pickrow .v { color: inherit !important; }
+	.pickrow .state { color: var(--color-ink-3); }
+	.pickrow[aria-pressed='true'] .state { color: var(--color-teal); }
+	.pickrow.excluded .v { text-decoration: line-through; }
+	.pickrow .r { margin-left: auto; }
+	.pickrow:disabled:not([aria-pressed='true']) { opacity: 0.45; cursor: default; }
+	.entry-details dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; margin: 0 6px 6px; font-size: 12px; }
+	.entry-details dt { color: var(--color-ink-3); }
+	.entry-details dd { margin: 0; color: var(--color-ink) !important; }
+	.entry-details .row { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 6px 0; }
+	.sug { display: flex; flex-direction: column; gap: 3px; padding: 2px 0 4px; }
+	.sug .line { display: flex; min-width: 0; gap: 6px; padding: 0 6px; white-space: nowrap; }
+	.sug .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: #c8c8ce; }
+	.sug .row { padding-top: 0 !important; }
+	.key.busy { opacity: 0.5; }
+	.file { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+	label.key { position: relative; }
 </style>

@@ -25,7 +25,7 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 | Other branches here | none with work of their own: `claude/gracious-easley-99511a` (the slice 8 design, with its worktree) is merged into `ux-streamline` |
 
 Slices 0 and 1 are done and live. Slices 2 and 3 are mostly done and live. Slice 4 is built and verified on the
-local test copy, not released. Slices 5 to 7 are not started. Slice 8 is designed and its first steps are built (rules, render providers, the
+local test copy, not released. Slices 5 and 6 are not started here; slice 7 is built on its own branch. Slice 8 is designed and its first steps are built (rules, render providers, the
 prompt-change highlight), by tests only: see its status note in `PLAN.md`.
 
 ## Rules that are not written anywhere else
@@ -149,12 +149,12 @@ Steps in `PLAN.md`. `src/lib/ui/PrepWorkspace.svelte` is the screen; the mock is
 the same 16:9 size; a "Found in the story" row). The drop rules already know a picture on a reference is a source
 image (`dropMeaning` in `src/lib/domain/drops.ts`, kind `source-image`); nothing calls that branch yet.
 
-### Slice 7 · Cut: not started (independent of 4, 5 and 6)
+### Slice 7 · Cut: built on its own branch, not merged
 
-Steps in `PLAN.md`. Cut is not mocked. The Cut stage's views exist in the shell (Picture, Sound, Export in
-`src/lib/domain/stages.ts`) and show the old screens: the cuts list and `SequencePlayer.svelte` (which now opens from
-what a cut already knows and reads files while playing), `SoundStage.svelte`, `ExportStage.svelte`. The spec says
-this pass only moves Cut into the shell and the look; how cuts, mixing, export and QC work does not change.
+Mocked (`mockups/Cut.html`, agreed 2026-11-24) and built on `claude/laughing-haibt-7a8ce2`: see slice 7's status note in
+`PLAN.md`. Left: merge it into `ux-streamline` (it touches `src/routes/+page.svelte` and `ProductionWorkspace.svelte`,
+which other slices touch too); one real lock, mix, export and QC through the new screens on a project the operator
+names; Details on a phone.
 
 ### Slice 8 · Re-render queue: steps 1, 2 and half of 3 built; no screen yet
 

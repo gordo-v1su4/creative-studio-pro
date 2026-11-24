@@ -410,6 +410,15 @@ Goal: Cuts, Sound and Export in the shell, with the viewer's lanes.
 
 Done when: a cut can be opened, locked, mixed and exported without leaving the Cut stage.
 
+**Status 2026-11-24: built on `claude/laughing-haibt-7a8ce2` (not merged into `ux-streamline`, not released).** The mock (`mockups/Cut.html`) was agreed by the operator as drawn, with the eleven choices listed under it.
+
+- Rules: `src/lib/domain/cut-stage.ts` (test-first, `tests/domain/cut-stage.test.ts`): the steps, a cut's versions newest first with Editing / Locked · mixed · exported, which cut and version each step shows (Sound and Export only ever a locked one), what stops a step, the header's line of facts and the Next line.
+- Screens: `src/lib/ui/cut/` (`CutOutline`, `CutStage`, `SoundStep`, `ExportStep`, `EffectsProposal`, the shared `cut-view` and `sound-desk` state). The cut player (`SequencePlayer.svelte`) has an inline mode that is the Picture step: it opens paused, Esc does not close it, and the selected entry (take, trim and speed, drop, suggested trims, song, source) goes to Details. `timeline/Timeline.svelte` and `SpeedLane.svelte` now draw the viewer's lanes (picture, scrub, take audio, music, speed; rectangles, no borders), also in the selection player over Shots. Gone: `SoundStage`, `ExportStage`, `QcReport`, and the old Cuts tab with its "spine" preview and "Finalize all picks".
+- Shell: the outline is the Cut outline on this stage (cuts; the open cut's versions; the entries of the version on screen, which jump the player; assemblies, which open on the canvas); below 768px a Cuts key opens it over the work area. The Agent tab shows the effects pass while Sound is open. The Next line speaks of the version on screen. Look rules now cover `src/lib/ui/cut` and `src/lib/ui/timeline`.
+- Checked: `bun run check` (0 errors, the 2 old warnings), `bun test` (only the known drawtext failure), `bun run build`; in the browser at 1440px and 390px on "Blood Rush — Teaser Trailer". No cut on any local project has ever been locked or mixed, so Sound and Export were looked at with a stand-in for `fetch` in the page that showed "Rough cut 2 · tight" as locked v1 with an invented mix, export and QC report; nothing was saved.
+- **Not tried for real:** pressing Lock, Unlock, Build mix, Suggest effects, Export or Run QC through the new screens (the calls are the old screens' calls, moved). A real lock leaves a version behind and a real export stores a deliverable in Review Room, so they wait for the operator's word or a throwaway project without Review Room.
+- Known gaps: Details is hidden below 1024px (as on Shots), so a phone cannot reach an entry's take, trims or song; a take's own sound lane fills in only as clips are read, as before; the stage view toggles stay in the top bar, where Grid and Canvas are in the built shell (the mock drew them in the work area's header); the dev server's file watcher ignores `.claude/`, so in a worktree under it the server must be restarted to see an edit.
+
 ### 8 · Re-render queue
 
 Goal: from "Needs changes" to a new take without leaving the review, with one place that says where and how every take was made.

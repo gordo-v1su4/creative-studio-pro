@@ -10,6 +10,8 @@
 	import ProjectModelPanel from './ProjectModelPanel.svelte';
 	import StoryChat from './StoryChat.svelte';
 	import AgentActions from '$lib/ui/story/AgentActions.svelte';
+	import EffectsProposal from '$lib/ui/cut/EffectsProposal.svelte';
+	import { soundDesk } from '$lib/ui/cut/sound-desk.svelte';
 
 	let { open = $bindable(false), projectTitle = '', project = null }: { open?: boolean; projectTitle?: string; project?: Project | null } = $props();
 	type TranscriptMessage = Pick<UIMessage, 'id' | 'role'> & { text: string };
@@ -218,7 +220,7 @@
 			<button type="button" class="agent-key" onclick={() => (open = false)} aria-label="Close the Agent">esc</button>
 		</header>
 
-		{#if project && !project.series}<AgentActions {project} />{/if}
+		{#if project && soundDesk.open}<EffectsProposal />{:else if project && !project.series}<AgentActions {project} />{/if}
 		{#if mode === 'story' && project}
 			<div class="min-h-0 grow px-4 py-4"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} /></div></div>
 		{:else}

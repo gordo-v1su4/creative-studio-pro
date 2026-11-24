@@ -9,9 +9,9 @@
 	 */
 	let { points, phase = null, onchange, locked = false }: { points: SpeedPoint[] | undefined; phase?: number | null; onchange: (points: SpeedPoint[]) => void; locked?: boolean } = $props();
 
-	const H = 72;
-	const TOP = 8;
-	const BOTTOM = H - 8;
+	const H = 48;
+	const TOP = 5;
+	const BOTTOM = H - 5;
 	let svg = $state<SVGSVGElement>();
 	let W = $state(400);
 	let drag = $state<number | null>(null);
@@ -84,7 +84,7 @@
 	bind:this={svg}
 	viewBox={`0 0 ${W} ${H}`}
 	preserveAspectRatio="none"
-	class={['block h-[72px] w-full touch-none', locked ? 'cursor-default opacity-60' : 'cursor-crosshair']}
+	class={['block h-[48px] w-full touch-none', locked ? 'cursor-default opacity-60' : 'cursor-crosshair']}
 	role="group"
 	aria-label="Speed ramp: click to add a point, drag to shape, double-click to remove"
 	tabindex="-1"
@@ -94,27 +94,26 @@
 	onpointercancel={() => (drag = null)}
 	onkeydown={key}
 >
-	<rect width={W} height={H} fill="#090b0c" />
+	<rect width={W} height={H} fill="#141417" />
 	{#each [1, 1.5, 2, 2.5, 3, 3.5, 4] as rate (rate)}
-		<line x1="0" x2={W} y1={y(rate)} y2={y(rate)} stroke={rate === 1 ? '#526c65' : rate % 1 === 0 ? '#303c40' : '#1b2427'} stroke-width=".6" />
+		<line x1="0" x2={W} y1={y(rate)} y2={y(rate)} stroke={rate === 1 ? '#3f3f46' : rate % 1 === 0 ? '#26262b' : '#1c1c20'} stroke-width=".6" />
 	{/each}
-	<path d={`${path} L${x(1)},${BOTTOM} L${x(0)},${BOTTOM}Z`} fill="#99f6e412" pointer-events="none" />
-	<path d={path} fill="none" stroke="#99f6e4" stroke-width="1.5" pointer-events="none" />
+	<path d={`${path} L${x(1)},${BOTTOM} L${x(0)},${BOTTOM}Z`} fill="#7dd9c812" pointer-events="none" />
+	<path d={path} fill="none" stroke="#7dd9c8" stroke-width="1.2" pointer-events="none" />
 	{#if phase !== null}
-		<line x1={x(phase)} x2={x(phase)} y1="0" y2={H} stroke="#b9eee0" stroke-width=".8" opacity=".6" pointer-events="none" />
-		<circle cx={x(phase)} cy={y(rateAt(curve, phase))} r="2.6" fill="#c0f6e7" pointer-events="none" />
+		<rect x={x(phase) - 1} y="0" width="2" height={H} fill="#d9f7ef" opacity=".7" pointer-events="none" />
 	{/if}
 	{#each curve as point, i (i)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<g class="cursor-grab" onpointerdown={(event) => down(event, i)} ondblclick={(event) => { event.stopPropagation(); remove(i); }}>
-			<circle cx={x(point.x)} cy={y(point.rate)} r="9" fill="transparent" />
-			<circle cx={x(point.x)} cy={y(point.rate)} r="2.8" fill="#090b0c" stroke={selected === i ? '#e5fff7' : '#99f6e4'} stroke-width="1.35" pointer-events="none" />
+			<rect x={x(point.x) - 9} y={y(point.rate) - 9} width="18" height="18" fill="transparent" />
+			<rect x={x(point.x) - 2} y={y(point.rate) - 4} width="4" height="8" fill={selected === i ? '#cdf3ea' : '#7dd9c8'} pointer-events="none" />
 		</g>
 	{/each}
 	{#each [1, 2, 3, 4] as rate (rate)}
-		<text x="4" y={y(rate) - 2} fill="#49645f" font-size="8" font-family="var(--font-mono)" pointer-events="none">{rate}×</text>
+		<text x="4" y={y(rate) - 2} fill="#7c7c86" font-size="8" font-family="var(--font-mono)" pointer-events="none">{rate}×</text>
 	{/each}
 </svg>
 {#if selected !== null && curve[selected]}
-	<div class="mt-1 font-mono text-[9px] text-[#6a7a8a]">{curve[selected].rate.toFixed(2)}× at {(curve[selected].x * 100).toFixed(0)}% · alt = free · double-click / delete removes</div>
+	<div class="mt-1 font-mono text-[9.5px] text-ink-3">{curve[selected].rate.toFixed(2)}× at {(curve[selected].x * 100).toFixed(0)}% · alt = free · double-click / delete removes</div>
 {/if}

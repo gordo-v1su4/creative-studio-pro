@@ -27,6 +27,10 @@
 	import ProjectMenu from '$lib/ui/shell/ProjectMenu.svelte';
 	import Outline from '$lib/ui/shell/Outline.svelte';
 	import { STAGES, restoreTab, stageOfTab, tabForStage, viewsOfStage } from '$lib/domain/stages';
+	import { cutNext, openCutOf, shownVersion, stepOfTab } from '$lib/domain/cut-stage';
+	import CutOutline from '$lib/ui/cut/CutOutline.svelte';
+	import { cutsOf } from '$lib/domain/cuts';
+	import { cutView } from '$lib/ui/cut/cut-view.svelte';
 	import type { StageId, WorkspaceTab } from '$lib/domain/stages';
 	import { nextLine } from '$lib/domain/next-line';
 	import { storyNextLine } from '$lib/domain/story-levels';
@@ -206,7 +210,14 @@
 	/** The project list has been read and it is empty. */
 	let noProjects = $state(false);
 	const doorShown = $derived(doorOpen || (!activeProject && noProjects));
-	const next = $derived(doorShown ? 'Say the idea, or ask for a pitch' : nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room), story: storyNextLine(activeProject) } : null));
+	// On the Cut stage the Next line speaks of the version on screen.
+	const cutNextLine = $derived.by(() => {
+		if (!activeProject || currentStage !== 'cut') return null;
+		const step = stepOfTab(currentTab);
+		const open = openCutOf(cutsOf(activeProject.production), cutView.cutId);
+		return cutNext(open, open ? shownVersion(open, cutView.version, step) : null, step);
+	});
+	const next = $derived(cutNextLine ?? (doorShown ? 'Say the idea, or ask for a pitch' : nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room), story: storyNextLine(activeProject) } : null)));
 	
 	const secondaryNav = [
 		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
@@ -1485,7 +1496,11 @@
 		{#if !canvasOpen}
 			<!-- The outline: the project's groups and shots. On the canvas the layers panel takes its place. -->
 			<aside class="wa-outline hidden min-h-0 overflow-hidden rounded-[10px] bg-panel md:mr-[3px] md:block">
+				{#if currentStage === 'cut' && !doorShown}
+					<CutOutline project={activeProject} tab={currentTab} onOpenAssembly={(viewId) => { showGroup(viewId); openWorkspace('canvas'); }} />
+				{:else}
 				<Outline project={doorShown ? null : activeProject} fresh={doorShown} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} onMoveShots={(groupId, cardIds) => moveSelectedTo(groupId, cardIds)} onAddFiles={(groupId, files) => importFiles(files, { groupId, unbenched: true })} level={currentTab === 'story' ? ui.storyLevel : null} onOpenLevel={(level) => { ui.storyLevel = level; openWorkspace('story'); }} />
+				{/if}
 			</aside>
 		{/if}
 		<aside class={['rail wa-rail relative hidden bg-panel md:flex md:flex-col', canvasOpen && !railCollapsed ? 'rounded-[10px] md:mr-[3px]' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
@@ -1728,7 +1743,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files, place) => importFiles(files, place?.cardId ? { cardId: place.cardId } : { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} {detailsHost} onOpenDetails={() => { dockTab = 'details'; /* Below 1024px the dock lies over the work, so it is not opened for the viewer. */ if (window.matchMedia('(min-width: 1024px)').matches) { ui.chatMode = 'dock'; ui.chatOpen = true; } }} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files, place) => importFiles(files, place?.cardId ? { cardId: place.cardId } : { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} {detailsHost} onOpenAgent={() => { dockTab = 'agent'; ui.chatMode = 'dock'; ui.chatOpen = true; }} onOpenDetails={() => { dockTab = 'details'; /* Below 1024px the dock lies over the work, so it is not opened for the viewer. */ if (window.matchMedia('(min-width: 1024px)').matches) { ui.chatMode = 'dock'; ui.chatOpen = true; } }} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">
