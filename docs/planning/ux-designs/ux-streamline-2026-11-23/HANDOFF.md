@@ -25,8 +25,9 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 | Other branches here | none with work of their own: `claude/gracious-easley-99511a` (the slice 8 design, with its worktree) is merged into `ux-streamline` |
 
 Slices 0 and 1 are done and live. Slices 2 and 3 are mostly done and live. Slice 4 is built and verified on the
-local test copy, not released. Slices 5 and 6 are not started here; slice 7 is built on its own branch. Slice 8 is designed and its first steps are built (rules, render providers, the
-prompt-change highlight), by tests only: see its status note in `PLAN.md`.
+local test copy, not released. Slices 5 and 6 are not started here; slice 7 is built and merged (see its section below). Slice 8 is designed and steps 1 to 4 are built (rules, render providers, the prompt
+change, "Queue re-render" in the viewer up to Approve): see its status note in `PLAN.md`. Slice 6 (Prep intake) was
+started on 2026-11-24 in a thread of its own, in its own worktree.
 
 ## Rules that are not written anywhere else
 
@@ -130,7 +131,7 @@ What is left:
    outside this checkout).
 4. Not built: the front door has no Agent of its own before a project exists (the dock belongs to the open
    project); a code freed by removing a scene is not remembered; episodes imported from a series keep their own
-   codes and show no levels; the Agent's dock and the Settings page still carry the old look; the teaser's video
+   codes and show no levels; the Settings page still carries the old look (the Agent's dock was restyled on 2026-11-24: purple wash, no pink, no boxes; DECISIONS.md has the rules, and the mocks in `mockups/` still show the earlier pink version); the teaser's video
    model and aspect are fixed, and the Trailer House panel's character image and live prompt highlighting were
    not carried over.
 5. Checking tip: buttons that call the model run at once, and the local copy has a model configured. The checks
@@ -149,20 +150,19 @@ Steps in `PLAN.md`. `src/lib/ui/PrepWorkspace.svelte` is the screen; the mock is
 the same 16:9 size; a "Found in the story" row). The drop rules already know a picture on a reference is a source
 image (`dropMeaning` in `src/lib/domain/drops.ts`, kind `source-image`); nothing calls that branch yet.
 
-### Slice 7 · Cut: built on its own branch, not merged
+### Slice 7 · Cut: built and merged into `ux-streamline`, not released
 
-Mocked (`mockups/Cut.html`, agreed 2026-11-24) and built on `claude/laughing-haibt-7a8ce2`: see slice 7's status note in
-`PLAN.md`. Left: merge it into `ux-streamline` (it touches `src/routes/+page.svelte` and `ProductionWorkspace.svelte`,
-which other slices touch too); one real lock, mix, export and QC through the new screens on a project the operator
-names; Details on a phone.
+Mocked (`mockups/Cut.html`, agreed 2026-11-24), built on `claude/laughing-haibt-7a8ce2` and merged into `ux-streamline`
+the same day at the operator's word: see slice 7's status note in `PLAN.md`. Left: one real lock, mix, export and QC
+through the new screens on a project the operator names; Details on a phone.
 
-### Slice 8 · Re-render queue: steps 1, 2 and half of 3 built; no screen yet
+### Slice 8 · Re-render queue: steps 1 to 4 and 9 built; nothing can be priced or sent yet
 
 Designed with the operator on 2026-11-24 in three rounds of questions. Read, in this order: decisions 27 to 40 and the facts under them in `DECISIONS.md`; slice 8 in `PLAN.md` (ten ordered steps and a "Done when"); stories 56 to 70 and the implementation decisions in `SPEC.md`; "Rendering" in the root `CONTEXT.md`; `docs/adr/0011`.
 
 The design in one paragraph: a take marked Needs changes offers "Queue re-render" with one box for what to change. The re-render reuses that take's still, references and settings; the Agent rewrites only the prompt, with the skill that wrote it, and the operator sees the change highlighted and approves it. Everything approved is priced together and sent on one Confirm. Each render is a run on the operator's Trigger.dev, so it finishes with the browser closed; this app does the provider's work. A finished re-render is another take, here and in Review Room, awaiting review, never the pick. The Queue view (third view of Shots) is a sortable table, one line per render, saying where and how each was made.
 
-Steps 1 and 2 and the highlight of step 3 are built (status note in `PLAN.md`, with what was decided on the way and what about fal.ai is untried). Carry on with the rest of step 3 (the server command that asks the Agent for the prompt change, tested with a fake model), then step 4. What needs the operator:
+Steps 1 to 4 and step 9 (draft and Finalize are out of the app) are built (status note in `PLAN.md`, with what was decided on the way, what was walked in the browser and what was not, and what about fal.ai is untried). To try the block in the browser without touching Review Room, make a throwaway local project with a video take whose `review_status` is `needs_changes` and no `review_room`, and delete its folder afterwards. What needs the operator:
 
 - **Step 6**: creating the Trigger.dev project and its production key (the dashboard asks only for a name; they are signed in at `trigger.v1su4.dev`). Do not create it for them without their word.
 - **The fal.ai key**: they add `FAL_KEY` to the environment file themselves, later. Until then fal.ai is listed as not set up.
@@ -174,7 +174,7 @@ Things that will trip you:
 
 - "Make a take" refuses a shot whose pick is a video, and a video take does not record the still it started from. Re-render cannot be built on `stillOf` in `src/lib/server/animate.ts` as it stands; the render record must carry the still and references (step 1), and older takes fall back to their Higgsfield job id.
 - `applySettleGeneration` in `src/lib/domain/animate.ts` makes a finished take the pick. A re-render must not (decision 34); `pushTake` already stores a take that is not the pick without making it current in Review Room.
-- The app still sends `draft` for every 480p render and offers Finalize. Both go (decision 33, step 9); the CLI still accepts `draft`, so nothing will fail to remind you.
+- The app no longer sends `draft` or offers Finalize (step 9, done). No render has been sent since, so the first real send is also the first proof that the CLI takes a Seedance 2.5 request without the flag.
 - The Higgsfield CLI has no seed setting. Nothing can promise that a second render matches the first.
 - Trigger.dev tasks share no files with the app and are built and deployed only on the App VM (`scripts/deploy-trigger-vm100.sh` in `review-room-svelte`). Keep the SDK, the build package and the CLI on the platform's version (4.8.8 on 2026-11-22); the runbook lists what broke before.
 - Pindeck and Stack Structure show live runs with React hooks; this app is Svelte, so the way to subscribe has to be read from Trigger.dev's documentation.

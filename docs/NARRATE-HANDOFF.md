@@ -102,6 +102,8 @@ Board follow-up (operator request): shift-drag box select (`selectionKey="Shift"
 Generation runs through the **Higgsfield CLI** (`src/lib/server/higgsfield.ts`), not the public REST API: the CLI uses the operator's higgsfield.ai account (plan credits) and supports Seedance draft mode — `seedance_2_5` with `draft: true` (480p) and finalize via `--draft false --draft_job_id <id> --resolution 1080p` with the draft's own prompt/duration. Prices come from `generate cost` (free). On Windows the binary is `%APPDATA%/npm/node_modules/@higgsfield/cli/vendor/hf.exe`; the prompt is passed as a JSON file (`--prompt @file.json`).
 
 Built and tested (backend):
+> **2026-11-24: draft mode and Finalize were removed** (streamlined-UI plan, slice 8, decision 33): Higgsfield no longer finishes a 480p draft at 1080p from the same render. The Finalize route, panel, card badge, banner and `domain/finalize.ts` are gone; sends no longer pass `draft`; linking takes to their jobs moved to `POST /api/projects/[id]/renders` (`link_jobs`). What follows about Finalize is history.
+
 - `src/lib/domain/finalize.ts` — window state (open / closing last 48 h / closed, 7 days from `generation.draft_created_at`), `draftsClosingSoon` (3 days, soonest first), `finalizeRequest`, `applyLinkDraftJobs`, `finalizedTake`.
 - Gateway `link_draft_jobs` command; `recordFinalizes`; `applySettleGeneration` swaps a finalized take's media in place (trims, ramp, pick kept; draft file kept as `generation.draft_url`).
 - `src/lib/server/animate.ts` — `quoteFinalize` and `sendFinalize` (re-quotes; blocks on a higher price or short balance before any submit). The existing Animate poller settles finalize jobs too.

@@ -121,9 +121,9 @@ test('a shot on the canvas is the grid card, and its actions float beside it ins
 	expect(markup(node)).toContain('<ShotCard {card} {facts} {takes} onpick={(takeId) => story.onPick?.(takeId)} pick={shown} {selected}');
 	expect(markup(node)).toContain('draggable={false}');
 	expect(markup(node)).toContain('<NodeToolbar position={Position.Bottom}');
-	// Everything the old card carried is in the bar: takes, bench, hold, animate, finalize, split, exclude, references.
+	// Everything the old card carried is in the bar: takes, bench, hold, animate, split, exclude, references.
 	const bar = markup(node).slice(markup(node).indexOf('<NodeToolbar'), markup(node).indexOf('</NodeToolbar>'));
-	for (const action of ['step(-1)', 'onBench', 'openHold', 'onAnimate', 'onFinalize', 'onSplit', 'restore', 'reject', 'onAttachPrevious', 'onRemoveReference']) expect(bar).toContain(action);
+	for (const action of ['step(-1)', 'onBench', 'openHold', 'onAnimate', 'onSplit', 'restore', 'reject', 'onAttachPrevious', 'onRemoveReference']) expect(bar).toContain(action);
 	expect(node).not.toContain('face-tab');
 });
 

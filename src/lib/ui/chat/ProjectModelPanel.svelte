@@ -62,15 +62,15 @@
 	});
 </script>
 
-<div class="agent-model rounded-md border border-border-default px-3 py-2 text-[12px]">
-	<div class="flex flex-wrap items-center gap-2">
-		<span class="meta-label">Agent model</span>
+<div class="agent-model">
+	<div class="line">
+		<span class="cp">Model</span>
 		{#if view}
-			<b>{view.effective ? `${PROVIDER_LABELS[view.effective.provider]} · ${view.effective.model}` : 'none configured'}</b>
-			<span class="text-text-dim">{locked ? `locked since ${view.locked_at?.slice(0, 10)}` : view.source === 'project' ? 'project override · locks on first run' : 'app default · locks on first run'}</span>
+			<span class="name">{view.effective ? `${PROVIDER_LABELS[view.effective.provider]} · ${view.effective.model}` : 'none configured'}</span>
+			<span class="dim">{locked ? `locked since ${view.locked_at?.slice(0, 10)}` : view.source === 'project' ? 'project override · locks on first run' : 'app default · locks on first run'}</span>
 		{/if}
 		<span class="grow"></span>
-		<button type="button" class="btn px-2 py-0.5" onclick={() => void openEditor()} aria-expanded={editing}>{editing ? 'Cancel' : locked ? 'Switch model' : 'Change'}</button>
+		<button type="button" class="tg" onclick={() => void openEditor()} aria-expanded={editing}>{editing ? 'Cancel' : locked ? 'Switch model' : 'Change'}</button>
 	</div>
 	{#if view && !view.available && view.message}
 		<p class="mt-1 text-gate-failed" role="alert">{view.message}</p>
@@ -108,3 +108,10 @@
 		<p class="mt-1 text-gate-failed" role="alert">{error}</p>
 	{/if}
 </div>
+
+<style>
+	.agent-model { color: var(--color-ink-3); font-size: 12px; }
+	.line { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+	.name { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--color-ink-2); }
+	.dim { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; }
+</style>

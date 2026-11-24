@@ -1,7 +1,7 @@
 <script lang="ts">
 	/**
 	 * A shot on the canvas (DESIGN.md: Canvas): the same card the grid shows, at rest. Its actions (takes, bench,
-	 * hold, animate, finalize, split, exclude, references) sit in a bar that floats beside the card while it is
+	 * hold, animate, split, exclude, references) sit in a bar that floats beside the card while it is
 	 * selected, so the card itself never changes size. The story beat and prompts are in the dock's Details tab.
 	 */
 	import { referenceImageUrl } from '$lib/media/reference-images';
@@ -15,8 +15,6 @@
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import { isUnder2K } from '$lib/domain/media';
-	import { draftWindow, timeLeft } from '$lib/domain/finalize';
-	import { clock } from '$lib/ui/clock.svelte';
 
 	type StoryCardNodeData = {
 		card: StoryCard | null;
@@ -34,10 +32,6 @@
 		onAnimate?: () => void;
 		/** A generation from this shot is still running. */
 		animating?: boolean;
-		/** Finalize a draft take to 1080p (opens the priced confirm). */
-		onFinalize?: (takeId: string) => void;
-		/** Takes with a finalize sent and not yet landed. */
-		finalizing?: string[];
 		/** Split a video take into a group of shot beats (scene detection). */
 		onSplit?: (takeId: string) => void;
 		/** The take being split right now, if any. */
@@ -117,9 +111,6 @@
 	/** "Shots" arms on the first click and splits on the second. */
 	let armedSplit = $state<string | null>(null);
 
-	// Finalize: a draft take's 7-day window to re-render at 1080p; red for the last 48 h, gone once closed.
-	let shownFinalizing = $derived(!!shown && (story.finalizing ?? []).includes(shown.asset_id));
-	let shownWindow = $derived(shown && !shown.rejected && !shownFinalizing ? draftWindow(shown, clock.now) : { state: 'none' as const });
 
 	function openHold() {
 		holdLength = Math.min(30, Math.max(0.5, (card?.duration_ms ?? 3000) / 1000));
@@ -143,10 +134,8 @@
 		const base = shotCardFacts(card, takes, story.pickId ?? null);
 		return { ...base, number: story.code ?? (number ? String(number).padStart(2, '0') : '--') };
 	});
-	/** One note over the frame: a draft's time left, an excluded or under-2K take, or a generation still running. */
+	/** One note over the frame: an excluded or under-2K take, or a generation still running. */
 	let tag = $derived.by(() => {
-		if (shownFinalizing) return { text: '1080p · finalizing…', tone: 'warn' as const, title: 'Finalizing to 1080p from the same render' };
-		if (shownWindow.state === 'open' || shownWindow.state === 'closing') return { text: `1080p · ${timeLeft(shownWindow.ms_left)}`, tone: shownWindow.state === 'closing' ? 'bad' as const : 'warn' as const, title: `480p draft: finalizable to 1080p until ${new Date(shownWindow.closes_at).toLocaleString()}` };
 		if (shown?.rejected) return { text: 'Excluded', tone: 'bad' as const };
 		if (shown && isUnder2K(shown)) return { text: 'Under 2K', tone: 'bad' as const, title: `${shown.width}×${shown.height}: under 2K on the long edge` };
 		if (story.animating) return { text: 'Animating…', tone: 'warn' as const, title: 'A Seedance generation from this shot is running' };
@@ -177,9 +166,6 @@
 				{#if canHold}
 					<button type="button" class="tg" aria-pressed={holdOpen} onclick={() => (holdOpen ? (holdOpen = false) : openHold())} title="Make a video take from this still (local, no credits)">Hold</button>
 					<button type="button" class="tg" onclick={() => story.onAnimate?.()} aria-label={`Animate ${card.title}'s still`} title="Send this still to Seedance as the start frame (costs credits; you see the price first)">Animate</button>
-				{/if}
-				{#if (shownWindow.state === 'open' || shownWindow.state === 'closing') && shown}
-					<button type="button" class="tg" onclick={() => story.onFinalize?.(shown.asset_id)} aria-label={`Finalize this take of ${card.title} to 1080p`} title="Re-render this draft at 1080p from the same generation (costs credits; you see the price first)">Finalize</button>
 				{/if}
 				{#if shown && shown.kind === 'video' && !shown.rejected && !shown.source_take && story.onSplit}
 					<!-- Two steps: a stray click only arms it. -->

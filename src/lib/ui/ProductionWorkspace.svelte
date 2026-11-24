@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { loadClipMetadata, proxyUrl } from '$lib/media/gpu/clipBanks';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 	import type { Project, ProductionAsset, ProductionState, StoryCard } from '$lib/domain/schemas';
@@ -26,6 +26,9 @@
 	import { shotRoomLink } from '$lib/domain/review-room-links';
 	import { mergeProduction } from '$lib/domain/merge-production';
 	import PromptSections from '$lib/ui/shots/PromptSections.svelte';
+	import Rerender from '$lib/ui/shots/Rerender.svelte';
+	import { openRerenderFor, renderState, requestSource, type Render } from '$lib/domain/render-queue';
+	import type { RenderProviderId } from '$lib/domain/schemas';
 	import MakeTake from '$lib/ui/shots/MakeTake.svelte';
 	import { ghostSections, imageSections, withGhostSection, withImageSection, type PromptSection } from '$lib/domain/prompt-sections';
 	import { SIZE_WORDS } from '$lib/domain/shot-spec';
@@ -431,6 +434,33 @@
 		finally { pickBusy = false; }
 	}
 
+	// The render queue up to approval (slice 8): "Queue re-render" in the viewer's review block.
+	type RenderProviderInfo = { id: RenderProviderId; label: string; models: Array<{ id: string; label: string; kind: 'video' | 'still'; wired: boolean }>; resolutions: string[]; setup: { ready: true } | { ready: false; reason: string } };
+	let renderProviders = $state<RenderProviderInfo[]>([]);
+	let renderBusy = $state(false);
+	$effect(() => {
+		if (!viewerOpen || renderProviders.length) return;
+		void fetch(`/api/projects/${project.project_id}/renders`).then((response) => response.json()).then((body: { providers?: RenderProviderInfo[] }) => { renderProviders = body.providers ?? []; }).catch(() => null);
+	});
+	async function renderAction(body: Record<string, unknown>): Promise<Render | null> {
+		if (renderBusy) return null;
+		renderBusy = true; error = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/renders`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, expected_version: project.version }) });
+			const result = (await response.json().catch(() => null)) as { ok?: boolean; data?: Project; render?: Render | null; error?: { message?: string } } | null;
+			if (!result?.ok || !result.data) { error = result?.error?.message ?? 'The render queue could not be changed'; return null; }
+			onUpdated(result.data);
+			return result.render ?? null;
+		} finally { renderBusy = false; }
+	}
+	/** Queue, or ask again with other words; an entry that is drafting goes straight to the Agent. */
+	async function askRerender(body: Record<string, unknown>) {
+		const entry = await renderAction(body);
+		if (!entry || renderState(entry) !== 'drafting') return;
+		await tick();
+		await renderAction({ action: 'draft', render_id: entry.request_id });
+	}
+
 	/** The notes reviewers left on a take's shot in Review Room; none when it is not stored there or cannot be read. */
 	async function notesFor(take: { asset_id: string }) {
 		const response = await fetch(`/api/projects/${project.project_id}/review-room`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'notes', take_id: take.asset_id }) });
@@ -623,7 +653,21 @@
 		<CutStage {project} bind:tab {detailsHost} {onUpdated} onAgent={onOpenAgent} onManifest={draft.cards.length ? downloadManifest : undefined} notice={cutNotice} />
 	{/if}
 	{#if viewerOpen && tab === 'beats'}
-		<Viewer production={draft} cards={draft.cards} {notesFor} notesStamp={roomState.marks[selectedShotId] ?? 0} roomHref={(cardId, take) => shotRoomLink(page.data.reviewRoomUrl, project, cardId, take)} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)} />
+		<Viewer production={draft} cards={draft.cards} {notesFor} notesStamp={roomState.marks[selectedShotId] ?? 0} roomHref={(cardId, take) => shotRoomLink(page.data.reviewRoomUrl, project, cardId, take)} bind:shotId={selectedShotId} busy={pickBusy || unsaved || shotBusy !== null} reviewHost={detailsHost} onclose={() => (viewerOpen = false)} onpick={(cardId, takeId) => void makePick(cardId, takeId)} onreview={(take, change) => void reviewTake(take, change)}>
+			{#snippet rerender(take: ProductionAsset)}
+				{@const entry = openRerenderFor(project.production.generations ?? [], take.asset_id) ?? null}
+				{@const source = requestSource(take, project.production.generations ?? [])}
+				{#if entry || take.review_status === 'needs_changes'}
+					<Rerender render={entry} blocked={source.kind === 'none' ? source.reason : null} providers={renderProviders} busy={renderBusy || unsaved}
+						onqueue={(input) => void askRerender({ action: 'queue', take_id: take.asset_id, ...input })}
+						onask={(words) => entry && void askRerender(words ? { action: 'redraft', render_id: entry.request_id, requested_change: words } : { action: 'draft', render_id: entry.request_id })}
+						onedit={(prompt) => entry && void renderAction({ action: 'edit', render_id: entry.request_id, prompt })}
+						onsettings={(settings) => entry && void renderAction({ action: 'settings', render_id: entry.request_id, ...settings })}
+						onapprove={() => entry && void renderAction({ action: 'approve', render_id: entry.request_id })}
+						onremove={() => entry && void renderAction({ action: 'remove', render_id: entry.request_id })} />
+				{/if}
+			{/snippet}
+		</Viewer>
 	{/if}
 	{#if detailsHost && !onCutStage}
 		<div class="shot-details" use:portal={detailsHost}>

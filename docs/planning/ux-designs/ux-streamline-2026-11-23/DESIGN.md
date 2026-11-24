@@ -52,7 +52,7 @@ These came from four rounds of review and are not negotiable in implementation.
 6. **One line, always.** No label, status or button text may wrap. Shorten, shrink or truncate with an ellipsis.
 7. **Nothing reflows on click.** Selecting, hovering or opening must not move neighbouring content. Detail appears in a fixed place (the takes band, the dock, the viewer).
 8. **Sliders and playheads are tall rectangles.** Never a ball or a round thumb. Markers are rectangles too.
-9. **No decorative gradients.** The only gradient is the played part of a scrub bar or waveform lane, dark teal to bright teal toward the playhead.
+9. **No decorative gradients.** The only gradients are the played part of a scrub bar or waveform lane (dark teal to bright teal toward the playhead) and the purple wash at the bottom of the Agent's panel.
 10. **Responsive from the start.** The three panels wrap to a column on a narrow screen; touch targets grow to 36px under a coarse pointer.
 
 ## Colour roles
@@ -63,7 +63,7 @@ These came from four rounds of review and are not negotiable in implementation.
 | Primary action | `teal-deep` fill, `teal-ink` text | The one main button of a view |
 | Secondary action | `control` fill, `ink` text | Everything else that is a button |
 | Selection | `selected` fill, `teal-ink` text | Current stage, current scene, selected shot, pressed toggle, the operator's chat messages |
-| Agent | `agent-pink`, `agent-purple` | The Agent's name and prompt mark (pink); its emphasis, proposals, tab and send button (purple) |
+| Agent | `agent-purple` | A wash rising from the composer to about halfway up the Agent's panel, the word "Agent" over its messages (muted, `#8f86b8`), Send and the talk button. No pink. Nothing else in the chat is coloured |
 | Time and attention | `amber` | Timecode, note markers, awaiting review |
 | Review status | amber / blue / red / teal | Awaiting review, in progress, needs changes, approved: as coloured text, with the word |
 
@@ -92,8 +92,8 @@ Colour never carries a status alone: the word is always there.
 - **Takes band**: the selected shot's takes as small frames, each with its version label; the pick's label is teal-deep.
 - **Selection timeline**: clips sized by length in one row, a 3px scrub line above with a rectangular playhead, Play and Push to cut at the right.
 - **Viewer lanes**: a strip of low-res frames, an 8px scrub bar, and a waveform, stacked, with one rectangular playhead across all three. Hovering shows a frame preview with amber timecode above the pointer.
-- **Dock tabs**: Agent, Details (and Review in the viewer). The Agent tab has a purple fill and a row of slashes beside the tabs.
-- **Agent message**: pink "AGENT" label, plain text, purple emphasis, teal codes. A proposal sits on `agent-surface` with its own buttons. The operator's message is a `selected` bubble, right-aligned.
+- **Dock tabs**: Agent, Details (and Review in the viewer). The Agent tab has a purple fill.
+- **Agent message**: a muted purple "AGENT" label over plain text, lined up on the left, with no box round it or round a proposal. The operator's message is a grey (`control`) bubble, right-aligned. The panel's only decoration is the purple wash behind the composer (revised 2026-11-24; see DECISIONS.md).
 - **Composer**: a `raised` block with a pink `>` mark, the input, a three-bar mic and Send. No outline.
 - **Voice bar**: `agent-surface`, level shown as upright rectangles in pink, purple and teal.
 - **Prompt view**: one 20px row per skill section (label in teal chrome, text truncated), with the skill's name in pink and its QC result in teal beside the title.

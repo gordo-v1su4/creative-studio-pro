@@ -168,7 +168,9 @@ export function queueRerender(renders: readonly Render[], input: QueueRerenderIn
 export function withPrompt(render: Render, prompt: string, check: string[]): RenderResult {
 	const state = renderState(render);
 	if (!editable(state)) return { ok: false, message: `A render that is ${LABEL[state]} cannot be changed` };
-	return { ok: true, render: { ...without(render, 'approved_at'), prompt, check, state: 'to_approve' } };
+	// Once the words differ from the earlier prompt it is no longer "unchanged".
+	const base = prompt === (render.prompt_before ?? prompt) ? without(render, 'approved_at') : without(render, 'approved_at', 'unchanged');
+	return { ok: true, render: { ...base, prompt, check, state: 'to_approve' } };
 }
 
 /** Change where and at what size it is made. The approval is for the prompt and stays; the price goes. */

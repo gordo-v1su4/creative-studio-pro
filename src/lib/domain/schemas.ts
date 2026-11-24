@@ -336,10 +336,9 @@ export const productionAssetSchema = z.object({
 	generation: z.object({
 		provider: z.string(), model: z.string(), resolution: z.string(), prompt: z.string().max(10_000),
 		duration_s: z.number().positive().optional(), generate_audio: z.boolean().optional(),
-		/** A Seedance draft: finalizable to 1080p from the same render until seven days after draft_created_at. */
+		/** Draft mode and Finalize are gone (decision 33). These stay so stored takes load; `resolution` says what the take is. */
 		draft: z.boolean().optional(),
 		draft_created_at: rfc3339Schema.optional(),
-		/** Set once finalized: the media is the 1080p render of the same job; the draft file is kept. */
 		finalized_at: rfc3339Schema.optional(),
 		finalize_job_id: z.string().min(1).max(200).optional(),
 		draft_url: z.string().max(2000).optional()
@@ -520,13 +519,13 @@ export const generationSchema = z.object({
 	duration_s: z.number().positive(),
 	resolution: z.string(),
 	estimate_credits: z.number().nonnegative(),
-	/** A 480p draft, finalizable to 1080p from the same render for seven days. */
+	/** Draft mode is gone (decision 33); kept so stored projects load. Nothing sets it. */
 	draft: z.boolean().default(false),
 	status: z.enum(['queued', 'in_progress', 'completed', 'failed', 'nsfw']),
 	submitted_at: rfc3339Schema,
 	settled_at: rfc3339Schema.optional(),
 	take_id: idSchema.optional(),
-	/** A finalize: on completion its 1080p video replaces this take's media instead of adding a take. */
+	/** Finalize is gone (decision 33); kept so stored projects load. Nothing sets it. */
 	finalizes: idSchema.optional(),
 	error: z.string().max(2000).optional(),
 	/** Absent on records made before the render queue; `renderState` reads those from `status`. */
@@ -640,7 +639,7 @@ export const teaserRenderSchema = z.object({
 	duration_s: z.number().int().positive(),
 	resolution: z.enum(['480p', '720p', '1080p']),
 	aspect: z.string().min(1).max(20),
-	/** A Seedance 2.5 480p draft, finalizable to 1080p from the same render for seven days. */
+	/** Draft mode is gone (decision 33); kept so stored projects load. Always false now. */
 	draft: z.boolean(),
 	estimate_credits: z.number().nonnegative(),
 	status: z.enum(['queued', 'in_progress', 'completed', 'failed', 'nsfw']),
@@ -1121,7 +1120,7 @@ export const removeBeatsCommandSchema = z.object({
 	card_ids: z.array(idSchema).min(1).max(200)
 });
 
-/** Link existing takes to the Seedance draft jobs they came from (found by matching files), so they can be finalized. */
+/** Link existing takes to the Higgsfield jobs they came from (found by matching files), so they can be re-rendered by reuse. */
 export const linkDraftJobsCommandSchema = z.object({
 	command: z.literal('link_draft_jobs'),
 	project_id: idSchema,

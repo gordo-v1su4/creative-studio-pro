@@ -30,6 +30,8 @@
 	let listening = $state(false);
 	let voiceStatus = $state('');
 	let modelLabel = $state('');
+	/** Mode, model and the Agent's other actions stay folded away: the panel is a chat first. */
+	let more = $state(false);
 	let selectedChoice = $state<string | null>(null);
 	let otherAnswer = $state('');
 	let choiceQuestion = $state('');
@@ -197,52 +199,50 @@
 	<div
 		class={docked
 			? 'agent-shell agent-docked flex min-h-0 flex-col max-lg:fixed max-lg:inset-y-0 max-lg:right-0 max-lg:z-40 max-lg:w-[min(420px,100vw)] lg:h-full lg:w-full lg:overflow-hidden lg:rounded-[10px]'
-			: 'agent-shell fixed left-1/2 top-1/2 z-50 flex h-[min(720px,76vh)] w-[min(760px,94vw)] -translate-x-1/2 -translate-y-1/2 flex-col border shadow-[0_28px_100px_rgba(0,0,0,0.72)] max-sm:inset-0 max-sm:h-full max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0'}
+			: 'agent-shell fixed left-1/2 top-1/2 z-50 flex h-[min(720px,76vh)] w-[min(760px,94vw)] -translate-x-1/2 -translate-y-1/2 flex-col shadow-[0_28px_100px_rgba(0,0,0,0.72)] max-sm:inset-0 max-sm:h-full max-sm:w-full max-sm:translate-x-0 max-sm:translate-y-0'}
 		transition:fly={{ x: docked ? 36 : 0, y: docked ? 0 : -12, duration: 220, easing: quintOut }}
 		role="dialog"
 		aria-modal={!docked}
 		aria-label="Agent conversation"
 	>
-		<header class="agent-header flex min-h-14 items-center gap-3 px-4 py-2.5">
-			<span class="agent-prompt text-[18px] font-bold" aria-hidden="true">&gt;</span>
-			<div class="min-w-0 grow">
-				<div class="flex items-center gap-3">
-					<div class="agent-wordmark"><span>THE AGENT</span><small>NARRATE</small></div>
-					<div class="slash-rule" aria-hidden="true"></div>
-				</div>
-				<div class="agent-path truncate">~\projects\{projectTitle || 'no-project'} · {project?.stage.id ?? '—'} · {modelLabel || 'model'}</div>
-			</div>
-			<div class="flex gap-1" role="group" aria-label="Agent mode">
-				<button type="button" class={['agent-key', mode === 'brief' && 'is-on']} aria-pressed={mode === 'brief'} onclick={() => (mode = 'brief')} title="The S1 brief interview">brief</button>
-				<button type="button" class={['agent-key', mode === 'story' && 'is-on']} aria-pressed={mode === 'story'} onclick={() => (mode = 'story')} title="Story interview: idea → three directions → season and episode structure">story</button>
-			</div>
-			<button type="button" class="agent-key" onclick={() => (ui.chatMode = docked ? 'focus' : 'dock')} aria-label={docked ? 'Open Agent in focus mode' : 'Dock Agent on the right'}>{docked ? 'focus' : 'dock'}</button>
-			<button type="button" class="agent-key" onclick={() => (open = false)} aria-label="Close the Agent">esc</button>
+		<header class="agent-header">
+			<span class="grow"></span>
+			<button type="button" class="tg" aria-expanded={more} onclick={() => (more = !more)} title="The Agent's mode, model and other actions">{more ? 'Less' : 'More'}</button>
 		</header>
+		{#if more}
+			<div class="agent-more">
+				<div class="modes" role="group" aria-label="Agent mode">
+					<button type="button" class="tg" aria-pressed={mode === 'brief'} onclick={() => (mode = 'brief')} title="The brief interview">Brief</button>
+					<button type="button" class="tg" aria-pressed={mode === 'story'} onclick={() => (mode = 'story')} title="Story interview: idea, three directions, then season and episode structure">Story</button>
+					<span class="grow"></span>
+					<button type="button" class="tg" onclick={() => (ui.chatMode = docked ? 'focus' : 'dock')} aria-label={docked ? 'Open Agent in focus mode' : 'Dock Agent on the right'}>{docked ? 'Focus' : 'Dock'}</button>
+					<button type="button" class="tg" onclick={() => (open = false)} aria-label="Close the Agent">Close</button>
+				</div>
+				{#if project}<ProjectModelPanel {project} bind:label={modelLabel} />{/if}
+			</div>
+		{/if}
 
-		{#if project && soundDesk.open}<EffectsProposal />{:else if project && !project.series}<AgentActions {project} />{/if}
+		{#if project && soundDesk.open}<EffectsProposal />{:else if project && !project.series}<AgentActions {project} buttons={more} />{/if}
 		{#if mode === 'story' && project}
-			<div class="min-h-0 grow px-4 py-4"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} /></div></div>
+			<div class="min-h-0 grow px-3 py-3"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} /></div></div>
 		{:else}
-		<div class="agent-transcript min-h-0 grow overflow-y-auto px-4 py-4" aria-live="polite">
+		<div class="agent-transcript min-h-0 grow overflow-y-auto px-3 py-3" aria-live="polite">
 			{#if !project}
 				<div class="mx-auto mt-16 max-w-md text-center text-text-muted">Open a project to talk with the Agent.</div>
 			{:else}
-				<div class="mx-auto grid max-w-2xl gap-3">
-					<ProjectModelPanel {project} bind:label={modelLabel} />
-					{#if savedMessages.length === 0}
-						<div class="agent-section-label"><span>&gt;</span> S1 interview · no saved rounds yet</div>
-					{/if}
+				<div class="mx-auto grid max-w-2xl grid-cols-[minmax(0,1fr)] gap-3">
 					{#if docked && !assistantMessage && !pendingQuestion && !busy && !error}
-						<button type="button" class="btn mr-auto" onclick={() => project && void start(project)}>{savedMessages.length ? 'Continue the interview' : 'Start the interview'}</button>
+						<button type="button" class="key mr-auto" onclick={() => project && void start(project)}>{savedMessages.length ? 'Continue the interview' : 'Start the interview'}</button>
 					{/if}
 					{#each savedMessages as message (message.id)}
-						<div class={message.role === 'user' ? 'agent-message agent-user ml-auto max-w-[88%] px-3 py-2.5' : 'agent-message agent-assistant mr-auto max-w-[94%] px-3 py-2.5'}>
+						<div class={message.role === 'user' ? 'agent-message agent-user ml-auto max-w-[85%]' : 'agent-message agent-assistant'}>
+							{#if message.role !== 'user'}<span class="cp who">Agent</span>{/if}
 							<p class="whitespace-pre-wrap">{message.text}</p>
 						</div>
 					{/each}
 					{#if assistantMessage || pendingQuestion}
-						<div class="agent-message agent-assistant agent-current mr-auto max-w-[94%] px-3 py-3">
+						<div class="agent-message agent-assistant agent-current">
+							<span class="cp who">Agent</span>
 							{#if assistantMessage}<p class="whitespace-pre-wrap">{assistantMessage}</p>{/if}
 							{#if pendingQuestion}
 								<strong class="agent-question mt-2 block whitespace-pre-wrap">{decision.prompt}</strong>
@@ -261,36 +261,32 @@
 							{/if}
 						</div>
 					{/if}
-					{#if busy}<div class="agent-thinking mr-auto px-3 py-2"><span>&gt;</span> thinking<span class="agent-cursor" aria-hidden="true"></span></div>{/if}
+					{#if busy}<p class="cp agent-thinking">Thinking<span class="agent-cursor" aria-hidden="true"></span></p>{/if}
 					{#if error}
-						<div class="rounded-md border border-gate-failed px-3 py-2 text-gate-failed" role="alert">
+						<div class="agent-error" role="alert">
 							<p>{error}</p>
-							{#if !pendingQuestion}<button type="button" class="btn mt-2" onclick={() => project && void start(project)}>Retry</button>{/if}
+							{#if !pendingQuestion}<button type="button" class="key mt-2" onclick={() => project && void start(project)}>Retry</button>{/if}
 						</div>
 					{/if}
 				</div>
 			{/if}
 		</div>
 
-		<footer class="agent-footer p-2.5">
+		<footer class="agent-footer">
 			<div class="mx-auto max-w-2xl">
-				<div class="agent-composer flex items-end gap-2 p-2">
-					<textarea bind:value={composer} onkeydown={onComposerKeydown} rows="1" class="max-h-28 min-h-9 grow resize-none bg-transparent px-1 py-2 text-[12px] text-text-primary outline-none placeholder:text-text-dim" placeholder={pendingQuestion ? decision.options.length ? 'Add optional details…' : 'Answer or add context…' : 'Waiting for the next question…'} disabled={!project || !pendingQuestion || busy}></textarea>
-					<button type="button" class={['agent-key h-9 w-9 shrink-0 justify-center', listening && 'is-listening']} onclick={toggleDictation} disabled={!project || !pendingQuestion || busy} aria-pressed={listening} aria-label={listening ? 'Stop dictation' : 'Start voice dictation'} title={canDictate ? 'Push to talk' : 'Voice input may be unavailable'}>
-						<svg class="h-[18px] w-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+				<div class="agent-composer">
+					<textarea bind:value={composer} onkeydown={onComposerKeydown} rows="1" class="max-h-28 grow resize-none bg-transparent outline-none" placeholder={pendingQuestion ? decision.options.length ? 'Add optional details…' : 'Answer or add context…' : 'Waiting for the next question…'} disabled={!project || !pendingQuestion || busy}></textarea>
+					<button type="button" class={['agent-mic', listening && 'is-listening']} onclick={toggleDictation} disabled={!project || !pendingQuestion || busy} aria-pressed={listening} aria-label={listening ? 'Stop dictation' : 'Start voice dictation'} title={canDictate ? 'Push to talk' : 'Voice input may be unavailable'}>
+						<svg class="h-[14px] w-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<rect x="9" y="2" width="6" height="12" rx="3"></rect>
 							<path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"></path>
 							<path d="M12 17v5"></path>
 							<path d="M8.5 22h7"></path>
 						</svg>
 					</button>
-					<button type="button" class="agent-send h-9 shrink-0 px-3" onclick={() => void submit()} disabled={!canSubmit}>{busy ? '…' : decision.options.length ? 'continue ↵' : 'send ↵'}</button>
+					<button type="button" class="key agent-send" onclick={() => void submit()} disabled={!canSubmit}>{busy ? '…' : decision.options.length ? 'Continue' : 'Send'}</button>
 				</div>
-				<div class="agent-status mt-1.5 flex min-h-4 items-center gap-2">
-					<span>{voiceStatus || 'Enter sends · Shift+Enter adds a line'}</span>
-					<span class="grow"></span>
-					{#if project}<span>v{project.version} · {project.interview.status}</span>{/if}
-				</div>
+				{#if voiceStatus}<p class="agent-status">{voiceStatus}</p>{/if}
 			</div>
 		</footer>
 		{/if}
@@ -298,320 +294,83 @@
 {/if}
 
 <style>
-	/* Docked in the shell: a plain panel like its neighbours, no frame. */
-	.agent-shell.agent-docked { border: 0; background: var(--color-panel); box-shadow: none; }
+	/*
+	 * The Agent's chat (look B, revised 2026-11-24): black and zinc greys, plain text, no boxes and no borders.
+	 * Purple belongs to the Agent: a wash that rises from the composer and fades out halfway up, its name, and Send.
+	 * No pink, no teal, no pattern behind the text.
+	 */
 	.agent-shell {
-		--agent-teal: #4ee8d2;
-		--agent-cyan: #48bdf5;
-		--agent-violet: #7770f7;
-		--agent-ink: #0c0d12;
-		--agent-panel: #13151c;
-		--agent-muted: #7f8794;
-		border-color: color-mix(in srgb, var(--agent-teal) 68%, #28313a);
-		background:
-			linear-gradient(180deg, rgba(78, 232, 210, 0.035), transparent 22%),
-			var(--agent-ink);
-		color: #d8e3e7;
-		font-family: var(--font-mono);
-		border-radius: 2px;
-		box-shadow:
-			0 0 0 1px rgba(72, 189, 245, 0.1),
-			0 28px 100px rgba(0, 0, 0, 0.72),
-			0 0 34px rgba(78, 232, 210, 0.07);
+		--glow: linear-gradient(to top, #2a1f5c 0, #1a1438 14%, #0f0d1c 34%, var(--color-panel) 58%);
+		border: 0;
+		border-radius: 10px;
+		background: var(--glow);
+		color: var(--color-ink-2);
+		font: 12.5px/1.5 var(--font-sans);
 	}
+	.agent-shell.agent-docked { box-shadow: none; }
 
-	.agent-header {
-		border-bottom: 1px solid rgba(78, 232, 210, 0.24);
-		background: #101219;
-	}
+	.agent-header { display: flex; flex: none; align-items: center; padding: 6px 6px 0; }
+	.agent-more { display: flex; flex: none; flex-direction: column; gap: 6px; padding: 4px 10px 6px; }
+	.modes { display: flex; align-items: center; gap: 1px; margin: 0 -4px; }
+	.modes .tg[aria-pressed='true'] { background: var(--color-control); color: var(--color-ink); }
 
-	.agent-wordmark {
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		color: var(--agent-teal);
-		font-size: 17px;
-		font-weight: 800;
-		letter-spacing: 0.11em;
-		line-height: 1;
-		text-shadow: 0 0 16px rgba(78, 232, 210, 0.22);
-	}
+	.agent-transcript { scrollbar-color: #26262b transparent; }
+	.agent-thinking, .who { margin: 0; color: var(--color-ink-3); }
+	.who { display: block; margin-bottom: 3px; color: #8f86b8; }
 
-	.agent-wordmark small {
-		color: color-mix(in srgb, var(--agent-cyan) 78%, #d8e3e7);
-		font-size: 9px;
-		font-weight: 600;
-		letter-spacing: 0.12em;
-	}
+	.agent-message { color: #c8c8ce; line-height: 1.5; }
+	.agent-user { border-radius: 9px; background: var(--color-control); padding: 4px 9px; color: var(--color-ink); }
+	.agent-question { display: block; color: var(--color-ink); font-weight: 400; }
 
-	.agent-path,
-	.agent-status {
-		color: #647f8a;
-		font-size: 10px;
-		letter-spacing: 0.02em;
-	}
-
-	.agent-path {
-		margin-top: 5px;
-	}
-
-	.slash-rule {
-		min-width: 48px;
-		flex: 1;
-		height: 10px;
-		background: repeating-linear-gradient(118deg, transparent 0 6px, rgba(72, 189, 245, 0.7) 6px 8px, transparent 8px 12px);
-		mask-image: linear-gradient(90deg, #000, rgba(0, 0, 0, 0.15));
-	}
-
-	.agent-prompt {
-		color: var(--agent-teal);
-		font-family: var(--font-mono);
-		text-shadow: 0 0 12px rgba(78, 232, 210, 0.36);
-	}
-
-	.agent-key,
-	.agent-send {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid rgba(72, 189, 245, 0.38);
-		border-radius: 1px;
-		background: rgba(72, 189, 245, 0.05);
-		color: #aab6bf;
-		font: 600 10px/1 var(--font-mono);
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		cursor: pointer;
-	}
-
-	.agent-key:not(:disabled):hover,
-	.agent-key:focus-visible {
-		border-color: var(--agent-teal);
-		color: var(--agent-teal);
-		outline: none;
-	}
-
-	.agent-key:disabled,
-	.agent-send:disabled {
-		cursor: not-allowed;
-		opacity: 0.35;
-	}
-
-	.agent-key.is-on {
-		border-color: var(--agent-teal, #4ee8d2);
-		color: var(--agent-teal, #7de5dc);
-	}
-	.agent-key.is-listening {
-		border-color: var(--agent-violet);
-		color: #a9a3ff;
-		box-shadow: 0 0 16px rgba(119, 112, 247, 0.18);
-	}
-
-	.agent-transcript {
-		background-image: radial-gradient(rgba(78, 232, 210, 0.075) 0.7px, transparent 0.7px);
-		background-size: 15px 15px;
-		scrollbar-color: rgba(78, 232, 210, 0.35) transparent;
-	}
-
-	.agent-section-label {
-		color: #69727f;
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
-	.agent-section-label span {
-		color: var(--agent-teal);
-	}
-
-	.agent-message {
-		border-radius: 1px;
-		font-size: 11px;
-		line-height: 1.6;
-	}
-
-	.agent-assistant {
-		border-left: 2px solid rgba(72, 189, 245, 0.55);
-		background: rgba(19, 21, 28, 0.88);
-		color: #82aeb9;
-	}
-
-	.agent-current {
-		border: 1px solid rgba(72, 189, 245, 0.38);
-		border-left: 2px solid var(--agent-teal);
-		box-shadow: inset 0 0 28px rgba(72, 189, 245, 0.025);
-	}
-
-	.agent-user {
-		border: 1px solid rgba(78, 232, 210, 0.4);
-		background: linear-gradient(90deg, rgba(78, 232, 210, 0.11), rgba(119, 112, 247, 0.07));
-		color: #a9e8df;
-	}
-
-	.agent-question {
-		color: #84d9ea;
-		font-weight: 600;
-		letter-spacing: 0.005em;
-	}
-
-	.agent-question::before {
-		content: '> ';
-		color: var(--agent-teal);
-	}
-
-	.decision-options {
-		display: grid;
-		gap: 0;
-	}
-
+	.decision-options { display: flex; flex-direction: column; }
 	.decision-options button {
 		display: grid;
-		grid-template-columns: 22px minmax(0, 1fr);
-		align-items: start;
-		gap: 7px;
+		grid-template-columns: 16px minmax(0, 1fr);
+		align-items: baseline;
+		gap: 8px;
 		width: 100%;
-		border: 1px solid transparent;
-		border-radius: 2px;
-		background: transparent;
-		padding: 3px 5px;
-		color: #789da7;
+		border: 0;
+		border-radius: 5px;
+		background: none;
+		padding: 3px 6px;
+		color: var(--color-ink-2);
 		text-align: left;
 		cursor: pointer;
-		transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
 	}
-
-	.decision-options button > span {
-		display: grid;
-		place-items: center;
-		width: 20px;
-		height: 20px;
-		border: 1px solid #30434b;
-		border-radius: 2px;
-		color: #8aabb3;
-		font: 700 10px/1 var(--font-mono);
-	}
-
-	.decision-options button > b {
-		padding-top: 2px;
-		font-size: 11px;
-		font-weight: 500;
-		line-height: 1.45;
-	}
-
-	.decision-options button:hover,
-	.decision-options button:focus-visible {
-		border-color: transparent;
-		background: rgba(72, 189, 245, 0.055);
-		color: #9ac8d0;
-		outline: none;
-	}
-
-	.decision-options button.selected {
-		border-color: transparent;
-		background: rgba(78, 232, 210, 0.1);
-		color: #b7ebe7;
-	}
-
-	.decision-options button.selected > span {
-		border-color: var(--agent-teal);
-		background: var(--agent-teal);
-		color: #071311;
-	}
-
-	.decision-options button.other.selected {
-		background: linear-gradient(90deg, rgba(78, 232, 210, 0.13), rgba(72, 189, 245, 0.07));
-	}
+	.decision-options button > span { color: var(--color-ink-3); font: 10.5px var(--font-mono); }
+	.decision-options button > b { font-weight: 400; line-height: 1.45; }
+	.decision-options button:hover, .decision-options button:focus-visible { background: var(--color-raised); color: var(--color-ink); outline: none; }
+	.decision-options button.selected { background: var(--color-control); color: var(--color-ink); }
+	.decision-options button.selected > span { color: var(--color-agent-purple); }
 
 	.other-field {
 		width: 100%;
-		border: 1px solid rgba(78, 232, 210, 0.48);
-		border-radius: 2px;
-		background: #090d12;
-		padding: 9px 10px;
-		color: #a9e8df;
-		font: 11px/1.4 var(--font-mono);
-		caret-color: var(--agent-teal);
+		border: 0;
+		border-radius: 6px;
+		background: var(--color-raised);
+		padding: 6px 8px;
+		color: var(--color-ink);
+		font: 12.5px/1.4 var(--font-sans);
 		outline: none;
 	}
+	.other-field:focus-visible { outline: 2px solid var(--color-agent-purple); outline-offset: -1px; }
 
-	.other-field:focus {
-		border-color: var(--agent-teal);
-		box-shadow: 0 0 0 1px rgba(78, 232, 210, 0.1);
-	}
+	.agent-cursor { display: inline-block; width: 5px; height: 10px; margin-left: 5px; vertical-align: -1px; background: var(--color-ink-3); animation: agent-blink 1.05s steps(1) infinite; }
+	.agent-error { color: #ff7a6b; }
 
-	.agent-thinking {
-		color: var(--agent-muted);
-		font-size: 11px;
-		letter-spacing: 0.04em;
-	}
+	.agent-footer { flex: none; padding: 6px; }
+	.agent-composer { display: flex; align-items: center; gap: 4px; border-radius: 9px; background: #ffffff0d; padding: 4px 4px 4px 10px; }
+	.agent-composer::before { content: '>'; color: var(--color-ink-3); font: 11px var(--font-mono); }
+	.agent-composer textarea { min-height: 24px; padding: 3px 0; color: var(--color-ink); font: inherit; caret-color: var(--color-agent-purple); }
+	.agent-composer textarea::placeholder { color: var(--color-ink-3); }
+	.agent-mic { display: inline-flex; width: 22px; height: 20px; flex: none; align-items: center; justify-content: center; border: 0; border-radius: 5px; background: none; color: var(--color-agent-purple); cursor: pointer; }
+	.agent-mic.is-listening { background: var(--color-agent-purple-deep); color: #d8cffc; }
+	.agent-mic:disabled { opacity: 0.4; cursor: default; }
+	.agent-send { background: var(--color-agent-purple-deep); color: #d8cffc; }
+	.agent-send:hover:not(:disabled) { background: #342b63; }
+	.agent-status { margin: 0; padding: 4px 6px 0; color: var(--color-ink-3); font-size: 10.5px; }
 
-	.agent-thinking > span:first-child {
-		color: var(--agent-teal);
-	}
-
-	.agent-cursor {
-		display: inline-block;
-		width: 6px;
-		height: 12px;
-		margin-left: 4px;
-		vertical-align: -2px;
-		background: var(--agent-teal);
-		animation: agent-blink 1.05s steps(1) infinite;
-	}
-
-	.agent-footer {
-		border-top: 1px solid rgba(78, 232, 210, 0.2);
-		background: #101219;
-	}
-
-	.agent-composer {
-		border: 1px solid rgba(72, 189, 245, 0.4);
-		border-radius: 1px;
-		background: #0a0c11;
-		transition: border-color 120ms ease, box-shadow 120ms ease;
-	}
-
-	.agent-composer:focus-within {
-		border-color: var(--agent-teal);
-		box-shadow: 0 0 0 1px rgba(78, 232, 210, 0.12), 0 0 22px rgba(78, 232, 210, 0.07);
-	}
-
-	.agent-composer textarea {
-		font-family: var(--font-mono);
-		caret-color: var(--agent-teal);
-	}
-
-	.agent-send {
-		border-color: rgba(78, 232, 210, 0.72);
-		background: rgba(78, 232, 210, 0.13);
-		color: #b9fff4;
-	}
-
-	.agent-send:not(:disabled):hover,
-	.agent-send:focus-visible {
-		background: rgba(78, 232, 210, 0.21);
-		box-shadow: 0 0 18px rgba(78, 232, 210, 0.1);
-		outline: none;
-	}
-
-	@keyframes agent-blink {
-		50% { opacity: 0; }
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.agent-cursor { animation: none; }
-	}
-
-	@media (max-width: 640px) {
-		.agent-shell {
-			inset: 0 !important;
-			width: 100% !important;
-			border-radius: 0;
-		}
-
-		.slash-rule { display: none; }
-		.agent-wordmark { font-size: 14px; }
-		.agent-wordmark small { font-size: 8px; }
-	}
+	@keyframes agent-blink { 50% { opacity: 0; } }
+	@media (prefers-reduced-motion: reduce) { .agent-cursor { animation: none; } }
+	@media (max-width: 640px) { .agent-shell { inset: 0 !important; width: 100% !important; border-radius: 0; } }
 </style>

@@ -7,12 +7,11 @@ import type { SeedanceRequest } from '$lib/domain/animate';
 import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 
 /**
- * Video generator seam (Animate, Finalize) and its Higgsfield implementation
- * through the Higgsfield CLI, which runs on the operator's higgsfield.ai
- * account: plan credits, and Seedance draft mode (`draft: true` renders a
- * 480p draft that `draft_job_id` finalizes to 1080p from the same render
- * within seven days). The public REST API bills a separate balance and has
- * no draft mode, so it is not used.
+ * Video generator seam (Animate) and its Higgsfield implementation through
+ * the Higgsfield CLI, which runs on the operator's higgsfield.ai account and
+ * its plan credits. The public REST API bills a separate balance, so it is
+ * not used. No request asks for `draft`: a 480p take can no longer be
+ * finished at 1080p from the same render (decision 33).
  */
 
 export const SEEDANCE_JOB_TYPE = 'seedance_2_5';
@@ -57,7 +56,7 @@ export function cliRunner(bin: string, timeoutMs = 120_000): CliRunner {
 /**
  * CLI flags for a Seedance request; the prompt goes in a JSON file because the CLI reads "@…" values as files.
  * Seedance 2.5's default mode (t2v) takes no reference media, so a start image or reference images switch it
- * to omni_reference. Seedance 2.0 has no draft mode.
+ * to omni_reference.
  */
 export function seedanceArgs(request: SeedanceRequest, promptFile: string): string[] {
 	const jobType = request.job_type ?? SEEDANCE_JOB_TYPE;
@@ -69,10 +68,7 @@ export function seedanceArgs(request: SeedanceRequest, promptFile: string): stri
 		'--duration', String(request.duration),
 		'--resolution', request.resolution,
 		'--generate_audio', String(request.generate_audio),
-		...(jobType === 'seedance_2_5'
-			// The CLI's validator needs draft spelled out when finalizing.
-			? ['--draft', String(Boolean(request.draft) && !request.draft_job_id), ...(request.draft_job_id ? ['--draft_job_id', request.draft_job_id] : []), ...(withMedia ? ['--mode', 'omni_reference'] : [])]
-			: []),
+		...(jobType === 'seedance_2_5' && withMedia ? ['--mode', 'omni_reference'] : []),
 		...(request.aspect_ratio ? ['--aspect_ratio', request.aspect_ratio] : []),
 		...(request.start_image ? ['--start-image', request.start_image] : []),
 		...references.flatMap((path) => ['--image-references', path])

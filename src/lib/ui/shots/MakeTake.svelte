@@ -81,7 +81,7 @@
 		<label class="cp" for="take-seconds">Length</label>
 		<input id="take-seconds" type="number" min={ANIMATE_MIN_S} max={ANIMATE_MAX_S} step="1" value={duration} oninput={(event) => { const value = Math.round(Number(event.currentTarget.value)); if (value >= ANIMATE_MIN_S && value <= ANIMATE_MAX_S) seconds = { shot: card.card_id, value }; }} />
 		{#each ANIMATE_RESOLUTIONS as option (option)}
-			<button type="button" class="tg" aria-pressed={resolution === option} onclick={() => (resolution = option)} title={option === '480p' ? 'A draft: the same render can be finalized to 1080p for seven days' : option}>{option}</button>
+			<button type="button" class="tg" aria-pressed={resolution === option} onclick={() => (resolution = option)} title={option === '480p' ? '480p, for review. A higher-resolution take is a new render and will not match it.' : `${option}: a render of its own`}>{option}</button>
 		{/each}
 		<button type="button" class="tg" aria-pressed={sound} onclick={() => (sound = !sound)} title="Generate the take's own sound">Sound</button>
 	</div>
