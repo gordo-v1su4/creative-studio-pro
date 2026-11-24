@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { storyPlanSchema, planShotSchema, reconcileMomentEdits, sceneGroupId } from '$lib/domain/story-plan';
+import { emptyPlan, storyPlanSchema, planShotSchema, reconcileMomentEdits, sceneGroupId } from '$lib/domain/story-plan';
 import { getGateway, getProjectStore, resolveProjectModel, getReviewRoomConfig, getSeriesStore, getNotionToken } from '$lib/server/config';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries } from '$lib/server/series';
@@ -20,6 +20,8 @@ const requestSchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('breakdown'), expected_version: z.number().int().nonnegative(), moment_id: z.string() }),
 	z.object({ action: z.literal('save'), expected_version: z.number().int().nonnegative(), plan: storyPlanSchema }),
 	z.object({ action: z.literal('board'), expected_version: z.number().int().nonnegative() }),
+	// A project from before the story plan gets an empty one (three acts, nothing else).
+	z.object({ action: z.literal('begin'), expected_version: z.number().int().nonnegative() }),
 	// Approve a story plan level: its names are fixed from here on (decision 22).
 	z.object({ action: z.literal('approve_level'), expected_version: z.number().int().nonnegative(), level: z.enum(STORY_LEVELS), show_code: z.string().max(10).optional(), project_code: z.string().max(10).optional() }),
 	// Re-read the linked Notion series and replace the Bible snapshot (Notion stays the story master).
@@ -33,6 +35,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!project) return json({ ok: false, error: { message: 'Project not found' } }, { status: 404 });
 	const input = parsed.data;
 	if (project.version !== input.expected_version) return json({ ok: false, error: { message: 'Project changed. Reload before continuing.' } }, { status: 409 });
+	if (input.action === 'begin') {
+		if (project.production.story_plan) return json({ ok: false, error: { message: 'This project already has a story plan' } }, { status: 409 });
+		if (project.series) return json({ ok: false, error: { message: 'An episode imported from a series keeps the outline it came with' } }, { status: 400 });
+		const story_plan = emptyPlan(project.title, project.seed.brief);
+		const outcome = await getGateway().saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: input.expected_version, production: { ...project.production, story_plan } });
+		return json(outcome, { status: outcome.ok ? 200 : commandStatus(outcome.error) });
+	}
 	if (input.action === 'approve_level') {
 		const { level, show_code, project_code } = input;
 		const codes = { ...(show_code ? { show_code } : {}), ...(project_code ? { project_code } : {}) };

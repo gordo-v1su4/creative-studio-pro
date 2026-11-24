@@ -290,3 +290,13 @@ test('the outline lists scenes with their codes in story order, then the groups 
 	expect(placed.scenes.map((group) => [group.code, group.title])).toEqual([['VHA', 'Video Haven, 2:47 AM'], ['CMP', 'Campus']]);
 	expect(placed.unplaced.map((group) => group.name)).toEqual(['Main', 'Clips from the shoot']);
 });
+
+test('a project still called by its first sentence takes the brief\'s title when the brief is approved', () => {
+	const fresh = { ...project(), title: 'A vampire thing in a video store' };
+	fresh.seed = { ...fresh.seed, brief: 'A vampire thing in a video store.' };
+	const approved = applyLevelApproval(fresh, 'brief', NOW);
+	expect(approved.title).toBe('Blood Rush');
+	expect(approved.production.story_plan!.title).toBe('Blood Rush');
+	// A project the operator named keeps its name.
+	expect(applyLevelApproval(project(), 'brief', NOW).title).toBe('Blood Rush · Teaser');
+});

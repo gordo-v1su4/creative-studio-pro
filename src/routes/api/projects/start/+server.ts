@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { getGateway, getProjectStore, getSeriesStore, getNotionToken } from '$lib/server/config';
 import { createNotionApi, pageIdOf, pageTitle } from '$lib/server/notion';
 import { connectSeries } from '$lib/server/series';
-import type { StoryPlan } from '$lib/domain/story-plan';
+import { emptyPlan, type StoryPlan } from '$lib/domain/story-plan';
 
 const schema = z.object({
 	path: z.enum(['need_idea', 'have_idea', 'have_story']), title: z.string().trim().min(1).max(200),
@@ -32,12 +32,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		const created = await getGateway().createProject({ command: 'create_project', title: input.title, brief: text.slice(0, 5000), creative_focus: 'full room', created_by: 'gordo' });
 		if (!created.ok) return json(created, { status: 400 });
 		const project = created.data;
-		if (input.path === 'need_idea') return json({ ok: true, data: project }, { status: 201 });
+		// Every project has a story plan from the start, so its five levels show even before there is an idea (the Agent pitches one).
 		const plan: StoryPlan = {
-			title: input.title,
-			source: { ...(record ? { series_id: record.series_id, url: `https://www.notion.so/${record.story!.page_id}` } : {}), title: record?.story?.title ?? (input.path === 'have_story' ? 'Supplied story' : 'Starting idea'), text, imported_at: new Date().toISOString(), references: record?.references?.items.map(ref => ({ key: ref.page_id, name: ref.name, kind: ref.kind })) ?? [] },
-			...(input.prep_source_project_id ? { prep_source_project_id: input.prep_source_project_id } : {}),
-			sections: ['Act 1 · The promise', 'Act 2 · The complication', 'Act 3 · The unanswered question'].map(title => ({ id: crypto.randomUUID(), title, summary: 'Propose story beats from the story Bible, put each in a scene, and approve each story beat before breaking it into shots.', scenes: [], moments: [] }))
+			...emptyPlan(input.title, text, {
+				...(record ? { series_id: record.series_id, url: `https://www.notion.so/${record.story!.page_id}` } : {}),
+				title: record?.story?.title ?? (input.path === 'have_story' ? 'Supplied story' : input.path === 'need_idea' ? 'Direction for the pitch' : 'Starting idea'),
+				references: record?.references?.items.map(ref => ({ key: ref.page_id, name: ref.name, kind: ref.kind })) ?? []
+			}),
+			...(input.prep_source_project_id ? { prep_source_project_id: input.prep_source_project_id } : {})
 		};
 		const saved = await getGateway().saveProduction({ command: 'save_production', project_id: project.project_id, expected_version: project.version, production: { ...project.production, title: input.title, premise: record ? 'Develop this deliverable from the linked Notion Bible. The imported text is a read-only source snapshot; Notion remains the story master.' : input.text.slice(0, 8000), story_plan: plan } });
 		if (!saved.ok) return json({ ...saved, project_id: project.project_id }, { status: 400 });

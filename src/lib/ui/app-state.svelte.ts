@@ -20,6 +20,8 @@ class AppUiState {
 	paletteOpen = $state(false);
 	/** The story plan level open on the Story stage; null follows the next level that is not approved. */
 	storyLevel = $state<StoryLevel | null>(null);
+	/** What the Agent does first for a project just started at the front door, unasked (story 6). Taken once, by the screen that does it. */
+	agentAsk = $state<{ projectId: string; action: 'draft_brief' | 'pitch' } | null>(null);
 	capabilitiesOpen = $state(false);
 	/** Canvas page context surfaced in global chrome (agent drawer). */
 	activeProjectTitle = $state('');

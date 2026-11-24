@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ProductionState, Project, StoryCard } from './schemas';
 import { CODE_PATTERN, SHOT_MAX, SHOT_STEP, shotNumberText, suggestCode } from './shot-codes';
 import { appendPlannedShots, boardCardFor, sceneGroupId, type PlanScene } from './story-plan';
+import { workingTitle } from './front-door';
 
 /**
  * The story plan's five levels (CONTEXT.md: Story plan) and the names each one fixes (decision 22, ADR 0010).
@@ -253,6 +254,11 @@ export function applyLevelApproval(project: Project, level: StoryLevel, now: str
 		if (!PROJECT_CODE_PATTERN.test(code)) throw new Error('A project code is TR or EP and three digits, like TR100');
 		if (room && (room.show_code !== show || room.code !== code)) throw new Error(`Review Room already knows this project as ${room.show_code} ${room.code}`);
 		levels.show_code = show; levels.project_code = code;
+		// A project still called by its first sentence (the front door's working title) takes the brief's title.
+		const named = project.brief_state.versions.at(-1)?.title;
+		if (named && project.title === workingTitle(project.seed.brief)) {
+			return { ...project, title: named, production: { ...production, ...(production.story_plan ? { story_plan: { ...production.story_plan, title: named } } : {}), story_levels: levels } };
+		}
 	}
 	if (level === 'scenes' && production.story_plan) {
 		const stored = Object.values(project.review_room?.scenes ?? {}).map((scene) => scene.code);

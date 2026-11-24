@@ -11,7 +11,7 @@
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
 	import SoundStage from '$lib/ui/SoundStage.svelte';
 	import ExportStage from '$lib/ui/ExportStage.svelte';
-	import BriefPanel from '$lib/ui/BriefPanel.svelte';
+	import BriefSheet from '$lib/ui/story/BriefSheet.svelte';
 	import TrailerHousePanel from '$lib/ui/TrailerHousePanel.svelte';
 	import EpisodeOutline from '$lib/ui/EpisodeOutline.svelte';
 	import PrepWorkspace from '$lib/ui/PrepWorkspace.svelte';
@@ -302,6 +302,18 @@
 		finally { busy = false; }
 	}
 
+	/** Give a project from before the story plan an empty one, so it can be planned level by level. */
+	async function beginPlan() {
+		busy = true; error = null;
+		try {
+			const response = await fetch(`/api/projects/${project.project_id}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'begin', expected_version: project.version }) });
+			const result = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+			if (!result.ok) throw new Error(result.error.message);
+			onUpdated(result.data);
+		} catch (cause) { error = cause instanceof Error ? cause.message : 'The story plan could not be started'; }
+		finally { busy = false; }
+	}
+
 	async function save() {
 		saving = true; error = null;
 		try { await request({ mode: 'save', expected_version: project.version, production: draft }); }
@@ -564,24 +576,28 @@
 
 	{#if tab === 'story'}
 		{#if project.production.story_plan}
+			<!-- A project with a story plan: the plan is the whole Story stage (brief, acts, scenes, story beats, shot list). -->
 			<StoryPlan {project} {onUpdated} />
-		{/if}
+		{:else}
+		<!-- An episode imported from a series, or a project from before the story plan: its own outline and notes. -->
 		<div class="mx-auto max-w-4xl p-5">
 			{#if project.series}
 				<SeasonStructure {project} />
 			<div class="mb-12"><EpisodeOutline {project} cards={draft.cards} {onUpdated} /></div>
+			{:else}
+				<p class="mb-6 flex flex-wrap items-center gap-3 text-[12px] text-ink-3"><button type="button" class="key go" disabled={busy} onclick={() => void beginPlan()}>Start a story plan</button>Plan this project level by level: brief, acts, scenes, story beats, shot list. Nothing on the board changes.</p>
 			{/if}
-			<details class="mb-8" open={!project.production.story_plan}>
+			<details class="mb-8">
 				<summary class="cursor-pointer text-sm text-[#80aeb9]">Idea tools · Trailer House</summary>
 				<TrailerHousePanel {project} {onUpdated} onBuildStory={() => void generate()} building={busy} />
 			</details>
-			<details open={!project.production.story_plan}>
-				<summary class="mb-5 cursor-pointer text-sm text-[#80aeb9]">Delivery brief and working story notes</summary>
+			<details open>
+				<summary class="mb-5 cursor-pointer text-sm text-[#80aeb9]">Brief and working story notes</summary>
 			<div class="mb-12">
-				<BriefPanel {project} {onUpdated} />
+				<BriefSheet {project} {onUpdated} />
 				<details class="mt-4">
 					<summary class="cursor-pointer font-mono text-[10px] uppercase tracking-[.14em] text-[#5b6b70]">Stage gate · {project.stage.id} (optional)</summary>
-					<div class="mt-2 max-w-md"><StageGatePanel {project} {onUpdated} showBrief={false} /></div>
+					<div class="mt-2 max-w-md"><StageGatePanel {project} {onUpdated} /></div>
 				</details>
 			</div>
 			<div class="flex items-start gap-4">
@@ -598,6 +614,7 @@
 			</div>
 			</details>
 		</div>
+		{/if}
 	{:else if tab === 'prep'}
 		<PrepWorkspace {project} {onUpdated} onContinue={() => tab = 'story'} />
 	{:else if tab === 'beats'}

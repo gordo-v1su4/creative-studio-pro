@@ -3,14 +3,9 @@
 	import { quintOut } from 'svelte/easing';
 	import { STAGES, stageIndex, stageName, nextStageId, legalActions, isCurrentBriefLocked } from '$lib/domain/gates';
 	import type { Project } from '$lib/domain/schemas';
-	import BriefPanel from '$lib/ui/BriefPanel.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 
-	let {
-		project,
-		onUpdated,
-		showBrief = true
-	}: { project: Project; onUpdated: (project: Project) => void; showBrief?: boolean } = $props();
+	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
 
 	const stateColor: Record<Project['stage']['state'], string> = {
 		BLOCKED: 'var(--color-gate-pending)',
@@ -91,8 +86,6 @@
 		></span>
 	{/each}
 </div>
-
-{#if showBrief}<BriefPanel {project} {onUpdated} />{/if}
 
 {#if briefLocked && project.interview.status !== 'PASSED'}
 	<section class="mt-3 rounded-sm border border-border-default bg-surface-raised-2 p-2.5" aria-labelledby="interview-heading">

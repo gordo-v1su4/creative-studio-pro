@@ -52,6 +52,15 @@ export const storyPlanSchema = z.object({
 		if (moment.scene_id && !section.scenes.some(scene => scene.id === moment.scene_id)) ctx.addIssue({ code: 'custom', message: `${moment.title} points at a scene outside ${section.title}` });
 });
 export type StoryPlan = z.infer<typeof storyPlanSchema>;
+
+/** The plan a project starts with: three acts with nothing in them yet, and what it was started from as its source. */
+export function emptyPlan(title: string, text = '', source: Partial<NonNullable<StoryPlan['source']>> = {}, now = new Date().toISOString()): StoryPlan {
+	return {
+		title,
+		...(text.trim() ? { source: { title: 'Starting idea', imported_at: now, references: [], ...source, text } } : {}),
+		sections: ['Act 1 · The promise', 'Act 2 · The complication', 'Act 3 · The unanswered question'].map((act) => ({ id: crypto.randomUUID(), title: act, summary: '', scenes: [], moments: [] }))
+	};
+}
 export type PlanScene = StoryPlan['sections'][number]['scenes'][number];
 export const plannedCardId = (id: string) => `plan-shot-${id}`;
 export const plannedGroupId = (id: string) => `plan-section-${id}`;

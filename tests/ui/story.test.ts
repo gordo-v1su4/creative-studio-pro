@@ -35,3 +35,32 @@ test('the outline lists the five levels, then scenes with their codes, then Unpl
 	expect(outline.indexOf('placed.scenes as group')).toBeLessThan(outline.indexOf('>Unplaced</p>'));
 	expect(outline.indexOf('>Unplaced</p>')).toBeLessThan(outline.indexOf('placed.unplaced as group'));
 });
+
+const door = read('src/lib/ui/story/FrontDoor.svelte');
+const page = read('src/routes/+page.svelte');
+
+test('the front door is one screen in the work area, not a dialog, and the only way to start a project', () => {
+	expect(door).not.toMatch(/<dialog|showModal/);
+	expect(page).toContain('<FrontDoor ');
+	expect(page).not.toContain('NewProjectFlow');
+	// One input; the example phrases come from the two groups the rules define.
+	expect(door.match(/<textarea/g)).toHaveLength(1);
+	expect(door).toContain('{#each DOOR_EXAMPLES as group (group.title)}');
+});
+
+test('what a start means is decided by the rules, not by the screen', () => {
+	expect(door).toContain('onStart(doorStart({ ...input, story }), { media, song })');
+	expect(page).toContain("ui.agentAsk = { projectId: id, action: start.then }");
+});
+
+test('the examples open under the input with a short motion that reduced-motion turns off', () => {
+	expect(door).toMatch(/\.ways \{[^}]*transition: grid-template-rows 180ms ease-out, opacity 180ms ease-out/);
+	expect(door).toMatch(/prefers-reduced-motion: reduce\) \{ \.ways, \.ask, \.ex \{ transition: none; \} \}/);
+	// Closed, the examples are out of reach of the keyboard and of screen readers.
+	expect(door).toContain('inert={!opened}');
+});
+
+test('a drop on the front door is never drawn with a dashed frame', () => {
+	expect(door).not.toMatch(/dashed|dotted/);
+	expect(door).toMatch(/\.ask\.over \{ background: var\(--color-selected\); \}/);
+});

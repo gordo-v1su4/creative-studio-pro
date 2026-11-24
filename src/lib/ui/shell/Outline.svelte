@@ -16,7 +16,9 @@
 	import { sceneRoomLink } from '$lib/domain/review-room-links';
 	import { levelCounts, levelLabel, levelOpen, levelStates, levelSummary, nextLevel, placedGroups, shortCodeOf, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
 
-	let { project, openGroupId, onOpenGroup, onMoveShots, onAddFiles, level = null, onOpenLevel }: {
+	let { project, openGroupId, onOpenGroup, onMoveShots, onAddFiles, level = null, onOpenLevel, fresh = false }: {
+		/** The front door is showing: the five levels a new project will go through, with nothing in them yet. */
+		fresh?: boolean;
 		project: Project | null; openGroupId: string; onOpenGroup: (groupId: string) => void;
 		/** The story plan level open on the Story stage, when that stage is showing. */
 		level?: StoryLevel | null;
@@ -77,10 +79,11 @@
 
 	// The story plan's levels: shown for a project that has one.
 	const levels = $derived.by(() => {
+		if (fresh) return { next: null, rows: STORY_LEVELS.map((id) => ({ id, label: levelLabel(id), state: 'empty' as const, line: '' })) };
 		if (!project?.production.story_plan) return null;
 		const counts = levelCounts(project), open = levelOpen(project), approved = project.production.story_levels?.approved ?? {};
 		const states = levelStates(counts, approved, open);
-		return { states, next: nextLevel(states), rows: STORY_LEVELS.map((id) => ({ id, label: levelLabel(id), state: states[id], line: levelSummary(id, states[id], counts[id], open[id], !!approved[id]) })) };
+		return { next: nextLevel(states), rows: STORY_LEVELS.map((id) => ({ id, label: levelLabel(id), state: states[id], line: levelSummary(id, states[id], counts[id], open[id], !!approved[id]) })) };
 	});
 	const shots = $derived(
 		project
@@ -119,14 +122,16 @@
 	{#if levels}
 		<p class="cp head"><span>Story plan</span></p>
 		{#each levels.rows as row, i (row.id)}
-			<button type="button" class="level" data-state={row.state} aria-current={(level ?? levels.next) === row.id ? 'step' : undefined} data-open={level === row.id ? '' : undefined} onclick={() => onOpenLevel?.(row.id)} title="Open {row.label.toLowerCase()} in the story plan">
+			<button type="button" class="level" data-state={row.state} disabled={fresh} aria-current={!fresh && (level ?? levels.next) === row.id ? 'step' : undefined} data-open={level === row.id ? '' : undefined} onclick={() => onOpenLevel?.(row.id)} title={fresh ? `${row.label}: proposed by the Agent, approved by you` : `Open ${row.label.toLowerCase()} in the story plan`}>
 				<span class="num">{String(i + 1).padStart(2, '0')}</span><span class="name">{row.label}</span><span class="cp line">{row.line}</span>
 			</button>
 		{/each}
-		{#if levels.next}<p class="cp lock">Names lock as each level is approved</p>{/if}
+		{#if levels.next || fresh}<p class={['cp lock', fresh && 'long']}>{fresh ? 'Names lock as each level is approved, and stay the same in Review Room' : 'Names lock as each level is approved'}</p>{/if}
 	{/if}
-	<p class="cp head"><span>{levels ? 'Scenes' : 'Outline'}</span><span class="said" aria-live="polite">{over?.line ?? said}</span></p>
-	{#if !project}
+	{#if !fresh}<p class="cp head"><span>{levels ? 'Scenes' : 'Outline'}</span><span class="said" aria-live="polite">{over?.line ?? said}</span></p>{/if}
+	{#if fresh}
+		<!-- Nothing to list yet. -->
+	{:else if !project}
 		<p class="none">No project open</p>
 	{:else if groups.length === 0}
 		<p class="none">No shots yet</p>
@@ -157,6 +162,9 @@
 	.level .line { flex: none; color: var(--color-ink-3); }
 	.level[data-state='approved'] .line { color: var(--color-teal); }
 	.lock { margin: 0; overflow: hidden; padding: 4px 8px 10px; text-overflow: ellipsis; color: var(--color-ink-3); }
+	/* The one place chrome runs to a sentence: it wraps here rather than lose its second half. */
+	.lock.long { white-space: normal; line-height: 1.6; }
+	.level:disabled { cursor: default; }
 	.code { flex: none; color: var(--color-teal); font: 10.5px var(--font-mono); letter-spacing: 0.01em; }
 	.none { margin: 0; padding: 4px 8px; color: var(--color-ink-3); font-size: 12px; white-space: nowrap; }
 	.group { display: flex; width: 100%; height: 24px; flex: none; align-items: center; gap: 8px; overflow: hidden; border: 0; border-radius: 5px; background: none; padding: 0 8px; color: var(--color-ink-2); font: 12.5px var(--font-sans); text-align: left; white-space: nowrap; cursor: pointer; }

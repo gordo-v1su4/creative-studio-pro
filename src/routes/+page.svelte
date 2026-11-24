@@ -21,7 +21,8 @@
 	import SequencePlayer from '$lib/ui/SequencePlayer.svelte';
 	import { reviewSequence } from '$lib/ui/review-sequence.svelte';
 	import ProductionWorkspace from '$lib/ui/ProductionWorkspace.svelte';
-	import NewProjectFlow from '$lib/ui/NewProjectFlow.svelte';
+	import FrontDoor, { type DoorFiles } from '$lib/ui/story/FrontDoor.svelte';
+	import type { DoorStart } from '$lib/domain/front-door';
 	import AgentChat from '$lib/ui/chat/AgentChat.svelte';
 	import ProjectMenu from '$lib/ui/shell/ProjectMenu.svelte';
 	import Outline from '$lib/ui/shell/Outline.svelte';
@@ -200,7 +201,13 @@
 	let agentRestored = $state(false);
 	const dockOpen = $derived(ui.chatOpen && ui.chatMode === 'dock');
 	$effect(() => { if (agentRestored) localStorage.setItem('csp.agent-open', ui.chatOpen ? '1' : '0'); });
-	const next = $derived(nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room), story: storyNextLine(activeProject) } : null));
+	// The front door: the one way into a new project (decision 3). It takes the place of the work, never a dialog.
+	let doorOpen = $state(false);
+	/** The project list has been read and it is empty. */
+	let noProjects = $state(false);
+	const doorShown = $derived(doorOpen || (!activeProject && noProjects));
+	const next = $derived(doorShown ? 'Say the idea, or ask for a pitch' : nextLine(activeProject ? { production: activeProject.production, reviewed: !!(activeProject.series || activeProject.review_room), story: storyNextLine(activeProject) } : null));
+	
 	const secondaryNav = [
 		{ label: 'Series', href: '/series', hint: 'Series from Notion: connect a show, check it, import episodes as projects' },
 		{ label: 'Watch', href: '/watch', hint: 'The public, read-only pages: what you have published' },
@@ -1117,6 +1124,7 @@
 		await openProject(projectId);
 		const url = new URL(location.href);
 		url.searchParams.set('project', projectId);
+		url.searchParams.delete('new');
 		replaceState(url, page.state);
 		void loadProjects();
 	}
@@ -1140,10 +1148,39 @@
 		finally { publishing = false; }
 	}
 
-	async function createProject() {
-		newProjectOpen = true;
+	let doorError = $state<string | null>(null);
+	let doorSeries = $state<Array<{ series_id: string; title: string }>>([]);
+	function createProject() {
+		doorOpen = true; doorError = null;
+		void fetch('/api/series').then((response) => response.json()).then((body) => { doorSeries = body.data?.series ?? []; }).catch(() => { /* the door works without the list */ });
 	}
-	let newProjectOpen = $state(false);
+
+	/** Start a project from what the front door gathered, then let the Agent lead: its dock opens and it gets to work. */
+	async function startFromDoor(start: DoorStart, files: DoorFiles) {
+		if (creating) return;
+		creating = true; doorError = null;
+		try {
+			const response = await fetch('/api/projects/start', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: start.path, title: start.title, text: start.text, ...(start.series_id ? { series_id: start.series_id } : {}), ...(start.notion_root ? { notion_root: start.notion_root } : {}) }) });
+			const body = (await response.json()) as { ok: true; data: Project } | { ok: false; error?: { message?: string } };
+			if (!body.ok) throw new Error(body.error?.message ?? 'The project could not be started');
+			const id = body.data.project_id;
+			await loadProjects();
+			await switchProject(id);
+			doorOpen = false;
+			ui.storyLevel = 'brief';
+			openWorkspace('story');
+			ui.chatMode = 'dock'; ui.chatOpen = true;
+			ui.agentAsk = { projectId: id, action: start.then };
+			// What was dropped: the song becomes the score, pictures and clips become shots (unplaced until they are put in a scene).
+			if (files.song && activeProject?.project_id === id) {
+				const query = new URLSearchParams({ name: files.song.name, expected_version: String(activeProject.version) });
+				const scored = (await (await fetch(`/api/projects/${id}/cuts/music?${query}`, { method: 'POST', headers: { 'content-type': files.song.type || 'audio/*' }, body: files.song })).json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
+				if (scored.ok) adoptProject(scored.data, layout); else notify(`The song was not added: ${scored.error.message}`);
+			}
+			if (files.media.length) importFiles(files.media, { unbenched: true });
+		} catch (cause) { doorError = cause instanceof Error ? cause.message : 'The project could not be started'; }
+		finally { creating = false; }
+	}
 
 	async function saveSeed() {
 		if (!activeProject || !seedDirty || savingSeed) return;
@@ -1358,6 +1395,9 @@
 			// A link may open an archived project; the default is the newest one that isn't archived.
 			const newest = projects.find((p) => !p.archived_at) ?? projects[0];
 			if (projects.length > 0) void openProject(wanted && projects.some((p) => p.project_id === wanted) ? wanted : newest.project_id);
+			// With no project at all, the front door is the app. A link can also ask for it (?new).
+			else noProjects = true;
+			if (params.has('new')) createProject();
 		});
 		return () => {
 			if (layoutSaveTimer) clearTimeout(layoutSaveTimer);
@@ -1369,7 +1409,6 @@
 	});
 </script>
 
-{#if newProjectOpen}<NewProjectFlow onClose={() => newProjectOpen = false} onCreated={async (id) => { await loadProjects(); await switchProject(id); openWorkspace('story'); newProjectOpen = false; }} />{/if}
 
 <svelte:head><title>{activeProject ? `${activeProject.title} — Creative Studio Pro` : 'Creative Studio Pro'}</title></svelte:head>
 <svelte:window onkeydown={canvasKey} />
@@ -1444,7 +1483,7 @@
 		{#if !canvasOpen}
 			<!-- The outline: the project's groups and shots. On the canvas the layers panel takes its place. -->
 			<aside class="wa-outline hidden min-h-0 overflow-hidden rounded-[10px] bg-panel md:mr-[3px] md:block">
-				<Outline project={activeProject} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} onMoveShots={(groupId, cardIds) => moveSelectedTo(groupId, cardIds)} onAddFiles={(groupId, files) => importFiles(files, { groupId, unbenched: true })} level={currentTab === 'story' ? ui.storyLevel : null} onOpenLevel={(level) => { ui.storyLevel = level; openWorkspace('story'); }} />
+				<Outline project={doorShown ? null : activeProject} fresh={doorShown} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} onMoveShots={(groupId, cardIds) => moveSelectedTo(groupId, cardIds)} onAddFiles={(groupId, files) => importFiles(files, { groupId, unbenched: true })} level={currentTab === 'story' ? ui.storyLevel : null} onOpenLevel={(level) => { ui.storyLevel = level; openWorkspace('story'); }} />
 			</aside>
 		{/if}
 		<aside class={['rail wa-rail relative hidden bg-panel md:flex md:flex-col', canvasOpen && !railCollapsed ? 'rounded-[10px] md:mr-[3px]' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
@@ -1580,7 +1619,11 @@
 				</div>
 			{/if}
 
-			{#if activeProject && canvasOpen}
+			{#if doorShown}
+				<div class="h-full overflow-y-auto">
+					<FrontDoor series={doorSeries} notionReady={!!page.data.notionReady} templateUrl={page.data.notionTemplateUrl ?? null} busy={creating} error={doorError} canClose={!!activeProject} onStart={(start, files) => void startFromDoor(start, files)} onClose={() => (doorOpen = false)} />
+				</div>
+			{:else if activeProject && canvasOpen}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div class="relative h-full" ondragover={boardDragOver} ondrop={boardDrop}>
 					<SvelteFlow

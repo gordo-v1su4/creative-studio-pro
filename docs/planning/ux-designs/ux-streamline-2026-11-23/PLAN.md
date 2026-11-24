@@ -337,6 +337,19 @@ Checked in the browser on a scratch project made for this ("Slice 4 check (scrat
 
 Not exercised: the two Agent buttons (they call the model), and approving the shot list of a trailer connected to Review Room (it would create folders there); the second is covered by tests with a fake client.
 
+Status, part three, 2026-11-24 (step 1; local test copy, checked in the browser at 1440px and 375px):
+
+- **The front door** (`src/lib/ui/story/FrontDoor.svelte`) takes the place of the work, not a dialog over it: "What are we making?", one input, and four drop targets on it (Notion series, Show folder, Images or video, Song). Anything can be dropped on the screen or picked from a target; what is held shows on its target and can be let go. "New project" in the menu opens it, an app with no projects opens on it, and `/?new` links to it. The outline beside it lists the five levels a new project will go through.
+- **The two groups of example phrases** open under the input once it is clicked or typed in (180ms, off under reduced motion); the input itself does not move. A phrase from "You have nothing yet" turns Start into "Pitch three".
+- **What a start means is a rule** (`src/lib/domain/front-door.ts`, test-first): one sentence starts from the idea; a Notion link (picked, pasted or typed into the sentence) or a show folder's text starts from the story; an ask for a pitch, or nothing at all, starts with the Agent pitching; pictures, clips or a song alone still start a project. A dropped folder's text files are the story, its pictures and clips become shots (unplaced), a song becomes the score.
+- **Every new project has a story plan from the first second** (three empty acts), so its levels show at once. Until the brief names it, a project is called by its first sentence cut at a word; a project still carrying that name takes the brief's title when the brief is approved.
+- After a start the app opens the brief level and the Agent's dock, and records what the Agent should do first (draft the brief, or pitch): part four acts on it.
+- **Gone:** the start dialog (`NewProjectFlow.svelte`) and the brief form with its lock field (`BriefPanel.svelte`). A project with a story plan now shows only the plan on Story. A project from before the plan keeps its notes with the new brief sheet, and can be given a plan with "Start a story plan"; an episode imported from a series keeps its outline.
+
+Checked in the browser: the door with a project open behind it and its way back, the examples opening on focus, a phrase chosen (teal, "Pitch three"), a sentence typed ("Start"), and a start that made "It's a vampire thing, but it all happens in a…" and landed on its brief level with the Agent docked. No request went to a model. At 375px the headline stays on one line and nothing overflows.
+
+Not exercised: dropping or picking real files, a folder or a song, and starting from a Notion link (each would upload to the scratch project or read Notion); their sorting and routing are covered by the rule tests, and the upload paths are the ones the Shots stage and the score already use. The Trailer House panel still stands on projects without a story plan until part four replaces it.
+
 ### 5 · Voice
 
 Goal: talk to the Agent and hear it.
