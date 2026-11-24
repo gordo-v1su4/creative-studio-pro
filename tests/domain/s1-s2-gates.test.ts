@@ -51,8 +51,10 @@ describe('S1 confidence gate', () => {
 		third.scores[0].notes = '   ';
 		expect(() => applyInterviewRound(project, third)).toThrow('blocker notes');
 	});
-	test('rejects interview evidence before the current brief is locked', () => {
-		expect(() => applyInterviewRound(baseWithBrief, round(1, 85, 80))).toThrow('Lock the current brief');
+	test('the interview does not wait for the brief to be locked', () => {
+		const passed = applyInterviewRound(baseWithBrief, round(1, 85, 80));
+		expect(passed.interview.rounds).toHaveLength(1);
+		expect(passed.stage).toEqual({ id: 'S2', state: 'PASSED', confidence: 85 });
 	});
 	test('rejects more than five owner questions', () => {
 		const parsed = recordInterviewRoundCommandSchema.safeParse({ command: 'record_interview_round', project_id: 'p', expected_version: 0,

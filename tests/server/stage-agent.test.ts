@@ -33,9 +33,10 @@ describe('Stage Agent response contract', () => {
 			brief_state: { current_version: 1, versions: [{ brief_id: 'b', version: 1, title: 'Locked pilot', slug: 'locked-pilot', logline: 'Exact logline', format: { type: 'teaser', runtime: '60s', aspect: '16:9', platform: 'pitch' }, tone_visual_rules: 'Teal night', must_haves: ['Nina'], must_nots: ['No season ending'], continuity_model: 'Locked faces', audio_approach: 'Trailer House', success_criteria: ['Pilot-first'], content_hash: hash, created_at: 'now' }] },
 			approval_history: [{ event: 'brief_locked', brief_id: 'b', brief_version: 1, brief_hash: hash, operator: 'gordo', timestamp: 'now' }], catalog_snapshot: null, creative_room: null, voices: [] });
 		const evidence = JSON.parse(buildStageAgentProjectEvidence(project));
-		expect(evidence.locked_brief.logline).toBe('Exact logline');
-		expect(evidence.locked_brief.content_hash).toBe(hash);
-		expect(evidence.locked_brief.approval.operator).toBe('gordo');
+		expect(evidence.brief.logline).toBe('Exact logline');
+		expect(evidence.brief.content_hash).toBe(hash);
+		expect(evidence.brief.approved).toBe(true);
+		expect(evidence.brief.approval.operator).toBe('gordo');
 	});
 
 	test('starts from an unresolved story choice instead of re-asking locked format facts', async () => {

@@ -5,7 +5,6 @@ import type { Project } from '$lib/domain/schemas';
 import type { StageAgent } from '$lib/server/stage-agent';
 import { fallbackQuestion } from '$lib/server/stage-agent';
 import { commandStatus } from '$lib/server/http';
-import { isCurrentBriefLocked } from '$lib/domain/gates';
 import { describeModelChoice, matchesPinnedChoice, modelChoiceSchema } from '$lib/domain/model-provider';
 import type { ModelChoice } from '$lib/domain/model-provider';
 import { AgentRuleBreakError } from '$lib/server/model-provider';
@@ -49,10 +48,7 @@ function error(status: number, code: string, message: string, retryable: boolean
 
 function completeState(project: Project): StageAgentHttpResult | null {
 	if (project.interview.status === 'PASSED') {
-		const confirmed = project.stage.id === 'S2' && project.stage.state === 'PASSED' && isCurrentBriefLocked(project);
-		return { status: 200, body: { ok: true, data: { project, message: confirmed
-			? 'S1 is passed and the locked brief is confirmed at S2. Next, build the story spine.'
-			: 'S1 is passed. This historical project still needs its current brief locked to confirm S2.', next_question: null } } };
+		return { status: 200, body: { ok: true, data: { project, message: 'The interview is passed. Next, the story plan: acts, scenes, story beats, then the shot list.', next_question: null } } };
 	}
 	if (project.interview.status === 'STALLED') {
 		return { status: 200, body: { ok: true, data: { project, message: 'S1 is stalled after three low-confidence rounds. Review the recorded blockers before continuing.', next_question: null } } };
@@ -74,9 +70,6 @@ export async function handleStageAgent(projectId: string, raw: unknown, dependen
 
 	const completed = completeState(project);
 	if (completed) return completed;
-	if (!isCurrentBriefLocked(project)) {
-		return error(409, 'BRIEF_NOT_LOCKED', 'Save and lock the current brief before starting the Agent interview.', false, 'stage-agent');
-	}
 	let agent: StageAgent;
 	if (typeof dependencies.agent === 'function') {
 		const resolved = await dependencies.agent(project);
@@ -133,7 +126,7 @@ export async function handleStageAgent(projectId: string, raw: unknown, dependen
 			? null
 			: evaluation.next_question ?? fallbackQuestion(latest.lowest_dimension, latest.scores.find((score) => score.dimension === latest.lowest_dimension)?.notes ?? '');
 		const suffix = passed
-			? `\n\nS1 is passed at ${latest.overall}/100. The locked brief is confirmed at S2; next, build the story spine.`
+			? `\n\nThe interview is passed at ${latest.overall}/100. Next, the story plan: acts, scenes, story beats, then the shot list.`
 			: stalled
 				? '\n\nS1 is stalled. Review the recorded blockers before another round.'
 				: '';

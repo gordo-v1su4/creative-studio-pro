@@ -44,11 +44,9 @@ export function nextStageId(id: StageId): StageId | null {
  * blocked before gates pass; only the operator sees Force advance.
  */
 export function legalActions(project: Project): string[] {
-	if (!isCurrentBriefLocked(project)) {
-		return ['Edit brief', 'Save brief version', 'Lock brief'];
-	}
-	if (project.stage.id === 'S1' && project.interview.status !== 'PASSED') {
-		return ['Open the Agent', 'Answer questions'];
+	// The interview no longer waits for a locked brief (decision 3): the brief is drafted and approved as a story plan level.
+	if ((project.stage.id === 'S0' || project.stage.id === 'S1') && project.interview.status !== 'PASSED') {
+		return project.brief_state.versions.length ? ['Open the Agent', 'Answer questions'] : ['Draft the brief', 'Open the Agent'];
 	}
 	switch (project.stage.state) {
 		case 'BLOCKED':
@@ -113,7 +111,7 @@ export function applyForceAdvance(
 	};
 }
 
-/** The interview may only consume the exact brief version the owner approved. */
+/** Whether the current brief version carries the older owner lock. Nothing waits on it any more; a locked version is still kept as it was. */
 export function isCurrentBriefLocked(project: Project): boolean {
 	const current = project.brief_state.versions.at(-1);
 	if (!current || project.brief_state.current_version !== current.version) return false;
@@ -136,10 +134,8 @@ export function evaluateInterviewRound(input: Omit<ConfidenceRound, 'status'>): 
 }
 
 export function applyInterviewRound(project: Project, round: ConfidenceRound): Project {
-	if (!isCurrentBriefLocked(project)) {
-		throw new Error('Lock the current brief before starting the S1 interview');
-	}
-	if (project.stage.id !== 'S1') {
+	// The interview opens at S0 and runs through S1; it does not wait for the brief to be locked.
+	if (project.stage.id !== 'S0' && project.stage.id !== 'S1') {
 		throw new Error(`Interview rounds are illegal while project is at ${project.stage.id}`);
 	}
 	if (project.interview.status === 'STALLED') {

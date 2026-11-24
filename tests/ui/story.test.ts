@@ -64,3 +64,46 @@ test('a drop on the front door is never drawn with a dashed frame', () => {
 	expect(door).not.toMatch(/dashed|dotted/);
 	expect(door).toMatch(/\.ask\.over \{ background: var\(--color-selected\); \}/);
 });
+
+const work = read('src/lib/ui/story/agent-work.svelte.ts');
+const pitch = read('src/lib/ui/story/Pitch.svelte');
+const sheet = read('src/lib/ui/story/BriefSheet.svelte');
+const dock = read('src/lib/ui/story/AgentActions.svelte');
+const chat = read('src/lib/ui/chat/AgentChat.svelte');
+
+test('every Agent action says what it is doing and what came of it (story 6)', () => {
+	// Each public action goes through `run`, which adds the line before the work and settles it after.
+	for (const action of ['draftBrief', 'pitch', 'teaserFor', 'propose']) expect(work).toMatch(new RegExp(`\\n\\t${action}\\([^)]*\\)[^{]*\\{[\\s\\S]{0,700}?return this\\.run\\(`));
+	expect(work).toMatch(/const picked = await this\.run\(project, 'pick'/);
+	expect(work).toContain("this.settle(line, said, 'done')");
+	expect(work).toContain("'failed')");
+});
+
+test('the Agent prepares and never confirms a spend (decision 17): its actions do not reach the render or animate routes', () => {
+	expect(work).not.toMatch(/\/render|\/animate|confirmed_credits/);
+	// Price and Confirm are the operator's two separate steps on the pitch.
+	expect(pitch).toContain("action: 'quote'");
+	expect(pitch).toMatch(/disabled=\{!priced \|\|/);
+	expect(pitch).toContain('confirmed_credits: credits');
+});
+
+test('the same actions are offered in the dock and in place', () => {
+	for (const call of ['agentWork.pitch(project)', 'agentWork.teaserFor(project', 'agentWork.draftBrief(project)', 'agentWork.propose(project']) expect(dock).toContain(call);
+	expect(chat).toContain('<AgentActions {project} />');
+	expect(pitch).toContain('agentWork.pick(project, at, i)');
+	expect(plan).toContain('agentWork.propose(project, proposable');
+	expect(sheet).toContain('agentWork.draftBrief(project)');
+});
+
+test('the Agent leads only once, for a project just started at the front door', () => {
+	// The ask is taken (cleared) before it is acted on, so a reload or a project switch never repeats a model call.
+	expect(sheet).toMatch(/ui\.agentAsk = null;\n\t\tif \(!project\.brief_state\.versions\.length\) void draft\(\);/);
+	expect(plan).toMatch(/ui\.agentAsk = null;\n\t\tif \(!project\.trailer_house\?\.rounds\.length\) void agentWork\.pitch\(project\);/);
+});
+
+test('the idea tools are Agent actions now: the panels they lived in are gone (decision 18)', () => {
+	const workspace = read('src/lib/ui/ProductionWorkspace.svelte');
+	expect(workspace).not.toMatch(/TrailerHousePanel|BriefPanel/);
+	expect(() => read('src/lib/ui/TrailerHousePanel.svelte')).toThrow();
+	expect(() => read('src/lib/ui/BriefPanel.svelte')).toThrow();
+});

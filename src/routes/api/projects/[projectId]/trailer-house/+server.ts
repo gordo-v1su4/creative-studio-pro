@@ -20,7 +20,9 @@ const version = z.number().int().nonnegative();
 const bodySchema = z.discriminatedUnion('action', [
 	// Three pitches from the seeds (again = three more, different from those already offered for these seeds).
 	z.object({ action: z.literal('pitch'), expected_version: version, seeds: z.string().max(5000), character: z.string().max(3000).default(''), target: targetSchema }),
-	// The operator picks a pitch: its teaser right away, linted and fixed by the Agent (streamed, so the app shows it live).
+	// "Make this": the pitch becomes the project's logline and what the brief is drafted from. No model is called.
+	z.object({ action: z.literal('pick'), expected_version: version, round: z.number().int().nonnegative(), index: z.number().int().min(0).max(2) }),
+	// The quick teaser of a pitch, linted and fixed by the Agent (streamed, so the app shows it live).
 	z.object({ action: z.literal('develop'), expected_version: version, round: z.number().int().nonnegative(), index: z.number().int().min(0).max(2), character: z.string().max(3000).optional(), target: targetSchema.optional() }),
 	// Lint the current teaser again and let the Agent fix what is left (streamed).
 	z.object({ action: z.literal('relint'), expected_version: version }),
@@ -71,6 +73,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	};
 	const action = body.data;
 
+	if (action.action === 'pick') {
+		const outcome = await getGateway().pickPitch(projectId.data, action.expected_version, { round: action.round, index: action.index });
+		return outcome.ok ? json(outcome) : json(outcome, { status: commandStatus(outcome.error) });
+	}
 	if (action.action === 'clear') {
 		if (!house) return fail(400, 'Nothing to clear');
 		return save({ ...house, rounds: [], picked: null, blueprint: null, characters: null, outline: null, updated_at: now });

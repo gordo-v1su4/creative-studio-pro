@@ -11,6 +11,9 @@
 	import { suggestCode } from '$lib/domain/shot-codes';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import BriefSheet from '$lib/ui/story/BriefSheet.svelte';
+	import Pitch from '$lib/ui/story/Pitch.svelte';
+	import { agentWork } from '$lib/ui/story/agent-work.svelte';
+	import { proposeBlocked, runtimeSeconds, type ProposeLevel } from '$lib/domain/story-propose';
 
 	let { project, onUpdated }: { project: Project; onUpdated: (project: Project) => void } = $props();
 
@@ -22,8 +25,11 @@
 	let loadedVersion = $state(-1);
 	let dirty = $state(false);
 	let briefDirty = $state(false);
+	let briefTitle = $state('');
 	let busy = $state('');
-	let said = $state<{ text: string; bad?: boolean } | null>(null);
+	/** What the last action here came to. It is said for the project as that action left it; a later change elsewhere clears it. */
+	let saidRaw = $state<{ text: string; bad?: boolean; version?: number } | null>(null);
+	const said = $derived(saidRaw && (saidRaw.version === undefined || saidRaw.version === project.version) ? saidRaw : null);
 	let selected = $state('');
 	let targetSeconds = $state(30);
 	let sheet = $state<ReturnType<typeof BriefSheet> | null>(null);
@@ -50,7 +56,8 @@
 	let typed = $state({ project: '', show: false, code: false });
 	$effect(() => {
 		const mine = typed.project === project.project_id;
-		if (!(mine && typed.show)) showCode = codes.show ?? suggestCode(project.brief_state.versions.at(-1)?.title ?? project.title);
+		// Suggested from the brief's title as it reads on the sheet, so the code shown is the one approving will fix.
+		if (!(mine && typed.show)) showCode = codes.show ?? suggestCode(briefTitle.trim() || project.brief_state.versions.at(-1)?.title || project.title);
 		if (!(mine && typed.code)) projectCode = codes.project ?? 'TR100';
 	});
 	const typeCode = (which: 'show' | 'code') => { typed = { project: project.project_id, show: (typed.project === project.project_id && typed.show) || which === 'show', code: (typed.project === project.project_id && typed.code) || which === 'code' }; };
@@ -95,7 +102,7 @@
 	const paneFor: Record<StoryLevel, string[]> = { brief: [], acts: ['act'], scenes: ['scene'], beats: ['beat'], shots: ['beat', 'shot'] };
 	const pane = $derived(picked && paneFor[level].includes(picked.kind) ? picked : null);
 
-	const touch = () => { dirty = true; said = null; };
+	const touch = () => { dirty = true; saidRaw = null; };
 	/** A story beat that changes goes back to proposed, and its planned shots are cleared: they covered the old beat. */
 	const touchBeat = (beat: Beat) => { beat.approved = false; beat.shots = []; touch(); };
 	const id = () => crypto.randomUUID();
@@ -134,22 +141,43 @@
 		touch();
 	}
 
-	type Action = 'save' | 'approve_level' | 'breakdown' | 'moments' | 'refresh_source';
+	$effect(() => { ui.storyDirty = dirty || briefDirty; return () => { ui.storyDirty = false; }; });
+	// The Agent proposes a level: its action, the same one its dock offers. What is on screen is saved first.
+	const proposable = $derived(level === 'brief' ? null : (level as ProposeLevel));
+	const proposeWhy = $derived(plan && proposable ? (proposable === 'shots' && !beats.some((beat) => beat.approved && !beat.shots.length) && beats.some((beat) => !beat.shots.length) ? 'Approve the story beats first' : proposeBlocked(plan, proposable)) : null);
+	const proposeWords: Record<ProposeLevel, string> = { acts: 'Propose acts', scenes: 'Propose scenes', beats: 'Propose story beats', shots: 'Propose shots' };
+	async function propose() {
+		if (!proposable || proposeWhy || busy || agentWork.busy) return;
+		if (dirty && !(await save())) return;
+		saidRaw = null;
+		if (!(await agentWork.propose(project, proposable, proposable === 'beats' ? targetSeconds : undefined))) saidRaw = { text: agentWork.linesFor(project.project_id).at(-1)?.text ?? 'The Agent could not propose that', bad: true };
+	}
+	// A project just started with nothing: the Agent pitches three loglines at once, unasked (story 6).
+	$effect(() => {
+		const ask = ui.agentAsk;
+		if (ask?.projectId !== project.project_id || ask.action !== 'pitch') return;
+		ui.agentAsk = null;
+		if (!project.trailer_house?.rounds.length) void agentWork.pitch(project);
+	});
+	// The length story beats are proposed to: the brief's, until the operator types another.
+	$effect(() => { project.project_id; targetSeconds = runtimeSeconds(project.brief_state.versions.at(-1)?.format.runtime); });
+
+	type Action = 'save' | 'approve_level' | 'breakdown' | 'refresh_source';
 	/** One request to the plan; resolves to the project it left, or null when it failed (the line says why). */
 	async function send(action: Action, body: Record<string, unknown> = {}, version = project.version): Promise<Project | null> {
-		busy = action; said = null;
+		busy = action; saidRaw = null;
 		try {
 			const response = await fetch(`/api/projects/${project.project_id}/plan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, expected_version: version, ...body }) });
 			const result = await response.json();
 			if (!result.ok) throw new Error(result.error?.message ?? 'The story plan could not be saved');
 			onUpdated(result.data);
 			return result.data as Project;
-		} catch (cause) { said = { text: cause instanceof Error ? cause.message : 'The story plan could not be saved', bad: true }; return null; }
+		} catch (cause) { saidRaw = { text: cause instanceof Error ? cause.message : 'The story plan could not be saved', bad: true }; return null; }
 		finally { busy = ''; }
 	}
 	async function save(): Promise<Project | null> {
 		const saved = await send('save', { plan });
-		if (saved) said = { text: 'Saved' };
+		if (saved) saidRaw = { text: 'Saved', version: saved.version };
 		return saved;
 	}
 	/** Approve the open level. Anything not saved yet is saved first, so what is approved is what is on screen. */
@@ -165,15 +193,11 @@
 		if (!done) return;
 		const next = nextLevel(levelStates(levelCounts(done), done.production.story_levels?.approved ?? {}, levelOpen(done)));
 		ui.storyLevel = next ? null : approving;
-		said = { text: next ? `${levelLabel(approving)} approved. ${levelLabel(next)} next.` : `${levelLabel(approving)} approved. The whole story plan is approved.` };
+		saidRaw = { text: next ? `${levelLabel(approving)} approved. ${levelLabel(next)} next.` : `${levelLabel(approving)} approved. The whole story plan is approved.`, version: done.version };
 	}
 	async function draftShots(beat: Beat) {
 		if (dirty && !(await save())) return;
-		if (await send('breakdown', { moment_id: beat.id }, project.version)) said = { text: 'Shots drafted for you to read. Nothing was made.' };
-	}
-	async function proposeBeats() {
-		if (dirty && !(await save())) return;
-		if (await send('moments', { target_s: targetSeconds }, project.version)) said = { text: 'Story beats proposed for you to read.' };
+		if (await send('breakdown', { moment_id: beat.id }, project.version)) saidRaw = { text: 'Shots drafted for you to read. Nothing was made.' };
 	}
 </script>
 
@@ -182,7 +206,7 @@
 	<div class="bar">
 		<nav class="levels" aria-label="Story plan levels">
 			{#each STORY_LEVELS as entry, i (entry)}
-				<button type="button" class="tg" aria-pressed={entry === level} data-state={states[entry]} onclick={() => { ui.storyLevel = entry; selected = ''; said = null; }} title="{levelLabel(entry)}{levelSummary(entry, states[entry], counts[entry], open[entry], !!approvals[entry]) ? ` · ${levelSummary(entry, states[entry], counts[entry], open[entry], !!approvals[entry])}` : ''}"><span class="n">{String(i + 1).padStart(2, '0')}</span>{levelLabel(entry)}</button>
+				<button type="button" class="tg" aria-pressed={entry === level} data-state={states[entry]} onclick={() => { ui.storyLevel = entry; selected = ''; saidRaw = null; }} title="{levelLabel(entry)}{levelSummary(entry, states[entry], counts[entry], open[entry], !!approvals[entry]) ? ` · ${levelSummary(entry, states[entry], counts[entry], open[entry], !!approvals[entry])}` : ''}"><span class="n">{String(i + 1).padStart(2, '0')}</span>{levelLabel(entry)}</button>
 			{/each}
 		</nav>
 		<span class="meta">{levelSummary(level, states[level], counts[level], open[level], !!approvals[level]) || 'Nothing yet'}{#if level !== 'brief' && totalSeconds > 0}{` · ${stamp(totalSeconds)}`}{/if}</span>
@@ -190,6 +214,8 @@
 			{#if level === 'acts'}<button type="button" class="key" disabled={!!busy} onclick={addAct}>Add act</button>{/if}
 			{#if level === 'scenes'}<button type="button" class="key" disabled={!!busy} onclick={addScene}>Add scene</button>{/if}
 			{#if level === 'beats'}<button type="button" class="key" disabled={!!busy} onclick={addBeat}>Add story beat</button>{/if}
+			{#if level === 'beats' && !proposeWhy}<label class="cp len" title="The length the proposed story beats add up to, with what is already planned">Length<input class="code-in wide" type="number" min="4" max="600" step="1" bind:value={targetSeconds} />s</label>{/if}
+			{#if proposable && states[level] !== 'approved'}<button type="button" class="key agent" disabled={!!busy || agentWork.busy !== null || !!proposeWhy} onclick={() => void propose()} title={proposeWhy ?? 'The Agent proposes this level from the brief and the levels above it. It fills what is empty and changes nothing that is there.'}>{agentWork.busy === `propose:${proposable}` ? 'Proposing…' : proposeWords[proposable]}</button>{/if}
 			{#if dirty}<button type="button" class="key" disabled={!!busy} onclick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save'}</button>{/if}
 			{#if states[level] === 'approved'}
 				<span class="cp done">Approved</span>
@@ -215,12 +241,14 @@
 					{#if codesFixed}<span class="kept">{codes.project ?? projectCode}</span>{:else}<input id="project-code" class="code-in wide" value={projectCode} maxlength="5" oninput={(event) => { projectCode = event.currentTarget.value = event.currentTarget.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5); typeCode('code'); }} />{/if}
 					<span class="cp eg">{codesFixed ? (room && !approvals.brief ? 'From Review Room' : 'Fixed') : 'Fixed when you approve'} · shots read {codes.show ?? (showCode || 'AAA')}_{codes.project ?? (projectCode || 'TR100')}_VHS_0010</span>
 				</div>
-				<BriefSheet bind:this={sheet} {project} {onUpdated} bind:dirty={briefDirty} />
+				<!-- The pitch shows once the Agent has pitched, and as an invitation while there is no idea to draft a brief from. -->
+				{#if project.trailer_house?.rounds.length || (!project.brief_state.versions.length && !briefDirty && (!project.seed.brief.trim() || plan.source?.title === 'Direction for the pitch'))}<Pitch {project} {onUpdated} />{/if}
+				<BriefSheet bind:this={sheet} {project} {onUpdated} bind:dirty={briefDirty} bind:titleNow={briefTitle} />
 				{#if plan.source}
 					<details class="source">
 						<summary class="cp">Source · {plan.source.title}</summary>
 						<p class="hint">Read {new Date(plan.source.imported_at).toLocaleDateString()}. The plan follows this source; nothing proposed here changes it.{#if plan.source.url}{' '}<a href={plan.source.url} target="_blank" rel="noreferrer">Open in Notion</a>{/if}</p>
-						{#if plan.source.series_id}<button type="button" class="key" disabled={!!busy || dirty} onclick={() => void send('refresh_source').then((done) => { if (done) said = { text: 'Source read again from Notion' }; })} title={dirty ? 'Save your changes first' : 'Read the current story from Notion again'}>{busy === 'refresh_source' ? 'Reading…' : 'Read again from Notion'}</button>{/if}
+						{#if plan.source.series_id}<button type="button" class="key" disabled={!!busy || dirty} onclick={() => void send('refresh_source').then((done) => { if (done) saidRaw = { text: 'Source read again from Notion' }; })} title={dirty ? 'Save your changes first' : 'Read the current story from Notion again'}>{busy === 'refresh_source' ? 'Reading…' : 'Read again from Notion'}</button>{/if}
 						<pre>{plan.source.text}</pre>
 					</details>
 				{/if}
@@ -266,12 +294,6 @@
 						{/if}
 					</section>
 				{/each}
-				{#if level === 'beats' && !beats.length}
-					<div class="ask">
-						<label class="cp" for="target-s">Length</label><input id="target-s" class="code-in wide" type="number" min="15" max="600" step="1" bind:value={targetSeconds} /><span class="cp">seconds</span>
-						<button type="button" class="key agent" disabled={!!busy} onclick={() => void proposeBeats()} title="The Agent proposes story beats from the source. Nothing is approved and nothing is made.">{busy === 'moments' ? 'Proposing…' : 'Propose story beats'}</button>
-					</div>
-				{/if}
 			{/if}
 		</div>
 
@@ -403,7 +425,7 @@
 	.codes { display: flex; max-width: 760px; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--color-ink-3); }
 	.codes .eg { min-width: 0; flex: 1 1 200px; overflow: hidden; text-overflow: ellipsis; text-transform: none; letter-spacing: 0.02em; }
 	.codes .kept { margin-right: 8px; }
-	.ask { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 6px; color: var(--color-ink-3); }
+	.len { display: inline-flex; align-items: center; gap: 5px; color: var(--color-ink-3); }
 	.key.agent { background: var(--color-agent-purple-deep); color: #ddd6fe; }
 	.source { max-width: 760px; }
 	.source summary { cursor: pointer; color: var(--color-ink-3); }

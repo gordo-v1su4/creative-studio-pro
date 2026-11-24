@@ -5,15 +5,23 @@
 	 * to lock. Saving also writes tone and must-nots into the project rules file the Agent and the checks read.
 	 */
 	import type { BriefVersion, Project } from '$lib/domain/schemas';
+	import { ui } from '$lib/ui/app-state.svelte';
+	import { agentWork } from '$lib/ui/story/agent-work.svelte';
 
-	let { project, onUpdated, dirty = $bindable(false) }: { project: Project; onUpdated: (project: Project) => void; dirty?: boolean } = $props();
+	let { project, onUpdated, dirty = $bindable(false), titleNow = $bindable('') }: {
+		project: Project; onUpdated: (project: Project) => void; dirty?: boolean;
+		/** The title as it reads on the sheet right now, saved or not: the show code is suggested from it. */
+		titleNow?: string;
+	} = $props();
 
 	type Fields = Pick<BriefVersion, 'title' | 'logline' | 'format' | 'tone_visual_rules' | 'must_haves' | 'must_nots' | 'success_criteria'>;
 	const current = $derived(project.brief_state.versions.at(-1));
 	let title = $state(''), logline = $state('');
 	let type = $state(''), runtime = $state(''), aspect = $state(''), platform = $state('');
 	let tone = $state(''), mustHaves = $state(''), mustNots = $state(''), success = $state('');
-	let busy = $state<'' | 'draft' | 'save'>('');
+	let saving = $state(false);
+	const drafting = $derived(agentWork.busy === 'brief');
+	const busy = $derived(saving || agentWork.busy !== null);
 	let said = $state<{ text: string; bad?: boolean } | null>(null);
 
 	const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -24,6 +32,7 @@
 	const changed = $derived(JSON.stringify(fields) !== saved);
 	const started = $derived([logline, type, runtime, aspect, platform, tone, mustHaves, mustNots, success].some((value) => value.trim()));
 	$effect(() => { dirty = current ? changed : started; });
+	$effect(() => { titleNow = title; });
 
 	function fill(brief: Fields | undefined) {
 		title = brief?.title ?? project.title; logline = brief?.logline ?? project.production.logline;
@@ -34,25 +43,32 @@
 	// A new project, or a brief saved elsewhere (the Agent's draft), replaces what is shown.
 	$effect(() => { project.project_id; project.brief_state.current_version; fill(project.brief_state.versions.at(-1)); });
 
-	/** Ask the Agent for a draft. Nothing is saved until Save. */
+	/** Ask the Agent for a draft (its action, the same one its dock offers). Nothing is saved until Save. */
 	async function draft() {
-		if (busy) return;
-		busy = 'draft'; said = null;
-		try {
-			const response = await fetch(`/api/projects/${project.project_id}/brief/draft`, { method: 'POST' });
-			const body = (await response.json()) as { ok: true; data: Fields } | { ok: false; error: { message: string } };
-			if (!body.ok) throw new Error(body.error.message);
-			fill(body.data);
-			said = { text: 'Drafted by the Agent. Read it, change anything, then save.' };
-		} catch (cause) { said = { text: cause instanceof Error ? cause.message : 'The brief could not be drafted', bad: true }; }
-		finally { busy = ''; }
+		said = null;
+		if (!(await agentWork.draftBrief(project))) said = { text: agentWork.linesFor(project.project_id).at(-1)?.text ?? 'The brief could not be drafted', bad: true };
 	}
+	// A draft the Agent made, wherever it was asked for, is shown here once.
+	$effect(() => {
+		const drafted = agentWork.briefDraft;
+		if (drafted?.projectId !== project.project_id) return;
+		agentWork.briefDraft = null;
+		fill(drafted.fields);
+		said = { text: 'Drafted by the Agent. Read it, change anything, then save.' };
+	});
+	// A project just started from an idea: the Agent drafts its brief at once, unasked (story 6).
+	$effect(() => {
+		const ask = ui.agentAsk;
+		if (ask?.projectId !== project.project_id || ask.action !== 'draft_brief') return;
+		ui.agentAsk = null;
+		if (!project.brief_state.versions.length) void draft();
+	});
 
 	/** Save what is shown as the brief's next version. Resolves to the saved project, or null when it did not save. */
 	export async function save(): Promise<Project | null> {
 		if (!complete) { said = { text: 'Fill every field, or let the Agent draft it', bad: true }; return null; }
 		if (busy) return null;
-		busy = 'save'; said = null;
+		saving = true; said = null;
 		try {
 			const response = await fetch(`/api/projects/${project.project_id}/brief`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expected_version: project.version, brief: { title, slug: slugify(title), logline, format: { type, runtime, aspect, platform }, tone_visual_rules: tone, must_haves: fields.mustHaves, must_nots: fields.mustNots, success_criteria: fields.success } }) });
 			const body = (await response.json()) as { ok: true; data: Project } | { ok: false; error: { message: string } };
@@ -61,7 +77,7 @@
 			said = { text: 'Saved' };
 			return body.data;
 		} catch (cause) { said = { text: cause instanceof Error ? cause.message : 'The brief could not be saved', bad: true }; return null; }
-		finally { busy = ''; }
+		finally { saving = false; }
 	}
 </script>
 
@@ -83,10 +99,10 @@
 		<label class="f"><span class="cp">It works when</span><textarea bind:value={success} rows="4" placeholder="One per line"></textarea></label>
 	</div>
 	<div class="acts">
-		<button type="button" class="key agent" disabled={busy !== ''} onclick={() => void draft()} title="The Agent drafts every field from your idea, the story so far and the project rules. Nothing is saved until you save.">{busy === 'draft' ? 'Drafting…' : current || started ? 'Draft again' : 'Draft with the Agent'}</button>
+		<button type="button" class="key agent" disabled={busy} onclick={() => void draft()} title="The Agent drafts every field from your idea, the story so far and the project rules. Nothing is saved until you save.">{drafting ? 'Drafting…' : current || started ? 'Draft again' : 'Draft with the Agent'}</button>
 		<span class={['why', said?.bad && 'bad']} aria-live="polite">{said?.text ?? (current ? (changed ? 'Not saved yet' : `Version ${current.version}`) : 'No brief yet')}</span>
-		{#if current && changed}<button type="button" class="key" disabled={busy !== ''} onclick={() => fill(current)}>Revert</button>{/if}
-		<button type="button" class="key" disabled={busy !== '' || !(current ? changed : started)} onclick={() => void save()}>{busy === 'save' ? 'Saving…' : 'Save brief'}</button>
+		{#if current && changed}<button type="button" class="key" disabled={busy} onclick={() => fill(current)}>Revert</button>{/if}
+		<button type="button" class="key" disabled={busy || !(current ? changed : started)} onclick={() => void save()}>{saving ? 'Saving…' : 'Save brief'}</button>
 	</div>
 </section>
 

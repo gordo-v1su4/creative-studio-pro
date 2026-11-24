@@ -153,3 +153,30 @@ export function applyTrailerHouse(project: Project, next: TrailerHouse, voiceId:
 	} : null;
 	return { ...project, trailer_house: next, voices: voice ? [voice, ...others] : others };
 }
+
+/** Plan sources a pick may replace: the direction the pitch was asked in, or an earlier pick. A story the operator supplied is never replaced. */
+const PICK_SOURCE = 'Picked logline';
+const REPLACEABLE = new Set([PICK_SOURCE, 'Direction for the pitch']);
+
+/**
+ * "Make this": the operator picks one of the pitched loglines. It becomes the project's logline and what the
+ * brief is drafted from, and the story plan's source when the plan has no story of its own. A teaser written for
+ * a different pick no longer fits and is cleared; renders already made are kept.
+ */
+export function applyPitchPick(project: Project, round: number, index: number, now: string): Project {
+	const house = project.trailer_house;
+	const pitch = house?.rounds[round]?.pitches[index];
+	if (!house || !pitch) throw new Error('That pitch is not on record');
+	const same = house.picked?.round === round && house.picked.index === index;
+	const text = `${pitch.logline}\n\n${pitch.description}`;
+	const plan = project.production.story_plan;
+	return {
+		...project,
+		trailer_house: { ...house, picked: { round, index }, ...(same ? {} : { blueprint: null, characters: null, outline: null }), updated_at: now },
+		voices: same ? project.voices : project.voices.filter((voice) => voice.raycast_agent !== TRAILER_HOUSE_AGENT),
+		production: {
+			...project.production, logline: pitch.logline.slice(0, 2000), premise: text.slice(0, 8000),
+			...(plan && (!plan.source || REPLACEABLE.has(plan.source.title)) ? { story_plan: { ...plan, source: { title: PICK_SOURCE, text, imported_at: now, references: plan.source?.references ?? [] } } } : {})
+		}
+	};
+}

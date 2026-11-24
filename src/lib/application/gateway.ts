@@ -46,7 +46,7 @@ import { FIT_MAX_SHOTS, insertIntoGroup, removeFitted } from '$lib/domain/episod
 import { CODE_PATTERN, fillEpisodeCodes } from '$lib/domain/shot-codes';
 import { applyLevelApproval, keepFixedNames, lockViolations, planNames, STORY_LEVELS, type StoryLevel } from '$lib/domain/story-levels';
 import { z } from 'zod';
-import { applyTrailerHouse } from '$lib/domain/trailer-house';
+import { applyPitchPick, applyTrailerHouse } from '$lib/domain/trailer-house';
 import type { Project, ProjectSummary, CanvasLayout, Voice, LedgerEvent } from '$lib/domain/schemas';
 import { pushCutCommandSchema, editCutCommandSchema, renameCutCommandSchema, lockCutCommandSchema, setCutMusicCommandSchema, setScoreCommandSchema, setSoundPlanCommandSchema, groupCommandSchema } from '$lib/domain/schemas';
 import { applyCreateAssembly, applyCreateGroup, applyMoveBeats, applyRemoveAssembly, applyRemoveGroup, applyRenameGroup, applySplitIntoShots, applyUpdateAssembly, MAIN_GROUP } from '$lib/domain/groups';
@@ -612,6 +612,20 @@ export class ProjectCommandGateway {
 		}
 	}
 
+	/** "Make this": pick one of the pitched loglines; it becomes the logline and what the brief is drafted from. */
+	async pickPitch(projectId: string, expectedVersion: number, pick: { round: number; index: number }): Promise<CommandOutcome<Project>> {
+		let refusal = '';
+		try {
+			const project = await this.store.updateProject(projectId, expectedVersion, (current) => {
+				try { return applyPitchPick(current, pick.round, pick.index, new Date().toISOString()); }
+				catch (cause) { refusal = cause instanceof Error ? cause.message : 'That pitch could not be picked'; throw cause; }
+			}, 'project.trailer_house_set.v1');
+			return { ok: true, data: project };
+		} catch (e) {
+			return refusal ? invalid(refusal) : this.storeError(e);
+		}
+	}
+
 	async changeGroups(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = groupCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
@@ -700,11 +714,9 @@ export class ProjectCommandGateway {
 				parsed.data.project_id,
 				parsed.data.expected_version,
 				(current) => {
+					// The brief is a story plan level now: it can be redrafted at any time, before or after the interview.
+					// Only a version carrying the older owner lock, with interview evidence recorded against it, stays as it was.
 					const preInterview = current.interview.rounds.length === 0 && (current.stage.id === 'S0' || current.stage.id === 'S1');
-					const legacyPostInterview = current.interview.status === 'PASSED' && current.stage.id === 'S2' && current.stage.state !== 'PASSED';
-					if (!preInterview && !legacyPostInterview) {
-						throw new Error('The brief cannot change after interview evidence has been recorded');
-					}
 					if (isCurrentBriefLocked(current) && !preInterview) {
 						throw new Error('The locked brief is immutable');
 					}

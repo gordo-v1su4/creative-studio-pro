@@ -12,7 +12,7 @@
 	import SoundStage from '$lib/ui/SoundStage.svelte';
 	import ExportStage from '$lib/ui/ExportStage.svelte';
 	import BriefSheet from '$lib/ui/story/BriefSheet.svelte';
-	import TrailerHousePanel from '$lib/ui/TrailerHousePanel.svelte';
+	import Pitch from '$lib/ui/story/Pitch.svelte';
 	import EpisodeOutline from '$lib/ui/EpisodeOutline.svelte';
 	import PrepWorkspace from '$lib/ui/PrepWorkspace.svelte';
 	import ScorePromptPanel from '$lib/ui/ScorePromptPanel.svelte';
@@ -587,10 +587,7 @@
 			{:else}
 				<p class="mb-6 flex flex-wrap items-center gap-3 text-[12px] text-ink-3"><button type="button" class="key go" disabled={busy} onclick={() => void beginPlan()}>Start a story plan</button>Plan this project level by level: brief, acts, scenes, story beats, shot list. Nothing on the board changes.</p>
 			{/if}
-			<details class="mb-8">
-				<summary class="cursor-pointer text-sm text-[#80aeb9]">Idea tools · Trailer House</summary>
-				<TrailerHousePanel {project} {onUpdated} onBuildStory={() => void generate()} building={busy} />
-			</details>
+			{#if !project.series}<div class="mb-8"><Pitch {project} {onUpdated} /></div>{/if}
 			<details open>
 				<summary class="mb-5 cursor-pointer text-sm text-[#80aeb9]">Brief and working story notes</summary>
 			<div class="mb-12">

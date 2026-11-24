@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { checkTarget, fillMasterPrompt, parseBlueprint, parsePitches, parseSection } from '../../src/lib/domain/trailer-house';
+import { applyPitchPick, checkTarget, fillMasterPrompt, parseBlueprint, parsePitches, parseSection } from '../../src/lib/domain/trailer-house';
+import { projectSchema } from '../../src/lib/domain/schemas';
 
 describe('Trailer House', () => {
 	test('both Seedance targets, each held to its own limits', () => {
@@ -67,5 +68,39 @@ describe('Trailer House', () => {
 		expect(parseBlueprint(raw.replace('HOOK: She has one boat and a lie to undo.\n', '')).ok).toBeFalse();
 		expect(parseBlueprint(`${raw}\nTITLE: Again`).ok).toBeFalse();
 		expect(parseBlueprint(raw.replace('HOOK: She has one boat and a lie to undo.', 'HOOK:')).ok).toBeFalse();
+	});
+});
+
+describe('Make this: picking a pitched logline', () => {
+	const NOW = '2026-11-24T00:00:00.000Z';
+	const pitches = [{ logline: 'A night clerk learns the regulars are not renting for the movies.', description: 'Slow reveal.' }, { logline: 'Kai breaks blood law to save a girl.', description: 'Starts in the aftermath.' }, { logline: 'Every tape shows the same night.', description: 'The loop.' }];
+	const base = (over: Record<string, unknown> = {}) => projectSchema.parse({
+		schema_version: 1, project_id: 'p1', title: 'Untitled project', created_at: NOW, updated_at: NOW, version: 1, stage: { id: 'S0', state: 'BLOCKED', confidence: null },
+		seed: { seed_id: 's', title: 'Untitled project', brief: '', creative_focus: 'full room', created_by: 'test' },
+		trailer_house: { target: { model: 'seedance-2.5', seconds: 12, aspect: '16:9' }, seeds: '', rounds: [{ seeds: '', pitches, model: 'fake', created_at: NOW }], picked: null, blueprint: null, renders: [], updated_at: NOW },
+		production: { story_plan: { title: 'Untitled project', sections: [{ id: 'a1', title: 'Act 1', summary: '', scenes: [], moments: [] }] } },
+		...over
+	});
+
+	test('the pick becomes the logline, what the brief is drafted from, and the plan\'s source', () => {
+		const picked = applyPitchPick(base(), 0, 1, NOW);
+		expect(picked.trailer_house?.picked).toEqual({ round: 0, index: 1 });
+		expect(picked.production.logline).toBe('Kai breaks blood law to save a girl.');
+		expect(picked.production.premise).toBe('Kai breaks blood law to save a girl.\n\nStarts in the aftermath.');
+		expect(picked.production.story_plan?.source).toMatchObject({ title: 'Picked logline', text: 'Kai breaks blood law to save a girl.\n\nStarts in the aftermath.' });
+		// Changing the pick replaces the earlier pick's source, never a story the operator supplied.
+		expect(applyPitchPick(picked, 0, 2, NOW).production.story_plan?.source?.text).toContain('Every tape shows the same night.');
+		const supplied = base();
+		supplied.production.story_plan!.source = { title: 'Supplied story', text: 'THE BIBLE', imported_at: NOW, references: [] };
+		expect(applyPitchPick(supplied, 0, 1, NOW).production.story_plan?.source?.text).toBe('THE BIBLE');
+		expect(() => applyPitchPick(base(), 3, 0, NOW)).toThrow('That pitch is not on record');
+	});
+
+	test('a teaser written for another pick is cleared; picking the same one again keeps it', () => {
+		const blueprint = { title: 'Blood Rush', logline: 'x', hook: 'x', seedance_prompt: 'x', raw: 'x', model: 'fake', created_at: NOW };
+		const withTeaser = base();
+		withTeaser.trailer_house = { ...withTeaser.trailer_house!, picked: { round: 0, index: 1 }, blueprint };
+		expect(applyPitchPick(withTeaser, 0, 1, NOW).trailer_house?.blueprint).toEqual(blueprint);
+		expect(applyPitchPick(withTeaser, 0, 0, NOW).trailer_house?.blueprint).toBeNull();
 	});
 });

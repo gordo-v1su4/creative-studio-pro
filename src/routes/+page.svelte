@@ -501,6 +501,8 @@
 		}
 		ui.activeProjectTitle = project.title;
 		ui.activeProject = project;
+		// A project renamed by its brief reads by its new name in the picker at once.
+		if (projects.some((entry) => entry.project_id === project.project_id && entry.title !== project.title)) projects = projects.map((entry) => (entry.project_id === project.project_id ? { ...entry, title: project.title } : entry));
 		layout = nextLayout;
 		// Keep what's selected on the board across project updates (polling, saves).
 		const keep = new Set(nodes.filter((node) => node.selected).map((node) => node.id));

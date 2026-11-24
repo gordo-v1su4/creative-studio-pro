@@ -61,12 +61,14 @@ describe('Stage Agent HTTP application boundary', () => {
 		expect(projects[0]?.approval_history[0]?.brief_hash).toBe(projects[0]?.brief_state.versions[0]?.content_hash);
 	});
 
-	test('refuses to start or answer before the current brief is locked', async () => {
+	test('starts and records an answer on a project whose brief was never locked, or never written', async () => {
 		const { store, gateway, project } = await setup({ lockBrief: false });
 		const calls = { starts: 0, evaluations: 0 };
-		expect((await handleStageAgent(project.project_id, { mode: 'start' }, { store, gateway, agent: fakeAgent({ calls }) })).status).toBe(409);
-		expect((await handleStageAgent(project.project_id, { mode: 'answer', expected_version: project.version, question: 'Ready?', answer: 'Yes' }, { store, gateway, agent: fakeAgent({ calls }) })).status).toBe(409);
-		expect(calls).toEqual({ starts: 0, evaluations: 0 });
+		expect((await handleStageAgent(project.project_id, { mode: 'start' }, { store, gateway, agent: fakeAgent({ calls }) })).status).toBe(200);
+		const answered = await handleStageAgent(project.project_id, { mode: 'answer', expected_version: project.version, question: 'Ready?', answer: 'Yes' }, { store, gateway, agent: fakeAgent({ calls }) });
+		expect(answered.status).toBe(200);
+		expect(calls).toEqual({ starts: 1, evaluations: 1 });
+		expect((await store.readProject(project.project_id))?.interview.rounds).toHaveLength(1);
 	});
 
 	test('records an answered round, returns one next question, and reconstructs after restart', async () => {
@@ -86,7 +88,7 @@ describe('Stage Agent HTTP application boundary', () => {
 		const data = result.body.data as { project: typeof project; next_question: null; message: string };
 		expect(data.project.stage.id).toBe('S2');
 		expect(data.next_question).toBeNull();
-		expect(data.message).toContain('S1 is passed');
+		expect(data.message).toContain('The interview is passed');
 	});
 
 	test('provider failure and stale version append nothing and preserve retryability', async () => {
