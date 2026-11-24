@@ -12,6 +12,8 @@
 	import type { Project } from '$lib/domain/schemas';
 	import { pickFor, takesFor } from '$lib/domain/takes';
 	import { itemSeconds, selectionSummary, type ReadLengths } from '$lib/domain/selection';
+	import { dropMeaning } from '$lib/domain/drops';
+	import { groupOf } from '$lib/domain/groups';
 	import { playItemFor, isSlateId } from '$lib/domain/slate';
 	import { shotCardFacts, takeLabel } from '$lib/domain/shot-card';
 	import { step } from '$lib/domain/viewer-keys';
@@ -117,10 +119,17 @@
 		dropAt = null;
 		if (!id || at === null) return;
 		event.preventDefault();
-		const card = cardOf(id);
-		const item = items.find((entry) => entry.id === id) ?? (card ? playItemFor(project, card) : null);
-		if (item) reviewSequence.place(item, at);
-		else say('A still pick does not play in a selection');
+		// The one resolver says what the drop means; an entry already in the strip is being moved, so it always plays.
+		const meaning = dropMeaning({ kind: 'shots', cardIds: [id] }, { kind: 'selection', at }, {
+			groupOf: (cardId) => { const card = cardOf(cardId); return card ? groupOf(card) : null; },
+			playable: (cardId) => items.some((entry) => entry.id === cardId) || (() => { const card = cardOf(cardId); return !!card && !!playItemFor(project, card); })()
+		});
+		if (meaning.kind !== 'select') { if (meaning.kind === 'nothing') say(meaning.why); return; }
+		meaning.cardIds.forEach((cardId, offset) => {
+			const card = cardOf(cardId);
+			const item = items.find((entry) => entry.id === cardId) ?? (card ? playItemFor(project, card) : null);
+			if (item) reviewSequence.place(item, meaning.at + offset);
+		});
 	}
 </script>
 

@@ -91,3 +91,25 @@ test('asking for a price always shows an outcome, even when the answer is not th
 	expect(make).toContain('try { return JSON.parse(text) as Answer; }');
 	expect(make).toContain('making takes may not be set up here');
 });
+
+const outline = readFileSync('src/lib/ui/shell/Outline.svelte', 'utf8');
+const page = readFileSync('src/routes/+page.svelte', 'utf8');
+
+test('the grid, the outline and the selection strip all ask the one resolver what a drop means', () => {
+	for (const source of [workspace, outline, strip]) expect(source).toContain("from '$lib/domain/drops'");
+	expect(workspace).toContain("dropMeaning({ kind: 'files', media: files.map((file) => mediaKind(file.name) ?? 'other') }, target, dropContext)");
+	expect(outline).toContain("dropMeaning(dragged, { kind: 'group', groupId }");
+	expect(strip).toContain("dropMeaning({ kind: 'shots', cardIds: [id] }, { kind: 'selection', at }");
+	// The same drag type is used wherever a shot is picked up.
+	expect(card).toContain('setData(SHOT_DRAG, card.card_id)');
+	expect(outline).toContain('setData(SHOT_DRAG, shot.id)');
+});
+
+test('G makes a group with no dialog, in the grid and on the canvas', () => {
+	expect(workspace).toContain('const name = nextGroupName(project.production);');
+	expect(workspace).toContain("if (group) { event.preventDefault(); void groupGathered(); return; }");
+	expect(page).toContain('<svelte:window onkeydown={canvasKey} />');
+	const boxed = page.slice(page.indexOf('function groupBoxed()'), page.indexOf('function canvasKey'));
+	expect(boxed).toContain('nextGroupName(activeProject.production)');
+	expect(boxed).not.toContain('newGroupName');
+});

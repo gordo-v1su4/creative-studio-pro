@@ -12,11 +12,13 @@
 	import { SHOT_DRAG } from '$lib/ui/shots/SelectionStrip.svelte';
 	import ClipHoverPlayer from '$lib/ui/ClipHoverPlayer.svelte';
 
-	let { card, facts, pick, selected = false, position = 0, onselect, onopen }: {
+	let { card, facts, pick, selected = false, dropTarget = false, position = 0, onselect, onopen }: {
 		card: StoryCard;
 		facts: ShotCardFacts;
 		pick: Take | null;
 		selected?: boolean;
+		/** Files are held over this card: letting go adds them as takes of this shot. */
+		dropTarget?: boolean;
 		/** Its place in the selection (1 = first), or 0 when it is not in it. */
 		position?: number;
 		/** Clicked; `gather` is true for a shift-click, which also adds it to the selection or takes it out. */
@@ -48,7 +50,8 @@
 </script>
 
 <div
-	class={['shot', selected && 'selected', card.benched && 'benched']}
+	class={['shot', selected && 'selected', dropTarget && 'over', card.benched && 'benched']}
+	data-shot={card.card_id}
 	data-status={facts.status}
 	role="button"
 	aria-label={`Shot ${facts.number}, ${card.title}, ${facts.statusLabel}`}
@@ -94,6 +97,7 @@
 <style>
 	.shot { display: flex; min-width: 0; flex-direction: column; gap: 4px; border-radius: 8px; padding: 5px 5px 6px; cursor: default; user-select: none; }
 	.shot.selected { background: var(--color-selected); }
+	.shot.over { background: var(--color-teal-deep); }
 	.shot.benched .frame { opacity: 0.45; }
 	.shot:focus-visible { outline: 2px solid var(--color-teal); outline-offset: -2px; }
 	.frame { position: relative; display: flex; aspect-ratio: 16 / 9; align-items: center; justify-content: center; overflow: hidden; border-radius: 5px; background: var(--color-raised); }

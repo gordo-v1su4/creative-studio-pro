@@ -35,6 +35,9 @@
 	import { selectionEntries } from '$lib/domain/selection';
 	import { playItemFor } from '$lib/domain/slate';
 	import { nextCutName } from '$lib/domain/cuts';
+	import { dropLabel, dropMeaning, type DropContext, type DropTarget } from '$lib/domain/drops';
+	import { groupOf, nextGroupName } from '$lib/domain/groups';
+	import { mediaKind } from '$lib/domain/media';
 	import Viewer from '$lib/ui/shots/Viewer.svelte';
 	import type { ReviewStatus } from '$lib/domain/viewer-keys';
 	import { shotCardFacts } from '$lib/domain/shot-card';
@@ -44,7 +47,7 @@
 	let { project, onUpdated, onAddFiles, onImportRenders, onOpenBoard, tab = $bindable('story'), detailsHost = null, onOpenDetails }: {
 		project: Project; onUpdated: (project: Project) => void;
 		/** Files dropped or picked on the Shots tab: each becomes a new shot (off the spine, not benched). */
-		onAddFiles?: (files: File[]) => void;
+		onAddFiles?: (files: File[], place?: { cardId?: string }) => void;
 		/** Higgsfield renders picked on the Shots tab (job ids, in the order to add): each becomes a new shot. */
 		onImportRenders?: (jobIds: string[]) => void;
 		onOpenBoard?: (groupId?: string) => void;
@@ -219,19 +222,39 @@
 		finally { scoreBusy = null; }
 	}
 
-	/** True while files are dragged over the Shots tab. */
-	let dropping = $state(false);
+	// Drops on the Shots grid go through the one resolver (domain/drops): files on a shot are new takes of it,
+	// files on open space are new shots.
+	const dropContext = $derived<DropContext>({
+		groupOf: (cardId) => { const card = draft.cards.find((entry) => entry.card_id === cardId); return card ? groupOf(card) : null; },
+		playable: (cardId) => { const card = draft.cards.find((entry) => entry.card_id === cardId); return !!card && !!playItemFor({ ...project, production: draft }, card); }
+	});
+	/** What letting go would do while files are held over the grid (null when nothing is held), and the shot under them. */
+	let dropHint = $state<string | null>(null);
+	let dropCard = $state<string | null>(null);
+	const dropping = $derived(dropHint !== null);
+	const gridTarget = (event: DragEvent): DropTarget => {
+		const cardId = (event.target as Element | null)?.closest('[data-shot]')?.getAttribute('data-shot');
+		return cardId ? { kind: 'shot', cardId } : { kind: 'space', groupId: 'main' };
+	};
 	function shotsDragOver(event: DragEvent) {
 		if (!onAddFiles || !event.dataTransfer?.types.includes('Files')) return;
 		event.preventDefault();
 		event.dataTransfer.dropEffect = 'copy';
-		dropping = true;
+		const target = gridTarget(event);
+		dropCard = target.kind === 'shot' ? target.cardId : null;
+		dropHint = dropLabel(dropMeaning({ kind: 'files' }, target, dropContext), { shot: draft.cards.find((card) => card.card_id === dropCard)?.title });
 	}
 	function shotsDrop(event: DragEvent) {
-		dropping = false;
+		const target = gridTarget(event);
+		dropHint = null; dropCard = null;
 		if (!onAddFiles || !event.dataTransfer?.types.includes('Files')) return;
 		event.preventDefault();
-		void droppedFiles(event.dataTransfer).then((files) => onAddFiles?.(files));
+		void droppedFiles(event.dataTransfer).then((files) => {
+			const meaning = dropMeaning({ kind: 'files', media: files.map((file) => mediaKind(file.name) ?? 'other') }, target, dropContext);
+			if (meaning.kind === 'new-take') onAddFiles?.(files, { cardId: meaning.cardId });
+			else if (meaning.kind === 'new-shots') onAddFiles?.(files);
+			else if (meaning.kind === 'nothing') shotNotice = { text: meaning.why };
+		});
 	}
 	function shotsPicked(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
@@ -420,12 +443,30 @@
 
 	/** Space on the Shots grid opens the viewer on the selected shot. */
 	function gridKey(event: KeyboardEvent) {
-		if (tab !== 'beats' || viewerOpen || reviewSequence.playing || event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey) return;
+		const group = event.key === 'g' || event.key === 'G';
+		if (tab !== 'beats' || viewerOpen || reviewSequence.playing || (event.key !== ' ' && !group) || event.metaKey || event.ctrlKey || event.altKey) return;
 		const target = event.target as HTMLElement | null;
-		if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A)$/.test(target.tagName))) return;
+		if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|A)$/.test(target.tagName) || (!group && target.tagName === 'BUTTON'))) return;
+		if (group) { event.preventDefault(); void groupGathered(); return; }
 		if (!selectedShotId && !draft.cards.length) return;
 		event.preventDefault();
 		openViewer(selectedShotId || draft.cards[0].card_id);
+	}
+
+	/** G: the gathered shots (the selection, else the selected shot) become a new group named "Group N", with no dialog. */
+	async function groupGathered() {
+		const ids = reviewSequence.items.length ? reviewSequence.items.map((item) => item.id) : selectedShotId ? [selectedShotId] : [];
+		if (!ids.length || pickBusy) return;
+		if (unsaved) { pushNote = 'Save the workspace before grouping'; return; }
+		pickBusy = true; error = null;
+		const name = nextGroupName(project.production);
+		const groupId = crypto.randomUUID();
+		try {
+			await boardCommand({ command: 'create_group', group_id: groupId, name });
+			await boardCommand({ command: 'move_beats', group_id: groupId, card_ids: ids });
+			pushNote = `${ids.length === 1 ? '1 shot is' : `${ids.length} shots are`} now ${name}`;
+		} catch (cause) { pushNote = cause instanceof Error ? cause.message : 'Grouping failed'; }
+		finally { pickBusy = false; }
 	}
 
 	/** Shows a node inside another element of the page (the dock), keeping it part of this component. */
@@ -559,7 +600,7 @@
 		<PrepWorkspace {project} {onUpdated} onContinue={() => tab = 'story'} />
 	{:else if tab === 'beats'}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class={['relative min-h-full', dropping && 'shots-dropping']} ondragover={shotsDragOver} ondragleave={(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) dropping = false; }} ondrop={shotsDrop}>
+		<div class="relative min-h-full" ondragover={shotsDragOver} ondragleave={(event) => { if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) { dropHint = null; dropCard = null; } }} ondrop={shotsDrop}>
 		{#if onAddFiles}
 			<div class="flex flex-wrap items-center gap-2 border-b border-[#223039] px-4 py-2.5">
 				<span class="meta-label text-[#59d9cf]">{draft.cards.length} {draft.cards.length === 1 ? 'shot' : 'shots'}</span>
@@ -612,11 +653,11 @@
 		<div class="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-0.5 px-2 pb-2 pt-1">
 			{#each draft.cards as card (card.card_id)}
 				{@const pick = pickFor(draft, card)}
-				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} position={reviewSequence.position(card.card_id)} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
+				<ShotCard {card} {pick} facts={shotCardFacts(card, draft.assets, pick?.asset_id ?? null)} selected={card.card_id === selectedShotId} dropTarget={card.card_id === dropCard} position={reviewSequence.position(card.card_id)} onselect={(gather) => { selectedShotId = card.card_id; if (gather) toggleInSelection(card); }} onopen={() => openViewer(card.card_id)} />
 			{/each}
 			{#if draft.cards.length === 0}<button type="button" class="empty-action" onclick={() => void generate()} disabled={busy}>Build the story draft to create ordered cards</button>{/if}
 		</div>
-		{#if dropping}<div class="shots-drop-hint" aria-hidden="true">Drop to add as shots</div>{/if}
+		{#if dropping}<div class="shots-drop-hint cp" aria-hidden="true">{dropHint}</div>{/if}
 		<!-- The takes band stays put under the grid, so selecting a shot never moves the page. -->
 		<div class="bands-area sticky bottom-0 z-[5] bg-panel p-1"><div class="bands">
 			<TakesBand title={selectedShot?.title ?? null} facts={selectedFacts} takes={selectedShot ? takesFor(draft, selectedShot.card_id, true) : []} busy={pickBusy || unsaved || shotBusy !== null} onpick={(takeId) => selectedShot && void makePick(selectedShot.card_id, takeId)} onopen={() => onOpenDetails?.()} />
@@ -779,8 +820,8 @@
 	.cut-row b { font-size: 12px; font-weight: 600; }
 	.cut-name { border: 1px solid #4ee8d2; background: #0d1116; padding: 4px 6px; color: #bce6e8; font: 12px var(--font-mono); outline: none; }
 	.empty-action { min-height: 240px; border: 1px dashed #31565d; color: #6ca1a8; }
-	.shots-dropping { outline: 1px dashed #59d9cf; outline-offset: -6px; }
-	.shots-drop-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgb(5 7 10 / 0.6); color: #59d9cf; font: 600 12px var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; pointer-events: none; }
+	/* What letting go will do, said in one line above the bands; the shot under the pointer is tinted by its card. */
+	.shots-drop-hint { position: sticky; bottom: 128px; z-index: 6; width: fit-content; margin: 0 auto; border-radius: 6px; background: var(--color-selected); padding: 5px 10px; color: var(--color-teal-ink); pointer-events: none; }
 	.preview-stage { display: flex; aspect-ratio: 16/9; align-items: center; justify-content: center; border: 1px solid #31565d; background: #07090c; color: #88b6bf; text-align: center; }
 	.preview-stage div { max-width: 520px; padding: 30px; }
 	.preview-stage b { color: #bcebee; }

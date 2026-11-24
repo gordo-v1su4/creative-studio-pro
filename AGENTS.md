@@ -46,6 +46,13 @@ Commit straight to `main` and push. No feature branches, no PRs, and no
 GitHub issue or Linear ticket is needed before starting work. The specs in
 `docs/` describe what to build; they are not a ticket queue to work through.
 
+**Streamlined UI in progress.** Until its plan is finished, work lands the way
+`docs/planning/ux-designs/ux-streamline-2026-11-23/PLAN.md` says ("How the work
+lands"): on `ux-streamline`, merged to `main` a slice at a time.
+
+**Publishing.** A push to `main` redeploys only the sign-in gateway. The app on
+the App VM is a separate release: `docs/operations/hosted-studio.md`, "Releasing".
+
 Backend and hosting URLs come from environment variables in `.env.local`
 (git-ignored); never hardcode or commit them.
 

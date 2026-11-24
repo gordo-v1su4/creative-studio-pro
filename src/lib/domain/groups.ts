@@ -140,6 +140,14 @@ export function applyRemoveGroup(production: ProductionState, groupId: string): 
 		...(production.assemblies ? { assemblies: production.assemblies.map((a) => ({ ...a, scenes: a.scenes.filter((s) => s.group_id !== groupId) })) } : {}) } };
 }
 
+/** "Group N" for the first N not already taken: the name a group gets when it is made with G, with no dialog. */
+export function nextGroupName(production: ProductionState): string {
+	const taken = new Set(groupsOf(production).map((group) => group.name.toLowerCase()));
+	let n = (production.groups ?? []).length + 1;
+	while (taken.has(`group ${n}`)) n += 1;
+	return `Group ${n}`;
+}
+
 const exists = (production: ProductionState, groupId: string) => groupId === MAIN_GROUP || (production.groups ?? []).some((g) => g.group_id === groupId);
 
 export function applyCreateGroup(production: ProductionState, group: { group_id: string; name: string }, now: string): TakeResult {

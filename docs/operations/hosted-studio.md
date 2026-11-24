@@ -93,6 +93,30 @@ a reversible write and a real browser session. Stop the hosted writer before
 restoring data; never overwrite a newer hosted ledger with a workstation copy.
 Roll back the image without replacing its persistent data volume.
 
+## Releasing
+
+Two halves, one commit. The gateway (Vercel) redeploys by itself on every push
+to `main`. The app (the origin on App VM) is released by hand, on the operator's
+word each time:
+
+```bash
+scripts/release-studio.sh <commit>
+```
+
+The commit must be on `origin/main`, so both halves run the same code. The
+script archives it, copies it over Tailscale SSH (`gordo@app-vm`; override with
+`CSP_RELEASE_HOST`), matches the checksum, builds the image on the VM, keeps the
+running image as `rollback-<its commit>`, switches `:production`, and waits for
+healthy and an anonymous 401. It never touches `data/`.
+
+Afterwards: check the change in a signed-in browser on the custom domain, then
+record both release identities in `proxmox-home/docs/creative-studio-pro-hosting.md`
+(pull that repo first). A gateway-only push is recorded there too, as such.
+
+Provider errors the origin answers with 502 reach the browser as the edge's own
+HTML page, not the app's JSON; a screen that calls such a route must cope with
+an answer that is not JSON.
+
 ## Project data is separate from a code release
 
 The hosted App VM store is authoritative for production work. Git branches,

@@ -41,7 +41,7 @@
 	import { pendingGenerations } from '$lib/domain/animate';
 	import AnimatePanel from '$lib/ui/AnimatePanel.svelte';
 	import FinalizePanel from '$lib/ui/FinalizePanel.svelte';
-	import { ASSEMBLY_VIEW, assemblyPlay, assemblyViews, type AssemblyItem, CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isAssemblyView, isBoardView, isCutView, MAIN_GROUP, sceneGlimpse, sceneShots } from '$lib/domain/groups';
+	import { ASSEMBLY_VIEW, assemblyPlay, assemblyViews, type AssemblyItem, CUT_VIEW, cutShots, cutViews, groupOf, groupsOf, isAssemblyView, isBoardView, isCutView, MAIN_GROUP, sceneGlimpse, sceneShots, nextGroupName } from '$lib/domain/groups';
 	import { readingOrder } from '$lib/domain/board-order';
 	import Pick from '$lib/ui/controls/Pick.svelte';
 	import Toggle from '$lib/ui/controls/Toggle.svelte';
@@ -603,6 +603,26 @@
 			notify(`Made ${name} with ${beatsLabel(moving)}. Pick it under Groups to see them.`);
 			clearSelection();
 		}
+	}
+
+	/** G on the canvas: the boxed shots become a new group named "Group N", with no dialog (rename it in the groups list). */
+	function groupBoxed() {
+		if (!activeProject || !selectedBeats.length) return;
+		const name = nextGroupName(activeProject.production);
+		const groupId = crypto.randomUUID();
+		const moving = [...selectedBeats];
+		sendBoardCommand({ command: 'create_group', group_id: groupId, name });
+		sendBoardCommand({ command: 'move_beats', group_id: groupId, card_ids: moving });
+		notify(`Made ${name} with ${beatsLabel(moving)}.`);
+		clearSelection();
+	}
+	function canvasKey(event: KeyboardEvent) {
+		if (!canvasOpen || (event.key !== 'g' && event.key !== 'G') || event.metaKey || event.ctrlKey || event.altKey) return;
+		const target = event.target as HTMLElement | null;
+		if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+		if (!selectedBeats.length) return;
+		event.preventDefault();
+		groupBoxed();
 	}
 
 	function moveSelectedTo(groupId: string, ids: string[] = selectedBeats) {
@@ -1245,6 +1265,7 @@
 {#if newProjectOpen}<NewProjectFlow onClose={() => newProjectOpen = false} onCreated={async (id) => { await loadProjects(); await switchProject(id); openWorkspace('story'); newProjectOpen = false; }} />{/if}
 
 <svelte:head><title>{activeProject ? `${activeProject.title} — Creative Studio Pro` : 'Creative Studio Pro'}</title></svelte:head>
+<svelte:window onkeydown={canvasKey} />
 
 <div class="grid h-full min-w-0 overflow-x-hidden bg-ground" style="grid-template-rows: auto minmax(0,1fr) 24px">
 	<!-- The top bar (34px, wrapping on a narrow screen): the project, the four stages, the views of the open stage, then the Agent and the menu. It never clips, so its menus can hang below it. -->
@@ -1316,7 +1337,7 @@
 		{#if !canvasOpen}
 			<!-- The outline: the project's groups and shots. On the canvas the layers panel takes its place. -->
 			<aside class="wa-outline hidden min-h-0 overflow-hidden rounded-[10px] bg-panel md:mr-[3px] md:block">
-				<Outline project={activeProject} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} />
+				<Outline project={activeProject} openGroupId={isBoardView(activeGroup) ? MAIN_GROUP : activeGroup} onOpenGroup={(groupId) => showGroup(groupId)} onMoveShots={(groupId, cardIds) => moveSelectedTo(groupId, cardIds)} onAddFiles={(groupId, files) => importFiles(files, { groupId, unbenched: true })} />
 			</aside>
 		{/if}
 		<aside class={['rail wa-rail relative hidden bg-panel md:flex md:flex-col', canvasOpen && !railCollapsed ? 'rounded-[10px] md:mr-[3px]' : '']} aria-label="Canvas layers" aria-hidden={!canvasOpen || railCollapsed}>
@@ -1555,7 +1576,7 @@
 					{#if animateCardId && activeProject}<AnimatePanel project={activeProject} cardId={animateCardId} onUpdated={(project) => adoptProject(withPendingPicks(project), layout)} onclose={() => (animateCardId = null)} onsent={notify} />{/if}
 				</div>
 			{:else if activeProject}
-				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files) => importFiles(files, { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} {detailsHost} onOpenDetails={() => { dockTab = 'details'; /* Below 1024px the dock lies over the work, so it is not opened for the viewer. */ if (window.matchMedia('(min-width: 1024px)').matches) { ui.chatMode = 'dock'; ui.chatOpen = true; } }} />
+				<ProductionWorkspace project={activeProject} onUpdated={(project) => adoptProject(project, layout)} onAddFiles={(files, place) => importFiles(files, place?.cardId ? { cardId: place.cardId } : { unbenched: true })} onImportRenders={(jobIds) => importRenders(jobIds, undefined, true)} onOpenBoard={(groupId) => { if (groupId) showGroup(groupId); openWorkspace('canvas'); }} bind:tab={productionTab} {detailsHost} onOpenDetails={() => { dockTab = 'details'; /* Below 1024px the dock lies over the work, so it is not opened for the viewer. */ if (window.matchMedia('(min-width: 1024px)').matches) { ui.chatMode = 'dock'; ui.chatOpen = true; } }} />
 			{:else}
 				<div class="canvas-empty flex h-full items-center justify-center p-6">
 					<div class="w-full max-w-[340px] rounded-md border border-dashed border-border-default bg-surface-raised/80 p-5 text-center backdrop-blur-sm">

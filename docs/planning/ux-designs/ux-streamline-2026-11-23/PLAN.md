@@ -166,6 +166,8 @@ Status, part five, 2026-11-23 (step 8; local test copy, checked in the browser o
 
 Checked: on a real Ghost prompt the twelve rows, the four image rows and the spec appear; typing into one section changed only that section; "Get price" returned 12 credits from the provider. Not exercised: Confirm, which would spend credits; its rules are covered by tests.
 
+Released to Hosted Studio the same day as `253c38e`, then `60e5dde`. On hosted TR130 the blocks appear (its prompts are not in sections, so each shows as one row). "Get price" fails there: the server answers 502 and the edge in front of it replaces the app's message with its own page, so `60e5dde` makes the block say so plainly instead of showing nothing. Making takes from Hosted Studio needs the provider set up on the server first; that is outside this plan.
+
 Still open in slice 1: stills in a selection. The older Animate window on the canvas (with its session cap) is still there beside this.
 
 ### 2 · Canvas
@@ -179,6 +181,24 @@ Goal: the board as a view of Shots where anything can be dragged anywhere.
 5. References as canvas cards, linked to the shots whose prompts use them.
 
 Done when: every drop in the list above works from grid, canvas and outline, and a moved shot keeps its shot code.
+
+Retrospective after slice 1, 2026-11-23 (the `retro` skill), folded in before this slice:
+
+- **Releasing was done by hand four times.** Now `scripts/release-studio.sh <commit>`, described under "Releasing" in `docs/operations/hosted-studio.md`, with a pointer from `AGENTS.md`. It refuses a commit that is not on `origin/main` or was released before, and prints what to record.
+- **The look's mechanical rules were checked per component.** Now one test (`tests/ui/look-rules.test.ts`) checks every component in `src/lib/ui/shots` and `src/lib/ui/shell` for borders, pills, circles and bold, so a new file there is covered without its own test.
+- **`AGENTS.md` said "no branches" while this work is on one.** It now points at "How the work lands" above.
+- Left for the operator to decide: two tests fail on this Mac on every run for reasons outside the code (the local ffmpeg has no `drawtext`; the prompt-skill copies are out of step with the vault); CI is paused, so nothing but the pre-commit env check runs before a push; provider errors answered with 502 reach the browser as the edge's HTML page; the Vercel plugin proposes Next.js guidance for most prompts in this SvelteKit repo.
+
+Status, part one, 2026-11-23 (steps 2 and 3; local test copy):
+
+- **One drop resolver** (`src/lib/domain/drops.ts`, written test-first): files on a shot are new takes of it; files on open space or on a scene are new shots there; a shot on a scene moves it; a shot on the selection joins it; a picture on a reference is a source image; anything else means nothing, with a line saying why. The grid, the outline and the selection strip all ask it.
+- **Grid.** Holding files over a shot tints it and says "Drop to add as a take of …"; over open space it says "Drop to add as shots". The old dashed outline and full-screen overlay are gone.
+- **Outline.** Each group takes drops: a shot (from the grid or from the outline's own rows) moves there, files become new shots there. A moved shot keeps its number, order and Review Room code (checked on the test project).
+- **G.** In the grid, G turns the gathered shots (the selection, else the selected shot) into a new group named "Group N"; on the canvas, G does the same for the boxed shots. No dialog; rename it afterwards.
+
+Checked in the browser: the hints over a shot and over open space, a move from the grid to an outline group and the "Already in this scene" refusal, and G in the grid on two shots. The test project was put back afterwards. Not exercised: an actual file drop on a shot (it would add a file to the project) and G on the canvas; both go through code paths that already existed (`importFiles` with a shot, `create_group` and `move_beats`).
+
+Still open in slice 2: the canvas card restyled (step 1), "Unplaced" in the outline (step 4, waits for scene codes, which arrive with the story plan in slice 4), references as canvas cards (step 5), and the canvas and its rail asking the same resolver for their drops.
 
 ### 3 · Review Room
 
