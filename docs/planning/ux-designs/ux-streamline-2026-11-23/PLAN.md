@@ -270,7 +270,18 @@ Status, part three, 2026-11-23 (step 4 in this repository; local test copy):
 
 Checked in the browser with stand-in notes fed to the page (Review Room cannot return any until step 8 ships): three marks at the right places, four rows in order, a click moved the picture to the note. Against the real Review Room today the answer is "none available", as intended.
 
-Still open in slice 3: the three changes in `review-room-svelte` itself (steps 6 to 8), being built on a branch there, and after them writing each locked folder's address in this app into Review Room, which needs this app to know its own public address. The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
+Status, part four, 2026-11-23 (steps 6 to 8, in `review-room-svelte`; built by a second agent on its own branch, reviewed here, then pushed to that repo's `main` on the operator's word, which deployed it):
+
+- **Addresses (step 6).** What is open in Review Room's workspace is now in its address: `/?project=…&folder=…&asset=<id or shot code>&version=<id or v003>&t=<seconds>`. A link or a reload lands on the same thing; unknown or archived parts fall back to the deepest part that exists. Sign-in remembers where the link was going (a same-site path only).
+- **Link back (step 7).** A locked folder can carry an https address for its page in this app, set only by the credential that owns it, shown as "Open in Creative Studio Pro" beside the folder path and in its menu.
+- **Notes (step 8).** `GET /api/v1/assets/{assetId}/notes` for `media:read` keys returns a shot's notes with their timecodes, in the shape this app's viewer reads.
+- Review Room commit `c880092` (five commits on top of `acfcccc`). Its own checks on the branch: no type errors, 330 tests pass (296 before), build succeeds. Its deploy workflow finished successfully.
+
+Checked after the deploy: an anonymous request to `/` still goes to plain sign-in; one carrying an address goes to sign-in with the address kept; the notes address refuses a request with no key (401) and, asked through this app with the real key, answers for twelve stored takes (none of them has a note yet). A link from this app to a stored version was opened in the browser and reached Review Room's sign-in with the address intact; landing on the version after signing in has not been watched, because the browser here is not signed in to Review Room.
+
+Not done there: no Linear ticket exists for the work, so the commits carry no ticket id; the unmerged "keep me signed in" branch (`origin/feat/keep-signed-in`) will meet two small conflicts in the sign-in page, each resolved by keeping both changes; the in-app agents page was not updated (the API document and OpenAPI file were).
+
+Still open in slice 3: releasing this app's links and notes to Hosted Studio (they are on `main` as `743be11`), and writing each locked folder's address in this app into Review Room, which needs this app to know its own public address. The episode outline's own button, which also stores takes that are not in Review Room yet, is unchanged.
 
 ### 4 · Front door and story plan
 
