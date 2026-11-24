@@ -60,12 +60,12 @@ describe('render plans', () => {
 		expect(args.join(' ')).toContain('[0:v][1:v]concat=n=2:v=1:a=0[v]');
 		expect(args).toContain('2:a');
 	});
-	test('drafts and low-resolution takes are listed', () => {
+	test('takes rendered under 1080p and low-resolution takes are listed', () => {
 		expect(draftTakes([
 			{ title: 'A', take: { name: 'a.mp4', width: 854, height: 480, generation: { provider: 'higgsfield', model: 's', resolution: '480p', prompt: 'p', draft: true } } },
 			{ title: 'B', take: { name: 'b.mp4', width: 1920, height: 1080 } },
 			{ title: 'C', take: { name: 'c.mp4', width: 1280, height: 720 } }
-		])).toEqual([{ title: 'A', name: 'a.mp4', why: '480p draft (480p), not finalized' }, { title: 'C', name: 'c.mp4', why: '1280×720, under 1080' }]);
+		])).toEqual([{ title: 'A', name: 'a.mp4', why: 'rendered at 480p; a 1080p take is a new render' }, { title: 'C', name: 'c.mp4', why: '1280×720, under 1080' }]);
 	});
 });
 

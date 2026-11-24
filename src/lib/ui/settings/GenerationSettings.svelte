@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
-	/** Settings → Video generation: the Higgsfield CLI that Animate and Finalize run through. */
+	/** Settings → Video generation: the Higgsfield CLI that takes are rendered through. */
 	type Status = { cli: string | null; installed: boolean; logged_in: boolean; balance: { credits: number; plan: string | null } | null };
 	let status = $state<Status | null>(null);
 	let error = $state<string | null>(null);
@@ -29,7 +29,7 @@
 		<button type="button" class="btn" onclick={() => void refresh()}>Recheck</button>
 	</div>
 	<p class="mt-1 text-text-muted">
-		Animate and Finalize run Seedance through the Higgsfield CLI on your higgsfield.ai account — plan credits and draft mode (480p drafts you can finalize to 1080p from the same render for seven days), the same account the Higgsfield connector uses.
+		Takes are rendered with Seedance through the Higgsfield CLI on your higgsfield.ai account, on its plan credits: the same account the Higgsfield connector uses. Resolution is a plain choice of 480p, 720p or 1080p; a higher-resolution take is a new render.
 	</p>
 	{#if status && !status.installed}
 		<p class="mt-1 text-gate-pending">Install it with <code>bun add -g @higgsfield/cli</code> (or npm), then run <code>higgsfield auth login</code>. Set HIGGSFIELD_CLI to point at a different binary.</p>

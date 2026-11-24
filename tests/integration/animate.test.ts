@@ -23,8 +23,8 @@ function fakeGenerator(credits = 15) {
 	const statuses = new Map<string, { status: GenerationStatus; video_url?: string; error?: string }>();
 	let n = 0;
 	const generator: VideoGenerator = {
-		async estimate(request) { calls.push(`estimate ${request.duration}s ${request.resolution} draft=${request.draft} image=${Boolean(request.start_image)}`); return { credits }; },
-		async submit(request) { calls.push(`submit ${request.resolution} draft=${request.draft} image=${request.start_image?.endsWith('still.png')}`); const id = `job-${++n}`; statuses.set(id, { status: 'queued' }); return { job_id: id }; },
+		async estimate(request) { calls.push(`estimate ${request.duration}s ${request.resolution} image=${Boolean(request.start_image)}`); return { credits }; },
+		async submit(request) { calls.push(`submit ${request.resolution} image=${request.start_image?.endsWith('still.png')}`); const id = `job-${++n}`; statuses.set(id, { status: 'queued' }); return { job_id: id }; },
 		async status(id) { calls.push(`status ${id}`); return statuses.get(id)!; },
 		async balance() { return { credits: 100, plan: 'creator' }; }
 	};
@@ -106,8 +106,8 @@ describe('Animate against a fake generator', () => {
 		const { deps, fake, project, projectId } = await setup({ width: 2048, height: 1152 });
 		const sent = await sendAnimate(deps, { project_id: projectId, expected_version: project.version, card_id: 'a', settings: settings(), mode: { kind: 'confirm', confirmed_credits: 15 } });
 		if (!sent.ok) throw new Error(sent.message);
-		expect(fake.calls).toEqual(['estimate 5s 480p draft=true image=false', 'submit 480p draft=true image=true']);
-		expect(sent.project.production.generations?.[0]).toMatchObject({ request_id: 'job-1', card_id: 'a', status: 'queued', estimate_credits: 15, draft: true });
+		expect(fake.calls).toEqual(['estimate 5s 480p image=false', 'submit 480p image=true']);
+		expect(sent.project.production.generations?.[0]).toMatchObject({ request_id: 'job-1', card_id: 'a', status: 'queued', estimate_credits: 15, draft: false });
 
 		fake.statuses.set('job-1', { status: 'completed', video_url: 'https://files.example/out.mp4' });
 		const polled = await pollGenerations(deps, projectId);
@@ -115,7 +115,8 @@ describe('Animate against a fake generator', () => {
 		const takes = takesFor(polled.project.production, 'a');
 		expect(takes.map((take) => take.kind)).toEqual(['image', 'video']);
 		const animated = takes[1];
-		expect(animated).toMatchObject({ job_id: 'job-1', width: 854, height: 480, generation: { provider: 'higgsfield', model: SEEDANCE_JOB_TYPE, resolution: '480p', draft: true, duration_s: 5 } });
+		expect(animated).toMatchObject({ job_id: 'job-1', width: 854, height: 480, generation: { provider: 'higgsfield', model: SEEDANCE_JOB_TYPE, resolution: '480p', duration_s: 5 } });
+		expect(animated?.generation?.draft).toBeUndefined();
 		expect(pickFor(polled.project.production, polled.project.production.cards[0])?.asset_id).toBe(animated.asset_id);
 		expect(polled.project.production.generations?.[0]).toMatchObject({ status: 'completed', take_id: animated.asset_id });
 	});
@@ -185,7 +186,7 @@ describe('the Agent drafts the Animate prompt', () => {
 });
 
 describe('Higgsfield CLI client', () => {
-	test('drafts at 480p with the still as start frame; the prompt goes in a JSON file', async () => {
+	test('sends 480p with the still as start frame and no draft flag; the prompt goes in a JSON file', async () => {
 		const runs: string[][] = [];
 		let promptFile = '';
 		const run = async (args: string[]) => {
@@ -198,28 +199,23 @@ describe('Higgsfield CLI client', () => {
 			return { credits: 24.01, subscription_plan_type: 'creator' };
 		};
 		const hf = createHiggsfieldCli(run);
-		const request = { prompt: GOOD, duration: 5, resolution: '480p' as const, generate_audio: true, draft: true, start_image: 'C:\\p\\still.png' };
+		const request = { prompt: GOOD, duration: 5, resolution: '480p' as const, generate_audio: true, start_image: 'C:\\p\\still.png' };
 		expect(await hf.estimate(request)).toEqual({ credits: 15 });
 		expect(await hf.submit(request)).toEqual({ job_id: 'job-9' });
 		expect(await hf.status('job-9')).toMatchObject({ status: 'completed', video_url: 'https://cdn.example/v.mp4' });
 		expect(await hf.balance()).toEqual({ credits: 24.01, plan: 'creator' });
 		expect(runs[1].slice(0, 2)).toEqual(['generate', 'create']);
-		expect(runs[1].slice(2)).toEqual(['seedance_2_5', '--prompt', expect.stringMatching(/^@.+prompt\.json$/), '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--mode', 'omni_reference', '--start-image', 'C:\\p\\still.png']);
+		expect(runs[1].slice(2)).toEqual(['seedance_2_5', '--prompt', expect.stringMatching(/^@.+prompt\.json$/), '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--mode', 'omni_reference', '--start-image', 'C:\\p\\still.png']);
 		expect(runs[2]).toEqual(['generate', 'get', 'job-9']);
 		expect(await Bun.file(promptFile).exists()).toBeFalse();
 	});
 
-	test('Seedance 2.5 with a start image or references goes as omni_reference; 2.0 has no draft flags', () => {
-		expect(seedanceArgs({ prompt: 'p', duration: 5, resolution: '480p', generate_audio: true, draft: true, start_image: 's.png' }, 'f.json'))
-			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--mode', 'omni_reference', '--start-image', 's.png']);
-		expect(seedanceArgs({ prompt: 'p', duration: 12, resolution: '480p', generate_audio: true, draft: true, aspect_ratio: '16:9', image_references: ['kai.png'] }, 'f.json'))
-			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '12', '--resolution', '480p', '--generate_audio', 'true', '--draft', 'true', '--mode', 'omni_reference', '--aspect_ratio', '16:9', '--image-references', 'kai.png']);
-		expect(seedanceArgs({ prompt: 'p', duration: 12, resolution: '720p', generate_audio: true, job_type: 'seedance_2_0', aspect_ratio: '9:16', draft: true }, 'f.json'))
+	test('Seedance 2.5 with a start image or references goes as omni_reference, and nothing asks for draft', () => {
+		expect(seedanceArgs({ prompt: 'p', duration: 5, resolution: '480p', generate_audio: true, start_image: 's.png' }, 'f.json'))
+			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '5', '--resolution', '480p', '--generate_audio', 'true', '--mode', 'omni_reference', '--start-image', 's.png']);
+		expect(seedanceArgs({ prompt: 'p', duration: 12, resolution: '1080p', generate_audio: true, aspect_ratio: '16:9', image_references: ['kai.png'] }, 'f.json'))
+			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '12', '--resolution', '1080p', '--generate_audio', 'true', '--mode', 'omni_reference', '--aspect_ratio', '16:9', '--image-references', 'kai.png']);
+		expect(seedanceArgs({ prompt: 'p', duration: 12, resolution: '720p', generate_audio: true, job_type: 'seedance_2_0', aspect_ratio: '9:16' }, 'f.json'))
 			.toEqual(['seedance_2_0', '--prompt', '@f.json', '--duration', '12', '--resolution', '720p', '--generate_audio', 'true', '--aspect_ratio', '9:16']);
-	});
-
-	test('finalizing a draft spells out draft false and passes the draft job id', () => {
-		expect(seedanceArgs({ prompt: 'p', duration: 15, resolution: '1080p', generate_audio: true, draft: true, draft_job_id: 'd1' }, 'f.json'))
-			.toEqual(['seedance_2_5', '--prompt', '@f.json', '--duration', '15', '--resolution', '1080p', '--generate_audio', 'true', '--draft', 'false', '--draft_job_id', 'd1']);
 	});
 });

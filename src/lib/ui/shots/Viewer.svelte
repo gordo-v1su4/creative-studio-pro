@@ -236,7 +236,7 @@
 			{@const mark = facts?.takes.find((item) => item.id === take.asset_id)}
 			<button type="button" class="take" class:shown={take.asset_id === shown?.asset_id} class:excluded={take.rejected} onclick={() => (chosen = { shot: shotId, take: take.asset_id })} title={take.name}>
 				{#if still(take)}<img src={still(take)} alt="" loading="lazy" decoding="async" />{/if}
-				<span class="b"><span class="code v">{mark?.label ?? ''}</span><span class="code name">{take.name}</span><span class="cp state">{take.rejected ? 'Excluded' : mark?.pick ? 'Pick' : take.generation?.draft && !take.generation.finalized_at ? 'Draft' : take.kind === 'image' ? 'Still' : 'Take'}</span></span>
+				<span class="b"><span class="code v">{mark?.label ?? ''}</span><span class="code name">{take.name}</span><span class="cp state">{take.rejected ? 'Excluded' : mark?.pick ? 'Pick' : take.generation?.resolution === '480p' ? 'Draft' : take.kind === 'image' ? 'Still' : 'Take'}</span></span>
 			</button>
 		{/each}
 	</div>

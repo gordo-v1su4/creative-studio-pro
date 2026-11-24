@@ -128,7 +128,7 @@ describe('Trailer House: seeds → loglines → three more → develop', () => {
 		const calls: string[] = [];
 		let status: GenerationStatus = 'queued';
 		const generator: VideoGenerator = {
-			async estimate(request) { calls.push(`estimate ${request.job_type} ${request.resolution} draft=${request.draft} ${request.aspect_ratio}`); return { credits: 36 }; },
+			async estimate(request) { calls.push(`estimate ${request.job_type} ${request.resolution} ${request.aspect_ratio}`); return { credits: 36 }; },
 			async submit() { calls.push('submit'); return { job_id: 'job-1' }; },
 			async status() { return status === 'completed' ? { status, video_url: 'https://x/v.mp4' } : { status }; },
 			async balance() { return { credits: 100, plan: null }; }
@@ -136,16 +136,16 @@ describe('Trailer House: seeds → loglines → three more → develop', () => {
 		const deps: AnimateDeps = { gateway, store, projectRoot: root, generator, probe: async () => ({ width: 854, height: 480, duration_s: 12 }), download: async () => new Uint8Array([1, 2, 3]) };
 		const settings = { resolution: '480p' as const, generate_audio: true };
 
-		expect(teaserRequest(saved.data.trailer_house!, settings, '/k.png')).toMatchObject({ job_type: 'seedance_2_5', draft: true, aspect_ratio: '16:9', image_references: ['/k.png'], duration: 12 });
+		expect(teaserRequest(saved.data.trailer_house!, settings, '/k.png')).toMatchObject({ job_type: 'seedance_2_5', aspect_ratio: '16:9', image_references: ['/k.png'], duration: 12 });
 		const quote = await quoteTeaser(deps, saved.data, settings);
-		expect(quote).toMatchObject({ ok: true, credits: 36, balance: 100, draft: true });
+		expect(quote).toMatchObject({ ok: true, credits: 36, balance: 100, draft: false });
 		// A different confirmed price is refused before anything is sent.
 		const wrong = await sendTeaser(deps, { project_id: saved.data.project_id, expected_version: saved.data.version, settings, confirmed_credits: 10 });
 		expect(wrong.ok).toBeFalse();
 		expect(calls).not.toContain('submit');
 		const sent = await sendTeaser(deps, { project_id: saved.data.project_id, expected_version: saved.data.version, settings, confirmed_credits: 36 });
 		if (!sent.ok) throw new Error(sent.message);
-		expect(sent.project.trailer_house?.renders[0]).toMatchObject({ request_id: 'job-1', status: 'queued', draft: true, estimate_credits: 36 });
+		expect(sent.project.trailer_house?.renders[0]).toMatchObject({ request_id: 'job-1', status: 'queued', draft: false, estimate_credits: 36 });
 
 		status = 'completed';
 		const polled = await pollTeasers(deps, saved.data.project_id);

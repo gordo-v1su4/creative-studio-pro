@@ -12,8 +12,7 @@ import { groupsOf } from '$lib/domain/groups';
 /**
  * Teaser renders (Trailer House → Seedance → back): the picked pitch's Seedance prompt goes to the chosen
  * model through the Higgsfield CLI, with the main character's reference image attached when there is one.
- * Always priced first and sent only for the price the operator confirmed; a Seedance 2.5 480p render is a
- * draft (finalizable to 1080p from the same render for seven days). The finished clip comes back into the
+ * Always priced first and sent only for the price the operator confirmed. The finished clip comes back into the
  * project files, and the operator can add it to the board as a take.
  */
 
@@ -32,7 +31,6 @@ export function teaserRequest(house: TrailerHouse, settings: RenderSettings, cha
 		generate_audio: settings.generate_audio,
 		job_type: v25 ? 'seedance_2_5' : 'seedance_2_0',
 		aspect_ratio: house.target.aspect === 'adaptive' ? 'auto' : house.target.aspect,
-		draft: v25 && settings.resolution === '480p',
 		...(characterImagePath ? { image_references: [characterImagePath] } : {})
 	};
 }
@@ -55,7 +53,7 @@ export async function quoteTeaser(deps: AnimateDeps, project: Project, settings:
 	try {
 		const { credits } = await deps.generator!.estimate(prepared.request);
 		const balance = await deps.generator!.balance().catch(() => null);
-		return { ok: true, credits, balance: balance?.credits ?? null, draft: Boolean(prepared.request.draft) };
+		return { ok: true, credits, balance: balance?.credits ?? null, draft: false };
 	} catch (cause) {
 		return failure(502, cause instanceof Error ? cause.message : 'Price check failed');
 	}
@@ -81,7 +79,7 @@ export async function sendTeaser(deps: AnimateDeps, input: { project_id: string;
 	const render: TeaserRender = {
 		request_id: requestId, job_type: prepared.request.job_type ?? 'seedance_2_5', prompt: prepared.request.prompt,
 		duration_s: prepared.request.duration, resolution: prepared.request.resolution, aspect: house.target.aspect,
-		draft: Boolean(prepared.request.draft), estimate_credits: credits, status: 'queued', submitted_at: new Date().toISOString()
+		draft: false, estimate_credits: credits, status: 'queued', submitted_at: new Date().toISOString()
 	};
 	const saved = await deps.gateway.setTrailerHouse(input.project_id, project.version, { ...house, renders: [...(house.renders ?? []), render], updated_at: render.submitted_at });
 	return saved.ok ? { ok: true, project: saved.data } : failure(409, `Sent as ${requestId}, but noting it failed: ${saved.error.message}`);
@@ -146,12 +144,12 @@ export async function addTeaserToBoard(deps: AnimateDeps, input: { project_id: s
 		command: 'add_beat', project_id: project.project_id, expected_version: project.version, card_id: cardId,
 		title: `Teaser · ${title}`.slice(0, 200), group_id: group,
 		take: {
-			asset_id: uuid7ish(), kind: 'video', name: `${title} · ${render.resolution}${render.draft ? ' draft' : ''} · ${render.duration_s}s`,
+			asset_id: uuid7ish(), kind: 'video', name: `${title} · ${render.resolution} · ${render.duration_s}s`,
 			mime_type: 'video/mp4', url: render.video.url,
 			...(render.video.width ? { width: render.video.width } : {}), ...(render.video.height ? { height: render.video.height } : {}),
 			...(render.video.duration_s ? { duration_s: render.video.duration_s } : {}),
 			job_id: render.request_id,
-			generation: { provider: 'higgsfield', model: render.job_type, resolution: render.resolution, prompt: render.prompt, duration_s: render.duration_s, draft: render.draft },
+			generation: { provider: 'higgsfield', model: render.job_type, resolution: render.resolution, prompt: render.prompt, duration_s: render.duration_s },
 			created_at: new Date().toISOString()
 		}
 	});

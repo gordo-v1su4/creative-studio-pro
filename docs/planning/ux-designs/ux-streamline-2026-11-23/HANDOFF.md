@@ -157,13 +157,13 @@ Steps in `PLAN.md`. Cut is not mocked. The Cut stage's views exist in the shell 
 what a cut already knows and reads files while playing), `SoundStage.svelte`, `ExportStage.svelte`. The spec says
 this pass only moves Cut into the shell and the look; how cuts, mixing, export and QC work does not change.
 
-### Slice 8 · Re-render queue: steps 1 to 4 built; nothing can be priced or sent yet
+### Slice 8 · Re-render queue: steps 1 to 4 and 9 built; nothing can be priced or sent yet
 
 Designed with the operator on 2026-11-24 in three rounds of questions. Read, in this order: decisions 27 to 40 and the facts under them in `DECISIONS.md`; slice 8 in `PLAN.md` (ten ordered steps and a "Done when"); stories 56 to 70 and the implementation decisions in `SPEC.md`; "Rendering" in the root `CONTEXT.md`; `docs/adr/0011`.
 
 The design in one paragraph: a take marked Needs changes offers "Queue re-render" with one box for what to change. The re-render reuses that take's still, references and settings; the Agent rewrites only the prompt, with the skill that wrote it, and the operator sees the change highlighted and approves it. Everything approved is priced together and sent on one Confirm. Each render is a run on the operator's Trigger.dev, so it finishes with the browser closed; this app does the provider's work. A finished re-render is another take, here and in Review Room, awaiting review, never the pick. The Queue view (third view of Shots) is a sortable table, one line per render, saying where and how each was made.
 
-Steps 1 to 4 are built (status note in `PLAN.md`, with what was decided on the way, what was walked in the browser and what was not, and what about fal.ai is untried). Step 9 can be done without anyone. To try the block in the browser without touching Review Room, make a throwaway local project with a video take whose `review_status` is `needs_changes` and no `review_room`, and delete its folder afterwards. What needs the operator:
+Steps 1 to 4 and step 9 (draft and Finalize are out of the app) are built (status note in `PLAN.md`, with what was decided on the way, what was walked in the browser and what was not, and what about fal.ai is untried). To try the block in the browser without touching Review Room, make a throwaway local project with a video take whose `review_status` is `needs_changes` and no `review_room`, and delete its folder afterwards. What needs the operator:
 
 - **Step 6**: creating the Trigger.dev project and its production key (the dashboard asks only for a name; they are signed in at `trigger.v1su4.dev`). Do not create it for them without their word.
 - **The fal.ai key**: they add `FAL_KEY` to the environment file themselves, later. Until then fal.ai is listed as not set up.
@@ -175,7 +175,7 @@ Things that will trip you:
 
 - "Make a take" refuses a shot whose pick is a video, and a video take does not record the still it started from. Re-render cannot be built on `stillOf` in `src/lib/server/animate.ts` as it stands; the render record must carry the still and references (step 1), and older takes fall back to their Higgsfield job id.
 - `applySettleGeneration` in `src/lib/domain/animate.ts` makes a finished take the pick. A re-render must not (decision 34); `pushTake` already stores a take that is not the pick without making it current in Review Room.
-- The app still sends `draft` for every 480p render and offers Finalize. Both go (decision 33, step 9); the CLI still accepts `draft`, so nothing will fail to remind you.
+- The app no longer sends `draft` or offers Finalize (step 9, done). No render has been sent since, so the first real send is also the first proof that the CLI takes a Seedance 2.5 request without the flag.
 - The Higgsfield CLI has no seed setting. Nothing can promise that a second render matches the first.
 - Trigger.dev tasks share no files with the app and are built and deployed only on the App VM (`scripts/deploy-trigger-vm100.sh` in `review-room-svelte`). Keep the SDK, the build package and the CLI on the platform's version (4.8.8 on 2026-11-22); the runbook lists what broke before.
 - Pindeck and Stack Structure show live runs with React hooks; this app is Svelte, so the way to subscribe has to be read from Trigger.dev's documentation.

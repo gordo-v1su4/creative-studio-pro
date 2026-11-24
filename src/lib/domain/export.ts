@@ -114,11 +114,11 @@ export function buildFcpxml(input: { title: string; clips: TimelineClip[]; audio
 	return lines.join('\n');
 }
 
-/** Takes in the cut that aren't at full resolution yet: unfinalized drafts, or under 1080 lines. */
+/** Takes in the cut that aren't at full resolution yet: rendered under 1080p, or under 1080 lines. */
 export function draftTakes(entries: Array<{ title: string; take: Pick<ProductionAsset, 'name' | 'height' | 'width' | 'generation'> | undefined }>): Array<{ title: string; name: string; why: string }> {
 	return entries.flatMap(({ title, take }) => {
 		if (!take) return [{ title, name: '(missing take)', why: 'the take is missing' }];
-		if (take.generation?.draft && !take.generation.finalized_at) return [{ title, name: take.name, why: `480p draft${take.generation.resolution ? ` (${take.generation.resolution})` : ''}, not finalized` }];
+		if (take.generation?.resolution === '480p' || take.generation?.resolution === '720p') return [{ title, name: take.name, why: `rendered at ${take.generation.resolution}; a 1080p take is a new render` }];
 		const lines = Math.min(take.width ?? Infinity, take.height ?? Infinity);
 		if (Number.isFinite(lines) && lines < 1080) return [{ title, name: take.name, why: `${take.width}×${take.height}, under 1080` }];
 		return [];

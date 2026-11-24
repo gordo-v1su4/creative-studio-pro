@@ -147,7 +147,7 @@
 			{#each renders.toReversed() as entry (entry.request_id)}
 				<div class="rd">
 					<span class="cp" data-state={entry.status}>{renderLine(entry.status)}</span>
-					<span class="d">{entry.duration_s}s · {entry.resolution}{entry.draft ? ' draft' : ''} · {entry.estimate_credits} credits{entry.error ? ` · ${entry.error}` : ''}</span>
+					<span class="d">{entry.duration_s}s · {entry.resolution} · {entry.estimate_credits} credits{entry.error ? ` · ${entry.error}` : ''}</span>
 					{#if entry.video}
 						<a class="cp" href={entry.video.url} target="_blank" rel="noopener">Play</a>
 						{#if entry.card_id}<span class="cp chosen">In the shots</span>{:else}<button type="button" class="key" disabled={!!busy} onclick={() => void toShots(entry.request_id)} title="Put the clip on the board as a take, in the Teasers group">Add to shots</button>{/if}

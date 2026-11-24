@@ -1042,7 +1042,7 @@
 					<summary>{currentTake?.name ?? current.assetId} · {current.duration.toFixed(2)}s, kept {current.in.toFixed(2)}–{current.out.toFixed(2)}</summary>
 					<dl class="source mt-1.5">
 						<dt>full length</dt><dd>{current.duration.toFixed(2)}s{currentTake?.width ? ` · ${currentTake.width}×${currentTake.height}` : ''}</dd>
-						<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{currentTake.generation?.draft && !currentTake.generation.finalized_at ? ' draft' : ''}{:else}<span class="text-nr-faint">no generation job on record</span>{/if}</dd>
+						<dt>generation</dt><dd>{#if currentTake?.job_id}{currentTake.generation?.model ?? 'job'} · {currentTake.job_id}{currentTake.generation?.resolution ? ` · ${currentTake.generation.resolution}` : ''}{:else}<span class="text-nr-faint">no generation job on record</span>{/if}</dd>
 						<dt>prompt</dt><dd class="prompt">{#if currentTake?.generation?.prompt}{currentTake.generation.prompt}{:else if currentCard?.video_prompt}<span class="text-nr-faint">shot's video prompt:</span> {currentCard.video_prompt}{:else}<span class="text-nr-faint">none on record</span>{/if}</dd>
 					</dl>
 				</details>

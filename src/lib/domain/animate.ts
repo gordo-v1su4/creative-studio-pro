@@ -2,7 +2,6 @@ import type { Generation, ProductionAsset, ProductionState } from './schemas';
 import { lintPrompt } from './prompt-lint';
 import { isUnder2K, MIN_LONG_EDGE } from './media';
 import type { TakeResult } from './takes';
-import { finalizedTake } from './finalize';
 
 /**
  * Animate (CONTEXT.md: Animate): a beat's still sent to Seedance as the start
@@ -24,10 +23,6 @@ export interface SeedanceRequest {
 	generate_audio: boolean;
 	/** A local still for the start frame (the CLI uploads it). */
 	start_image?: string;
-	/** Render a finalizable 480p draft. */
-	draft?: boolean;
-	/** Finalize this completed draft at 1080p (same render). */
-	draft_job_id?: string;
 	/** Which Seedance: 2.5 (default) or 2.0. */
 	job_type?: 'seedance_2_5' | 'seedance_2_0';
 	/** Output aspect ratio; absent = the model's default (or the start image's). */
@@ -44,9 +39,8 @@ export interface AnimateSettings {
 }
 
 /**
- * The Seedance request for these settings. 480p always goes out as a draft:
- * same price, and it can later be finalized to 1080p from the same render
- * for seven days (a plain 480p render could only be upscaled or redone).
+ * The Seedance request for these settings. Resolution is a plain choice of 480p, 720p or 1080p: there is no
+ * draft mode, because a 480p take can no longer be finished at 1080p from the same render (decision 33).
  */
 export function seedanceRequest(settings: AnimateSettings, startImage?: string): SeedanceRequest {
 	return {
@@ -54,7 +48,6 @@ export function seedanceRequest(settings: AnimateSettings, startImage?: string):
 		duration: Math.round(Math.min(ANIMATE_MAX_S, Math.max(ANIMATE_MIN_S, settings.duration_s))),
 		resolution: settings.resolution,
 		generate_audio: settings.generate_audio,
-		draft: settings.resolution === '480p',
 		...(startImage ? { start_image: startImage } : {})
 	};
 }
@@ -134,20 +127,6 @@ export function applySettleGeneration(
 	};
 	const generations = (production.generations ?? []).map((entry) => (entry.request_id === requestId ? settled : entry));
 	if (!outcome.take) return { ok: true, production: { ...production, generations } };
-	if (generation.finalizes) {
-		// A finalize swaps the draft take's media for the 1080p render; the take, its trims and ramps stay.
-		const target = production.assets.find((asset) => asset.asset_id === generation.finalizes);
-		if (!target) return { ok: false, message: `Finalized take ${generation.finalizes} not found` };
-		const finalized = finalizedTake(target, outcome.take, generation.request_id, now);
-		return {
-			ok: true,
-			production: {
-				...production,
-				generations: generations.map((entry) => (entry.request_id === requestId ? { ...entry, take_id: target.asset_id } : entry)),
-				assets: production.assets.map((asset) => (asset.asset_id === target.asset_id ? finalized : asset))
-			}
-		};
-	}
 	return {
 		ok: true,
 		production: {

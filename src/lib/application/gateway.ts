@@ -39,7 +39,7 @@ import { applyRewire } from '$lib/domain/spine';
 import { applyAddBeat, applyAddTake, applyRemoveBeats } from '$lib/domain/media';
 import { applySetTakeTags } from '$lib/domain/shot-tags';
 import { applyRecordGeneration, applySettleGeneration } from '$lib/domain/animate';
-import { applyLinkDraftJobs } from '$lib/domain/finalize';
+import { applyLinkJobs } from '$lib/domain/job-links';
 import type { Generation, ProductionAsset, StillSend, StoryCard, TrailerHouse } from '$lib/domain/schemas';
 import { storyCardSchema, trailerHouseSchema } from '$lib/domain/schemas';
 import { FIT_MAX_SHOTS, insertIntoGroup, removeFitted } from '$lib/domain/episode-fit';
@@ -360,24 +360,11 @@ export class ProjectCommandGateway {
 		return this.updateBoard(parsed.data, (production) => applySetShotReferences(production, parsed.data.card_id, parsed.data.references), 'project.shot_references_set.v1');
 	}
 
-	/** Animate (server-internal, after the send gate passed and the provider accepted): note the pending generation. */
+	/** Record which Higgsfield job each existing take came from, so it can be re-rendered by reuse. */
 	async linkDraftJobs(raw: unknown): Promise<CommandOutcome<Project>> {
 		const parsed = linkDraftJobsCommandSchema.safeParse(raw);
 		if (!parsed.success) return invalid(parsed.error.issues[0]?.message ?? 'invalid payload');
-		return this.updateBoard(parsed.data, (production) => applyLinkDraftJobs(production, parsed.data.links), 'project.take_drafts_linked.v1');
-	}
-
-	/** Finalize (server-internal, after the price was confirmed and the provider accepted each job): note them as pending. */
-	async recordFinalizes(projectId: string, expectedVersion: number, generations: Generation[]): Promise<CommandOutcome<Project>> {
-		return this.updateBoard({ project_id: projectId, expected_version: expectedVersion }, (production) => {
-			let next = production;
-			for (const generation of generations) {
-				const result = applyRecordGeneration(next, generation);
-				if (!result.ok) return result;
-				next = result.production;
-			}
-			return { ok: true, production: next };
-		}, 'project.finalize_sent.v1');
+		return this.updateBoard(parsed.data, (production) => applyLinkJobs(production, parsed.data.links), 'project.take_drafts_linked.v1');
 	}
 
 	async recordGeneration(projectId: string, expectedVersion: number, generation: Generation): Promise<CommandOutcome<Project>> {

@@ -93,7 +93,7 @@
 		sending = false; confirming = false;
 		if (!result.ok) { error = result.error.message; reasons = result.error.reasons ?? []; return; }
 		onUpdated(result.data as Project);
-		onsent(`Sent ${prepared?.title ?? 'the shot'} to Seedance (${resolution === '480p' ? '480p draft, finalizable to 1080p for 7 days' : resolution}, ${duration}s, ${estimate.credits} credits). It lands as a new take when it finishes.`);
+		onsent(`Sent ${prepared?.title ?? 'the shot'} to Seedance (${resolution}, ${duration}s, ${estimate.credits} credits). It lands as a new take when it finishes.`);
 		onclose();
 	}
 </script>
@@ -126,7 +126,7 @@
 					{/if}
 					<div class="flex flex-wrap items-center gap-3">
 						<label class="field-inline">Length <input type="number" min={ANIMATE_MIN_S} max={ANIMATE_MAX_S} step="1" bind:value={duration} />s</label>
-						<span class="field-inline">Resolution <Pick label="Resolution" bind:value={resolution} options={ANIMATE_RESOLUTIONS.map((option) => ({ value: option, label: option === '480p' ? '480p draft' : option }))} /></span>
+						<span class="field-inline">Resolution <Pick label="Resolution" bind:value={resolution} options={ANIMATE_RESOLUTIONS.map((option) => ({ value: option, label: option }))} /></span>
 						<span class="field-inline"><Toggle label="Generate audio" bind:checked={audio} /> Generate audio</span>
 					</div>
 				</div>
