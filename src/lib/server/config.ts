@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { createRenderProviders, type RenderProviders } from './render-providers';
 import type { EssentiaConfig } from '$lib/server/essentia';
 import { ProjectStore } from '$lib/adapters/project-store';
 import type { ProjectStoreConfig } from '$lib/adapters/project-store';
@@ -139,6 +140,11 @@ export function getOperatorId(): string {
 export function getVideoGenerator(): VideoGenerator | null {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	return bin ? createHiggsfieldCli(cliRunner(bin)) : null;
+}
+
+/** The render providers (slice 8): Higgsfield through its CLI, fal.ai once FAL_KEY is set, SwarmUI listed only. */
+export function getRenderProviders(): RenderProviders {
+	return createRenderProviders({ higgsfield: getHiggsfieldRunner(), falKey: env.FAL_KEY });
 }
 
 /** The operator's caption gateway (Qwen3-VL) for shot tags, or null when it isn't set up. */
