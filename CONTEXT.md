@@ -243,8 +243,12 @@ A Review Room folder that belongs to a series tree; media can be added inside it
 _Avoid_: Read-only folder, synced folder
 
 **Shot code**:
-A shot's permanent production ID: show code, episode code, scene code, shot number (e.g. `BLR_EP101_PAR_0020`); a take of it adds its version (`_v003`). A shot gets it when it is added to the board, and keeps it wherever the shot later moves.
-_Avoid_: Shot name, asset code, clip ID
+A shot's permanent production ID: show code, episode code, scene code, shot number (e.g. `BLR_EP101_PAR_0020`); a take of it adds its version (`_v003`). A shot gets it when it is added to the board, and keeps it wherever the shot later moves. It is the shot's only name: every screen shows the code (or `PAR_0020` where the whole code does not fit), with the shot's line beneath it.
+_Avoid_: Shot name, shot title, asset code, clip ID
+
+**Shot line**:
+One plain line under a shot's code saying what happens in it, such as "The knock". It is never shown as a name, never stands in for the code, and is not a story beat. Stored as the card's `title`.
+_Avoid_: Title, name, beat, description, purpose
 
 **Show code**:
 The three letters that name a series in every code, such as `BLR`.
@@ -255,7 +259,7 @@ _Avoid_: Prefix, project code
 _Avoid_: EP01 (in codes)
 
 **Trailer code**:
-`TR` plus a number that names one trailer of a show, such as `TR110` or `TR120`; it stands where the episode code would in its shot codes, and the trailer's title carries its length and style.
+`TR` plus a number that names one trailer of a show, such as `TR110` or `TR120`; it stands where the episode code would in its shot codes, and the trailer's title carries its length and style. Wherever a name's parts are spelled out, that part is labelled **Episode** (show, episode, scene, shot, take), trailers included: a trailer is treated as an episode of its own.
 _Avoid_: TR60 (length is not the number), trailer version
 
 **Scene code**:
@@ -263,7 +267,7 @@ A three-letter mnemonic for a scene, unique within its episode, such as `PAR` fo
 _Avoid_: Sequence code, scene number (for the letters)
 
 **Reference**:
-A named image, made to the ONE SHOT standard, that locks how a character, location or prop looks in every shot that uses it; its exact name is printed on the image and written the same way in every prompt. A location's reference also carries the look and grade.
+A named image, made to the ONE SHOT standard, that locks how a character, location or prop looks in every shot that uses it; its exact name is printed on the image and written the same way in every prompt. A location's reference also carries the look and grade. Its name comes from Notion's References and is plain and minimal; a character's is their full first and last name, exactly as printed on the sheet. Changing the name makes a new reference, with a new code and a new sheet.
 _Avoid_: Ref (in prose), sheet (alone), asset, look reference
 
 **Prep**:
@@ -273,6 +277,14 @@ _Avoid_: Setup, pre-production, asset prep
 **Reference spec**:
 The facts a reference is made from that its source images cannot show: for a character the exact name, age, height in cm, build and the hand-off parts (owned element, owned colour, powers, lock); for a place or prop what it is. The operator's notes on changes from the pictures go with it. It never describes the source images: the prompt is written in one pass from the ONE SHOT skill, the images themselves and these facts, and the price card is the only approval.
 _Avoid_: Sheet spec, character brief, description
+
+**Drift check**:
+A comparison of the series' references in Notion, in each project's Prep and in Review Room's reference folders, listing anything found in one and not the others, with a choice for each: add it to Notion, link it to an existing reference, or mark it as old. Nothing changes without the operator's yes.
+_Avoid_: Sync, audit, reconcile
+
+**Old (reference)**:
+A sheet in Review Room that no Notion reference uses any more, such as one made under an earlier name; it stays visible as history (unlike an archived asset) but the drift check ignores it and it is never offered for a shot.
+_Avoid_: Deleted, retired, stale
 
 **Source image**:
 A picture a reference was made from (an earlier sheet, a photo, a test still); it is kept with the reference but never attached to a shot, and source images can look very different from each other.

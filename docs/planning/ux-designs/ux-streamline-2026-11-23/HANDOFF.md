@@ -7,9 +7,28 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 
 The operator looked at the local copy beside the agreed mocks and said the app is "a mix of a hot mess": new pieces around old screens, wrong names, and stale test material. Everything below this section is still true as a record of what was built, but **the way of working has changed**. Read this section first; it wins where it disagrees with the rest.
 
+### Next session starts here (2026-11-25)
+
+- **Grilled and decided (2026-11-25): ADR 0012**, Notion is the master of names, edited from the app, with a drift
+  check (supersedes 0010; glossary: Drift check, Old). The checker is built in **Prep's turn**, not now. Next:
+  `/to-spec` and `/to-tickets` for it, plus one ticket per approved audition screen.
+- **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
+  under a master prompt that keeps it to the house structure, free to talk creatively ("does this sequence work
+  together? let me watch it"), cost and quality to be tried. That reopens ADR 0009. Look at OpenAI's realtime API
+  and Trigger.dev's realtime voice support then, not before.
+- **Bug found while grilling:** `connectSeries` (`src/lib/server/series.ts:99`) rebuilds the series record without
+  `notion_trash`, so every refresh or sync drops the queue of shot pages waiting to be trashed in Notion.
+- **Auditions are the mocks now**, built on TR130's real material, in the old session's scratchpad (`cards/`:
+  `shots.html`, `story.html`, `prep.html`, served by a temporary `look-preview` entry in `.claude/launch.json`,
+  since removed). The scratchpad may be gone; the decisions are in `issues/01`–`04`. If the files are gone,
+  rebuild from those notes, not from memory.
+- **Nothing was built in the app and nothing is committed.** Don't send TR110's sixteen references or the three
+  stray Review Room sheets (Lucian Vale, Bryson, Kai's sunglasses) by hand; the checker is meant to fix them.
+
 ### How to work now
 
 - **One screen at a time, finished completely before the next.** Finished means: it works, it matches its mock on the canvas (https://claude.ai/artifact/GcSURykGvjJGXujETaqa1m), it shows the right names, and the operator has looked at it with real TR130 material and said yes. No more wrapping new chrome round an old screen and calling the slice built. Their words: "this whole mix and match thing was not the best approach."
+- **Issues, one at a time, live in `issues/` beside this file.** The first is `issues/01-shots-grid.md` (the Shots grid against its mock, with what differs today and when it is done).
 - **Order:** Shots (grid, takes, viewer), Prep, Story, Canvas, Cut, Settings. New features (the render queue's remaining steps, voice) wait for the screens they live on.
 - **The main session orchestrates; subagents build.** The operator asked that the main session only plan, brief, review and report, and that implementation go to subagents or sessions on Opus 5.5 at medium effort. Check their report against the diff and in the browser before telling the operator it is done.
 - **Say plainly when a screen does not yet look like its mock.** "Built" in the status notes below meant "works and tested", and the operator read it as "looks like the mock". That gap is what caused the surprise.
@@ -20,7 +39,8 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 - **TR130 — Teaser Trailer** (`?project=01a2067a-6cdc-7d1f-b28c-19429297cb80`) was copied down from Hosted Studio on 2026-11-24, one way, read only on the server. 57 shots, 120 takes (all files in its own folder), one cut. **Judge every screen with this project**, not with "Blood Rush — Teaser Trailer", which is the old TR100 source pool the operator calls garbage.
 - **It is connected to the real TR130 in Review Room.** A pick or a review made locally changes Review Room. Look; do not press.
 - The series record and its reference cache (`data/series/`) were refreshed from the server too (the local character sheets were out of date). What was replaced is in `data/series/archive/before-hosted-copy-2026-11-24/`.
-- **TR110 is not here, and TR130's Prep needs it**: TR130's references come from TR110's Prep (`story_plan.prep_source_project_id`), which points at TR105, which points at The Late Shift. Copying TR110 (3.0 GB) and TR105 (540 MB) down is needed before Prep can be judged. Not done; ask first.
+- **TR110 and TR105 are here now** (copied down on 2026-11-24 at the operator's word, one way, read only on the server: TR110 `01a1f301…` 264 files 3.0 GB, TR105 `01a1df26…` 160 files 539 MB). TR130's references come from TR110's Prep (`story_plan.prep_source_project_id`), which points at TR105, which points at The Late Shift; the whole chain is on this Mac. Both open in the local app. Like TR130, they are connected to the real Review Room: look, do not press.
+- **This Mac's series record is behind Review Room**: Review Room's series project holds Lucian Vale, Kai's sunglasses and a Bryson sheet that `data/series/3fc8…json` does not list. Found read only on 2026-11-24 (`GET /changes`).
 - **The route to the server** is in the vault note `04-Projects/Proxmox Home/Tailscale Agent Access.md`: Tailscale SSH, `gordo@app-vm`, data at `/opt/creative-studio-pro/data/`. Tailscale has to be running on this Mac, and the first connection asks the operator to approve a check in the browser. The LAN address refuses this Mac's key.
 - The operator has not confirmed the current sheets look right here (grey background, headshot on the far right, headless body not scaled up).
 
@@ -28,6 +48,8 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 
 - A shot is `BLR_TR130_DRP_0010`: show, trailer (`TR` stands where `EP` would), scene code, shot number in four digits counting in tens. A take adds `_v001`. These already exist for 56 of TR130's 57 shots, but **only in the Review Room connection** (`project.review_room.shots[card_id].code`, and `asset.review_room.code` / `.version`); the cards have no `scene_code` or `shot_number`, so the app showed "01" and file names.
 - **Scene codes are set in Review Room and must never be changed**: `DRP MRN SUN KAI VHV RMT TER PTY PCK RFS CAM`.
+- **Decided 2026-11-24: a shot is its code plus one line, nothing else.** The code is its only name; under it sits the shot line (what happens), stored as the card's `title`. On TR130 the cards also carry `beat` (the same text on 56 of 57) and `purpose` (copy history: "TR130 shot from the TR110 v004 rebuild (was …)"). Neither is shown as a name or a description; that double and triple labelling is what made names confusing. The 57th card is the whole trailer as one video ("TR130 TRL01 v001 (2-35) exact mix"), the unsplit-video naming case below.
+- **Way of working, decided the same evening:** look and behaviour are built together, one screen at a time, to its mock, judged on TR130. No "structure first, style later".
 - A scene is shown one way everywhere: `DRP · The sealed drop and the hood`. The board group's name "TR130 01 · …" (the "01" is only the scene's order) means nothing to the operator and is not shown.
 - **Done on 2026-11-24 (`176495e`), display only, nothing written to the project.** `shotCode`, `shortName` and `takeName` in `src/lib/domain/shot-card.ts`; `sceneLabel` and `shotListAsItStands` in `src/lib/domain/story-levels.ts`. On TR130 the grid cards and the outline show `DRP_0010` (the full code on hover and in the card's spoken label), the takes band, viewer header, review block and Details show the full code, the viewer's takes list shows `BLR_TR130_PCK_0010_v001` or `BLR_TR130_PCK_0010 Take 2` with the file name beneath, scenes read by code and title, and the Story page's shot list shows the 57 board shots under the 11 scenes. Checked by the main session on the grid and outline; the rest is the subagent's report.
 - Left as they were: take chips and takes-band thumbnails are too small for a full name and keep `v001` / `T2` with the name on hover; the Story bar and outline still say "Shot list · 57 proposed" and acts read "0s" (level state was not touched); the Cut stage (`SequencePlayer`, `CutOutline`) still uses the old labels; phone width was not checked.
