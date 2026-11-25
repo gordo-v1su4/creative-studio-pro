@@ -42,9 +42,31 @@ no API key, $0).
 
 ## Workflow
 
-Commit straight to `main` and push. No feature branches, no PRs, and no
-GitHub issue or Linear ticket is needed before starting work. The specs in
-`docs/` describe what to build; they are not a ticket queue to work through.
+Commit straight to `main` and push. No feature branches and no PRs. A small
+fix needs no ticket; anything built from a spec does (below).
+
+**From idea to built, the same way every time:**
+
+1. `/grill-with-docs` on the idea. It does the domain modelling itself
+   (`CONTEXT.md`, ADRs); there is no separate step.
+2. `/to-spec`, then `/to-tickets`, in that same thread, without clearing.
+   Each ticket is published to **both** GitHub and Linear
+   (`docs/agents/issue-tracker.md`).
+3. The thread that made the tickets becomes the **orchestrator**. It opens one
+   new session per ticket whose blockers are all closed, and builds nothing
+   itself. It reviews each session's diff before calling a ticket done, then
+   opens the next unblocked ticket, without asking whether to continue.
+4. Each ticket session runs `/implement` on its one ticket. It comments on both
+   trackers when it starts and at every stopping point, and closes both with
+   the commit hash when done, ticking the ticket in its plan.
+5. **A stopping point opens a new thread; it never ends in a question.** When a
+   ticket session finishes, runs low on room, or reaches a natural break, it
+   writes where it stands on the ticket (both trackers) and hands the rest to
+   a new session. Nothing to do lives only in `HANDOFF.md`: the handoff points
+   at open tickets, and the tickets are the to-do list.
+
+Still true: releases, pushes to `main` and anything that changes real data
+need the operator's word each time.
 
 **Streamlined UI in progress.** Until its plan is finished, work lands the way
 `docs/planning/ux-designs/ux-streamline-2026-11-23/PLAN.md` says ("How the work
@@ -71,7 +93,7 @@ and verified. Repos that use PRs open one only when the whole chunk is done.
 
 ### Issue tracker
 
-Optional backlog only. Issues live in GitHub (`gordo-v1su4/creative-studio-pro`) via the `gh` CLI; create or close one only when the user asks. See `docs/agents/issue-tracker.md`.
+Every ticket is a pair: a GitHub issue (`gordo-v1su4/creative-studio-pro`, `gh` CLI) and a Linear issue (team `V1S`, project `P-V1S-12`), each linking the other, and every change is written to both. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

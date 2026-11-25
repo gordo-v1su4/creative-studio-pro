@@ -11,7 +11,9 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 
 - **Grilled and decided (2026-11-25): ADR 0012**, Notion is the master of names, edited from the app, with a drift
   check (supersedes 0010; glossary: Drift check, Old). The checker is built in **Prep's turn**, not now. Next:
-  `/to-spec` and `/to-tickets` for it, plus one ticket per approved audition screen.
+  `/to-spec` and `/to-tickets` for it, plus one ticket per approved audition screen, then work them the way
+  `AGENTS.md` ("From idea to built") says: tickets in GitHub and Linear, one session per ticket. From then on
+  this file points at open tickets instead of listing work.
 - **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
   under a master prompt that keeps it to the house structure, free to talk creatively ("does this sequence work
   together? let me watch it"), cost and quality to be tried. That reopens ADR 0009. Look at OpenAI's realtime API
