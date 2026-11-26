@@ -7,6 +7,13 @@ section in `PLAN.md` (same folder), which holds the dated status notes for every
 
 The operator looked at the local copy beside the agreed mocks and said the app is "a mix of a hot mess": new pieces around old screens, wrong names, and stale test material. Everything below this section is still true as a record of what was built, but **the way of working has changed**. Read this section first; it wins where it disagrees with the rest.
 
+### Tomorrow (2026-11-27): the visual pass, from references
+
+- The UX (how the app acts) is settled. Next is how it looks and responds: colours, boxes or no boxes, spacing, how one step leads to the next, animation, screen by screen in the screen order (Shots first).
+- **Start from references, not a blank page.** The operator wants patterns borrowed from products that already look great (the Inspo archive: recommend / search_screens / get_screen), filtered by their taste (black/neutral, no borders, compact one-line controls), shown side by side; they pick, we adapt. Not copying, and no days of tiny decisions. Expect a whole-app review afterwards that may change things.
+- Each choice goes in `DECISIONS.md`; each approved screen becomes a ticket in both trackers. Open leftovers: the selection colour (green goes; neutral grey proposed) and the screens still in the old square, bordered style.
+- Done today (2026-11-26): #41 CLI hang (`32f5388`), #43 Upscale dropped (`52774e8`), #44 GPT 2.5 retired, 2.6 Sunburst default, one reference at most, Scenecraft masters text-only, 2.6 wording check (`a75fa40`). Location renders (#42) on hold. Nothing pushed.
+
 ### Next session starts here (2026-11-25)
 
 - **Drift check: decided (ADR 0012), specced and ticketed (2026-11-25).** Spec `specs/drift-check.md` = GitHub #28 /
