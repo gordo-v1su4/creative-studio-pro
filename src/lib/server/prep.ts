@@ -3,7 +3,7 @@ import { copyFile, mkdir, readFile, readdir, stat, rm, writeFile } from 'node:fs
 import { basename, dirname, extname, isAbsolute, join, relative, sep } from 'node:path';
 import type { Project } from '$lib/domain/schemas';
 import {
-	emptyPrep, emptyState, factsGaps, handOffLine, identityGaps, notesOf, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
+	emptyPrep, emptyState, factsGaps, sameName, handOffLine, identityGaps, notesOf, prepAspect, prepEntries, prepFileSchema, referenceSpecSchema, sheetFileName, templateFor,
 	type PrepEntry, type PrepFile, type PrepState, type ReferenceSpec, type ScaleCheck, type PrepKind, type PrepScene
 } from '$lib/domain/prep';
 import type { StillApproval } from '$lib/domain/stills';
@@ -94,7 +94,7 @@ export interface PrepVersion { id: string; name?: string; url: string; made_at: 
 export interface PrepView { entry: PrepEntry; state: PrepState; template: string; current: { url: string } | null; versions: PrepVersion[] }
 
 type PrepContextDeps = Pick<PrepDeps, 'projectRoot' | 'series'> & Partial<Pick<PrepDeps, 'store'>>;
-async function prepContext(deps: PrepContextDeps, project: Project) {
+export async function prepContext(deps: PrepContextDeps, project: Project) {
 	const sourceId = project.production.story_plan?.prep_source_project_id;
 	const source = sourceId && sourceId !== project.project_id ? await deps.store?.readProject(sourceId) : null;
 	if (sourceId && !source) throw new Error('The reference project is unavailable; choose another reference project');
@@ -109,8 +109,9 @@ async function prepContext(deps: PrepContextDeps, project: Project) {
 function ownEntries(scenes: PrepScene[], record: SeriesRecord | null, prep: PrepFile): PrepEntry[] {
 	const entries = prepEntries(scenes, record?.references?.items ?? [], prep.props);
 	for (const custom of prep.custom_entries ?? []) {
-		if (entries.some(entry => entry.kind === custom.kind && entry.name.toLowerCase() === custom.name.toLowerCase())) continue;
-		entries.push({ key: `${custom.kind}:${custom.name}`, kind: custom.kind, name: custom.name, role: '', reference_page_id: null, scenes: [] });
+		if (entries.some(entry => (custom.reference_page_id && entry.key === custom.reference_page_id) || (entry.kind === custom.kind && sameName(entry.name, custom.name)))) continue;
+		const page = custom.reference_page_id ?? null;
+		entries.push({ key: page ?? `${custom.kind}:${custom.name}`, kind: custom.kind, name: custom.name, role: '', reference_page_id: page, scenes: [] });
 	}
 	return entries;
 }
@@ -176,12 +177,21 @@ async function findEntry(deps: PrepContextDeps, project: Project, key: string): 
 	return { ok: true, view, record: (await prepContext(deps, project)).record };
 }
 
-export async function addPrepEntry(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, kind: PrepKind, name: string): Promise<PrepFile> {
+/**
+ * Lists an entry in this project's Prep. The app adds one only through `addReference` (drift.ts), after its Notion
+ * References page exists, and passes that page id: the entry is keyed by it, and any Prep work kept under the
+ * entry's old `<kind>:<name>` key (an entry found in the story) moves with it.
+ */
+export async function addPrepEntry(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, kind: PrepKind, name: string, referencePageId?: string): Promise<PrepFile> {
 	const prep = await readPrep(deps.projectRoot, projectId);
 	const clean = name.trim();
+	const same = (entry: { kind: PrepKind; name: string }) => entry.kind === kind && sameName(entry.name, clean);
 	const custom = prep.custom_entries ?? [];
-	if (custom.some(entry => entry.kind === kind && entry.name.toLowerCase() === clean.toLowerCase())) return prep;
-	return writePrep(deps.projectRoot, projectId, { ...prep, custom_entries: [...custom, { kind, name: clean }] });
+	if (!referencePageId) return custom.some(same) ? prep : writePrep(deps.projectRoot, projectId, { ...prep, custom_entries: [...custom, { kind, name: clean }] });
+	const entries = { ...prep.entries };
+	const oldKey = Object.keys(entries).find(key => key.startsWith(`${kind}:`) && sameName(key.slice(kind.length + 1), clean));
+	if (oldKey && !entries[referencePageId]) { entries[referencePageId] = entries[oldKey]; delete entries[oldKey]; }
+	return writePrep(deps.projectRoot, projectId, { ...prep, entries, custom_entries: [...custom.filter(entry => !same(entry)), { kind, name: clean, reference_page_id: referencePageId }] });
 }
 
 export async function setPrepWorkflow(deps: PrepContextDeps, project: Project, key: string, input: { stage?: NonNullable<PrepState['workflow']>['stage']; approved_source_url?: string | null; confirm?: boolean }): Promise<{ ok: true; prep: PrepFile } | Failure> {
@@ -205,12 +215,6 @@ export async function setSheetInputs(deps: PrepContextDeps, project: Project, ke
 	if (found.view.entry.kind !== 'character' || found.view.state.workflow?.stage !== 'sheet') return fail(400, 'Choose the character sheet step first');
 	const sheet_inputs = characterSheetInputsSchema.parse(input);
 	return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, state => ({ ...state, sheet_inputs, workflow: { ...found.view.state.workflow!, confirmed: false }, prompt: null, prompt_edited: false })) };
-}
-
-export async function addProp(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, name: string): Promise<PrepFile> {
-	const prep = await readPrep(deps.projectRoot, projectId);
-	const clean = name.trim().slice(0, 200);
-	return writePrep(deps.projectRoot, projectId, { ...prep, props: prep.props.includes(clean) ? prep.props : [...prep.props, clean] });
 }
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.webp']);

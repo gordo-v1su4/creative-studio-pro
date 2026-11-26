@@ -47,6 +47,8 @@ const LOCK: Record<string, string> = {
 	location: 'exact location lock',
 	prop: 'exact prop lock'
 };
+/** Is this one whole handle (`@Kai`), by the same rule the compile finds them with? */
+export const isHandle = (text: string) => new RegExp(`^${HANDLE.source}$`).test(text);
 const norm = (handle: string) => handle.replace(/^@/, '').toLowerCase();
 
 export const imageLabel = (target: HandleTarget, image: number) => (target === 'seedance' ? `@Image_${image}` : target === 'ghost' ? `image ${image}` : `Image ${image}`);

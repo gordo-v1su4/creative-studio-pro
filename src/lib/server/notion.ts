@@ -8,7 +8,8 @@ import {
  * Reads a series from Notion through the official API. The integration (NOTION_TOKEN) only sees pages the
  * operator connected to it; the operator connects one page, the series root, so this reader can never see
  * anything else. It walks from that root only: the Story page and the Episodes, Scenes and Shots databases.
- * Reading is everything here except `updatePage` / `createPage`, which only the sync (notion-sync.ts) uses.
+ * Reading is everything here except `updatePage` / `createPage` / `trashPage`: the sync (notion-sync.ts), the story
+ * writer and adding a reference (drift.ts, ADR 0012) use them.
  */
 
 type RichText = Array<{ plain_text?: string }>;
@@ -21,7 +22,7 @@ export interface NotionApi {
 	database(databaseId: string): Promise<{ data_sources?: Array<{ id: string; name?: string }> }>;
 	dataSource(dataSourceId: string): Promise<{ id: string; title?: RichText; properties: Record<string, { type: string }> }>;
 	query(dataSourceId: string, cursor?: string): Promise<Paged<NotionPage>>;
-	/** Writes (ADR 0002): only the sync calls these, and only for codes, Locked and shots' plain fields. */
+	/** Writes (ADR 0002, 0012): codes, Locked and shots' plain fields from the sync; story pages; new References pages. */
 	updatePage(pageId: string, properties: Record<string, unknown>): Promise<void>;
 	createPage(dataSourceId: string, properties: Record<string, unknown>): Promise<{ id: string }>;
 	/** V1S-371: moves a shot page taken off the board to Notion's Trash (restorable there for 30 days). */
@@ -156,13 +157,18 @@ export async function readSeries(api: NotionApi, rootId: string): Promise<Series
 		: [];
 	const refsCheck = refsSource ? checkDatabase('references', refsSchema) : null;
 	const items = refsSource && refsCheck?.ok
-		? (await all((cursor) => api.query(refsSource!, cursor))).map(toReference).filter((ref) => ref.name).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name))
+		? await readReferences(api, refsSource)
 		: [];
 	return {
 		root_id: bareId(rootId), story, sources, databases: databaseIds, checks, episodes,
 		story_beats: { database: beatsDatabase, check: beatsCheck, beats },
 		references: { database: refsDatabase, source: refsSource, check: refsCheck, items }
 	};
+}
+
+/** The References database's rows (named ones only), by kind then name. */
+export async function readReferences(api: NotionApi, source: string): Promise<SeriesReference[]> {
+	return (await all((cursor) => api.query(source, cursor))).map(toReference).filter((ref) => ref.name).sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name));
 }
 
 /** One episode with its scenes and shots, laid out (needs all three databases to pass the template). */

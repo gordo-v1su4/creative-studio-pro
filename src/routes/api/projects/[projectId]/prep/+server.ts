@@ -3,14 +3,15 @@ import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { referenceSpecSchema } from '$lib/domain/prep';
-import { addPrepEntry, setPrepWorkflow, setSheetInputs, setPrepVersionRemoved } from '$lib/server/prep';
+import { setPrepWorkflow, setSheetInputs, setPrepVersionRemoved } from '$lib/server/prep';
+import { addReference } from '$lib/server/drift';
 import { characterSheetInputsSchema } from '$lib/domain/character-sheet';
 import { IMAGE_MODEL_IDS } from '$lib/domain/image-models';
 import { episodeSpend } from '$lib/domain/stills';
 import { getPrepDeps } from '$lib/server/config';
 import { AgentRuleBreakError } from '$lib/server/model-provider';
 import {
-	addProp, addSource, attachOutside, draftSpec, editPrompt, fillIdentity, prepView, quotePrep, removeSource, rerunScaleCheck, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, useCurrentAsSource, usePrepVersion, writePrompt
+	addSource, attachOutside, draftSpec, editPrompt, fillIdentity, prepView, quotePrep, removeSource, rerunScaleCheck, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, useCurrentAsSource, usePrepVersion, writePrompt
 } from '$lib/server/prep';
 
 const fail = (status: number, message: string, reasons: string[] = []) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : status === 422 ? 'GATE_BLOCKED' : 'INVALID_COMMAND', message, reasons, retryable: status >= 500, source: 'prep' } }, { status });
@@ -18,12 +19,12 @@ const key = z.string().min(1).max(300);
 const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('set_sheet_inputs'), key, inputs: characterSheetInputsSchema }),
 	z.object({ action: z.literal('set_workflow'), key, stage: z.enum(['face_lock', 'outfit', 'sheet', 'environment', 'coverage']).optional(), approved_source_url: z.string().max(1000).nullable().optional(), confirm: z.boolean().optional() }),
-	z.object({ action: z.literal('add_entry'), kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200) }),
+	z.object({ action: z.literal('add_entry'), kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200), handle: z.string().trim().max(60).optional(), scene_ids: z.array(z.string().min(1).max(64)).max(50).optional() }),
 	z.object({ action: z.literal('use_version'), key, version_id: z.string().min(1).max(300) }),
 	z.object({ action: z.literal('set_version_removed'), key, version_id: z.string().min(1).max(300), removed: z.boolean() }),
 	z.object({ action: z.literal('set_image_model'), key, model: z.enum(IMAGE_MODEL_IDS) }),
 	z.object({ action: z.literal('set_body_source'), key, url: z.string().min(1).max(1000).nullable() }),
-	z.object({ action: z.literal('add_prop'), name: z.string().trim().min(1).max(200) }),
+	z.object({ action: z.literal('add_prop'), name: z.string().trim().min(1).max(200), handle: z.string().trim().max(60).optional(), scene_ids: z.array(z.string().min(1).max(64)).max(50).optional() }),
 	z.object({ action: z.literal('use_current'), key }),
 	z.object({ action: z.literal('remove_source'), key, url: z.string().min(1).max(1000) }),
 	z.object({ action: z.literal('draft_spec'), key }),
@@ -74,12 +75,13 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		switch (b.action) {
 			case 'set_workflow': return done(await setPrepWorkflow(deps, project, b.key, b));
 			case 'set_sheet_inputs': return done(await setSheetInputs(deps, project, b.key, b.inputs));
-			case 'add_entry': await addPrepEntry(deps, projectId.data, b.kind, b.name); return done({ ok: true });
+			// Drift 02 (ADR 0012): the Notion References page first, then the Prep entry; a refusal adds nothing.
+			case 'add_entry': return done(await addReference(deps, project, b));
 			case 'use_version': return done(await usePrepVersion(deps, project, b.key, b.version_id));
 			case 'set_version_removed': return done(await setPrepVersionRemoved(deps, project, b.key, b.version_id, b.removed));
 			case 'set_image_model': return done(await setImageModel(deps, project, b.key, b.model));
 			case 'set_body_source': return done(await setBodySource(deps, projectId.data, b.key, b.url));
-			case 'add_prop': await addProp(deps, projectId.data, b.name); return done({ ok: true });
+			case 'add_prop': return done(await addReference(deps, project, { ...b, kind: 'prop' }));
 			case 'use_current': return done(await useCurrentAsSource(deps, project, b.key));
 			case 'remove_source': return done(await removeSource(deps, projectId.data, b.key, b.url));
 			case 'draft_spec': return done(await draftSpec(deps, project, b.key));

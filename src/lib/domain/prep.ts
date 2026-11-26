@@ -35,6 +35,8 @@ export const kindOf = (kind: string): PrepKind | null => {
 };
 /** Names compared on letters and digits, so `Kai "Hoodie" Santana` matches `Kai Hoodie Santana`. */
 const squash = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+/** Two reference names are the same when they match on letters and digits (case, spaces and punctuation aside). */
+export const sameName = (a: string, b: string) => squash(a) === squash(b);
 /** Walk-on roles, not people to make a sheet for. */
 const WALK_ONS = new Set(['customer', 'customers', 'student', 'students', 'guest', 'guests', 'partyguest', 'partyguests', 'volunteer', 'sophomore', 'freshman', 'freshmen', 'crowd', 'extras', 'bartender', 'cashier', 'driver', 'nurse', 'cop', 'officer']);
 /** A named person or place (not "the freshmen", "party guests" or a walk-on like "Customer"). */
@@ -223,7 +225,7 @@ export const prepStateSchema = z.object({
 	result: z.object({ file: z.string(), source_file: z.string().optional(), url: z.string(), made_at: z.string(), outside: z.boolean().default(false), uploaded: z.boolean().default(false), note: z.string().max(500).default(''), scale: scaleCheckSchema.optional() }).nullable().default(null)
 });
 export type PrepState = z.infer<typeof prepStateSchema>;
-export const prepFileSchema = z.object({ schema_version: z.literal(1), props: z.array(z.string().max(200)).max(50).default([]), custom_entries: z.array(z.object({ kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200) })).max(200).optional(), entries: z.record(z.string(), prepStateSchema).default({}) });
+export const prepFileSchema = z.object({ schema_version: z.literal(1), props: z.array(z.string().max(200)).max(50).default([]), custom_entries: z.array(z.object({ kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200), /** Drift 02: the Notion References page it was added as. */ reference_page_id: z.string().min(1).max(64).optional() })).max(200).optional(), entries: z.record(z.string(), prepStateSchema).default({}) });
 export type PrepFile = z.infer<typeof prepFileSchema>;
 export const emptyPrep = (): PrepFile => ({ schema_version: 1, props: [], entries: {} });
 export const emptyState = (): PrepState => prepStateSchema.parse({});
