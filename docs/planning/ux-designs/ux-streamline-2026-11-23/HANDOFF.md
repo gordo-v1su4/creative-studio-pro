@@ -25,9 +25,11 @@ The operator looked at the local copy beside the agreed mocks and said the app i
   | 08 Undersized picture: upscale (price first) or remake, **done `637e604`, merged `d702640`** | #36 | V1S-512 | 03, 07 |
   | 09 The check runs by itself; Prep shows each reference's standing, **done `07396c1`, merged `e600a1d`** | #37 | V1S-513 | 03 |
   | 10 Answer several items at once, **done `6abd78c`, merged `bffddc1`** | #38 | V1S-514 | 03 |
-  | 11 Bring in TR110's sixteen, fix the three strays (ready-for-human, real writes) | #39 | V1S-517 | 05, 08, 10 |
+  | 11 Bring in TR110's sixteen, fix the three strays (ready-for-human, real writes), **done 2026-11-25; four small sheets moved to #42 / V1S-520** | #39 | V1S-517 | 05, 08, 10 |
 
   Also from Drift 01's review: #40 / V1S-518, a series re-check keeps every app-owned field and loses no write made meanwhile, **done `4d973c9`**.
+
+  Open from ticket 11: #41 / V1S-519, Higgsfield CLI calls from the app hang (not started, no blockers); #42 / V1S-520, render new 2K sheets for four TR110 locations (ready-for-human, real spend).
 
   Still to ticket: one per approved audition screen (`issues/01`–`03`).
 - **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
