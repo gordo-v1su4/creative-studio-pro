@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Chat } from '@ai-sdk/svelte';
 	import { DefaultChatTransport } from 'ai';
+	import { isDriftQuestion } from '$lib/domain/drift';
 
 	/**
 	 * The Agent's Story mode (V1S-282): a streamed chat on the Vercel AI SDK that runs the story-interview
@@ -8,7 +9,8 @@
 	 * the connected Notion series through a tool whose results show inline. V1S-324: it can also write story
 	 * beats, episode outlines and this episode's scenes into Notion; each write shows inline with its link.
 	 */
-	let { projectId }: { projectId: string } = $props();
+	/** `onDrift`: "what's out of step?" runs the drift check (Drift 03) instead of going to the model. */
+	let { projectId, onDrift }: { projectId: string; onDrift?: () => void } = $props();
 	const chat = $derived(new Chat({ transport: new DefaultChatTransport({ api: `/api/projects/${projectId}/agent/chat` }) }));
 	let input = $state('');
 	const busy = $derived(chat.status === 'submitted' || chat.status === 'streaming');
@@ -17,6 +19,7 @@
 		const text = input.trim();
 		if (!text || busy) return;
 		input = '';
+		if (onDrift && isDriftQuestion(text)) return onDrift();
 		void chat.sendMessage({ text });
 	}
 	const toolLabel = (type: string) => type.replace(/^tool-/, '').replaceAll('_', ' ');

@@ -4,7 +4,8 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SeriesStore, type SeriesRecord } from '../../src/lib/server/series';
-import { referenceCode, referenceSourcePath, reviewRoomReferenceFiles, uploadReference, type ReferenceFileDeps } from '../../src/lib/server/reference-files';
+import { referenceSourcePath, reviewRoomReferenceFiles, uploadReference, type ReferenceFileDeps } from '../../src/lib/server/reference-files';
+import { referenceCode } from '../../src/lib/domain/series-tree';
 import type { ReviewRoomClient } from '../../src/lib/server/review-room';
 
 const roots: string[] = [];

@@ -34,7 +34,7 @@ export const kindOf = (kind: string): PrepKind | null => {
 	return k.startsWith('char') ? 'character' : k.startsWith('loc') ? 'location' : k.startsWith('prop') ? 'prop' : null;
 };
 /** Names compared on letters and digits, so `Kai "Hoodie" Santana` matches `Kai Hoodie Santana`. */
-const squash = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+export const squash = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 /** Two reference names are the same when they match on letters and digits (case, spaces and punctuation aside). */
 export const sameName = (a: string, b: string) => squash(a) === squash(b);
 /** Walk-on roles, not people to make a sheet for. */

@@ -10,6 +10,9 @@
 	import ProjectModelPanel from './ProjectModelPanel.svelte';
 	import StoryChat from './StoryChat.svelte';
 	import AgentActions from '$lib/ui/story/AgentActions.svelte';
+	import DriftMessage from './DriftMessage.svelte';
+	import { agentWork } from '$lib/ui/story/agent-work.svelte';
+	import { isDriftQuestion, seriesIdOf } from '$lib/domain/drift';
 	import EffectsProposal from '$lib/ui/cut/EffectsProposal.svelte';
 	import { soundDesk } from '$lib/ui/cut/sound-desk.svelte';
 
@@ -50,9 +53,17 @@
 		return options.length === 5 ? { prompt: lines.slice(0, firstOption).join(' '), options } : { prompt: value, options: [] };
 	}
 	let decision = $derived(parseDecisionQuestion(pendingQuestion));
-	let canSubmit = $derived(Boolean(pendingQuestion && !busy && (
+	/** A project of a series (imported, or built from its story) can always ask "what's out of step?" (Drift 03), with or without an interview question. */
+	let inSeries = $derived(Boolean(project && seriesIdOf(project)));
+	let asksDrift = $derived(inSeries && isDriftQuestion(composer));
+	let canSubmit = $derived(!busy && (asksDrift || Boolean(pendingQuestion && (
 		decision.options.length === 0 ? composer.trim() : selectedChoice === 'E' ? otherAnswer.trim() : selectedChoice
-	)));
+	))));
+	function checkDrift() {
+		if (!project) return;
+		composer = '';
+		void agentWork.checkDrift(project);
+	}
 
 	let savedMessages = $derived.by<TranscriptMessage[]>(() => {
 		if (!project) return [];
@@ -129,6 +140,7 @@
 	});
 
 	async function submit() {
+		if (asksDrift) return checkDrift();
 		if (!project || !pendingQuestion || !canSubmit || busy) return;
 		const option = decision.options.find((candidate) => candidate.key === selectedChoice);
 		const primary = selectedChoice === 'E' ? `E. ${otherAnswer.trim()}` : option ? `${option.key}. ${option.text}` : composer.trim();
@@ -218,13 +230,15 @@
 					<button type="button" class="tg" onclick={() => (ui.chatMode = docked ? 'focus' : 'dock')} aria-label={docked ? 'Open Agent in focus mode' : 'Dock Agent on the right'}>{docked ? 'Focus' : 'Dock'}</button>
 					<button type="button" class="tg" onclick={() => (open = false)} aria-label="Close the Agent">Close</button>
 				</div>
+				{#if inSeries}<div class="modes"><button type="button" class="tg" disabled={agentWork.busy !== null} onclick={checkDrift} title="Compare Notion's References, every project's Prep and Review Room's reference folders. It only reads.">What's out of step?</button></div>{/if}
 				{#if project}<ProjectModelPanel {project} bind:label={modelLabel} />{/if}
 			</div>
 		{/if}
 
-		{#if project && soundDesk.open}<EffectsProposal />{:else if project && !project.series}<AgentActions {project} buttons={more} />{/if}
+		{#if project && soundDesk.open}<EffectsProposal />{:else if project && !project.series}<AgentActions {project} buttons={more} />{:else if project}<AgentActions {project} buttons={false} />{/if}
+		{#if project}<DriftMessage {project} />{/if}
 		{#if mode === 'story' && project}
-			<div class="min-h-0 grow px-3 py-3"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} /></div></div>
+			<div class="min-h-0 grow px-3 py-3"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} onDrift={inSeries ? checkDrift : undefined} /></div></div>
 		{:else}
 		<div class="agent-transcript min-h-0 grow overflow-y-auto px-3 py-3" aria-live="polite">
 			{#if !project}
@@ -275,7 +289,7 @@
 		<footer class="agent-footer">
 			<div class="mx-auto max-w-2xl">
 				<div class="agent-composer">
-					<textarea bind:value={composer} onkeydown={onComposerKeydown} rows="1" class="max-h-28 grow resize-none bg-transparent outline-none" placeholder={pendingQuestion ? decision.options.length ? 'Add optional details…' : 'Answer or add context…' : 'Waiting for the next question…'} disabled={!project || !pendingQuestion || busy}></textarea>
+					<textarea bind:value={composer} onkeydown={onComposerKeydown} rows="1" class="max-h-28 grow resize-none bg-transparent outline-none" placeholder={pendingQuestion ? decision.options.length ? 'Add optional details…' : 'Answer or add context…' : inSeries ? 'Ask what’s out of step…' : 'Waiting for the next question…'} disabled={!project || (!pendingQuestion && !inSeries) || busy}></textarea>
 					<button type="button" class={['agent-mic', listening && 'is-listening']} onclick={toggleDictation} disabled={!project || !pendingQuestion || busy} aria-pressed={listening} aria-label={listening ? 'Stop dictation' : 'Start voice dictation'} title={canDictate ? 'Push to talk' : 'Voice input may be unavailable'}>
 						<svg class="h-[14px] w-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 							<rect x="9" y="2" width="6" height="12" rx="3"></rect>
@@ -284,7 +298,7 @@
 							<path d="M8.5 22h7"></path>
 						</svg>
 					</button>
-					<button type="button" class="key agent-send" onclick={() => void submit()} disabled={!canSubmit}>{busy ? '…' : decision.options.length ? 'Continue' : 'Send'}</button>
+					<button type="button" class="key agent-send" onclick={() => void submit()} disabled={!canSubmit}>{busy ? '…' : decision.options.length && !asksDrift ? 'Continue' : 'Send'}</button>
 				</div>
 				{#if voiceStatus}<p class="agent-status">{voiceStatus}</p>{/if}
 			</div>

@@ -180,3 +180,18 @@ describe('adding a reference writes Notion first (Drift 02)', () => {
 		expect(fake.calls).toEqual([]);
 	});
 });
+
+describe('adding a drift item under a settled name (Drift 03)', () => {
+	test('its Prep work and its earlier spelling move to the new page when the name was changed', async () => {
+		const fake = fakeNotion();
+		const { deps, project } = await setup(fake.api);
+		const { writeFile } = await import('node:fs/promises');
+		await writeFile(join(deps.projectRoot, project.project_id, 'prep.json'), JSON.stringify({ schema_version: 1, props: [], custom_entries: [{ kind: 'location', name: 'Kai rooftop run - sunset' }], entries: { 'location:Kai rooftop run - sunset': { prompt: 'kept prompt' } } }));
+		const added = await addReference(deps, project, { kind: 'location', name: 'Rooftop at sunset', former_names: ['Kai rooftop run - sunset'] });
+		if (!added.ok) throw new Error(added.message);
+		const prep = await readPrep(deps.projectRoot, project.project_id);
+		expect(prep.entries[added.page_id].prompt).toBe('kept prompt');
+		expect(prep.entries['location:Kai rooftop run - sunset']).toBeUndefined();
+		expect(prep.custom_entries).toEqual([{ kind: 'location', name: 'Rooftop at sunset', reference_page_id: added.page_id }]);
+	});
+});

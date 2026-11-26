@@ -2,7 +2,7 @@ import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { MIN_LONG_EDGE } from '$lib/domain/media';
-import { referenceFolderKey } from '$lib/domain/series-tree';
+import { referenceCode, referenceFolderKey } from '$lib/domain/series-tree';
 import type { MediaProbe } from './media-probe';
 import { fileNameHasName, type ReferenceFiles, type SeriesReferenceItem } from './references';
 import { uploadTake, type ReviewRoomClient } from './review-room';
@@ -31,12 +31,6 @@ export interface ReferenceFileDeps {
 type Failure = { ok: false; status: number; message: string };
 const fail = (status: number, message: string): Failure => ({ ok: false, status, message });
 
-const KIND_CODE: Record<string, string> = { 'refs:characters': 'CHR', 'refs:locations': 'LOC', 'refs:props': 'PRP' };
-/** `BLR_REF_CHR_KAI_HOODIE_SANTANA`: the reference's asset code in Review Room (stable, so a new upload is its next version). */
-export function referenceCode(showCode: string | undefined, folderKey: string, name: string): string {
-	const slug = name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'UNNAMED';
-	return `${showCode ?? 'SER'}_REF_${KIND_CODE[folderKey] ?? 'REF'}_${slug}`;
-}
 
 const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 

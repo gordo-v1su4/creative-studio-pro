@@ -17,6 +17,13 @@ export const REFERENCE_FOLDERS = [
 ] as const;
 export const referenceFolderKey = (kind: string) => REFERENCE_FOLDERS.find((folder) => folder.kind.toLowerCase() === kind.trim().toLowerCase().replace(/s$/, ''))?.key ?? null;
 
+const KIND_CODE: Record<string, string> = { 'refs:characters': 'CHR', 'refs:locations': 'LOC', 'refs:props': 'PRP' };
+/** `BLR_REF_CHR_KAI_HOODIE_SANTANA`: the reference's asset code in Review Room (stable, so a new upload is its next version). */
+export function referenceCode(showCode: string | undefined, folderKey: string, name: string): string {
+	const slug = name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'UNNAMED';
+	return `${showCode ?? 'SER'}_REF_${KIND_CODE[folderKey] ?? 'REF'}_${slug}`;
+}
+
 /** One folder the tree should have: a stable key (what it is), its title, and its parent's key (null = project root). */
 export interface TreeFolder { key: string; title: string; parent: string | null }
 

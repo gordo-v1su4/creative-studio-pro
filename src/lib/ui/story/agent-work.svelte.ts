@@ -1,6 +1,7 @@
 import type { BriefVersion, Project } from '$lib/domain/schemas';
 import type { ProposeLevel } from '$lib/domain/story-propose';
 import { DEFAULT_TARGET, type TeaserTarget } from '$lib/domain/trailer-house';
+import type { DriftItem, DriftReport } from '$lib/domain/drift';
 import { ui } from '$lib/ui/app-state.svelte';
 
 /**
@@ -32,6 +33,8 @@ class AgentWork {
 	briefDraft = $state<{ projectId: string; fields: BriefFields } | null>(null);
 	/** The quick teaser while it is being written: what the Agent is doing and what the check still finds. */
 	teaser = $state<{ projectId: string; status: string; title: string | null; issues: TeaserIssue[] } | null>(null);
+	/** The last drift check's report (Drift 03), posted as one Agent message; null when it found nothing. */
+	drift = $state<{ projectId: string; report: DriftReport } | null>(null);
 	private next = 1;
 
 	linesFor(projectId: string): AgentLine[] { return this.lines.filter((line) => line.projectId === projectId).slice(-12); }
@@ -69,6 +72,39 @@ class AgentWork {
 		try { answer = JSON.parse(text) as Answer<T>; } catch { throw new Error(`The Agent could not be reached (HTTP ${response.status})`); }
 		if (!answer.ok) throw new Error(answer.error?.message ?? 'The Agent could not do that');
 		return answer;
+	}
+
+	/**
+	 * "What's out of step?" (Drift 03, ADR 0012): compares Notion's References, every project's Prep and Review
+	 * Room's reference folders. It only reads. Anything out of step is posted as one message; a clean check is the
+	 * one line saying it checked.
+	 */
+	checkDrift(project: Project): Promise<Project | null> {
+		return this.run(project, 'drift', 'Checking Notion, Prep and Review Room…', async () => {
+			const response = await fetch(`/api/projects/${project.project_id}/drift`);
+			const answer = (await response.json().catch(() => null)) as Answer<DriftReport> | null;
+			if (!answer) throw new Error(`The Agent could not be reached (HTTP ${response.status})`);
+			if (!answer.ok) throw new Error(answer.error?.message ?? 'The check could not run');
+			const report = answer.data;
+			const count = report.items.length;
+			this.drift = count ? { projectId: project.project_id, report } : null;
+			const sheets = (report.read.sheets === null ? ' Review Room is not connected here, so its reference folders were not read.' : '') + (report.read.skipped.length ? ` The Prep of ${report.read.skipped.join(', ')} could not be read.` : '');
+			return { project: null, said: count ? `Checked Notion, Prep and Review Room.${sheets}` : `Checked Notion, Prep and Review Room: everything is in step.${sheets}` };
+		});
+	}
+
+	/** "Add to Notion" on a drift item: the Prep add (Drift 02) on the project it was found in, with the operator's name. */
+	addToNotion(project: Project, item: DriftItem, name: string): Promise<Project | null> {
+		const at = item.found.prep[0];
+		return this.run(project, `drift:${item.key}`, `Adding ${name} to Notion…`, async () => {
+			if (!at) throw new Error(`${name} is not in any Prep, so it cannot be added from here yet`);
+			await this.post<unknown>(`/api/projects/${at.project_id}/prep`, { action: 'add_entry', kind: item.kind, name, former_names: item.spellings });
+			if (this.drift?.projectId === project.project_id) {
+				const items = this.drift.report.items.filter((entry) => entry.key !== item.key);
+				this.drift = items.length ? { ...this.drift, report: { ...this.drift.report, items } } : null;
+			}
+			return { project: null, said: `${name} is in Notion's References now, and in ${at.project_title}'s Prep.` };
+		});
 	}
 
 	/** Draft the brief from the idea, the pick or the story. It is shown for reading; nothing is saved. */

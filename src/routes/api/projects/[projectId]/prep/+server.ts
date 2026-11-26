@@ -19,7 +19,7 @@ const key = z.string().min(1).max(300);
 const bodySchema = z.discriminatedUnion('action', [
 	z.object({ action: z.literal('set_sheet_inputs'), key, inputs: characterSheetInputsSchema }),
 	z.object({ action: z.literal('set_workflow'), key, stage: z.enum(['face_lock', 'outfit', 'sheet', 'environment', 'coverage']).optional(), approved_source_url: z.string().max(1000).nullable().optional(), confirm: z.boolean().optional() }),
-	z.object({ action: z.literal('add_entry'), kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200), handle: z.string().trim().max(60).optional(), scene_ids: z.array(z.string().min(1).max(64)).max(50).optional() }),
+	z.object({ action: z.literal('add_entry'), kind: z.enum(['character', 'location', 'prop']), name: z.string().trim().min(1).max(200), handle: z.string().trim().max(60).optional(), scene_ids: z.array(z.string().min(1).max(64)).max(50).optional(), former_names: z.array(z.string().trim().min(1).max(200)).max(10).optional() }),
 	z.object({ action: z.literal('use_version'), key, version_id: z.string().min(1).max(300) }),
 	z.object({ action: z.literal('set_version_removed'), key, version_id: z.string().min(1).max(300), removed: z.boolean() }),
 	z.object({ action: z.literal('set_image_model'), key, model: z.enum(IMAGE_MODEL_IDS) }),

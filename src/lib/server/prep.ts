@@ -182,14 +182,16 @@ async function findEntry(deps: PrepContextDeps, project: Project, key: string): 
  * References page exists, and passes that page id: the entry is keyed by it, and any Prep work kept under the
  * entry's old `<kind>:<name>` key (an entry found in the story) moves with it.
  */
-export async function addPrepEntry(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, kind: PrepKind, name: string, referencePageId?: string): Promise<PrepFile> {
+export async function addPrepEntry(deps: Pick<PrepDeps, 'projectRoot'>, projectId: string, kind: PrepKind, name: string, referencePageId?: string, formerNames: string[] = []): Promise<PrepFile> {
 	const prep = await readPrep(deps.projectRoot, projectId);
 	const clean = name.trim();
-	const same = (entry: { kind: PrepKind; name: string }) => entry.kind === kind && sameName(entry.name, clean);
+	// `formerNames`: the spellings it had in Prep before the operator settled its name (Drift 03), so its work moves with it.
+	const names = [clean, ...formerNames];
+	const same = (entry: { kind: PrepKind; name: string }) => entry.kind === kind && names.some((one) => sameName(entry.name, one));
 	const custom = prep.custom_entries ?? [];
 	if (!referencePageId) return custom.some(same) ? prep : writePrep(deps.projectRoot, projectId, { ...prep, custom_entries: [...custom, { kind, name: clean }] });
 	const entries = { ...prep.entries };
-	const oldKey = Object.keys(entries).find(key => key.startsWith(`${kind}:`) && sameName(key.slice(kind.length + 1), clean));
+	const oldKey = Object.keys(entries).find(key => key.startsWith(`${kind}:`) && same({ kind, name: key.slice(kind.length + 1) }));
 	if (oldKey && !entries[referencePageId]) { entries[referencePageId] = entries[oldKey]; delete entries[oldKey]; }
 	return writePrep(deps.projectRoot, projectId, { ...prep, entries, custom_entries: [...custom.filter(entry => !same(entry)), { kind, name: clean, reference_page_id: referencePageId }] });
 }
