@@ -19,12 +19,12 @@ The operator looked at the local copy beside the agreed mocks and said the app i
   | 02 Adding a reference in Prep writes Notion first, **done `e5bf3a2`** | #30 | V1S-508 | none |
   | 07 Keep the full-size sheet, send 2K, **done `dea5582`, merged `c5e7d9f`** | #31 | V1S-509 | none |
   | 03 The drift check in the Agent chat, with "add to Notion", **done `87d5e56`** | #32 | V1S-510 | 02 |
-  | 04 Mark a stray sheet as old | #33 | V1S-511 | 03 |
+  | 04 Mark a stray sheet as old, **done `7bb1d28`, merged `753c2d6`** | #33 | V1S-511 | 03 |
   | 05 Link a stray sheet to its Notion reference | #34 | V1S-515 | 04 |
   | 06 A rename in Notion is caught | #35 | V1S-516 | 04 |
-  | 08 Undersized picture: upscale (price first) or remake | #36 | V1S-512 | 03, 07 |
-  | 09 The check runs by itself; Prep shows each reference's standing | #37 | V1S-513 | 03 |
-  | 10 Answer several items at once | #38 | V1S-514 | 03 |
+  | 08 Undersized picture: upscale (price first) or remake, **done `637e604`, merged `d702640`** | #36 | V1S-512 | 03, 07 |
+  | 09 The check runs by itself; Prep shows each reference's standing, **done `07396c1`, merged `e600a1d`** | #37 | V1S-513 | 03 |
+  | 10 Answer several items at once, **done `6abd78c`, merged `bffddc1`** | #38 | V1S-514 | 03 |
   | 11 Bring in TR110's sixteen, fix the three strays (ready-for-human, real writes) | #39 | V1S-517 | 05, 08, 10 |
 
   Also from Drift 01's review: #40 / V1S-518, a series re-check keeps every app-owned field and loses no write made meanwhile, **done `4d973c9`**.
