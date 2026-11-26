@@ -35,6 +35,8 @@ class AgentWork {
 	teaser = $state<{ projectId: string; status: string; title: string | null; issues: TeaserIssue[] } | null>(null);
 	/** The last drift check's report (Drift 03), posted as one Agent message; null when it found nothing. */
 	drift = $state<{ projectId: string; report: DriftReport } | null>(null);
+	/** Where each of a project's Prep references stood at the last check (Drift 09), clean or not; Prep shows it. */
+	standing = $state<DriftReport['standing'] | null>(null);
 	private next = 1;
 
 	linesFor(projectId: string): AgentLine[] { return this.lines.filter((line) => line.projectId === projectId).slice(-12); }
@@ -85,12 +87,38 @@ class AgentWork {
 			const answer = (await response.json().catch(() => null)) as Answer<DriftReport> | null;
 			if (!answer) throw new Error(`The Agent could not be reached (HTTP ${response.status})`);
 			if (!answer.ok) throw new Error(answer.error?.message ?? 'The check could not run');
-			const report = answer.data;
-			const count = report.items.length;
-			this.drift = count ? { projectId: project.project_id, report } : null;
-			const sheets = (report.read.sheets === null ? ' Review Room is not connected here, so its reference folders were not read.' : '') + (report.read.skipped.length ? ` The Prep of ${report.read.skipped.join(', ')} could not be read.` : '');
-			return { project: null, said: count ? `Checked Notion, Prep and Review Room.${sheets}` : `Checked Notion, Prep and Review Room: everything is in step.${sheets}` };
+			return { project: null, said: this.take(project.project_id, answer.data) };
 		});
+	}
+
+	/** Keeps a check's report: one message when something is out of step, and what the one line says. */
+	private take(projectId: string, report: DriftReport): string {
+		const count = report.items.length;
+		// A clean check of one project leaves another project's message as it was.
+		if (count) this.drift = { projectId, report };
+		else if (this.drift?.projectId === projectId) this.drift = null;
+		this.standing = report.standing;
+		const sheets = (report.read.sheets === null ? ' Review Room is not connected here, so its reference folders were not read.' : '') + (report.read.skipped.length ? ` The Prep of ${report.read.skipped.join(', ')} could not be read.` : '');
+		return count ? `Checked Notion, Prep and Review Room.${sheets}` : `Checked Notion, Prep and Review Room: everything is in step.${sheets}`;
+	}
+
+	/**
+	 * Reads the check again without a line of its own, after something here settled drift (an add from the Agent or
+	 * from Prep), so Prep's standing and its "only in this project" count follow (Drift 09). A failed read changes nothing.
+	 */
+	async recheck(project: Project) {
+		const answer = (await fetch(`/api/projects/${project.project_id}/drift`).then((response) => response.json()).catch(() => null)) as Answer<DriftReport> | null;
+		if (answer?.ok) this.take(project.project_id, answer.data);
+	}
+
+	/**
+	 * The check a series re-check or sync ran on the server (Drift 09): posted as if the Agent had run it, on the
+	 * project it was run from, so the message is there when that project opens. Failed, it says why in one line.
+	 */
+	postDrift(projectId: string, result: { report: DriftReport } | { error: string }) {
+		const line = this.say(projectId, 'Checking Notion, Prep and Review Room…');
+		if ('error' in result) this.settle(line, `The drift check could not run: ${result.error}`, 'failed');
+		else this.settle(line, this.take(projectId, result.report), 'done');
 	}
 
 	/** "Add to Notion" on a drift item: the Prep add (Drift 02) on the project it was found in, with the operator's name. */
@@ -100,6 +128,7 @@ class AgentWork {
 			if (!at) throw new Error(`${name} is not in any Prep, so it cannot be added from here yet`);
 			await this.post<unknown>(`/api/projects/${at.project_id}/prep`, { action: 'add_entry', kind: item.kind, name, former_names: item.spellings });
 			this.dropDrift(project, item);
+			await this.recheck(project);
 			return { project: null, said: `${name} is in Notion's References now, and in ${at.project_title}'s Prep.` };
 		});
 	}

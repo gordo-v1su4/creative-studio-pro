@@ -1,6 +1,7 @@
 import { kindOf, sameName, squash, type PrepKind } from './prep';
 import type { Project } from './schemas';
 import { REFERENCE_FOLDERS, referenceCode } from './series-tree';
+import type { PrepStanding } from './drift-standing';
 
 /**
  * The drift check's comparison rule (Drift 03, GitHub #32 / V1S-510; spec GitHub #28; ADR 0012). Notion's
@@ -38,6 +39,8 @@ export interface DriftItem {
 export interface DriftReport {
 	series_title: string;
 	items: DriftItem[];
+	/** Where each of the asking project's Prep references stands, and its "only in this project" count (Drift 09). */
+	standing: { project_id: string; review_room_read: boolean } & PrepStanding;
 	/** Notion's reference count, the series' projects, the Review Room sheets (null when not read), and projects whose Prep could not be read. */
 	read: { notion: number; projects: Array<{ project_id: string; title: string }>; sheets: number | null; skipped: string[] };
 	/** Notion's references, for "mark as old" to name the one a sheet is history of (Drift 04). */

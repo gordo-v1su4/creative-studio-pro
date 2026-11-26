@@ -8,7 +8,7 @@ import { SeriesStore, type SeriesRecord } from '../../src/lib/server/series';
 import type { NotionApi } from '../../src/lib/server/notion';
 import type { ChangeFeed, ReviewRoomClient } from '../../src/lib/server/review-room';
 import type { NotionPage } from '../../src/lib/domain/notion-series';
-import { checkDrift } from '../../src/lib/server/drift';
+import { checkDrift, checkSeriesDrift } from '../../src/lib/server/drift';
 import { markedOld } from '../../src/lib/domain/drift';
 
 /**
@@ -159,6 +159,8 @@ describe('the drift check (Drift 03)', () => {
 		const checked = await checkDrift(deps, project);
 		if (!checked.ok) throw new Error(checked.message);
 		expect(checked.report.read.sheets).toBeNull();
+		// Prep is told the sheets were not read, so "waiting for a picture" is not taken on trust (Drift 09).
+		expect(checked.report.standing.review_room_read).toBeFalse();
 		expect(checked.report.items.some((item) => item.found.review_room)).toBeFalse();
 	});
 
@@ -174,5 +176,38 @@ describe('the drift check (Drift 03)', () => {
 		if (!checked.ok) expect(checked.message).toContain('timed out');
 		expect(room.calls).toEqual([]);
 		expect(await snapshot(root)).toEqual(before);
+	});
+});
+
+describe('the check by itself, and where Prep stands (Drift 09)', () => {
+	test('the report says where each of the asking project\'s Prep references stands', async () => {
+		const { deps, project } = await setup(fakeNotion().api, fakeReviewRoom().client);
+		const checked = await checkDrift(deps, project);
+		if (!checked.ok) throw new Error(checked.message);
+		const { standing } = checked.report;
+		expect(standing.project_id).toBe(project.project_id);
+		expect(standing.entries.find((entry) => entry.name === 'Video Haven')?.standing).toBe('missing_from_notion');
+		// Mara's dorm room is kept in TR110's Prep file under two spellings: one name missing from Notion.
+		const missing = new Set(standing.entries.filter((entry) => entry.standing === 'missing_from_notion').map((entry) => entry.name));
+		expect(standing.only_here).toBe(missing.size);
+		expect(standing.entries.every((entry) => entry.key)).toBeTrue();
+	});
+
+	test('after a series re-check it checks from one of the series\' projects, and writes nothing', async () => {
+		const notion = fakeNotion();
+		const room = fakeReviewRoom();
+		const { deps, project, root } = await setup(notion.api, room.client);
+		const before = await snapshot(root);
+		const checked = await checkSeriesDrift(deps, 'ser1');
+		if (!checked || !checked.ok) throw new Error('no check');
+		expect(checked.project_id).toBe(project.project_id);
+		expect(checked.report.items.length).toBeGreaterThan(0);
+		expect(await snapshot(root)).toEqual(before);
+		expect(notion.calls).toEqual(['query src-refs']);
+	});
+
+	test('a series with no project yet has nothing to check', async () => {
+		const { deps } = await setup(fakeNotion().api, null);
+		expect(await checkSeriesDrift(deps, 'ser-none')).toBeNull();
 	});
 });
