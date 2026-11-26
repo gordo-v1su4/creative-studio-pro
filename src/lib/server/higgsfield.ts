@@ -42,14 +42,23 @@ export function higgsfieldCliPath(override?: string | null): string | null {
 	return process.platform === 'win32' ? null : 'higgsfield';
 }
 
-/** Run the CLI with --json; no shell, so arguments are never re-parsed. */
+/**
+ * Run the CLI with --json; no shell, so arguments are never re-parsed. Its stdin is closed at once: the CLI
+ * waits on an open stdin and would otherwise hang every call until the timeout (#41). A call past the timeout
+ * is killed and reported as timed out. Only the CLI's own process is killed: it is one native binary today.
+ */
 export function cliRunner(bin: string, timeoutMs = 120_000): CliRunner {
 	return (args) => new Promise((resolve, reject) => {
-		execFile(bin, [...args, '--json', '--no-color'], { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+		const child = execFile(bin, [...args, '--json', '--no-color'], { timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+			// `killed` is also set when output passes maxBuffer, which is not a timeout.
+			if (error?.killed && error.code !== 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') return reject(new GeneratorError(`Higgsfield CLI timed out after ${timeoutMs / 1000} s and was stopped`));
 			if (error) return reject(new GeneratorError(`Higgsfield CLI: ${(stderr || stdout || error.message).trim().split('\n').slice(0, 3).join(' ')}`));
 			try { resolve(JSON.parse(stdout)); }
 			catch { reject(new GeneratorError(`Higgsfield CLI returned non-JSON: ${stdout.slice(0, 200)}`)); }
 		});
+		// A child that is gone already (missing binary, instant exit) makes ending the pipe fail; the callback reports it.
+		child.stdin?.on('error', () => {});
+		child.stdin?.end();
 	});
 }
 
