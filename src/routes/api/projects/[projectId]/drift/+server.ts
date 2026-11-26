@@ -5,6 +5,7 @@ import { idSchema } from '$lib/domain/schemas';
 import { getPrepDeps, getReferenceFileDeps, getUpscaler } from '$lib/server/config';
 import { checkDrift, markOld } from '$lib/server/drift';
 import { answerDrift } from '$lib/server/drift-batch';
+import { linkSheet } from '$lib/server/drift-link';
 import { quoteUpscale, sendUpscaled, settleUpscale, startUpscale } from '$lib/server/drift-picture';
 import { probeMedia } from '$lib/server/media-probe';
 
@@ -33,7 +34,8 @@ export const GET: RequestHandler = async ({ params }) => {
 };
 
 const choiceSchema = z.discriminatedUnion('choice', [
-	z.object({ choice: z.literal('mark_old'), asset_id: z.string().min(1).max(64), history_of: z.string().min(1).max(64).nullable().optional() })
+	z.object({ choice: z.literal('mark_old'), asset_id: z.string().min(1).max(64), history_of: z.string().min(1).max(64).nullable().optional() }),
+	z.object({ choice: z.literal('link'), page_id: z.string().min(1).max(64), asset_id: z.string().min(1).max(64).nullable().optional(), former_names: z.array(z.string().trim().min(1).max(200)).max(10).optional() })
 ]);
 const answerSchema = z.object({
 	key: z.string().min(1).max(300),
@@ -54,7 +56,8 @@ const pictureSchema = z.discriminatedUnion('action', [
 ]);
 
 /**
- * POST takes three bodies, told apart by their shape: `choice` (one choice on one item: "mark as old", Drift 04),
+ * POST takes three bodies, told apart by their shape: `choice` (one choice on one item: "mark as old", Drift 04, or
+ * "link", Drift 05: the stray sheet sent under the Notion name, then marked old),
  * `answers` (several items at once, Drift 10) and `action` (a picture under 2K, Drift 08).
  *
  * A drift item's picture under 2K (Drift 08, GitHub #36 / V1S-512), on the project whose Prep holds it: the price
@@ -91,11 +94,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const deps = await getPrepDeps();
 		const project = await deps.store.readProject(projectId.data);
 		if (!project) return json({ ok: false, error: { message: 'Project not found' } }, { status: 404 });
+		const c = choice.data;
 		try {
-			const marked = await markOld({ ...deps, client: getReferenceFileDeps()?.client ?? null }, project, choice.data);
-			return marked.ok ? json({ ok: true, data: marked }) : json({ ok: false, error: { message: marked.message } }, { status: marked.status });
+			const result = c.choice === 'link'
+				? await linkSheet({ ...deps, references: getReferenceFileDeps() }, project, c)
+				: await markOld({ ...deps, client: getReferenceFileDeps()?.client ?? null }, project, c);
+			return result.ok ? json({ ok: true, data: result }) : json({ ok: false, error: { message: result.message } }, { status: result.status });
 		} catch (cause) {
-			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : 'Marking the sheet old failed' } }, { status: 502 });
+			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : c.choice === 'link' ? 'Linking failed' : 'Marking the sheet old failed' } }, { status: 502 });
 		}
 	}
 	const body = bodySchema.safeParse(raw);

@@ -116,6 +116,21 @@ describe('the drift rule', () => {
 		expect(item.link_to).toEqual({ page_id: 'r-bryson', name: 'Bryson Vane' });
 	});
 
+	test('a link is proposed whatever the case and punctuation, on whole leading words only (Drift 05)', () => {
+		const props = [{ page_id: 'r-shades', name: "Kai's Sunglasses Case", kind: 'Prop' }];
+		const linkOf = (kind: DriftPrepEntry['kind'], name: string, refs = notion) => driftItems({ show_code: 'BLR', notion: refs, prep: [prep(kind, name)], sheets: [] })[0]?.link_to ?? null;
+		expect(linkOf('character', 'BRYSON')).toEqual({ page_id: 'r-bryson', name: 'Bryson Vane' });
+		expect(linkOf('character', 'bryson,')).toEqual({ page_id: 'r-bryson', name: 'Bryson Vane' });
+		expect(linkOf('prop', 'kai’s sunglasses', props)).toEqual({ page_id: 'r-shades', name: "Kai's Sunglasses Case" });
+		expect(linkOf('prop', 'Kai‘s sunglasses', props)).toEqual({ page_id: 'r-shades', name: "Kai's Sunglasses Case" });
+		expect(linkOf('prop', 'Kaiʼs sunglasses', props)).toEqual({ page_id: 'r-shades', name: "Kai's Sunglasses Case" });
+		expect(linkOf('prop', "KAI'S – sunglasses", props)).toEqual({ page_id: 'r-shades', name: "Kai's Sunglasses Case" });
+		// A part of a word, another kind, or the words in another order is not close.
+		expect(linkOf('character', 'Bry')).toBeNull();
+		expect(linkOf('location', 'Bryson')).toBeNull();
+		expect(linkOf('character', 'Vane Bryson')).toBeNull();
+	});
+
 	test('the same reference in two projects is one item found in both', () => {
 		const other = { project_id: 'p-tr130', project_title: 'TR130' };
 		const items = driftItems({ show_code: 'BLR', notion, prep: [prep('location', 'Pool'), { ...other, kind: 'location', name: 'pool', reference_page_id: null }], sheets: [] });
