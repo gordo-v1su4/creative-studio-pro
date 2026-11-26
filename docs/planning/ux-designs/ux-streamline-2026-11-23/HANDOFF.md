@@ -27,6 +27,8 @@ The operator looked at the local copy beside the agreed mocks and said the app i
   | 10 Answer several items at once | #38 | V1S-514 | 03 |
   | 11 Bring in TR110's sixteen, fix the three strays (ready-for-human, real writes) | #39 | V1S-517 | 05, 08, 10 |
 
+  Also open, from Drift 01's review: #40 / V1S-518, a series re-check keeps every app-owned field and loses no write made meanwhile (no blockers).
+
   Still to ticket: one per approved audition screen (`issues/01`–`03`).
 - **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
   under a master prompt that keeps it to the house structure, free to talk creatively ("does this sequence work
