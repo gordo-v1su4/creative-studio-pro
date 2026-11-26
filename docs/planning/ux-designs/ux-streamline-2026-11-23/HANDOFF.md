@@ -29,7 +29,7 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 
   Also from Drift 01's review: #40 / V1S-518, a series re-check keeps every app-owned field and loses no write made meanwhile, **done `4d973c9`**.
 
-  Open from ticket 11: #41 / V1S-519, Higgsfield CLI calls from the app hang (not started, no blockers); #42 / V1S-520, render new 2K sheets for four TR110 locations (ready-for-human, real spend).
+  Open from ticket 11: #41 / V1S-519, Higgsfield CLI calls from the app hang (not started, no blockers); #42 / V1S-520, render new 2K sheets for four TR110 locations with Scenecraft V1 (ready-for-human, real spend). Done: #43 / V1S-521, Upscale dropped from the drift message (`52774e8`); small sheets are only remade.
 
   Still to ticket: one per approved audition screen (`issues/01`–`03`).
 - **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
