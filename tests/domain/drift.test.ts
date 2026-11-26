@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { cleanName, driftItems, isDriftQuestion, type DriftInput, type DriftPrepEntry } from '../../src/lib/domain/drift';
+import { cleanName, driftItems, isDriftQuestion, isMarkedOld, markedOld, type DriftInput, type DriftPrepEntry } from '../../src/lib/domain/drift';
 
 /**
  * Drift 03 (GitHub #32 / V1S-510, ADR 0012): the comparison rule. Given Notion's References, each project's Prep
@@ -131,6 +131,55 @@ describe('the drift rule', () => {
 
 	test('a sheet with no code is skipped', () => {
 		expect(driftItems({ show_code: 'BLR', notion: [], prep: [], sheets: [{ asset_id: 'a', code: null, folder_key: 'refs:props', title: 'dropped.png' }] })).toEqual([]);
+	});
+});
+
+describe('an old sheet (Drift 04)', () => {
+	test('a sheet marked old in Review Room gives no item, so settled drift never comes back', () => {
+		const old = sheets.map((entry) => (entry.code === 'BLR_REF_CHR_LUCIAN_VALE' ? { ...entry, old: true } : entry));
+		const items = driftItems({ ...tr110, sheets: old });
+		expect(items.some((item) => item.found.review_room?.code === 'BLR_REF_CHR_LUCIAN_VALE')).toBe(false);
+		expect(items.some((item) => item.found.review_room?.code === 'BLR_REF_CHR_BRYSON')).toBe(true);
+	});
+
+	test('an old sheet no longer claims the Prep entry of the same name: it is offered as missing from Review Room too', () => {
+		const items = driftItems({ show_code: 'BLR', notion: [], prep: [prep('prop', "Kai's Sunglasses")], sheets: [{ ...sheet('BLR_REF_PRP_KAI_S_SUNGLASSES', 'refs:props'), old: true }] });
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({ type: 'only_in_prep', found: { review_room: null }, missing: ['notion', 'review_room'] });
+	});
+
+	test('marking old adds only the flag and the reference it is history of, and keeps every other field', () => {
+		const before = {
+			model: '', prompt: '', sourceLabel: 'Creative Studio Pro', referenceImageVersionIds: [], notes: 'kept',
+			customFields: [{ id: 'reference', label: 'reference', kind: 'text', value: 'Lucian Vale' }]
+		};
+		expect(isMarkedOld(before)).toBe(false);
+		const after = markedOld(before, { page_id: 'r-lucian', name: 'Lucian Blaise' });
+		expect(after).toEqual({
+			...before,
+			customFields: [
+				{ id: 'reference', label: 'reference', kind: 'text', value: 'Lucian Vale' },
+				{ id: 'old', label: 'Old', kind: 'boolean', value: true },
+				{ id: 'history_of', label: 'History of', kind: 'text', value: 'Lucian Blaise' },
+				{ id: 'history_of_notion_page_id', label: 'History of (Notion page)', kind: 'text', value: 'r-lucian' }
+			]
+		});
+		expect(isMarkedOld(after)).toBe(true);
+		expect(before.customFields).toHaveLength(1);
+	});
+
+	test('marked old with no reference, it carries the flag alone; marked again, the history is replaced, not doubled', () => {
+		const alone = markedOld({ model: '', prompt: '', sourceLabel: '', referenceImageVersionIds: [] }, null);
+		expect(alone.customFields).toEqual([{ id: 'old', label: 'Old', kind: 'boolean', value: true }]);
+		const again = markedOld(markedOld(alone, { page_id: 'a', name: 'A' }), { page_id: 'b', name: 'B' });
+		expect((again.customFields as Array<{ id: string }>).map((field) => field.id)).toEqual(['old', 'history_of', 'history_of_notion_page_id']);
+		expect(again.customFields).toContainEqual({ id: 'history_of', label: 'History of', kind: 'text', value: 'B' });
+	});
+
+	test('only a true "old" field counts', () => {
+		expect(isMarkedOld({ customFields: [{ id: 'old', label: 'Old', kind: 'boolean', value: false }] })).toBe(false);
+		expect(isMarkedOld({ customFields: [{ id: 'old', label: 'Old', kind: 'boolean', value: null }] })).toBe(false);
+		expect(isMarkedOld({})).toBe(false);
 	});
 });
 

@@ -13,7 +13,7 @@ export interface DriftNotionRef { page_id: string; name: string; kind: string }
 /** One name a project's Prep holds, spelled as it is there (two spellings of one place are two entries). */
 export interface DriftPrepEntry { project_id: string; project_title: string; kind: PrepKind; name: string; reference_page_id: string | null }
 /** One asset in a Review Room reference folder (`refs:characters`, `refs:locations`, `refs:props`). */
-export interface DriftSheet { asset_id: string; code: string | null; folder_key: string; title: string }
+export interface DriftSheet { asset_id: string; code: string | null; folder_key: string; title: string; /** Marked old (Drift 04): kept as history, never drift. */ old?: boolean }
 export interface DriftInput { show_code: string | undefined; notion: DriftNotionRef[]; prep: DriftPrepEntry[]; sheets: DriftSheet[] }
 
 export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old';
@@ -40,6 +40,8 @@ export interface DriftReport {
 	items: DriftItem[];
 	/** Notion's reference count, the series' projects, the Review Room sheets (null when not read), and projects whose Prep could not be read. */
 	read: { notion: number; projects: Array<{ project_id: string; title: string }>; sheets: number | null; skipped: string[] };
+	/** Notion's references, for "mark as old" to name the one a sheet is history of (Drift 04). */
+	references: Array<{ page_id: string; name: string; kind: PrepKind }>;
 }
 
 /** The series a project belongs to: an imported episode's, or the series its story plan was built from. */
@@ -93,7 +95,7 @@ export function driftItems(input: DriftInput): DriftItem[] {
 		groups.set(key, group);
 	}
 
-	const sheets = input.sheets.filter((sheet): sheet is DriftSheet & { code: string } => !!sheet.code && !!FOLDER_KIND[sheet.folder_key] && !codesInUse.has(sheet.code));
+	const sheets = input.sheets.filter((sheet): sheet is DriftSheet & { code: string } => !!sheet.code && !sheet.old && !!FOLDER_KIND[sheet.folder_key] && !codesInUse.has(sheet.code));
 	const claimed = new Set<string>();
 	const items: DriftItem[] = [...groups].map(([key, group]) => {
 		const codes = new Set(group.spellings.map((spelling) => referenceCode(input.show_code, folderOf(group.kind), spelling)));
@@ -122,4 +124,41 @@ export function driftItems(input: DriftInput): DriftItem[] {
 		});
 	}
 	return items.map((item, i) => ({ item, i })).sort((a, b) => KIND_ORDER[a.item.kind] - KIND_ORDER[b.item.kind] || a.i - b.i).map(({ item }) => item);
+}
+
+/**
+ * Old (Drift 04, GitHub #33 / V1S-511; glossary "Old (reference)"): a sheet no Notion reference uses any more stays
+ * in Review Room as history, flagged in its current version's metadata as Review Room custom fields: `old`, and the
+ * reference it is history of when there is one. Nothing else in the metadata changes.
+ */
+const FIELD = { old: 'old', name: 'history_of', page: 'history_of_notion_page_id' } as const;
+const OLD_IDS = new Set<string>(Object.values(FIELD));
+type CustomField = { id: string; label: string; kind: string; value: unknown };
+const fieldsOf = (metadata: Record<string, unknown>): CustomField[] => (Array.isArray(metadata.customFields) ? metadata.customFields as CustomField[] : []);
+
+export function isMarkedOld(metadata: Record<string, unknown>): boolean {
+	return fieldsOf(metadata).some((field) => field.id === FIELD.old && field.value === true);
+}
+
+/** The metadata with the old flag (and its history) added; earlier old fields are replaced, every other field kept. */
+export function markedOld(metadata: Record<string, unknown>, historyOf: { page_id: string; name: string } | null): Record<string, unknown> {
+	return {
+		...metadata,
+		customFields: [
+			...fieldsOf(metadata).filter((field) => !OLD_IDS.has(field.id)),
+			{ id: FIELD.old, label: 'Old', kind: 'boolean', value: true },
+			...(historyOf ? [
+				{ id: FIELD.name, label: 'History of', kind: 'text', value: historyOf.name },
+				{ id: FIELD.page, label: 'History of (Notion page)', kind: 'text', value: historyOf.page_id }
+			] : [])
+		]
+	};
+}
+
+/** The history an old sheet carries, as written by `markedOld`; null when it has none. */
+export function historyOf(metadata: Record<string, unknown>): { page_id: string; name: string } | null {
+	const fields = fieldsOf(metadata);
+	const name = fields.find((field) => field.id === FIELD.name)?.value;
+	const page = fields.find((field) => field.id === FIELD.page)?.value;
+	return typeof name === 'string' && typeof page === 'string' ? { page_id: page, name } : null;
 }

@@ -9,6 +9,7 @@ import type { NotionApi } from '../../src/lib/server/notion';
 import type { ChangeFeed, ReviewRoomClient } from '../../src/lib/server/review-room';
 import type { NotionPage } from '../../src/lib/domain/notion-series';
 import { checkDrift } from '../../src/lib/server/drift';
+import { markedOld } from '../../src/lib/domain/drift';
 
 /**
  * Drift 03 (GitHub #32 / V1S-510, ADR 0012): the check reads Notion's References, every series project's Prep and
@@ -35,7 +36,7 @@ function fakeNotion(fail?: Error) {
 }
 
 const asset = (assetId: string, folderId: string, assetCode: string | null): ChangeFeed['assets'][number] => ({ assetId, folderId, assetCode, title: assetCode ?? 'drop.png', currentVersionId: `v-${assetId}`, misfiled: false, copiedFromAssetId: null, updatedAt: 1 });
-function fakeReviewRoom() {
+function fakeReviewRoom(options: { old?: string[]; failMetadata?: Error } = {}) {
 	const calls: string[] = [];
 	const feed: ChangeFeed = {
 		cursor: '99',
@@ -48,7 +49,15 @@ function fakeReviewRoom() {
 	const client = new Proxy({}, {
 		get: (_, name: string) => name === 'changes'
 			? async (projectId: string, since: string) => { calls.push(`changes ${projectId} ${since}`); return feed; }
-			: async () => { calls.push(name); throw new Error(`${name} must not be called by a check`); }
+			// Drift 04: the check reads each reference sheet's current version metadata, to skip the ones marked old.
+			: name === 'versionMetadata'
+				? async (versionId: string) => {
+					calls.push(`versionMetadata ${versionId}`);
+					if (options.failMetadata) throw options.failMetadata;
+					const metadata = { model: '', prompt: '', sourceLabel: '', referenceImageVersionIds: [] };
+					return { metadata: options.old?.includes(versionId) ? markedOld(metadata, null) : metadata, updatedAt: 1 };
+				}
+				: async () => { calls.push(name); throw new Error(`${name} must not be called by a check`); }
 	}) as ReviewRoomClient;
 	return { client, calls };
 }
@@ -111,7 +120,7 @@ describe('the drift check (Drift 03)', () => {
 		const checked = await checkDrift(deps, project);
 		if (!checked.ok) throw new Error(checked.message);
 		expect(notion.calls).toEqual(['query src-refs']);
-		expect(room.calls).toEqual(['changes rr1 0']);
+		expect(room.calls).toEqual(['changes rr1 0', 'versionMetadata v-a-mara', 'versionMetadata v-a-bryson']);
 		expect(await snapshot(root)).toEqual(before);
 
 		const { report } = checked;
@@ -126,6 +135,23 @@ describe('the drift check (Drift 03)', () => {
 		expect(byName['The Rush']).toMatchObject({ kind: 'prop', found: { prep: [expect.objectContaining({ project_title: 'TR130' })] } });
 		// A removed asset, a shot in a scene folder and the other series' Prep are not part of it.
 		expect(report.items.map((item) => item.name).toSorted()).toEqual(['Bryson', "Mara's dorm room", 'The Rush', 'Video Haven']);
+	});
+
+	test('skips a sheet marked old in Review Room, so settled drift never comes back (Drift 04)', async () => {
+		const { deps, project } = await setup(fakeNotion().api, fakeReviewRoom({ old: ['v-a-bryson'] }).client);
+		const checked = await checkDrift(deps, project);
+		if (!checked.ok) throw new Error(checked.message);
+		expect(checked.report.items.map((item) => item.name)).not.toContain('Bryson');
+		expect(checked.report.read.sheets).toBe(2);
+	});
+
+	test('says why when a sheet\'s metadata cannot be read, and writes nothing (Drift 04)', async () => {
+		const { deps, project, root } = await setup(fakeNotion().api, fakeReviewRoom({ failMetadata: new Error('Version unavailable') }).client);
+		const before = await snapshot(root);
+		const checked = await checkDrift(deps, project);
+		expect(checked).toMatchObject({ ok: false, status: 502 });
+		if (!checked.ok) expect(checked.message).toContain('Version unavailable');
+		expect(await snapshot(root)).toEqual(before);
 	});
 
 	test('without Review Room configured it compares Notion and Prep and says the sheets were not read', async () => {
