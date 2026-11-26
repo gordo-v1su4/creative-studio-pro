@@ -19,16 +19,29 @@ export interface DriftPrepEntry {
 	picture?: { width: number; height: number; url: string; entry_key: string } | null;
 }
 /** One asset in a Review Room reference folder (`refs:characters`, `refs:locations`, `refs:props`). */
-export interface DriftSheet { asset_id: string; code: string | null; folder_key: string; title: string; /** Marked old (Drift 04): kept as history, never drift. */ old?: boolean }
-export interface DriftInput { show_code: string | undefined; notion: DriftNotionRef[]; prep: DriftPrepEntry[]; sheets: DriftSheet[] }
+export interface DriftSheet {
+	asset_id: string; code: string | null; folder_key: string; title: string;
+	/** Marked old (Drift 04): kept as history, never drift. */ old?: boolean;
+	/** Drift 06: the Notion page the sheet was sent from, and the name it was sent under, from its metadata. */
+	page_id?: string | null; reference_name?: string | null;
+}
+/** Drift 06: a sheet the app sent for a Notion page (the series record's reference files). */
+export interface DriftSent { page_id: string; asset_id: string; code: string; /** The file name it was sent under. */ file_name?: string }
+export interface DriftInput { show_code: string | undefined; notion: DriftNotionRef[]; prep: DriftPrepEntry[]; sheets: DriftSheet[]; sent?: DriftSent[] }
 
-export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old' | 'upscale' | 'remake';
+/**
+ * `restore_name` and `new_reference` answer a rename in Notion (Drift 06). There is no rename choice: a coded
+ * reference's name is never changed from the app (ADR 0012).
+ */
+export const RENAME_CHOICES = ['restore_name', 'new_reference'] as const;
+export type RenameChoice = (typeof RENAME_CHOICES)[number];
+export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old' | 'upscale' | 'remake' | RenameChoice;
 /** Where an item is missing (it is never found in Notion: anything in Notion is in step or is not drift). */
 export type DriftPlace = 'notion' | 'review_room';
 export interface DriftItem {
 	key: string;
 	kind: PrepKind;
-	type: 'only_in_prep' | 'only_in_review_room' | 'picture_too_small';
+	type: 'only_in_prep' | 'only_in_review_room' | 'picture_too_small' | 'renamed_in_notion';
 	/** The proposed name: straight apostrophes, no " - ". The operator can edit it before it is written. */
 	name: string;
 	/** Every spelling found, in the order found. */
@@ -40,6 +53,8 @@ export interface DriftItem {
 	choices: DriftChoice[];
 	/** Drift 08: a picture under 2048 px on its long edge, where it is in Prep, and its Notion page (null until added). */
 	picture?: { width: number; height: number; url: string; entry_key: string; project_id: string; reference_page_id: string | null };
+	/** Drift 06: a Notion page renamed after its code was set: the name its sheets carry, Notion's name now, and those sheets. */
+	renamed?: { page_id: string; from: string; to: string; sheets: Array<{ asset_id: string; code: string }> };
 }
 
 /** What the check returns: the items, and what it read to find them. */
@@ -87,6 +102,15 @@ function nameOfCode(code: string): string {
 /** The spelling to propose: the one with the fewest capitals ("Campus walkway" over "Campus Walkway"), else the first. */
 const proposed = (spellings: string[]) => cleanName(spellings.reduce((best, next) => ((next.match(/\p{Lu}/gu)?.length ?? 0) < (best.match(/\p{Lu}/gu)?.length ?? 0) ? next : best)));
 
+/** The exact name a sheet was sent under: its metadata's name, else its title less the extension, when either gives its code. */
+function sentName(showCode: string | undefined, folder: string, sheet: { code: string; reference_name?: string | null; title?: string; file_name?: string } | undefined): string | null {
+	if (!sheet) return null;
+	for (const name of [sheet.reference_name, sheet.title, sheet.file_name].map((one) => one?.replace(/\.[a-z0-9]+$/i, ''))) {
+		if (name && referenceCode(showCode, folder, cleanName(name)) === sheet.code) return cleanName(name);
+	}
+	return null;
+}
+
 export function driftItems(input: DriftInput): DriftItem[] {
 	const notion = input.notion.flatMap((ref) => { const kind = kindOf(ref.kind); return kind ? [{ ...ref, kind }] : []; });
 	const notionPages = new Set(notion.map((ref) => ref.page_id));
@@ -107,7 +131,32 @@ export function driftItems(input: DriftInput): DriftItem[] {
 
 	const sheets = input.sheets.filter((sheet): sheet is DriftSheet & { code: string } => !!sheet.code && !sheet.old && !!FOLDER_KIND[sheet.folder_key] && !codesInUse.has(sheet.code));
 	const claimed = new Set<string>();
-	const items: DriftItem[] = [...groups].map(([key, group]) => {
+
+	// A rename in Notion (Drift 06): a sheet sent from a Notion page whose name now gives another code, while no
+	// sheet carries the new code yet. It is never followed; the operator puts the old name back or makes a new reference.
+	const renames: DriftItem[] = [];
+	const sentFiles = input.sent ?? [];
+	const sentBy = new Map(sentFiles.map((file) => [file.asset_id, file.page_id]));
+	const liveCodes = new Set(input.sheets.flatMap((sheet) => (sheet.code && !sheet.old ? [sheet.code] : [])));
+	const oldAssets = new Set(input.sheets.flatMap((sheet) => (sheet.old ? [sheet.asset_id] : [])));
+	for (const ref of notion) {
+		const folder = folderOf(ref.kind);
+		const code = referenceCode(input.show_code, folder, ref.name);
+		if (liveCodes.has(code)) continue;
+		const pageSheets = sheets.filter((sheet) => sheet.folder_key === folder && (sheet.page_id ?? sentBy.get(sheet.asset_id)) === ref.page_id);
+		// A sheet the app sent that the check did not read (Review Room not read here) still carries the old code.
+		const sentOnly = sentFiles.filter((file) => file.page_id === ref.page_id && file.code !== code && !codesInUse.has(file.code) && !oldAssets.has(file.asset_id) && !pageSheets.some((sheet) => sheet.asset_id === file.asset_id));
+		const oldCoded = [...pageSheets, ...sentOnly].map(({ asset_id, code: sheetCode }) => ({ asset_id, code: sheetCode }));
+		if (!oldCoded.length) continue;
+		for (const sheet of oldCoded) claimed.add(sheet.asset_id);
+		const from = sentName(input.show_code, folder, pageSheets[0]) ?? sentName(input.show_code, folder, sentFiles.find((file) => file.page_id === ref.page_id && file.code === oldCoded[0].code)) ?? nameOfCode(oldCoded[0].code);
+		renames.push({
+			key: `renamed:${ref.page_id}`, kind: ref.kind, type: 'renamed_in_notion', name: ref.name, spellings: [from, ref.name],
+			found: { prep: [], review_room: oldCoded[0] }, missing: ['review_room'], link_to: null, choices: [...RENAME_CHOICES],
+			renamed: { page_id: ref.page_id, from, to: ref.name, sheets: oldCoded }
+		});
+	}
+	const items: DriftItem[] = [...renames, ...[...groups].map(([key, group]) => {
 		const codes = new Set(group.spellings.map((spelling) => referenceCode(input.show_code, folderOf(group.kind), spelling)));
 		const sheet = sheets.find((entry) => FOLDER_KIND[entry.folder_key] === group.kind && codes.has(entry.code));
 		if (sheet) claimed.add(sheet.asset_id);
@@ -118,8 +167,8 @@ export function driftItems(input: DriftInput): DriftItem[] {
 			found: { prep: group.prep, review_room: sheet ? { asset_id: sheet.asset_id, code: sheet.code } : null },
 			missing: sheet ? ['notion'] : ['notion', 'review_room'], link_to: link,
 			choices: link ? ['add_to_notion', 'link'] : ['add_to_notion']
-		};
-	});
+		} satisfies DriftItem;
+	})];
 
 	// Review Room: a sheet whose code no Notion reference (and no Prep entry above) gives.
 	for (const sheet of sheets.filter((entry) => !claimed.has(entry.asset_id))) {
