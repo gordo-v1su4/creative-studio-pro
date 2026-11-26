@@ -457,3 +457,33 @@ test('a project with no story beats lists every reference of its reference proje
 	expect(JSON.stringify(await readPrep(deps.projectRoot, projectId))).toBe(before);
 	expect((await readPrep(deps.projectRoot, saved.data.project_id)).entries).toEqual({});
 });
+
+describe('Drift 07: a Prep sheet larger than 2K (V1S-509)', () => {
+	test('goes to Review Room as its 2K and the full-size file it was made from is kept as the source image', async () => {
+		const { deps, projectId } = await setup();
+		const record = (await deps.series.read('ser1'))!;
+		await deps.series.write({ ...record, show_code: 'BLR', review_room: { project_id: 'rr', folders: { 'refs:characters': 'f-chr' }, synced_at: null } } as never);
+		const sent: Uint8Array[] = [];
+		const client = {
+			beginUpload: async () => ({ sessionId: 's', url: 'u', posterUrl: 'p', assetId: 'a1' }),
+			putSigned: async (url: string, bytes: Uint8Array) => { if (url === 'u') sent.push(bytes); },
+			completeUpload: async () => ({ assetId: 'a1', jobId: 'j' }), putMetadata: async () => {}, setCurrentVersion: async () => {},
+			changes: async () => ({ cursor: '1', assets: [], versions: [{ versionId: 'v1', assetId: 'a1', version: 1, isCurrent: true, processingState: 'ready', mimeType: 'image/png', createdAt: 1 }], removedAssets: [] })
+		} as never;
+		const root = join(deps.projectRoot, '..');
+		// Fake scaler and probe: files under prep/made are 4K, everything scaled is 2K.
+		const normalizeSheet = async (_input: string, output: string) => { await writeFile(output, '2K PNG'); return output; };
+		const probe = async (file: string) => (file.includes(join('prep', 'made')) ? { width: 4096, height: 2304 } : { width: 2048, height: 1152 }) as never;
+		deps.normalizeSheet = normalizeSheet;
+		deps.references = { client, store: deps.series, cacheDir: join(root, 'cache'), sourceDir: join(root, 'sources'), probe, poster: async (_input, output) => { await writeFile(output, 'jpg'); }, normalizeSheet };
+		const project = (await deps.store.readProject(projectId))!;
+		const attached = await attachOutside(deps, project, 'r-mara', { file_name: 'mara-4k.png', bytes: new Uint8Array([4, 0, 9, 6]) });
+		if (!attached.ok) throw new Error(attached.message);
+		expect(attached.prep.entries['r-mara'].result!.uploaded).toBeTrue();
+		expect(sent).toEqual([new Uint8Array(Buffer.from('2K PNG'))]);
+		const file = (await deps.series.read('ser1'))!.reference_files!['r-mara'];
+		expect(file).toMatchObject({ width: 2048, height: 1152 });
+		expect(file.source_image).toMatchObject({ file_name: basename(attached.prep.entries['r-mara'].result!.source_file!), width: 4096, height: 2304 });
+		expect(new Uint8Array(await readFile(join(root, 'sources', file.source_image!.folder, file.source_image!.file_name)))).toEqual(new Uint8Array([4, 0, 9, 6]));
+	});
+});

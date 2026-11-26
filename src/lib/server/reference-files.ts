@@ -1,5 +1,6 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
+import { copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { MIN_LONG_EDGE } from '$lib/domain/media';
 import { referenceFolderKey } from '$lib/domain/series-tree';
 import type { MediaProbe } from './media-probe';
@@ -20,6 +21,8 @@ export interface ReferenceFileDeps {
 	store: SeriesStore;
 	/** Where cached copies live (beside the series records, never inside a project). */
 	cacheDir: string;
+	/** Drift 07 (V1S-509): where a sheet's full-size file is kept when Review Room gets its 2K (not a cache). */
+	sourceDir: string;
 	probe: (file: string) => Promise<MediaProbe>;
 	/** Writes a JPEG poster of the image at `input` to `output`. */
 	poster: (input: string, output: string) => Promise<void>;
@@ -37,8 +40,19 @@ export function referenceCode(showCode: string | undefined, folderKey: string, n
 
 const IMAGE_TYPES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' };
 
-/** Upload one vetted reference image; refused when its file name lacks the exact name or it is under 2K. */
-export async function uploadReference(deps: ReferenceFileDeps, seriesId: string, input: { page_id: string; file_name: string; bytes: Uint8Array }): Promise<{ ok: true; record: SeriesRecord } | Failure> {
+type ReferenceFile = NonNullable<SeriesRecord['reference_files']>[string];
+/** The kept full-size file of a reference sent at 2K (ADR 0012), or null when the sheet was sent as it was. */
+export function referenceSourcePath(sourceDir: string, file: ReferenceFile): string | null {
+	return file.source_image ? join(sourceDir, file.source_image.folder, file.source_image.file_name) : null;
+}
+
+/**
+ * Upload one vetted reference image; refused when its file name lacks the exact name or it is under 2K.
+ * A character or location sheet larger than 2K goes up as its 2K PNG and the full-size file is kept as the
+ * reference's source image (Drift 07, ADR 0012). `full_size` is the file a sheet already scaled by Prep was made
+ * from. A PNG already at 2K is sent unchanged. Nothing is ever scaled up.
+ */
+export async function uploadReference(deps: ReferenceFileDeps, seriesId: string, input: { page_id: string; file_name: string; bytes: Uint8Array; full_size?: string }): Promise<{ ok: true; record: SeriesRecord } | Failure> {
 	const record = await deps.store.read(seriesId);
 	if (!record) return fail(404, 'Series not found');
 	const reference = record.references?.items.find((item) => item.page_id === input.page_id);
@@ -54,14 +68,29 @@ export async function uploadReference(deps: ReferenceFileDeps, seriesId: string,
 	await mkdir(deps.cacheDir, { recursive: true });
 	let staged = join(deps.cacheDir, `upload-${input.page_id}${extname(input.file_name).toLowerCase()}`);
 	await writeFile(staged, input.bytes);
-	if (deps.normalizeSheet && (folderKey === 'refs:characters' || folderKey === 'refs:locations')) {
+	const size = async (file: string) => { const probe = await deps.probe(file); return { width: probe.width ?? 0, height: probe.height ?? 0 }; };
+	const asSent = await size(staged);
+	const original = input.full_size
+		? { path: input.full_size, file_name: basename(input.full_size), mime_type: IMAGE_TYPES[extname(input.full_size).toLowerCase()] ?? type, ...await size(input.full_size).catch(() => ({ width: 0, height: 0 })) }
+		: { path: staged, file_name: input.file_name, mime_type: type, ...asSent };
+	const alreadyTwoK = type === 'image/png' && asSent.width > 0 && asSent.height > 0 && Math.max(asSent.width, asSent.height) <= MIN_LONG_EDGE;
+	let probed = asSent;
+	if (deps.normalizeSheet && (folderKey === 'refs:characters' || folderKey === 'refs:locations') && !alreadyTwoK) {
 		staged = await deps.normalizeSheet(staged, `${staged}.2k.png`);
 		input = { ...input, file_name: input.file_name.replace(/\.[^.]+$/, '.png'), bytes: new Uint8Array(await readFile(staged)) };
 		type = 'image/png';
+		probed = await size(staged);
 	}
-	const probed = await deps.probe(staged);
 	if (!probed.width || !probed.height) return fail(400, 'Could not read the image size');
 	if (Math.max(probed.width, probed.height) < MIN_LONG_EDGE) return fail(400, `The image is ${probed.width}×${probed.height}; references must be at least ${MIN_LONG_EDGE} px on the long edge`);
+	// Kept only when Review Room gets a smaller copy than the operator's file (ADR 0012: Pindeck keeps its originals).
+	const keep = original.width > 0 && original.height > 0 && Math.max(original.width, original.height) > Math.max(probed.width, probed.height);
+	// Copied before the upload, so a failed copy never leaves a Review Room version the record does not know.
+	const sourceImage = keep ? { folder: join(input.page_id, `${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`), file_name: original.file_name, mime_type: original.mime_type, width: original.width, height: original.height } : undefined;
+	if (sourceImage) {
+		await mkdir(join(deps.sourceDir, sourceImage.folder), { recursive: true });
+		await copyFile(original.path, join(deps.sourceDir, sourceImage.folder, sourceImage.file_name));
+	}
 	const posterFile = `${staged}.poster.jpg`;
 	await deps.poster(staged, posterFile);
 
@@ -75,7 +104,7 @@ export async function uploadReference(deps: ReferenceFileDeps, seriesId: string,
 	const cached = join(deps.cacheDir, `${uploaded.versionId}${extname(input.file_name).toLowerCase()}`);
 	await writeFile(cached, input.bytes);
 	await deps.prepareReference?.(cached);
-	const file = { asset_id: uploaded.assetId, version_id: uploaded.versionId, version: uploaded.version, code, file_name: input.file_name, mime_type: type, width: probed.width, height: probed.height, uploaded_at: new Date().toISOString() };
+	const file: ReferenceFile = { asset_id: uploaded.assetId, version_id: uploaded.versionId, version: uploaded.version, code, file_name: input.file_name, mime_type: type, width: probed.width, height: probed.height, uploaded_at: new Date().toISOString(), ...(sourceImage ? { source_image: sourceImage } : {}) };
 	// V1S-518: saved onto the record as it is now, so a re-check or another write during the upload is kept.
 	const saved = await deps.store.upsert(seriesId, (current) => ({ ...(current ?? record), reference_files: { ...((current ?? record).reference_files ?? {}), [reference.page_id]: file } }));
 	return { ok: true, record: saved };

@@ -40,7 +40,9 @@ export const seriesRecordSchema = z.looseObject({
 	/** V1S-326: reference page id → its vetted image in the series' Review Room `_References` (uploaded by the operator). */
 	reference_files: z.record(z.string(), z.object({
 		asset_id: z.string(), version_id: z.string(), version: z.number().int().positive(), code: z.string(), file_name: z.string(),
-		mime_type: z.string(), width: z.number().int().positive(), height: z.number().int().positive(), uploaded_at: z.string()
+		mime_type: z.string(), width: z.number().int().positive(), height: z.number().int().positive(), uploaded_at: z.string(),
+		/** Drift 07 (V1S-509): the full-size file this 2K was scaled from, kept beside the series (`referenceSourcePath`); never sent or attached. */
+		source_image: z.object({ folder: z.string(), file_name: z.string(), mime_type: z.string(), width: z.number().int().positive(), height: z.number().int().positive() }).optional()
 	})).optional(),
 	/** The episode length to plan for: 10, 15 or 30 minutes. */
 	runtime_min: z.number().int().positive().max(120),

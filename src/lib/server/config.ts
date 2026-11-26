@@ -223,11 +223,16 @@ export function getReferenceCacheDir(): string {
 	return joinPath(dirname(getProjectRoot()), 'series', 'reference-cache');
 }
 
+/** Full-size sheets kept when Review Room gets their 2K (Drift 07, V1S-509; ADR 0012); durable, unlike the cache. */
+export function getReferenceSourceDir(): string {
+	return joinPath(dirname(getProjectRoot()), 'series', 'reference-sources');
+}
+
 export function getReferenceFileDeps(): ReferenceFileDeps | null {
 	const config = getReviewRoomConfig();
 	if (!config) return null;
 	return {
-		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: getReferenceCacheDir(), probe: probeMedia,
+		client: createReviewRoomClient(config), store: getSeriesStore(), cacheDir: getReferenceCacheDir(), sourceDir: getReferenceSourceDir(), probe: probeMedia,
 		poster: (input, output) => runFfmpeg(['-y', '-i', input, '-frames:v', '1', '-vf', 'scale=min(1280\\,iw):-2', '-q:v', '3', output]),
 		prepareReference: prepareReferenceVariants, normalizeSheet: normalizeReferenceSheet
 	};

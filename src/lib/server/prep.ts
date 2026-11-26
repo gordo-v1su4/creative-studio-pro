@@ -565,7 +565,7 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 	else if (!pageId) note = `Add a "${view.entry.name}" row to the series' References in Notion (Kind ${view.entry.kind}) and re-sync; then attach this sheet to put it in the drawer.`;
 	else if (!deps.references) note = 'Review Room is not configured, so the sheet stays here.';
 	else {
-		const result = await uploadReference(deps.references, project.series!.series_id, { page_id: pageId, file_name: `${name}.png`, bytes: new Uint8Array(await readFile(stamped)) });
+		const result = await uploadReference(deps.references, project.series!.series_id, { page_id: pageId, file_name: `${name}.png`, bytes: new Uint8Array(await readFile(stamped)), full_size: file });
 		if (!result.ok) note = result.message;
 		else {
 			uploaded = true;
