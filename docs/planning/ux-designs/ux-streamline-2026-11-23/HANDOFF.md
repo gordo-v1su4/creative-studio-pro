@@ -16,8 +16,8 @@ The operator looked at the local copy beside the agreed mocks and said the app i
   | Ticket | GitHub | Linear | Blocked by |
   | --- | --- | --- | --- |
   | 01 Keep the Notion trash queue across a re-check (bug), **done `f1c09e2`** | #29 | V1S-507 | none |
-  | 02 Adding a reference in Prep writes Notion first | #30 | V1S-508 | none |
-  | 07 Keep the full-size sheet, send 2K | #31 | V1S-509 | none |
+  | 02 Adding a reference in Prep writes Notion first, **done `e5bf3a2`** | #30 | V1S-508 | none |
+  | 07 Keep the full-size sheet, send 2K, **done `dea5582` on `claude/drift-07-full-size-136599`, not merged** | #31 | V1S-509 | none |
   | 03 The drift check in the Agent chat, with "add to Notion" | #32 | V1S-510 | 02 |
   | 04 Mark a stray sheet as old | #33 | V1S-511 | 03 |
   | 05 Link a stray sheet to its Notion reference | #34 | V1S-515 | 04 |
