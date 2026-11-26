@@ -1,7 +1,8 @@
 import type { BriefVersion, Project } from '$lib/domain/schemas';
 import type { ProposeLevel } from '$lib/domain/story-propose';
 import { DEFAULT_TARGET, type TeaserTarget } from '$lib/domain/trailer-house';
-import type { DriftItem, DriftReport } from '$lib/domain/drift';
+import type { DriftChoice, DriftItem, DriftReport } from '$lib/domain/drift';
+import { batchAnswer, type BatchEvent } from '$lib/domain/drift-batch';
 import { ui } from '$lib/ui/app-state.svelte';
 
 /**
@@ -99,11 +100,73 @@ class AgentWork {
 		return this.run(project, `drift:${item.key}`, `Adding ${name} to Notion…`, async () => {
 			if (!at) throw new Error(`${name} is not in any Prep, so it cannot be added from here yet`);
 			await this.post<unknown>(`/api/projects/${at.project_id}/prep`, { action: 'add_entry', kind: item.kind, name, former_names: item.spellings });
-			if (this.drift?.projectId === project.project_id) {
-				const items = this.drift.report.items.filter((entry) => entry.key !== item.key);
-				this.drift = items.length ? { ...this.drift, report: { ...this.drift.report, items } } : null;
-			}
+			this.settleDrift(project.project_id, item.key);
 			return { project: null, said: `${name} is in Notion's References now, and in ${at.project_title}'s Prep.` };
+		});
+	}
+
+	/**
+	 * The operator's words as one answer for several drift items ("add all six", "add the locations"). True when they
+	 * were one, whether or not it could run (a count that does not match says so and writes nothing).
+	 */
+	answerWords(project: Project, text: string): boolean {
+		const report = this.drift?.projectId === project.project_id ? this.drift.report : null;
+		const answer = report ? batchAnswer(text, report.items) : null;
+		if (!report || !answer) return false;
+		if (this.busy) { this.settle(this.say(project.project_id, text.trim()), 'The Agent is still working; say it again when it is done.', 'failed'); return true; }
+		if (!answer.ok) { const line = this.say(project.project_id, text.trim()); this.settle(line, answer.message, 'failed'); return true; }
+		const items = answer.keys.map((key) => report.items.find((item) => item.key === key)!);
+		void this.answerMany(project, items, answer.choice);
+		return true;
+	}
+
+	/** A drift item that is answered leaves the message. */
+	private settleDrift(projectId: string, key: string) {
+		if (this.drift?.projectId !== projectId) return;
+		const items = this.drift.report.items.filter((entry) => entry.key !== key);
+		this.drift = items.length ? { ...this.drift, report: { ...this.drift.report, items } } : null;
+	}
+
+	/**
+	 * One answer for several drift items (Drift 10, GitHub #38 / V1S-514): "add all six", or a press on a group. The
+	 * server writes the first alone and checks it in Notion before the rest; every write is said here as it runs and
+	 * as it ends, and a failure stops the batch there and says why. Each item keeps the name the check proposed.
+	 */
+	answerMany(project: Project, items: DriftItem[], choice: DriftChoice = 'add_to_notion'): Promise<Project | null> {
+		const count = items.length;
+		const doing = count === 1 ? `Adding ${items[0].name} to Notion…` : `Adding ${count} to Notion, one at a time: the first alone, checked before the rest…`;
+		return this.run(project, 'drift:batch', doing, async () => {
+			const answers = items.map((item) => ({ key: item.key, choice, kind: item.kind, name: item.name, project_id: item.found.prep[0].project_id, former_names: item.spellings.slice(0, 10) }));
+			const response = await fetch(`/api/projects/${project.project_id}/drift`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ answers }) });
+			if (!response.body || !response.headers.get('content-type')?.includes('ndjson')) {
+				const failed = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+				throw new Error(failed?.error?.message ?? `The Agent could not be reached (HTTP ${response.status})`);
+			}
+			const open = new Map<string, number>();
+			let end: { ok: boolean; done?: string[]; untouched?: string[] } | null = null;
+			const reader = response.body.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+			for (;;) {
+				const { value, done } = await reader.read();
+				if (done) break;
+				buffer += decoder.decode(value, { stream: true });
+				for (let nl = buffer.indexOf('\n'); nl >= 0; nl = buffer.indexOf('\n')) {
+					const text = buffer.slice(0, nl); buffer = buffer.slice(nl + 1);
+					if (!text.trim()) continue;
+					const event = JSON.parse(text) as ({ type: 'line' } & BatchEvent) | { type: 'end'; ok: boolean; done?: string[]; untouched?: string[] };
+					if (event.type === 'end') { end = event; continue; }
+					if (event.state === 'doing') { open.set(event.key, this.say(project.project_id, event.text)); continue; }
+					const line = open.get(event.key);
+					if (line !== undefined) this.settle(line, event.text, event.state);
+					else this.settle(this.say(project.project_id, event.text), event.text, event.state);
+					if (event.state === 'done' && !event.check) this.settleDrift(project.project_id, event.key);
+				}
+			}
+			if (!end) throw new Error('Adding stopped without saying how far it got; ask what is out of step again');
+			// The line above already says why; this one says how far it got.
+			if (!end.ok) throw new Error(`Stopped: ${end.done?.length ?? 0} added, ${end.untouched?.length ?? 0} not touched.`);
+			return { project: null, said: count === 1 ? 'Done.' : `All ${count} are in Notion's References now, each in the Prep it was found in.` };
 		});
 	}
 

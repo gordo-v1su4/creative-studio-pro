@@ -2,12 +2,14 @@
 	/**
 	 * The drift check's one Agent message (Drift 03, GitHub #32 / V1S-510; ADR 0012): each item out of step, where it
 	 * was found and where it is missing, with only its choices, as small actions. "Add to Notion" asks for the exact
-	 * name first (straight apostrophes, no " - "); "link" and "mark as old" come with later tickets. In the chat's
+	 * name first (straight apostrophes, no " - "); "Add all" on a group, or saying "add all six", adds several under
+	 * their shown names, the first alone and checked (Drift 10); "link" and "mark as old" come with later tickets. In the chat's
 	 * decided look: on the panel, no boxes, grey, with the Agent's name in purple.
 	 */
 	import type { Project } from '$lib/domain/schemas';
 	import { cleanName, type DriftChoice, type DriftItem } from '$lib/domain/drift';
 	import type { PrepKind } from '$lib/domain/prep';
+	import { batchable } from '$lib/domain/drift-batch';
 	import { agentWork } from '$lib/ui/story/agent-work.svelte';
 
 	let { project }: { project: Project } = $props();
@@ -15,7 +17,15 @@
 	const report = $derived(agentWork.drift?.projectId === project.project_id ? agentWork.drift.report : null);
 	const working = $derived(agentWork.busy !== null);
 	const KINDS: Array<{ kind: PrepKind; title: string }> = [{ kind: 'character', title: 'Characters' }, { kind: 'location', title: 'Locations' }, { kind: 'prop', title: 'Props' }];
-	const groups = $derived(report ? KINDS.map((group) => ({ ...group, items: report.items.filter((item) => item.kind === group.kind) })).filter((group) => group.items.length) : []);
+	const groups = $derived(report ? KINDS.map((group) => ({ ...group, items: report.items.filter((item) => item.kind === group.kind) })).filter((group) => group.items.length).map((group) => ({ ...group, addable: batchable(group.items) })) : []);
+	/** Drift 10: one press for several items, the first written alone and checked before the rest. */
+	const addable = $derived(report ? batchable(report.items) : []);
+	const lead = $derived(report ? [
+		`${report.items.length === 1 ? 'One thing is' : `${report.items.length} things are`} out of step between Notion, Prep and Review Room in ${report.series_title}.`,
+		'Nothing changes until you choose.',
+		...(addable.length > 1 ? [`Say "add all ${addable.length}" to add them in one go.`] : [])
+	].join(' ') : '');
+	const BATCH_TITLE = 'Write each one to Notion under the name shown, one at a time: the first alone and checked in Notion before the rest. A failure stops there.';
 
 	/** The item whose name is being settled before "add to Notion" writes it, and the name as typed. */
 	let naming = $state<string | null>(null);
@@ -46,9 +56,12 @@
 {#if report}
 	<section class="drift" aria-label="What is out of step">
 		<span class="cp who">Agent</span>
-		<p class="lead">{report.items.length === 1 ? 'One thing is' : `${report.items.length} things are`} out of step between Notion, Prep and Review Room in {report.series_title}. Nothing changes until you choose.</p>
+		<p class="lead">{lead}</p>
+		{#if addable.length > 1 && groups.filter((group) => group.addable.length).length > 1}
+			<div class="choices"><button type="button" class="tg" disabled={working} onclick={() => agentWork.answerMany(project, addable)} title={BATCH_TITLE}>Add all {addable.length} to Notion</button></div>
+		{/if}
 		{#each groups as group (group.kind)}
-			<p class="cp kind">{group.title}</p>
+			<p class="cp kind">{group.title}{#if group.addable.length > 1}<button type="button" class="tg group" disabled={working} onclick={() => agentWork.answerMany(project, group.addable)} title={BATCH_TITLE}>Add all {group.addable.length}</button>{/if}</p>
 			<ul>
 				{#each group.items as item (item.key)}
 					<li>
@@ -83,14 +96,15 @@
 	.drift { display: flex; flex: none; flex-direction: column; max-height: 46vh; overflow-y: auto; padding: 8px 10px 2px; color: #c8c8ce; font: 12.5px/1.5 var(--font-sans); scrollbar-color: #26262b transparent; }
 	.who { display: block; margin-bottom: 3px; color: #8f86b8; }
 	.lead { margin: 0 0 4px; }
-	.kind { margin: 8px 0 2px; color: var(--color-ink-3); }
+	.kind { display: flex; align-items: baseline; gap: 4px; margin: 8px 0 2px; color: var(--color-ink-3); }
+	.kind .group { margin-left: 2px; }
+	.tg:disabled { opacity: 0.45; cursor: default; }
 	ul { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
 	li { display: flex; flex-direction: column; }
 	.name { margin: 0; color: var(--color-ink); }
 	.also, .where, .hint { color: var(--color-ink-3); }
 	.where, .hint { margin: 0; font-size: 11.5px; }
 	.choices { display: flex; flex-wrap: wrap; gap: 1px; margin: 1px 0 0 -6px; }
-	.choices .tg:disabled { opacity: 0.45; cursor: default; }
 	.naming { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
 	.naming input { min-width: 0; flex: 1; border: 0; border-radius: 6px; background: var(--color-raised); padding: 3px 8px; color: var(--color-ink); font: inherit; outline: none; }
 	.naming input:focus-visible { outline: 2px solid var(--color-agent-purple); outline-offset: -1px; }
