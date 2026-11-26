@@ -8,10 +8,11 @@
 	 * stray old, and points a stray Prep entry at that reference. In the chat's
 	 * decided look: on the panel, no boxes, grey, with the Agent's name in purple. A picture under 2048 px (Drift 08)
 	 * shows its size and offers an upscale, priced before anything is spent, or a remake; the upscaled sheet is shown
-	 * beside the original and sent only on a second yes.
+	 * beside the original and sent only on a second yes. A rename in Notion (Drift 06) offers putting the old name
+	 * back or making a new reference; the app never follows the rename or offers one.
 	 */
 	import type { Project } from '$lib/domain/schemas';
-	import { cleanName, type DriftChoice, type DriftItem } from '$lib/domain/drift';
+	import { cleanName, type DriftChoice, type DriftItem, type RenameChoice } from '$lib/domain/drift';
 	import type { PrepKind } from '$lib/domain/prep';
 	import { batchable } from '$lib/domain/drift-batch';
 	import { agentWork } from '$lib/ui/story/agent-work.svelte';
@@ -55,6 +56,10 @@
 	const PLACES = { notion: 'Notion', review_room: 'Review Room' } as const;
 
 	function where(item: DriftItem): string {
+		if (item.renamed) {
+			const many = item.renamed.sheets.length > 1;
+			return `Renamed in Notion from ${item.renamed.from}; ${many ? 'its sheets' : 'its sheet'} in Review Room (${item.renamed.sheets.map((sheet) => sheet.code).join(', ')}) still ${many ? 'carry' : 'carries'} the old name. A new name is a new reference.`;
+		}
 		if (item.picture) return `Its sheet in ${item.found.prep[0]?.project_title ?? 'this'}'s Prep is ${item.picture.width}×${item.picture.height}; Review Room takes 2048 px or more on the long edge.`;
 		const found = [
 			...item.found.prep.map((at) => `${at.project_title}'s Prep`),
@@ -153,6 +158,10 @@
 										<button type="button" class="tg" disabled={working} onclick={() => startAdd(item)} title="Write its Notion References page (Name and Kind), then list it in Prep. You can change the name first.">Add to Notion</button>
 									{:else if choice === 'mark_old'}
 										<button type="button" class="tg" disabled={working} onclick={() => startOld(item)} title="Flag this Review Room sheet as old: it stays there as history, but is never offered for a shot or checked again.">Mark as old</button>
+									{:else if choice === 'restore_name' && item.renamed}
+										<button type="button" class="tg" disabled={working} onclick={() => void agentWork.answerRename(project, item, 'restore_name')} title="Write {item.renamed.from} back as the Name in Notion; nothing else is changed">Put {item.renamed.from} back in Notion</button>
+									{:else if choice === 'new_reference' && item.renamed}
+										<button type="button" class="tg" disabled={working} onclick={() => void agentWork.answerRename(project, item, 'new_reference')} title="Keep {item.renamed.to} in Notion as a new reference: it gets its own code and sheet when it is next sent, and the old sheet is marked old as its history">Make it a new reference</button>
 									{:else if choice === 'link'}
 										<button type="button" class="tg" disabled={working || !item.link_to} onclick={() => void agentWork.link(project, item)} title={linkTitle(item)}>Link to {item.link_to?.name ?? 'a reference'}</button>
 									{/if}

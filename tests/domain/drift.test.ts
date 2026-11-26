@@ -213,3 +213,76 @@ describe('asking the Agent', () => {
 		for (const text of ['Write the next scene', 'step out of the car', 'what happens in step two?']) expect(isDriftQuestion(text), text).toBe(false);
 	});
 });
+
+describe('a rename in Notion after the code is set (Drift 06)', () => {
+	// Lucian Vale's sheet was sent from Notion page r-lucian; Notion now calls that page Lucian Blaise.
+	const renamed = [{ page_id: 'r-lucian', name: 'Lucian Blaise', kind: 'Character' }];
+	const valeSheet = { asset_id: 'a-vale', code: 'BLR_REF_CHR_LUCIAN_VALE', folder_key: 'refs:characters', title: 'Lucian Vale.png', page_id: 'r-lucian', reference_name: 'Lucian Vale' };
+
+	test('a sheet whose Notion page now has another name is a rename, not a stray sheet', () => {
+		const items = driftItems({ show_code: 'BLR', notion: renamed, prep: [prep('character', 'Lucian Blaise', 'r-lucian')], sheets: [valeSheet] });
+		expect(items).toHaveLength(1);
+		const [item] = items;
+		expect(item).toMatchObject({
+			key: 'renamed:r-lucian', type: 'renamed_in_notion', kind: 'character', name: 'Lucian Blaise', spellings: ['Lucian Vale', 'Lucian Blaise'],
+			found: { prep: [], review_room: { asset_id: 'a-vale', code: 'BLR_REF_CHR_LUCIAN_VALE' } }, missing: ['review_room'], link_to: null,
+			renamed: { page_id: 'r-lucian', from: 'Lucian Vale', to: 'Lucian Blaise', sheets: [{ asset_id: 'a-vale', code: 'BLR_REF_CHR_LUCIAN_VALE' }] }
+		});
+		expect(item.choices).toEqual(['restore_name', 'new_reference']);
+	});
+
+	test('the sheet the app sent for the page is enough, when Review Room\'s metadata has no page id', () => {
+		const [item] = driftItems({
+			show_code: 'BLR', notion: renamed, prep: [],
+			sheets: [{ asset_id: 'a-vale', code: 'BLR_REF_CHR_LUCIAN_VALE', folder_key: 'refs:characters', title: 'BLR_REF_CHR_LUCIAN_VALE' }],
+			sent: [{ page_id: 'r-lucian', asset_id: 'a-vale', code: 'BLR_REF_CHR_LUCIAN_VALE' }]
+		});
+		expect(item).toMatchObject({ type: 'renamed_in_notion', renamed: { from: 'Lucian Vale', to: 'Lucian Blaise' } });
+	});
+
+	test('the old name is the one the sheet was sent under, apostrophe and all', () => {
+		const [item] = driftItems({
+			show_code: 'BLR', notion: [{ page_id: 'r-shades', name: "Kai's Aviators", kind: 'Prop' }], prep: [],
+			sheets: [{ asset_id: 'a-shades', code: 'BLR_REF_PRP_KAI_S_SUNGLASSES', folder_key: 'refs:props', title: 'x.png', page_id: 'r-shades', reference_name: "Kai's Sunglasses" }]
+		});
+		expect(item.renamed).toMatchObject({ from: "Kai's Sunglasses", to: "Kai's Aviators" });
+	});
+
+	test('a sheet known only from what the app sent takes its old name from the file it was sent under', () => {
+		const [item] = driftItems({
+			show_code: 'BLR', notion: [{ page_id: 'r-shades', name: "Kai's Aviators", kind: 'Prop' }], prep: [], sheets: [],
+			sent: [{ page_id: 'r-shades', asset_id: 'a-shades', code: 'BLR_REF_PRP_KAI_S_SUNGLASSES', file_name: "Kai's Sunglasses.png" }]
+		});
+		expect(item.renamed).toMatchObject({ from: "Kai's Sunglasses", sheets: [{ asset_id: 'a-shades', code: 'BLR_REF_PRP_KAI_S_SUNGLASSES' }] });
+	});
+
+	test('a page whose name still gives its code is in step', () => {
+		expect(driftItems({ show_code: 'BLR', notion: [{ page_id: 'r-lucian', name: 'Lucian Vale', kind: 'Character' }], prep: [], sheets: [valeSheet] })).toEqual([]);
+	});
+
+	test('a case or punctuation change that keeps the code is not a rename', () => {
+		expect(driftItems({ show_code: 'BLR', notion: [{ page_id: 'r-lucian', name: 'lucian vale', kind: 'Character' }], prep: [], sheets: [valeSheet] })).toEqual([]);
+	});
+
+	test('once the old sheet is marked old and a new one is sent, nothing is left', () => {
+		const blaise = { asset_id: 'a-blaise', code: 'BLR_REF_CHR_LUCIAN_BLAISE', folder_key: 'refs:characters', title: 'Lucian Blaise.png', page_id: 'r-lucian', reference_name: 'Lucian Blaise' };
+		expect(driftItems({ show_code: 'BLR', notion: renamed, prep: [], sheets: [{ ...valeSheet, old: true }, blaise] })).toEqual([]);
+		expect(driftItems({ show_code: 'BLR', notion: renamed, prep: [], sheets: [{ ...valeSheet, old: true }] })).toEqual([]);
+	});
+
+	test('a page that already has a sheet under its new name leaves the old one a stray, to mark old', () => {
+		const blaise = { asset_id: 'a-blaise', code: 'BLR_REF_CHR_LUCIAN_BLAISE', folder_key: 'refs:characters', title: 'Lucian Blaise.png' };
+		const [item] = driftItems({ show_code: 'BLR', notion: renamed, prep: [], sheets: [valeSheet, blaise] });
+		expect(item).toMatchObject({ type: 'only_in_review_room', choices: ['mark_old'] });
+	});
+
+	test('a page no longer in Notion is not a rename', () => {
+		const [item] = driftItems({ show_code: 'BLR', notion: [], prep: [], sheets: [valeSheet] });
+		expect(item.type).toBe('only_in_review_room');
+	});
+
+	test('no item anywhere offers a rename of a coded reference', () => {
+		const all = [...driftItems(tr110), ...driftItems({ show_code: 'BLR', notion: renamed, prep: [], sheets: [valeSheet] })];
+		for (const item of all) expect(item.choices.some((choice) => /rename/.test(choice)), item.key).toBe(false);
+	});
+});

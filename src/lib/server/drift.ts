@@ -3,7 +3,7 @@ import { bareId, type SeriesReference } from '$lib/domain/notion-series';
 import { kindOf, sameName, type PrepFile, type PrepKind } from '$lib/domain/prep';
 import { readReferences, type NotionApi } from './notion';
 import { addPrepEntry, prepContext, prepView, readPrep, type PrepDeps } from './prep';
-import { driftItems, historyOf, isMarkedOld, markedOld, seriesIdOf, type DriftPrepEntry, type DriftReport, type DriftSheet } from '$lib/domain/drift';
+import { driftItems, historyOf, isMarkedOld, markedOld, seriesIdOf, type DriftPrepEntry, type DriftReport, type DriftSheet, type RenameChoice } from '$lib/domain/drift';
 import { REFERENCE_FOLDERS, referenceCode, referenceFolderKey } from '$lib/domain/series-tree';
 import { ReviewRoomError, type ReviewRoomClient } from './review-room';
 import type { SeriesRecord } from './series';
@@ -157,20 +157,30 @@ export async function checkDrift(deps: CheckDriftDeps, project: Project): Promis
 	if (deps.client && room) {
 		const client = deps.client;
 		try {
-			// Drift 04: a sheet whose current version is marked old is history, read from its metadata.
-			sheets = await Promise.all((await referenceSheets(client, room)).map(async ({ asset, folder_key }) => ({
-				asset_id: asset.assetId, code: asset.assetCode, folder_key, title: asset.title,
-				old: asset.currentVersionId ? isMarkedOld((await client.versionMetadata(asset.currentVersionId)).metadata) : false
-			})));
+			// Drift 04: a sheet whose current version is marked old is history, read from its metadata. Drift 06: so are
+			// the Notion page it was sent from and the name it was sent under, to catch a rename.
+			sheets = await Promise.all((await referenceSheets(client, room)).map(async ({ asset, folder_key }) => {
+				const metadata = asset.currentVersionId ? (await client.versionMetadata(asset.currentVersionId)).metadata : {};
+				return { asset_id: asset.assetId, code: asset.assetCode, folder_key, title: asset.title, old: isMarkedOld(metadata), ...sentFrom(metadata) };
+			}));
 		} catch (cause) { return fail(502, `Review Room could not be read: ${reason(cause)}`); }
 	}
 
 	const references = notion.flatMap(({ page_id, name, kind }) => { const known = kindOf(kind); return known ? [{ page_id, name, kind: known }] : []; });
 	const refs = notion.map(({ page_id, name, kind }) => ({ page_id, name, kind }));
-	const items = driftItems({ show_code: record.show_code, notion: refs, prep, sheets: sheets ?? [] });
+	const sent = Object.entries(record.reference_files ?? {}).map(([page_id, file]) => ({ page_id: bareId(page_id), asset_id: file.asset_id, code: file.code, file_name: file.file_name }));
+	const items = driftItems({ show_code: record.show_code, notion: refs, prep, sheets: sheets ?? [], sent });
 	// Old sheets (Drift 04) are history; Prep's standing skips them like the check does.
 	const standing = { project_id: project.project_id, review_room_read: sheets !== null, ...prepStanding({ show_code: record.show_code, notion: refs, prep: own, sheets: (sheets ?? []).filter((sheet) => !sheet.old), sent: Object.keys(record.reference_files ?? {}) }) };
 	return { ok: true, report: { series_title: record.title, items, standing, read: { notion: notion.length, projects: projects.map((entry) => ({ project_id: entry.project_id, title: entry.title })), sheets: sheets?.length ?? null, skipped }, references } };
+}
+
+/** The Notion page and name a reference upload wrote into the sheet's metadata (as custom fields), if any. */
+function sentFrom(metadata: Record<string, unknown>): { page_id: string | null; reference_name: string | null } {
+	const fields = Array.isArray(metadata.customFields) ? metadata.customFields as Array<{ id?: unknown; value?: unknown }> : [];
+	const text = (id: string) => { const value = fields.find((field) => field.id === id)?.value; return typeof value === 'string' && value.trim() ? value.trim() : null; };
+	const page = text('notion_page_id');
+	return { page_id: page ? bareId(page) : null, reference_name: text('reference') };
 }
 
 type ReviewRoomLink = NonNullable<SeriesRecord['review_room']>;
@@ -254,4 +264,61 @@ export async function checkSeriesDrift(deps: CheckDriftDeps, seriesId: string): 
 	if (!project) return null;
 	const checked = await checkDrift(deps, project);
 	return checked.ok ? { ok: true, project_id: project.project_id, report: checked.report } : checked;
+}
+
+export type AnswerRenameDeps = Omit<CheckDriftDeps, 'client' | 'probe'> & { client: MarkOldDeps['client'] };
+
+/**
+ * A rename in Notion after the code is set (Drift 06, GitHub #35 / V1S-516; ADR 0012: a rename is a new reference).
+ * The rename is found again by the check (so only what the operator saw can be answered), then one of two answers:
+ *
+ * - `restore_name` writes the name the sheets carry back to the page's Name in Notion, and nothing else there.
+ * - `new_reference` leaves Notion as it is: the page keeps its new name, its sent sheet is let go here, and its old
+ *   sheets are marked old as its history. Its next send makes the new name's own code and sheet.
+ *
+ * There is no answer that follows a rename onto the old code.
+ */
+export async function answerRename(deps: AnswerRenameDeps, project: Project, input: { page_id: string; choice: RenameChoice }): Promise<{ ok: true; page_id: string; choice: RenameChoice; name: string; marked: string[] } | Failure> {
+	const page = bareId(input.page_id);
+	if (input.choice === 'restore_name' && !deps.notion) return fail(503, 'Notion is not connected, so the name cannot be put back. Add the Notion key in Settings.');
+	if (input.choice === 'new_reference' && !deps.client) return fail(503, 'Review Room is not configured here, so the old sheets cannot be marked old. Nothing was changed.');
+	const checked = await checkDrift({ ...deps, probe: undefined }, project);
+	if (!checked.ok) return checked;
+	const item = checked.report.items.find((entry) => entry.renamed && bareId(entry.renamed.page_id) === page);
+	if (!item?.renamed) return fail(409, 'That reference is not renamed in Notion any more; run the check again');
+	const { from, to, sheets } = item.renamed;
+	const { record } = await prepContext(deps, project);
+	if (!record) return fail(409, 'This project is not part of a Notion series');
+
+	if (input.choice === 'restore_name') {
+		try { await deps.notion!.updatePage(page, { Name: { title: [{ type: 'text', text: { content: from } }] } }); } catch (cause) { return fail(502, `Notion did not take the name ${from} back: ${reason(cause)}. Nothing was changed.`); }
+		try {
+			await deps.series.update(record.series_id, (now) => now.references ? { ...now, references: { ...now.references, items: now.references.items.map((ref) => (bareId(ref.page_id) === page ? { ...ref, name: from } : ref)) } } : now);
+		} catch (cause) { return fail(500, `${from} is the name in Notion again, but the app could not save it: ${reason(cause)}. Re-check the series to bring it in.`); }
+		return { ok: true, page_id: page, choice: input.choice, name: from, marked: [] };
+	}
+
+	// A new reference: the app takes Notion's name, and lets go of the sheet it sent under the old one, so the next
+	// send gives the new name its own code (a sheet still attached here is never marked old, so this comes first).
+	const kept = Object.entries(record.reference_files ?? {}).find(([id]) => bareId(id) === page);
+	try {
+		await deps.series.update(record.series_id, (now) => {
+			const files = Object.fromEntries(Object.entries(now.reference_files ?? {}).filter(([id]) => bareId(id) !== page));
+			const references = now.references ? { ...now.references, items: now.references.items.map((ref) => (bareId(ref.page_id) === page ? { ...ref, name: to } : ref)) } : now.references;
+			return { ...now, references, reference_files: files };
+		});
+	} catch (cause) { return fail(500, `The app could not let go of ${from}'s sheet: ${reason(cause)}. Nothing was changed.`); }
+	const marked: string[] = [];
+	for (const sheet of sheets) {
+		const done = await markOld(deps, project, { asset_id: sheet.asset_id, history_of: page });
+		if (done.ok) { marked.push(done.code); continue; }
+		if (marked.length) {
+			// An old sheet is never a reference's picture, so the one let go stays let go; the rest can be marked from the check.
+			return fail(done.status, `${marked.join(', ')} ${marked.length === 1 ? 'is' : 'are'} old now and ${to} waits for a new sheet, but ${done.message.replace(/ Nothing was changed\.$/, '')}. Run the check again for the rest.`);
+		}
+		// Nothing marked: the reference keeps the sheet it had, as it was.
+		const restored = !kept || await deps.series.update(record.series_id, (now) => ({ ...now, reference_files: { ...(now.reference_files ?? {}), [kept[0]]: kept[1] } })).then(() => true, () => false);
+		return fail(done.status, restored ? done.message : `${done.message.replace(/ Nothing was changed\.$/, '')}, and the app could not give ${to} back its old sheet; re-check the series.`);
+	}
+	return { ok: true, page_id: page, choice: input.choice, name: to, marked };
 }

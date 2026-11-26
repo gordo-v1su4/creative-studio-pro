@@ -1,7 +1,7 @@
 import type { BriefVersion, Project } from '$lib/domain/schemas';
 import type { ProposeLevel } from '$lib/domain/story-propose';
 import { DEFAULT_TARGET, type TeaserTarget } from '$lib/domain/trailer-house';
-import type { DriftChoice, DriftItem, DriftReport } from '$lib/domain/drift';
+import type { DriftChoice, DriftItem, DriftReport, RenameChoice } from '$lib/domain/drift';
 import { batchAnswer, type BatchEvent } from '$lib/domain/drift-batch';
 import { ui } from '$lib/ui/app-state.svelte';
 
@@ -187,6 +187,29 @@ class AgentWork {
 				pointed.length ? `${pointed.join(', ')}'s Prep points at ${to.name} now.` : ''
 			].filter(Boolean).join(' ');
 			return { project: null, said };
+		});
+	}
+
+	/**
+	 * A rename in Notion (Drift 06, ADR 0012): put the name the sheets carry back in Notion (only its Name is
+	 * written), or make it a new reference (Notion keeps the new name, the old sheets become its history, and its
+	 * next send makes the new code and sheet). The app never renames a coded reference.
+	 */
+	answerRename(project: Project, item: DriftItem, choice: RenameChoice): Promise<Project | null> {
+		const renamed = item.renamed;
+		const doing = !renamed ? `Answering ${item.name}…` : choice === 'restore_name' ? `Putting ${renamed.from} back as the name in Notion…` : `Making ${renamed.to} a new reference, and marking ${renamed.from}'s ${renamed.sheets.length === 1 ? 'sheet' : 'sheets'} old…`;
+		return this.run(project, `drift:${item.key}`, doing, async () => {
+			if (!renamed) throw new Error(`${item.name} is not a rename in Notion`);
+			const answer = await this.post<{ marked: string[] }>(`/api/projects/${project.project_id}/drift`, { choice, page_id: renamed.page_id });
+			const marked = answer.data?.marked ?? [];
+			this.settleDrift(project.project_id, item.key);
+			await this.recheck(project);
+			return {
+				project: null,
+				said: choice === 'restore_name'
+					? `${renamed.from} is the name in Notion again, so it matches its sheet.`
+					: `${renamed.to} is a new reference: ${marked.join(', ')} ${marked.length === 1 ? 'is' : 'are'} old now, as its history, and Prep has it waiting for a sheet under the new name.`
+			};
 		});
 	}
 

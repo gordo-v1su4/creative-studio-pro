@@ -3,7 +3,8 @@ import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { idSchema } from '$lib/domain/schemas';
 import { getPrepDeps, getReferenceFileDeps, getUpscaler } from '$lib/server/config';
-import { checkDrift, markOld } from '$lib/server/drift';
+import { answerRename, checkDrift, markOld } from '$lib/server/drift';
+import { RENAME_CHOICES } from '$lib/domain/drift';
 import { answerDrift } from '$lib/server/drift-batch';
 import { linkSheet } from '$lib/server/drift-link';
 import { quoteUpscale, sendUpscaled, settleUpscale, startUpscale } from '$lib/server/drift-picture';
@@ -15,7 +16,8 @@ import { probeMedia } from '$lib/server/media-probe';
  * Notion" is the Prep add (`POST …/prep`, `add_entry`) on the project the item was found in.
  *
  * POST carries out one choice on one item, or answers several at once. One choice: Drift 04 (GitHub #33 /
- * V1S-511) adds "mark as old" on a Review Room sheet. Several (`answers`, Drift 10, GitHub #38 / V1S-514): the first
+ * V1S-511) adds "mark as old" on a Review Room sheet; Drift 06 (GitHub #35 / V1S-516) answers a rename in Notion
+ * ("put the old name back" or "make it a new reference"). Several (`answers`, Drift 10, GitHub #38 / V1S-514): the first
  * write alone and checked, then the rest one at a time. It streams one JSON object per line: each `line` as a write
  * runs and ends, then `end` with what was done, what failed and what was left untouched.
  */
@@ -35,7 +37,9 @@ export const GET: RequestHandler = async ({ params }) => {
 
 const choiceSchema = z.discriminatedUnion('choice', [
 	z.object({ choice: z.literal('mark_old'), asset_id: z.string().min(1).max(64), history_of: z.string().min(1).max(64).nullable().optional() }),
-	z.object({ choice: z.literal('link'), page_id: z.string().min(1).max(64), asset_id: z.string().min(1).max(64).nullable().optional(), former_names: z.array(z.string().trim().min(1).max(200)).max(10).optional() })
+	z.object({ choice: z.literal('link'), page_id: z.string().min(1).max(64), asset_id: z.string().min(1).max(64).nullable().optional(), former_names: z.array(z.string().trim().min(1).max(200)).max(10).optional() }),
+	// Drift 06: a rename in Notion, answered by putting the old name back or making a new reference. Never a rename.
+	z.object({ choice: z.enum(RENAME_CHOICES), page_id: z.string().min(1).max(64) })
 ]);
 const answerSchema = z.object({
 	key: z.string().min(1).max(300),
@@ -95,13 +99,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		const project = await deps.store.readProject(projectId.data);
 		if (!project) return json({ ok: false, error: { message: 'Project not found' } }, { status: 404 });
 		const c = choice.data;
+		const client = getReferenceFileDeps()?.client ?? null;
 		try {
 			const result = c.choice === 'link'
 				? await linkSheet({ ...deps, references: getReferenceFileDeps() }, project, c)
-				: await markOld({ ...deps, client: getReferenceFileDeps()?.client ?? null }, project, c);
+				: c.choice === 'mark_old'
+					? await markOld({ ...deps, client }, project, c)
+					: await answerRename({ ...deps, client }, project, c);
 			return result.ok ? json({ ok: true, data: result }) : json({ ok: false, error: { message: result.message } }, { status: result.status });
 		} catch (cause) {
-			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : c.choice === 'link' ? 'Linking failed' : 'Marking the sheet old failed' } }, { status: 502 });
+			return json({ ok: false, error: { message: cause instanceof Error ? cause.message : c.choice === 'link' ? 'Linking failed' : c.choice === 'mark_old' ? 'Marking the sheet old failed' : 'That choice failed' } }, { status: 502 });
 		}
 	}
 	const body = bodySchema.safeParse(raw);
