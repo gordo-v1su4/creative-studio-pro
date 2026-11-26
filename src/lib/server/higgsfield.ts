@@ -203,40 +203,6 @@ export function createHiggsfieldImages(run: CliRunner): ImageGenerator {
 	};
 }
 
-/**
- * Drift 08 (GitHub #36 / V1S-512, ADR 0012): a Prep sheet under 2048 px is upscaled by Higgsfield's Bytedance Image
- * Upscale at 2K, on the operator's credits. The price is asked with a placeholder image id, so nothing is uploaded
- * or spent to quote; the sheet itself is uploaded only on the operator's yes.
- */
-export const UPSCALE_MODEL = 'bytedance_image_upscale';
-const PRICE_ONLY_IMAGE = '00000000-0000-0000-0000-000000000000';
-export interface Upscaler {
-	estimate(): Promise<{ credits: number }>;
-	submit(file: string): Promise<{ job_id: string }>;
-	status(jobId: string): Promise<{ status: GenerationStatus; url?: string; error?: string }>;
-}
-export function createHiggsfieldUpscaler(run: CliRunner): Upscaler {
-	const args = (image: string) => [UPSCALE_MODEL, '--resolution', '2k', '--image-references', image];
-	return {
-		async estimate() {
-			const credits = Number(((await run(['generate', 'cost', ...args(PRICE_ONLY_IMAGE)])) as { credits?: unknown })?.credits);
-			if (!Number.isFinite(credits)) throw new GeneratorError('Higgsfield CLI gave no price for the upscale');
-			return { credits };
-		},
-		async submit(file) {
-			const [image] = await uploadReferences(run, [file]);
-			const result = await run(['generate', 'create', ...args(image)]);
-			const jobId = jobIdOf(result);
-			if (!jobId) throw new GeneratorError(`Higgsfield CLI created no job id: ${JSON.stringify(result).slice(0, 200)}`);
-			return { job_id: jobId };
-		},
-		async status(jobId) {
-			const job = (await run(['generate', 'get', jobId])) as { status?: string; result_url?: string; error?: string };
-			return { status: STATUS[String(job?.status ?? '').toLowerCase()] ?? 'in_progress', url: job?.result_url ?? undefined, error: job?.error };
-		}
-	};
-}
-
 export function createHiggsfieldCli(run: CliRunner): VideoGenerator {
 	return {
 		async estimate(request) {

@@ -35,7 +35,7 @@ export interface DriftInput { show_code: string | undefined; notion: DriftNotion
  */
 export const RENAME_CHOICES = ['restore_name', 'new_reference'] as const;
 export type RenameChoice = (typeof RENAME_CHOICES)[number];
-export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old' | 'upscale' | 'remake' | RenameChoice;
+export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old' | 'remake' | RenameChoice;
 /** Where an item is missing (it is never found in Notion: anything in Notion is in step or is not drift). */
 export type DriftPlace = 'notion' | 'review_room';
 export interface DriftItem {
@@ -197,7 +197,7 @@ export function driftItems(input: DriftInput): DriftItem[] {
 		items.push({
 			key, kind: entry.kind, type: 'picture_too_small', name: entry.name, spellings: [entry.name],
 			found: { prep: [{ project_id: entry.project_id, project_title: entry.project_title }], review_room: null },
-			missing: ['review_room'], link_to: null, choices: ['upscale', 'remake'],
+			missing: ['review_room'], link_to: null, choices: ['remake'],
 			picture: { ...picture, project_id: entry.project_id, reference_page_id: page }
 		});
 	}

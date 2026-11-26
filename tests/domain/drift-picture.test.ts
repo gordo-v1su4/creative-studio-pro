@@ -3,7 +3,8 @@ import { driftItems, type DriftInput, type DriftPrepEntry } from '../../src/lib/
 
 /**
  * Drift 08 (GitHub #36 / V1S-512, ADR 0012): a Prep picture under 2048 px on its long edge is its own drift item,
- * showing its size and offering an upscale or a remake. Adding to Notion is a separate item that never waits on it.
+ * showing its size and offering only a remake: a small sheet is rendered new in Prep at 2K (GitHub #43
+ * / V1S-521). Adding to Notion is a separate item that never waits on it.
  * The sizes are TR110's (issues/04-references-to-review-room.md).
  */
 
@@ -13,21 +14,21 @@ const prep = (kind: DriftPrepEntry['kind'], name: string, reference_page_id: str
 const input = (entries: DriftPrepEntry[], notion: DriftInput['notion'] = []): DriftInput => ({ show_code: 'BLR', notion, prep: entries, sheets: [] });
 
 describe('an undersized picture', () => {
-	test('Campus gym at 1678×937, not in Notion: "add to Notion" is one item, its picture another with its size, offering upscale or remake', () => {
+	test('Campus gym at 1678×937, not in Notion: "add to Notion" is one item, its picture another with its size, offering only remake', () => {
 		const items = driftItems(input([prep('location', 'Campus gym', null, picture(1678, 937, 'location:Campus gym'))]));
 		expect(items.map((item) => item.type)).toEqual(['only_in_prep', 'picture_too_small']);
 		expect(items[0].choices).toEqual(['add_to_notion']);
 		expect(items[1]).toMatchObject({
-			kind: 'location', name: 'Campus gym', choices: ['upscale', 'remake'], missing: ['review_room'],
+			kind: 'location', name: 'Campus gym', choices: ['remake'], missing: ['review_room'],
 			found: { prep: [TR110], review_room: null },
 			picture: { width: 1678, height: 937, entry_key: 'location:Campus gym', project_id: 'p-tr110', reference_page_id: null }
 		});
 	});
 
-	test('a picture already in Notion carries its page, so the upscaled sheet can be sent', () => {
+	test('a picture already in Notion carries its page and still offers only remake', () => {
 		const items = driftItems(input([prep('location', 'Portland rooftops', 'r-roofs', picture(1344, 752, 'r-roofs'))], [{ page_id: 'r-roofs', name: 'Portland rooftops', kind: 'Location' }]));
 		expect(items).toHaveLength(1);
-		expect(items[0]).toMatchObject({ type: 'picture_too_small', picture: { width: 1344, height: 752, reference_page_id: 'r-roofs' } });
+		expect(items[0]).toMatchObject({ type: 'picture_too_small', choices: ['remake'], picture: { width: 1344, height: 752, reference_page_id: 'r-roofs' } });
 	});
 
 	test('a portrait picture is measured on its long edge', () => {

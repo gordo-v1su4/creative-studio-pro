@@ -17,7 +17,7 @@ import { createOpenAICompatibleClient, resolveAgentModel } from '$lib/server/mod
 import type { ModelResolution, ProviderEnvironment, RaycastBridgeAccess } from '$lib/server/model-provider';
 import type { ModelSettingsDeps } from '$lib/server/model-settings';
 import type { AnimateDeps } from '$lib/server/animate';
-import { cliRunner, createHiggsfieldCli, createHiggsfieldImages, createHiggsfieldUpscaler, type Upscaler, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator, type CliRunner } from '$lib/server/higgsfield';
+import { cliRunner, createHiggsfieldCli, createHiggsfieldImages, higgsfieldCliPath, type VideoGenerator, createHiggsfieldSfx, type SoundEffectGenerator, type CliRunner } from '$lib/server/higgsfield';
 import { probeMedia } from '$lib/server/media-probe';
 import { createReviewRoomClient } from '$lib/server/review-room';
 import type { PushDeps } from '$lib/server/review-room-takes';
@@ -203,12 +203,6 @@ export async function getPrepDeps(): Promise<PrepDeps> {
 		references: getReferenceFileDeps(), notion: token ? createNotionApi(token) : null, stamp: uvStamper(process.cwd()), scaleCheck: uvScaleCheck(process.cwd()),
 		prepareReference: prepareReferenceVariants, normalizeSheet: normalizeReferenceSheet
 	};
-}
-
-/** Drift 08 (V1S-512): Higgsfield's image upscale for a Prep sheet under 2K; null without the CLI. */
-export function getUpscaler(): Upscaler | null {
-	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
-	return bin ? createHiggsfieldUpscaler(cliRunner(bin)) : null;
 }
 
 /** Grid stills (V1S-278): GPT Image 2.5 through the Higgsfield CLI (V1S-373), split by the splitter service. */

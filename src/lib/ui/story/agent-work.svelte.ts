@@ -13,14 +13,6 @@ import { ui } from '$lib/ui/app-state.svelte';
  * on a render.
  */
 
-/** Drift 08: where an undersized picture's upscale stands in the chat, by drift item key. */
-export type PictureSide = { url: string; width: number; height: number };
-export type PictureStep =
-	| { stage: 'priced'; credits: number }
-	| { stage: 'upscaling'; credits: number }
-	| { stage: 'back'; original: PictureSide; upscaled: PictureSide }
-	| { stage: 'sent'; upscaled: PictureSide };
-
 export type BriefFields = Pick<BriefVersion, 'title' | 'logline' | 'format' | 'tone_visual_rules' | 'must_haves' | 'must_nots' | 'success_criteria'>;
 export type AgentLine = { id: number; projectId: string; text: string; state: 'doing' | 'done' | 'failed' };
 export type TeaserIssue = { rule: string; severity: 'error' | 'warning'; match: string; message: string };
@@ -46,8 +38,6 @@ class AgentWork {
 	drift = $state<{ projectId: string; report: DriftReport } | null>(null);
 	/** Where each of a project's Prep references stood at the last check (Drift 09), clean or not; Prep shows it. */
 	standing = $state<DriftReport['standing'] | null>(null);
-	/** Drift 08: each undersized picture's step (price shown, upscaling, back beside the original, sent). */
-	pictures = $state<Record<string, PictureStep>>({});
 	/** Drift 08: "remake" asks for this project's Prep to open; the page takes it once. */
 	openPrep = $state<string | null>(null);
 	private next = 1;
@@ -213,25 +203,6 @@ class AgentWork {
 		});
 	}
 
-	/** Drift 08: the price of upscaling a picture under 2K. It spends nothing; the upscale waits for a yes to this price. */
-	priceUpscale(project: Project, item: DriftItem): Promise<Project | null> {
-		const picture = item.picture;
-		return this.run(project, `drift:${item.key}`, `Asking the price of upscaling ${item.name}…`, async () => {
-			if (!picture) throw new Error(`${item.name} has no picture to upscale`);
-			// An upscale already made (asked for before a reload) is shown again rather than priced and paid for twice.
-			const earlier = await this.post<{ pending: boolean; original?: PictureSide; upscaled?: PictureSide }>(`/api/projects/${picture.project_id}/drift`, { action: 'settle_upscale', key: picture.entry_key }).catch(() => null);
-			if (earlier?.data.pending) throw new Error(`${item.name} is already being upscaled; run the check again in a minute to see it`);
-			if (earlier?.data.original && earlier.data.upscaled) {
-				this.pictures = { ...this.pictures, [item.key]: { stage: 'back', original: earlier.data.original, upscaled: earlier.data.upscaled } };
-				return { project: null, said: `${item.name} was upscaled already. Look at it beside the original, then send it or remake it.` };
-			}
-			const answer = await this.post<{ quote: { credits: number } }>(`/api/projects/${picture.project_id}/drift`, { action: 'quote_upscale', key: picture.entry_key });
-			const credits = answer.data.quote.credits;
-			this.pictures = { ...this.pictures, [item.key]: { stage: 'priced', credits } };
-			return { project: null, said: `Upscaling ${item.name} to 2048 px costs ${credits} credit${credits === 1 ? '' : 's'}. Nothing is spent until you say yes.` };
-		});
-	}
-
 	/**
 	 * The operator's words as one answer for several drift items ("add all six", "add the locations"). True when they
 	 * were one, whether or not it could run (a count that does not match says so and writes nothing).
@@ -300,55 +271,9 @@ class AgentWork {
 	}
 
 	/**
-	 * Drift 08: the upscale, once the operator said yes to its price. The spend itself is `confirm`, posted from the
-	 * operator's own press (decision 17: the Agent never confirms a spend); the Agent says it, then waits for the
-	 * sheet to come back and shows it beside the original.
+	 * Drift 08: "remake", a small picture's only choice, opens Prep, where a new sheet is made at 2K (a location with
+	 * Scenecraft V1, a character with Castkit V1) with its own price first (GitHub #43 / V1S-521). It writes nothing.
 	 */
-	async upscale(project: Project, item: DriftItem, credits: number, confirm: () => Promise<void>): Promise<Project | null> {
-		const picture = item.picture;
-		if (!picture) return null;
-		const url = `/api/projects/${picture.project_id}/drift`;
-		const started = await this.run(project, `drift:${item.key}`, `Upscaling ${item.name} for ${credits} credit${credits === 1 ? '' : 's'}…`, async () => {
-			await confirm();
-			this.pictures = { ...this.pictures, [item.key]: { stage: 'upscaling', credits } };
-			return { project: null, said: `${item.name} is being upscaled. It comes back here beside the original before anything is sent.` };
-		});
-		if (!started) return null;
-		// Waiting holds no other action back: it has its own line, and the Agent stays free.
-		const line = this.say(project.project_id, `Waiting for ${item.name} to come back…`);
-		try {
-			for (let tries = 0; tries < 120; tries++) {
-				const answer = await this.post<{ pending: boolean; original?: PictureSide; upscaled?: PictureSide }>(url, { action: 'settle_upscale', key: picture.entry_key });
-				if (!answer.data.pending && answer.data.original && answer.data.upscaled) {
-					this.pictures = { ...this.pictures, [item.key]: { stage: 'back', original: answer.data.original, upscaled: answer.data.upscaled } };
-					this.settle(line, `${item.name} is back at ${answer.data.upscaled.width}×${answer.data.upscaled.height}. Look at it beside the original, then send it or remake it.`, 'done');
-					return started;
-				}
-				await new Promise((resolve) => setTimeout(resolve, 5000));
-			}
-			this.settle(line, `${item.name} has not come back after ten minutes; run the check again later to see it`, 'failed');
-		} catch (cause) {
-			// A failed job is cleared on the server and can be asked for again; anything else keeps the job, so the next press picks it up.
-			const { [item.key]: _gone, ...rest } = this.pictures;
-			this.pictures = rest;
-			this.settle(line, `${cause instanceof Error ? cause.message : `${item.name} did not come back`} Press Upscale again to see where it stands; a job already paid for is not sent twice.`, 'failed');
-		}
-		return null;
-	}
-
-	/** Drift 08: the upscaled sheet to Review Room, on the operator's yes after seeing it beside the original. */
-	sendUpscaled(project: Project, item: DriftItem): Promise<Project | null> {
-		const picture = item.picture;
-		const step = this.pictures[item.key];
-		return this.run(project, `drift:${item.key}`, `Sending ${item.name}'s upscaled sheet to Review Room…`, async () => {
-			if (!picture || step?.stage !== 'back') throw new Error(`${item.name} has no upscaled sheet to send yet`);
-			await this.post<unknown>(`/api/projects/${picture.project_id}/drift`, { action: 'send_upscaled', key: picture.entry_key });
-			this.pictures = { ...this.pictures, [item.key]: { stage: 'sent', upscaled: step.upscaled } };
-			return { project: null, said: `${item.name}'s upscaled sheet is in Review Room.` };
-		});
-	}
-
-	/** Drift 08: "remake" opens Prep, where a new sheet is made with its own price first. It writes nothing. */
 	remake(project: Project, item: DriftItem) {
 		const at = item.picture?.project_id ?? project.project_id;
 		const line = this.say(project.project_id, `Opening Prep to remake ${item.name}…`);

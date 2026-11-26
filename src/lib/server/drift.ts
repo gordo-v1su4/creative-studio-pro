@@ -100,7 +100,7 @@ export interface CheckDriftDeps {
 	notion: NotionApi | null;
 	/** Review Room; null when it is not configured here (the check then compares Notion and Prep only). */
 	client: Pick<ReviewRoomClient, 'changes' | 'versionMetadata'> | null;
-	/** Drift 08: reads each Prep sheet's size, so one under 2048 px is offered an upscale or a remake; omitted, sizes are not read. */
+	/** Drift 08: reads each Prep sheet's size, so one under 2048 px is offered a remake (rendered new in Prep); omitted, sizes are not read. */
 	probe?: (file: string) => Promise<MediaProbe>;
 }
 
