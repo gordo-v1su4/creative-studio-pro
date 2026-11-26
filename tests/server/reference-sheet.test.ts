@@ -22,3 +22,13 @@ test('4K sheets become 2K PNG working copies without modifying the imported sour
 		expect(await probeMedia(output)).toMatchObject({ width: 2048, height: 1152 });
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test('a sheet under 2K is never scaled up', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'studio-sheet-'));
+	try {
+		const source = join(root, 'small.png'), output = join(root, 'working.png');
+		await runFfmpeg(['-y', '-f', 'lavfi', '-i', 'color=c=gray:s=1678x944', '-frames:v', '1', source]);
+		await normalizeReferenceSheet(source, output);
+		expect(await probeMedia(output)).toMatchObject({ width: 1678, height: 944 });
+	} finally { await rm(root, { recursive: true, force: true }); }
+});

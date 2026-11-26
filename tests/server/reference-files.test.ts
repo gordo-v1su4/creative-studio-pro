@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SeriesStore, type SeriesRecord } from '../../src/lib/server/series';
-import { referenceCode, reviewRoomReferenceFiles, uploadReference, type ReferenceFileDeps } from '../../src/lib/server/reference-files';
+import { referenceCode, referenceSourcePath, reviewRoomReferenceFiles, uploadReference, type ReferenceFileDeps } from '../../src/lib/server/reference-files';
 import type { ReviewRoomClient } from '../../src/lib/server/review-room';
 
 const roots: string[] = [];
@@ -23,15 +24,16 @@ async function setup(folders: Record<string, string> = { 'refs:characters': 'f-c
 	const store = new SeriesStore(join(root, 'series'));
 	await store.write(record(folders));
 	const calls: string[] = [];
+	const sent: Uint8Array[] = [];
 	const client = {
 		changes: async () => ({ cursor: '1', assets: [], versions: [{ versionId: 'v1', assetId: 'a1', version: 1, isCurrent: true, processingState: 'ready', mimeType: 'image/png', createdAt: 1 }], removedAssets: [] }),
 		beginUpload: async (input: { assetCode: string; folderId: string }) => { calls.push(`begin ${input.assetCode} ${input.folderId}`); return { sessionId: 's', url: 'u', posterUrl: 'p', assetId: 'a1' }; },
-		putSigned: async () => {}, completeUpload: async () => ({ assetId: 'a1', jobId: 'j' }), putMetadata: async () => {}, setCurrentVersion: async () => {},
+		putSigned: async (url: string, bytes: Uint8Array) => { if (url === 'u') sent.push(bytes); }, completeUpload: async () => ({ assetId: 'a1', jobId: 'j' }), putMetadata: async () => {}, setCurrentVersion: async () => {},
 		versionMedia: async () => ({ original: { url: 'https://x/o.png', mimeType: 'image/png', sizeBytes: 1, expiresAt: 0 }, poster: null }),
 		download: async () => { calls.push('download'); return new Uint8Array([7]); }
 	} as unknown as ReviewRoomClient;
-	const deps: ReferenceFileDeps = { client, store, cacheDir: join(root, 'cache'), probe: async () => size, poster: async (_input, output) => { await writeFile(output, 'jpg'); } };
-	return { deps, store, calls };
+	const deps: ReferenceFileDeps = { client, store, cacheDir: join(root, 'cache'), sourceDir: join(root, 'sources'), probe: async () => size, poster: async (_input, output) => { await writeFile(output, 'jpg'); } };
+	return { deps, store, calls, sent };
 }
 
 describe('reference images in Review Room', () => {
@@ -71,5 +73,85 @@ describe('reference images in Review Room', () => {
 
 	test('reference codes are stable per kind and name', () => {
 		expect(referenceCode('BLR', 'refs:locations', 'the Video Haven interior')).toBe('BLR_REF_LOC_THE_VIDEO_HAVEN_INTERIOR');
+	});
+});
+
+/** A fake 2K scaler like `normalizeReferenceSheet`: never upscales, writes a PNG no wider than 2048 on its long edge. */
+function sized(deps: ReferenceFileDeps, sizes: Record<string, { width: number; height: number }>) {
+	const scaled: string[] = [];
+	deps.probe = async (file) => {
+		if (file.endsWith('.2k.png')) return { width: 2048, height: 1152 } as never;
+		const name = Object.keys(sizes).sort((a, b) => b.length - a.length).find((key) => file.endsWith(key));
+		return (name ? sizes[name] : { width: 0, height: 0 }) as never;
+	};
+	deps.normalizeSheet = async (input, output) => { scaled.push(input); await writeFile(output, '2K PNG'); return output; };
+	return scaled;
+}
+
+describe('Drift 07: keep the full-size sheet, send 2K (V1S-509)', () => {
+	test('a 4K sheet lands in Review Room at 2K and its full-size file is kept as the reference\'s source image', async () => {
+		const { deps, store, sent } = await setup();
+		sized(deps, { '.jpg': { width: 4096, height: 2304 } });
+		const out = await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana_4k.jpg', bytes: new Uint8Array([4, 0, 9, 6]) });
+		expect(out.ok).toBeTrue();
+		expect(sent).toEqual([new Uint8Array(Buffer.from('2K PNG'))]);
+		const file = (await store.read('s1'))!.reference_files!.r1;
+		expect(file).toMatchObject({ file_name: 'Kai_Hoodie_Santana_4k.png', mime_type: 'image/png', width: 2048, height: 1152 });
+		expect(file.source_image).toMatchObject({ file_name: 'Kai_Hoodie_Santana_4k.jpg', mime_type: 'image/jpeg', width: 4096, height: 2304 });
+		expect(new Uint8Array(await readFile(referenceSourcePath(deps.sourceDir, file)!))).toEqual(new Uint8Array([4, 0, 9, 6]));
+		// The send still attaches the 2K, never the full-size file.
+		expect(await readFile((await reviewRoomReferenceFiles(deps)(kai))!, 'utf8')).toBe('2K PNG');
+	});
+
+	test('a sheet already at 2K is sent unchanged and nothing extra is kept', async () => {
+		const { deps, store, sent } = await setup();
+		const scaled = sized(deps, { '.png': { width: 2048, height: 1152 } });
+		const out = await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana.png', bytes: new Uint8Array([2, 0, 4, 8]) });
+		expect(out.ok).toBeTrue();
+		expect(scaled).toEqual([]);
+		expect(sent).toEqual([new Uint8Array([2, 0, 4, 8])]);
+		const file = (await store.read('s1'))!.reference_files!.r1;
+		expect(file.source_image).toBeUndefined();
+		expect(referenceSourcePath(deps.sourceDir, file)).toBeNull();
+		expect(existsSync(deps.sourceDir) ? await readdir(deps.sourceDir) : []).toEqual([]);
+	});
+
+	test('a sheet already scaled by Prep keeps the full-size file it was made from', async () => {
+		const { deps, store, sent } = await setup();
+		sized(deps, { '.png': { width: 2048, height: 1152 }, 'made-4k.png': { width: 4096, height: 2304 } });
+		const fullSize = join(deps.cacheDir, '..', 'Kai_Hoodie_Santana_sheet-made-4k.png');
+		await writeFile(fullSize, new Uint8Array([4, 4]));
+		const out = await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana_sheet.png', bytes: new Uint8Array([2, 2]), full_size: fullSize });
+		expect(out.ok).toBeTrue();
+		expect(sent).toEqual([new Uint8Array([2, 2])]);
+		const file = (await store.read('s1'))!.reference_files!.r1;
+		expect(file.source_image).toMatchObject({ file_name: 'Kai_Hoodie_Santana_sheet-made-4k.png', width: 4096, height: 2304 });
+		expect(new Uint8Array(await readFile(referenceSourcePath(deps.sourceDir, file)!))).toEqual(new Uint8Array([4, 4]));
+	});
+
+	test('a full-size file that cannot be kept sends nothing to Review Room', async () => {
+		const { deps, store, sent } = await setup();
+		sized(deps, { '.jpg': { width: 4096, height: 2304 } });
+		await writeFile(deps.sourceDir, 'a file where the folder should be');
+		await expect(uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana_4k.jpg', bytes: new Uint8Array([4]) })).rejects.toThrow();
+		expect(sent).toEqual([]);
+		expect((await store.read('s1'))!.reference_files).toBeUndefined();
+	});
+
+	test('a full-size file no larger than the 2K sent is not kept', async () => {
+		const { deps, store } = await setup();
+		sized(deps, { '.png': { width: 2048, height: 1152 } });
+		const fullSize = join(deps.cacheDir, '..', 'Kai_Hoodie_Santana_sheet-made.png');
+		await writeFile(fullSize, new Uint8Array([2]));
+		expect((await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana_sheet.png', bytes: new Uint8Array([2]), full_size: fullSize })).ok).toBeTrue();
+		expect((await store.read('s1'))!.reference_files!.r1.source_image).toBeUndefined();
+	});
+
+	test('a sheet under 2K is still refused, never scaled up', async () => {
+		const { deps, store, sent } = await setup();
+		sized(deps, { '.png': { width: 1678, height: 944 } });
+		expect(await uploadReference(deps, 's1', { page_id: 'r1', file_name: 'Kai_Hoodie_Santana.png', bytes: new Uint8Array([1]) })).toMatchObject({ ok: false, message: expect.stringContaining('2048') });
+		expect(sent).toEqual([]);
+		expect((await store.read('s1'))!.reference_files).toBeUndefined();
 	});
 });
