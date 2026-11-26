@@ -1,0 +1,124 @@
+Create a 30-second, 16:9 cinematic live-action sports-horror teaser for "SPECIMEN."
+
+REFERENCE AND CONTINUITY
+
+@Image_1 = Number 38 Before — definitive identity lock
+@Image_2 = Number 38 Muscle — definitive identity lock
+@Image_3 = Number 38 Half — definitive identity lock
+@Image_4 = Number 38 Full — definitive identity lock
+@Image_5 = the Weigh Station — exact location lock for every Weigh Station shot
+@Image_6 = the Stadium — exact location lock for every Stadium shot
+No image: the Head Coach — heavyset, maroon zip jacket with grey sleeves, grey knit beanie, headset with a boom mic, clipboard
+No image: Lineman 68 — a huge opposing lineman in a white jersey with the number 68, gold pants, gold helmet
+No image: the Switch Operator — seen only as one adult right hand in a white lab-coat cuff
+
+Number 38 Before, Number 38 Muscle, Number 38 Half and Number 38 Full are four stages of one young athlete; each stage appears only in its own shots, and every change between stages happens across a hard cut, never on camera. In every shot at the Stadium, Number 38 Muscle and Number 38 Half wear a maroon mesh game jersey with white numerals 38 and white shoulder stripes over the sheet's white game pants, with a maroon helmet and grey cage facemask. Number 38 Before's wire glasses stay on until 00:07; after 00:07 the glasses appear only on the floor. Number 38 Muscle's eyes are normal human eyes in every shot. Number 38 Half's left eye is the only yellow slit-pupil eye until 00:24. Every stage of Number 38 Muscle, Number 38 Half and Number 38 Full plays from screen-left, Lineman 68 always from screen-right; the camera stays on one side of that line for the whole game.
+SPEECH COUNT LOCK: exactly one spoken line in the whole teaser, the Head Coach's line at about 00:21; every other character speaks zero words.
+EYELINE LOCK: every eyeline sits just beside the lens, never into it.
+
+STORY AND TONE
+
+A thin teenage athlete is put through something at the Weigh Station, and on game night at the Stadium the body keeps changing past where anyone stopped it. Played completely straight, like a sports drama going wrong: no screaming, no roaring, no posing, no victory moments. The Head Coach goes from pleased to frightened. Every action ends mid-motion.
+
+[00:00–00:05] — THE WEIGH STATION
+
+Locked-off frontal close shot of the amber CRT monitor at the Weigh Station: a line graph climbs hard to the upper right edge, the red indicator light under the bezel steady.
+The CRT hums.
+
+Hard cut.
+
+Static medium-wide at chest height: Number 38 Before stands beside the beam balance scale, shirt rolled up to the chest, staring just past the lens, under the flat fluorescent tube and the tungsten wall sconce.
+The fluorescent tube buzzes.
+
+Hard cut.
+
+Extreme close-up: the Switch Operator's fingers enter from the top of frame and flip a chrome toggle switch down on a cream steel panel.
+A hard metal click.
+
+Hard cut.
+
+Macro of an off-white analog dial: the black needle swings fast to the right and hits its stop.
+The needle's spring ticks once against the pin.
+
+[00:05–00:10] — OUT OF SIGHT
+
+Medium shot from behind Number 38 Before at a locker: a cloud of shower steam rolls across the frame from the left and covers Number 38 Before completely.
+Steam hisses from a pipe.
+
+Hard cut.
+
+Top-down close-up on the grey concrete floor of the Weigh Station: Number 38 Before's wire glasses lie in the dust, one lens cracked. Nothing moves.
+Silence, only the tube's buzz.
+
+Hard cut.
+
+Medium rear shot as the steam thins: Number 38 Muscle, back to camera, drags the maroon #38 jersey down over the shoulders; the mesh pulls tight and the left shoulder seam creaks.
+Fabric strains.
+
+[00:10–00:17] — GAME NIGHT
+
+Low handheld at knee height at the Stadium, moving with the play: Number 38 Muscle drives low from screen-left into Lineman 68. Shoulder pads meet first, then Lineman 68 is lifted off the turf and carried two metres back toward screen-right; the two bodies separate and Lineman 68 lands on one hip, sliding.
+Pads crack, cleats tear turf, the crowd surges.
+
+Hard cut.
+
+MICRO SLOW-MOTION HOLD: side angle at turf level on the contact, turf pellets and sweat hanging in the floodlight. Snap back to full speed as Lineman 68 hits the ground.
+
+Hard cut.
+
+Medium close-up from the sideline, long lens: the Head Coach lowers the clipboard, the play soft behind.
+Headset chatter, the crowd behind.
+
+Hard cut.
+
+Extreme close-up through the facemask bars: Number 38 Half breathing hard, the left iris yellow-amber with a vertical slit pupil, the right eye normal.
+Breath inside the helmet.
+
+Hard cut.
+
+Macro on the jersey's left shoulder: the seam splits open and the white stripes pull apart.
+A sharp fabric rip.
+
+[00:17–00:24] — THE SIDELINE
+
+Medium shot on the sideline bench under the floodlights: Number 38 Half pulls the helmet off with the right hand and sets it down; the torn jersey hangs open at the left shoulder.
+The helmet knocks on the bench.
+
+Hard cut.
+
+Over-the-shoulder from behind Number 38 Half toward the Head Coach, who has stopped two metres away and takes one step back.
+
+THE HEAD COACH, to Number 38 Half, quiet, not moving closer:
+"Son. Sit down."
+
+Hard cut.
+
+Close-up of Number 38 Half's left hand gripping the bench edge, the fingernails thick and dark; the wooden plank creaks under the grip.
+Wood creaks.
+
+[00:24–00:30] — THE LINE
+
+The floodlight tower nearest the bench bursts with a bang and that end of the Stadium drops into shadow; a drift of floodlight dust and smoke crosses the bench.
+Glass rains onto the turf.
+
+Hard cut.
+
+Wide static at the Stadium from the end zone, symmetrical: Lineman 68 back on the line at screen-right; out of the smoke at screen-left, Number 38 Full walks to the line, the jersey shredded across both shoulders, the head bare.
+The crowd goes silent. Only the wind in the stands.
+
+Hard cut.
+
+Ground-level close-up: Number 38 Full's scaled hand presses into the turf on the white line in a three-point stance, fingers spreading and gripping; the turf compresses under the weight.
+Turf crunches.
+
+Hard cut to black.
+
+Title: "SPECIMEN"
+
+One low hit, then black.
+
+VISUALS AND SOUND
+
+Photoreal live-action film footage, real lenses, real skin, real mesh, plastic and turf; scales and the slit-pupil eyes are practical prosthetics and contact lenses, wet and matte, never shining. Weigh Station shots are static and clinical, olive-green and cream with the amber CRT as the accent. Stadium shots are low and handheld during play, long-lens and still on the sideline, with floodlights blowing out the top of frame into white haze. Maroon and white kits against green turf; the yellow eye is the one warm accent at the Stadium. Exactly one slow-motion accent; everything else plays at full speed.
+
+No music, no score. Generate only ambient sound, action sound and the one scripted line: CRT hum, fluorescent buzz, the toggle click, the needle tick, steam, fabric strain and rip, pads, cleats and turf, helmet and bench knocks, crowd beds that rise on contact and drop to silence at 00:26, the floodlight bang and falling glass. Every sound lands on the frame where its cause happens. Speak only the one scripted line, verbatim, with natural delivery and synchronized mouths. No narration or additional dialogue. No subtitles. Only the final title appears onscreen.

@@ -1,0 +1,121 @@
+Create a 30-second, 16:9 cinematic live-action sports-horror teaser for "SPECIMEN."
+
+REFERENCE AND CONTINUITY
+
+@Image_1 = Wade Kessler Week 1 — definitive identity lock
+@Image_2 = Wade Kessler Week 6 — definitive identity lock
+@Image_3 = Wade Kessler Week 9 — definitive identity lock
+@Image_4 = the Weigh Station — exact location lock for every Weigh Station shot
+@Image_5 = the Stadium — exact location lock for every Stadium shot
+No image: Coach Hal Brenner — heavyset head coach, maroon zip jacket with grey sleeves, grey knit beanie, headset with a boom mic, clipboard
+No image: Dane Royce — a huge opposing lineman, white jersey with the number 68, silver pants, silver helmet with a clear visor
+No image: the Switch Hand — one adult right hand in a white lab-coat cuff, never more than the hand
+No image: the weight dial — an off-white analog dial with a black needle, mounted on the beam scale at the Weigh Station
+No image: the practice sled — a seven-pad steel tackling sled on the practice turf beside the Stadium
+
+Wade Kessler Week 1, Wade Kessler Week 6 and Wade Kessler Week 9 are three stages of one athlete; each stage appears only in its own section, and every change happens across a hard cut or behind steam, never on camera. At the Stadium and the practice sled, Wade Kessler Week 6 and Wade Kessler Week 9 wear a maroon mesh game jersey with white numerals 38 and white shoulder stripes, a maroon helmet and a grey cage facemask. Wade Kessler Week 1's wire glasses stay on until 00:09. Wade Kessler Week 6's eyes are normal human eyes. Wade Kessler Week 9's left eye is the only amber slit-pupil eye until 00:27. Every stage of Wade Kessler Week 6 and Wade Kessler Week 9 plays from screen-left, Dane Royce always from screen-right; the camera never crosses that line. The weight dial appears in every section of the Weigh Station, and its needle sits further right each time.
+SPEECH COUNT LOCK: exactly one spoken line in the whole teaser, Coach Hal Brenner's line at about 00:22; every other character speaks zero words.
+EYELINE LOCK: every eyeline sits just beside the lens, never into it.
+
+STORY AND TONE
+
+Wade Kessler Week 1 is a thin backup lineman put through something at the Weigh Station, and every week the weight dial climbs. Wade Kessler Week 6 is the best thing Coach Hal Brenner has ever seen; Wade Kessler Week 9 frightens Coach Hal Brenner. At the line of scrimmage, Dane Royce turns out to be the same. Played completely straight, like a prestige sports drama going wrong: no roaring, no screaming, no posing, no victory moments. Every action ends mid-motion.
+
+[00:00–00:03] — COLD OPEN
+
+Low handheld at knee height under the Stadium floodlights: a maroon 38 jersey drives in from screen-left and Dane Royce is lifted clean off the turf, carried backward toward screen-right, mid-air.
+Pads crack, the crowd roars.
+
+Hard cut to black.
+
+Silence. One dry tick of a needle.
+
+[00:03–00:10] — WEEK 1
+
+Locked-off frontal close shot of a green-phosphor CRT monitor at the Weigh Station: a line graph starts climbing.
+The CRT hums. A slow, detuned marching snare begins, half-time, far away.
+
+Hard cut.
+
+Static medium-wide at chest height: Wade Kessler Week 1 stands on the beam scale, shirt rolled up to the chest, glasses on, staring just past the lens under the flat fluorescent tube.
+
+Hard cut.
+
+Macro on the weight dial: the black needle settles just past the first marks.
+
+Hard cut.
+
+Extreme close-up: the Switch Hand flips a chrome toggle down on a cream steel panel.
+A hard metal click.
+
+Hard cut.
+
+Medium rear shot at the lockers: shower steam rolls in from frame left and swallows Wade Kessler Week 1 completely.
+Steam hisses.
+
+[00:10–00:18] — WEEK 6
+
+Macro on the weight dial: the needle swings and settles at the middle of the dial.
+The snare doubles and a low brass stab hits.
+
+Hard cut.
+
+Medium rear shot as the steam thins: Wade Kessler Week 6, back to camera, drags the maroon 38 jersey down; the mesh pulls tight across the shoulders.
+
+Hard cut.
+
+Side angle at turf level on the practice turf: Wade Kessler Week 6 drives into the practice sled from screen-left and shoves all seven pads five metres across the turf; one pad tears off its post and tumbles.
+Steel shrieks over turf.
+
+Hard cut.
+
+Long-lens medium close-up on the sideline: Coach Hal Brenner lowers the clipboard, the start of a smile.
+A second brass stab, louder.
+
+[00:18–00:25] — WEEK 9
+
+Macro on the weight dial: the needle slams past the last number and snaps off its pin.
+A sharp metal snap. The score drops to only the kick drum, slow.
+
+Hard cut.
+
+Extreme close-up through the facemask bars under the floodlights: Wade Kessler Week 9 breathing hard, the left eye amber with a vertical slit pupil, the right eye normal.
+
+Hard cut.
+
+Macro on the jersey's left shoulder: the seam splits and the white stripes pull apart.
+A fabric rip.
+
+Hard cut.
+
+Over-the-shoulder from behind Wade Kessler Week 9 on the sideline bench toward Coach Hal Brenner, who stands two metres away and takes one step back.
+
+COACH HAL BRENNER, to Wade Kessler Week 9, quiet, not moving closer:
+"Son. Sit down."
+
+Hard cut.
+
+Close-up of Wade Kessler Week 9's hand gripping the bench edge, the nails thick and dark; the plank splinters.
+Wood cracks.
+
+[00:25–00:30] — THE LINE
+
+Wide static from the end zone, symmetrical, at chest height: Wade Kessler Week 9 sets at screen-left in a three-point stance, Dane Royce sets across the line at screen-right.
+The crowd drops to silence. Only the kick drum.
+
+Hard cut.
+
+Close-up through Dane Royce's clear visor as Dane Royce settles into the stance, still moving: Dane Royce's left eye turns amber with a vertical slit pupil.
+The music cuts completely. Only wind across the Stadium.
+
+Hard cut to black.
+
+Title: "SPECIMEN"
+
+Silence, then one dry tick of a needle.
+
+VISUALS AND SOUND
+
+Photoreal live-action film footage, shot on ARRI Alexa with spherical primes, 35mm film grain, real skin, real mesh, plastic and turf; the slit-pupil eyes are practical contact lenses, wet and matte. Weigh Station shots are static and clinical, olive-green and cream walls under one fluorescent tube, with the green-phosphor CRT. Stadium and practice shots are low and handheld during contact, long-lens and still on the sideline, the floodlights blowing the top of frame into white haze. Maroon and white home kits, white and silver away kits, green turf. The only amber in the teaser, #E8A317, is the slit-pupil eyes: Wade Kessler Week 9's left eye and Dane Royce's left eye. Count of other amber, gold or yellow objects: zero. One camera idea per shot; everything plays at full speed, with no slow motion.
+
+Score: a detuned marching-band snare in half-time that rises through WEEK 1 and WEEK 6 with low brass stabs, strips back to a slow kick drum in WEEK 9, and cuts out completely on Dane Royce's eye. Ambience: CRT hum, fluorescent buzz, steam, the crowd on game night. Effects: the toggle click, the needle ticks and the needle snap, pads cracking, the sled's steel shriek, the fabric rip, the bench splintering. Duck the score beneath the one line. Speak only the one scripted line, verbatim, with natural delivery and synchronized mouths. No narration or additional dialogue. No subtitles. Only the final title appears onscreen.
