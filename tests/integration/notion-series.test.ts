@@ -428,6 +428,24 @@ describe('Notion sync (V1S-325)', () => {
 		expect(drained.record.notion_trash).toEqual(['p1']);
 	});
 
+	test('a re-check keeps the pages still waiting to be trashed, and the drain after it trashes them (V1S-507)', async () => {
+		const { api, store, project } = await setup();
+		const { drainNotionTrash } = await import('../../src/lib/server/notion-sync');
+		const record = (await store.read(project.series!.series_id))!;
+		await store.write({ ...record, notion_trash: ['sh-1', 'sh-2'] });
+		const shotRows = api.rows['ds-shots'].length;
+
+		// Refresh and sync both re-check the series from Notion first.
+		const fresh = await connectSeries(api, store, ROOT, 'Blood Rush');
+		expect(fresh.notion_trash).toEqual(['sh-1', 'sh-2']);
+		expect((await store.read(fresh.series_id))!.notion_trash).toEqual(['sh-1', 'sh-2']);
+
+		const drained = await drainNotionTrash(api, fresh);
+		expect(drained.trashed).toBe(2);
+		expect(drained.record.notion_trash).toEqual([]);
+		expect(api.rows['ds-shots']).toHaveLength(shotRows - 2);
+	});
+
 	test('a story pass written in Notion after the import reaches the episode on sync, and only once', async () => {
 		const { api, projects, project, sync } = await setup();
 		expect((await sync()).scenes_refreshed).toBe(0);
