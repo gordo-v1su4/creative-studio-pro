@@ -3,9 +3,10 @@ import { bareId, type SeriesReference } from '$lib/domain/notion-series';
 import { kindOf, sameName, type PrepFile, type PrepKind } from '$lib/domain/prep';
 import { readReferences, type NotionApi } from './notion';
 import { addPrepEntry, prepContext, prepView, readPrep, type PrepDeps } from './prep';
-import { driftItems, seriesIdOf, type DriftPrepEntry, type DriftReport, type DriftSheet } from '$lib/domain/drift';
-import { REFERENCE_FOLDERS } from '$lib/domain/series-tree';
-import type { ReviewRoomClient } from './review-room';
+import { driftItems, historyOf, isMarkedOld, markedOld, seriesIdOf, type DriftPrepEntry, type DriftReport, type DriftSheet } from '$lib/domain/drift';
+import { REFERENCE_FOLDERS, referenceCode, referenceFolderKey } from '$lib/domain/series-tree';
+import { ReviewRoomError, type ReviewRoomClient } from './review-room';
+import type { SeriesRecord } from './series';
 import { isHandle } from '$lib/domain/handles';
 import { richText } from './story-writer';
 
@@ -96,7 +97,7 @@ export interface CheckDriftDeps {
 	store: PrepDeps['store'];
 	notion: NotionApi | null;
 	/** Review Room; null when it is not configured here (the check then compares Notion and Prep only). */
-	client: Pick<ReviewRoomClient, 'changes'> | null;
+	client: Pick<ReviewRoomClient, 'changes' | 'versionMetadata'> | null;
 }
 
 /**
@@ -140,15 +141,78 @@ export async function checkDrift(deps: CheckDriftDeps, project: Project): Promis
 	let sheets: DriftSheet[] | null = null;
 	const room = record.review_room;
 	if (deps.client && room) {
-		const folderKey = new Map(REFERENCE_FOLDERS.flatMap(({ key }) => (room.folders[key] ? [[room.folders[key], key] as const] : [])));
+		const client = deps.client;
 		try {
-			const feed = await deps.client.changes(room.project_id, '0');
-			const removed = new Set((feed.removedAssets ?? []).map((asset) => asset.assetId));
-			sheets = feed.assets.filter((asset) => asset.folderId && folderKey.has(asset.folderId) && !removed.has(asset.assetId))
-				.map((asset) => ({ asset_id: asset.assetId, code: asset.assetCode, folder_key: folderKey.get(asset.folderId!)!, title: asset.title }));
+			// Drift 04: a sheet whose current version is marked old is history, read from its metadata.
+			sheets = await Promise.all((await referenceSheets(client, room)).map(async ({ asset, folder_key }) => ({
+				asset_id: asset.assetId, code: asset.assetCode, folder_key, title: asset.title,
+				old: asset.currentVersionId ? isMarkedOld((await client.versionMetadata(asset.currentVersionId)).metadata) : false
+			})));
 		} catch (cause) { return fail(502, `Review Room could not be read: ${reason(cause)}`); }
 	}
 
+	const references = notion.flatMap(({ page_id, name, kind }) => { const known = kindOf(kind); return known ? [{ page_id, name, kind: known }] : []; });
 	const items = driftItems({ show_code: record.show_code, notion: notion.map(({ page_id, name, kind }) => ({ page_id, name, kind })), prep, sheets: sheets ?? [] });
-	return { ok: true, report: { series_title: record.title, items, read: { notion: notion.length, projects: projects.map((entry) => ({ project_id: entry.project_id, title: entry.title })), sheets: sheets?.length ?? null, skipped } } };
+	return { ok: true, report: { series_title: record.title, items, read: { notion: notion.length, projects: projects.map((entry) => ({ project_id: entry.project_id, title: entry.title })), sheets: sheets?.length ?? null, skipped }, references } };
+}
+
+type ReviewRoomLink = NonNullable<SeriesRecord['review_room']>;
+/** The assets in the series' reference folders in Review Room (removed ones left out), from the change feed. */
+async function referenceSheets(client: Pick<ReviewRoomClient, 'changes'>, room: ReviewRoomLink) {
+	const folderKey = new Map(REFERENCE_FOLDERS.flatMap(({ key }) => (room.folders[key] ? [[room.folders[key], key] as const] : [])));
+	const feed = await client.changes(room.project_id, '0');
+	const removed = new Set((feed.removedAssets ?? []).map((asset) => asset.assetId));
+	return feed.assets.filter((asset) => asset.folderId && folderKey.has(asset.folderId) && !removed.has(asset.assetId)).map((asset) => ({ asset, folder_key: folderKey.get(asset.folderId!)! }));
+}
+
+export interface MarkOldDeps {
+	projectRoot: string;
+	series: PrepDeps['series'];
+	store?: PrepDeps['store'];
+	/** Review Room; null when it is not configured here. */
+	client: Pick<ReviewRoomClient, 'changes' | 'versionMetadata' | 'putMetadata'> | null;
+}
+
+/**
+ * "Mark as old" on a drift item (Drift 04, GitHub #33 / V1S-511; ADR 0012): a Review Room sheet no Notion reference
+ * uses becomes history. Its current version's metadata is read, the old flag (and the reference it is history of)
+ * added, and the rest written back unchanged against the revision read, so an edit made meanwhile is refused, not
+ * overwritten. A sheet a reference uses (by its code, or as its picture here) is refused, so an old sheet is never in
+ * `reference_files`, which is all Prep, the shot pickers and sends read. If Review Room refuses, nothing changes. The
+ * sheet stays visible in Review Room; a new version uploaded to it is current and not old.
+ */
+export async function markOld(deps: MarkOldDeps, project: Project, input: { asset_id: string; history_of?: string | null }): Promise<{ ok: true; asset_id: string; code: string; history_of: { page_id: string; name: string } | null } | Failure> {
+	if (!deps.client) return fail(503, 'Review Room is not configured here, so nothing was marked old');
+	const { record } = await prepContext(deps, project);
+	if (!record) return fail(409, 'This project is not part of a Notion series');
+	const room = record.review_room;
+	if (!room) return fail(409, `${record.title} is not linked to Review Room; run the Review Room sync on the Series page`);
+	const references = record.references?.items ?? [];
+	const history = input.history_of ? references.find((ref) => bareId(ref.page_id) === bareId(input.history_of!)) : undefined;
+	if (input.history_of && !history) return fail(400, `That reference is not in ${record.title}; re-check the series`);
+
+	let found: Awaited<ReturnType<typeof referenceSheets>>[number] | undefined;
+	try { found = (await referenceSheets(deps.client, room)).find(({ asset }) => asset.assetId === input.asset_id); } catch (cause) { return fail(502, `Review Room could not be read: ${reason(cause)}. Nothing was changed.`); }
+	if (!found) return fail(404, `That sheet is not in ${record.title}'s reference folders in Review Room`);
+	const { asset } = found;
+	const code = asset.assetCode ?? asset.title;
+	if (history && referenceFolderKey(history.kind) !== found.folder_key) return fail(400, `${code} is not a ${history.kind.toLowerCase()} sheet, so it cannot be ${history.name}'s history`);
+	const user = references.find((ref) => { const folder = referenceFolderKey(ref.kind); return folder && referenceCode(record.show_code, folder, ref.name) === asset.assetCode; });
+	if (user) return fail(409, `${code} is ${user.name}'s sheet in Notion, so it is not marked old`);
+	const attached = Object.entries(record.reference_files ?? {}).find(([, file]) => file.asset_id === asset.assetId);
+	const holder = attached && references.find((ref) => ref.page_id === attached[0]);
+	if (attached) return fail(409, `${code} is ${holder?.name ?? 'a reference'}'s picture here, so it is not marked old`);
+	if (!asset.currentVersionId) return fail(409, `${code} has no current version in Review Room to mark`);
+
+	const wanted = history ? { page_id: history.page_id, name: history.name } : null;
+	try {
+		const read = await deps.client.versionMetadata(asset.currentVersionId);
+		const had = historyOf(read.metadata);
+		const same = isMarkedOld(read.metadata) && (had?.page_id ?? null) === (wanted?.page_id ?? null) && (had?.name ?? null) === (wanted?.name ?? null);
+		if (!same) await deps.client.putMetadata(asset.currentVersionId, markedOld(read.metadata, wanted), read.updatedAt);
+	} catch (cause) {
+		const status = cause instanceof ReviewRoomError && cause.status === 409 ? 409 : 502;
+		return fail(status, `Review Room did not mark ${code} as old: ${reason(cause)}. Nothing was changed.`);
+	}
+	return { ok: true, asset_id: asset.assetId, code, history_of: wanted };
 }

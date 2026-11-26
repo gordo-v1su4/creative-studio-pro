@@ -99,12 +99,26 @@ class AgentWork {
 		return this.run(project, `drift:${item.key}`, `Adding ${name} to Notion…`, async () => {
 			if (!at) throw new Error(`${name} is not in any Prep, so it cannot be added from here yet`);
 			await this.post<unknown>(`/api/projects/${at.project_id}/prep`, { action: 'add_entry', kind: item.kind, name, former_names: item.spellings });
-			if (this.drift?.projectId === project.project_id) {
-				const items = this.drift.report.items.filter((entry) => entry.key !== item.key);
-				this.drift = items.length ? { ...this.drift, report: { ...this.drift.report, items } } : null;
-			}
+			this.dropDrift(project, item);
 			return { project: null, said: `${name} is in Notion's References now, and in ${at.project_title}'s Prep.` };
 		});
+	}
+
+	/** "Mark as old" on a Review Room sheet (Drift 04): flagged as history in Review Room, optionally of a Notion reference, and never offered again. */
+	markOld(project: Project, item: DriftItem, historyOf: { page_id: string; name: string } | null): Promise<Project | null> {
+		const sheet = item.found.review_room;
+		return this.run(project, `drift:${item.key}`, `Marking ${sheet?.code ?? item.name} as old in Review Room…`, async () => {
+			if (!sheet) throw new Error(`${item.name} has no sheet in Review Room to mark old`);
+			await this.post<unknown>(`/api/projects/${project.project_id}/drift`, { choice: 'mark_old', asset_id: sheet.asset_id, history_of: historyOf?.page_id ?? null });
+			this.dropDrift(project, item);
+			return { project: null, said: `${sheet.code} is marked old in Review Room${historyOf ? `, as ${historyOf.name}'s history` : ''}. It stays there, but is not offered for a shot or checked again.` };
+		});
+	}
+
+	private dropDrift(project: Project, item: DriftItem) {
+		if (this.drift?.projectId !== project.project_id) return;
+		const items = this.drift.report.items.filter((entry) => entry.key !== item.key);
+		this.drift = items.length ? { ...this.drift, report: { ...this.drift.report, items } } : null;
 	}
 
 	/** Draft the brief from the idea, the pick or the story. It is shown for reading; nothing is saved. */

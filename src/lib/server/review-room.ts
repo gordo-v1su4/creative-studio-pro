@@ -64,6 +64,10 @@ export function createReviewRoomClient(config: ReviewRoomConfig) {
 			const body = { metadata, expectedUpdatedAt };
 			await request('PUT', `/api/v1/versions/${encodeURIComponent(versionId)}/metadata`, body, idempotencyKey('metadata', versionId, JSON.stringify(body)));
 		},
+		/** One version's creative metadata and its revision, for a write that keeps everything else (Drift 04). */
+		async versionMetadata(versionId: string) {
+			return request<{ metadata: Record<string, unknown>; updatedAt: number | null }>('GET', `/api/v1/versions/${encodeURIComponent(versionId)}/metadata`);
+		},
 		/** Short-lived signed URLs for one version's original and poster (V1S-284). */
 		async versionMedia(versionId: string) {
 			return request<{ original: { url: string; mimeType: string; sizeBytes: number; expiresAt: number }; poster: { url: string; expiresAt: number } | null }>('GET', `/api/v1/versions/${encodeURIComponent(versionId)}/media`);
