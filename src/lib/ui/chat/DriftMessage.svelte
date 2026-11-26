@@ -4,7 +4,8 @@
 	 * was found and where it is missing, with only its choices, as small actions. "Add to Notion" asks for the exact
 	 * name first (straight apostrophes, no " - "); "mark as old" (Drift 04) asks which Notion reference the sheet is
 	 * history of, if any; "Add all" on a group, or saying "add all six", adds several under their shown names, the
-	 * first alone and checked (Drift 10); "link" comes with a later ticket. In the chat's
+	 * first alone and checked (Drift 10); "link" (Drift 05) sends a stray sheet under its Notion name, then marks the
+	 * stray old, and points a stray Prep entry at that reference. In the chat's
 	 * decided look: on the panel, no boxes, grey, with the Agent's name in purple. A picture under 2048 px (Drift 08)
 	 * shows its size and offers an upscale, priced before anything is spent, or a remake; the upscaled sheet is shown
 	 * beside the original and sent only on a second yes.
@@ -35,8 +36,6 @@
 	let name = $state('');
 	const written = $derived(cleanName(name));
 
-	const LATER: Record<Exclude<DriftChoice, 'add_to_notion' | 'mark_old' | 'upscale' | 'remake'>, string> = { link: 'Linking comes with a later step' };
-
 	/** The sheet being marked old, and the Notion reference it is history of ('' for none). */
 	let marking = $state<string | null>(null);
 	let history = $state('');
@@ -46,6 +45,12 @@
 		const ref = sameKind(item).find((entry) => entry.page_id === history) ?? null;
 		marking = null;
 		await agentWork.markOld(project, item, ref ? { page_id: ref.page_id, name: ref.name } : null);
+	}
+	function linkTitle(item: DriftItem): string {
+		const to = item.link_to?.name ?? 'the reference';
+		const sheet = item.found.review_room ? `Send ${item.found.review_room.code} to Review Room again as ${to}'s next version, then mark ${item.found.review_room.code} as old, as ${to}'s history.` : '';
+		const prep = item.found.prep.length ? `Point ${item.found.prep[0].project_title}'s Prep entry at ${to} in Notion, keeping its work.` : '';
+		return [sheet, prep].filter(Boolean).join(' ');
 	}
 	const PLACES = { notion: 'Notion', review_room: 'Review Room' } as const;
 
@@ -149,7 +154,7 @@
 									{:else if choice === 'mark_old'}
 										<button type="button" class="tg" disabled={working} onclick={() => startOld(item)} title="Flag this Review Room sheet as old: it stays there as history, but is never offered for a shot or checked again.">Mark as old</button>
 									{:else if choice === 'link'}
-										<button type="button" class="tg" disabled title={LATER[choice]}>Link to {item.link_to?.name ?? 'a reference'}</button>
+										<button type="button" class="tg" disabled={working || !item.link_to} onclick={() => void agentWork.link(project, item)} title={linkTitle(item)}>Link to {item.link_to?.name ?? 'a reference'}</button>
 									{/if}
 								{/each}
 							</div>

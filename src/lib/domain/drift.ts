@@ -60,7 +60,7 @@ export const seriesIdOf = (project: Project) => project.series?.series_id ?? pro
 const KIND_ORDER: Record<PrepKind, number> = { character: 0, location: 1, prop: 2 };
 const FOLDER_KIND: Record<string, PrepKind> = { 'refs:characters': 'character', 'refs:locations': 'location', 'refs:props': 'prop' };
 const folderOf = (kind: PrepKind) => REFERENCE_FOLDERS.find((folder) => kindOf(folder.kind) === kind)!.key;
-const words = (text: string) => text.toLowerCase().replace(/['’]/g, '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+const words = (text: string) => text.toLowerCase().replace(/['‘’ʼ]/g, '').split(/[^\p{L}\p{N}]+/u).filter(Boolean);
 /** One name's words start the other's (Bryson and Bryson Vane), without being the same name. */
 function nearName(a: string, b: string): boolean {
 	const [short, long] = [words(a), words(b)].sort((x, y) => x.length - y.length);

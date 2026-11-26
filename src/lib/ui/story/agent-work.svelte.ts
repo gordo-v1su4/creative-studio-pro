@@ -157,6 +157,39 @@ class AgentWork {
 		});
 	}
 
+	/**
+	 * "Link" on a drift item (Drift 05): a stray Review Room sheet goes up again under the Notion name as that
+	 * reference's next version, then is marked old as its history; a stray Prep entry is pointed at the Notion page.
+	 */
+	link(project: Project, item: DriftItem): Promise<Project | null> {
+		const to = item.link_to;
+		const sheet = item.found.review_room;
+		const at = item.found.prep[0];
+		return this.run(project, `drift:${item.key}`, `Linking ${sheet?.code ?? item.name} to ${to?.name ?? 'its Notion reference'}…`, async () => {
+			if (!to) throw new Error(`${item.name} has no Notion reference to link to`);
+			type Linked = { sent: { code: string; version: number } | null; marked: { code: string } | null };
+			const url = (projectId: string) => `/api/projects/${projectId}/drift`;
+			// The sheet goes with the first project's Prep (or alone); every other project's Prep is then pointed at the page too.
+			const answer = await this.post<Linked>(url(at?.project_id ?? project.project_id), {
+				choice: 'link', page_id: to.page_id, asset_id: sheet?.asset_id ?? null, ...(at ? { former_names: item.spellings } : {})
+			});
+			const pointed = at ? [at.project_title] : [];
+			for (const other of item.found.prep.slice(1)) {
+				await this.post<Linked>(url(other.project_id), { choice: 'link', page_id: to.page_id, former_names: item.spellings });
+				pointed.push(other.project_title);
+			}
+			this.settleDrift(project.project_id, item.key);
+			await this.recheck(project);
+			const { sent, marked } = answer.data;
+			const said = [
+				sent ? `${to.name}'s sheet is in Review Room as ${sent.code}, version ${sent.version}.` : '',
+				marked ? `${marked.code} is marked old, as ${to.name}'s history.` : '',
+				pointed.length ? `${pointed.join(', ')}'s Prep points at ${to.name} now.` : ''
+			].filter(Boolean).join(' ');
+			return { project: null, said };
+		});
+	}
+
 	/** Drift 08: the price of upscaling a picture under 2K. It spends nothing; the upscale waits for a yes to this price. */
 	priceUpscale(project: Project, item: DriftItem): Promise<Project | null> {
 		const picture = item.picture;

@@ -175,7 +175,7 @@ export async function checkDrift(deps: CheckDriftDeps, project: Project): Promis
 
 type ReviewRoomLink = NonNullable<SeriesRecord['review_room']>;
 /** The assets in the series' reference folders in Review Room (removed ones left out), from the change feed. */
-async function referenceSheets(client: Pick<ReviewRoomClient, 'changes'>, room: ReviewRoomLink) {
+export async function referenceSheets(client: Pick<ReviewRoomClient, 'changes'>, room: ReviewRoomLink) {
 	const folderKey = new Map(REFERENCE_FOLDERS.flatMap(({ key }) => (room.folders[key] ? [[room.folders[key], key] as const] : [])));
 	const feed = await client.changes(room.project_id, '0');
 	const removed = new Set((feed.removedAssets ?? []).map((asset) => asset.assetId));
