@@ -15,7 +15,7 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 
   | Ticket | GitHub | Linear | Blocked by |
   | --- | --- | --- | --- |
-  | 01 Keep the Notion trash queue across a re-check (bug) | #29 | V1S-507 | none |
+  | 01 Keep the Notion trash queue across a re-check (bug), **done `f1c09e2`** | #29 | V1S-507 | none |
   | 02 Adding a reference in Prep writes Notion first | #30 | V1S-508 | none |
   | 07 Keep the full-size sheet, send 2K | #31 | V1S-509 | none |
   | 03 The drift check in the Agent chat, with "add to Notion" | #32 | V1S-510 | 02 |
