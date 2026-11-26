@@ -81,7 +81,7 @@ async function writePrep(root: string, projectId: string, prep: PrepFile): Promi
 	await writeFile(prepPath(root, projectId), JSON.stringify(mapPaths(valid, (file) => storedPath(root, projectId, file)), null, '\t'), 'utf8');
 	return valid;
 }
-async function update(root: string, projectId: string, key: string, change: (state: PrepState) => PrepState): Promise<PrepFile> {
+export async function update(root: string, projectId: string, key: string, change: (state: PrepState) => PrepState): Promise<PrepFile> {
 	const prep = await readPrep(root, projectId);
 	const previous = prep.entries[key] ?? emptyState();
 	const next = change(previous);
@@ -169,7 +169,7 @@ export async function prepView(deps: PrepContextDeps, project: Project): Promise
 	return { ok: true, items, props: prep.props, reference_project: source ? { project_id: source.project_id, title: source.title } : null };
 }
 
-async function findEntry(deps: PrepContextDeps, project: Project, key: string): Promise<{ ok: true; view: PrepView; record: SeriesRecord | null } | Failure> {
+export async function findEntry(deps: PrepContextDeps, project: Project, key: string): Promise<{ ok: true; view: PrepView; record: SeriesRecord | null } | Failure> {
 	const listed = await prepView(deps, project);
 	if (!listed.ok) return listed;
 	const view = listed.items.find((item) => item.entry.key === key);

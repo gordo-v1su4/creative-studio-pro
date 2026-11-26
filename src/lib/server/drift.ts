@@ -10,6 +10,7 @@ import type { SeriesRecord } from './series';
 import { isHandle } from '$lib/domain/handles';
 import { richText } from './story-writer';
 import { prepStanding, type StandingPrepEntry } from '$lib/domain/drift-standing';
+import type { MediaProbe } from './media-probe';
 
 /**
  * The drift check's server side (spec GitHub #28 / V1S-506, ADR 0012). Notion is the master of names: Drift 02
@@ -99,6 +100,8 @@ export interface CheckDriftDeps {
 	notion: NotionApi | null;
 	/** Review Room; null when it is not configured here (the check then compares Notion and Prep only). */
 	client: Pick<ReviewRoomClient, 'changes' | 'versionMetadata'> | null;
+	/** Drift 08: reads each Prep sheet's size, so one under 2048 px is offered an upscale or a remake; omitted, sizes are not read. */
+	probe?: (file: string) => Promise<MediaProbe>;
 }
 
 /**
@@ -132,7 +135,14 @@ export async function checkDrift(deps: CheckDriftDeps, project: Project): Promis
 		const view = await prepView(deps, entry).catch((cause) => fail(500, reason(cause)));
 		if (!view.ok) { skipped.push(entry.title); continue; }
 		const at = { project_id: entry.project_id, project_title: entry.title };
-		for (const item of view.items) prep.push({ ...at, kind: item.entry.kind, name: item.entry.name, reference_page_id: item.entry.reference_page_id });
+		for (const item of view.items) {
+			const result = item.state.result;
+			// A reference the series already has a Review Room sheet for has no picture to send.
+			const inRoom = !!item.entry.reference_page_id && !!record.reference_files?.[item.entry.reference_page_id];
+			const size = result && !result.uploaded && !inRoom && deps.probe ? await deps.probe(result.file).catch(() => ({} as MediaProbe)) : null;
+			const picture = result && size?.width && size.height ? { width: size.width, height: size.height, url: result.url, entry_key: item.entry.key } : null;
+			prep.push({ ...at, kind: item.entry.kind, name: item.entry.name, reference_page_id: item.entry.reference_page_id, picture });
+		}
 		if (entry === project) for (const item of view.items) own.push({ key: item.entry.key, kind: item.entry.kind, name: item.entry.name, reference_page_id: item.entry.reference_page_id });
 		// Work kept under a second spelling of the same entry (Mara’s / Mara's dorm room) is listed once in Prep;
 		// its other spelling is still in the file, so the check shows both.

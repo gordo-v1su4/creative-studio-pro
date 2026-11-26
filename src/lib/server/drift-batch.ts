@@ -47,7 +47,7 @@ interface Writer {
 }
 
 const KIND_IN_NOTION: Record<PrepKind, string> = { character: 'Character', location: 'Location', prop: 'Prop' };
-const VERB: Record<DriftChoice, string> = { add_to_notion: 'Adding to Notion', link: 'Linking', mark_old: 'Marking as old' };
+const VERB: Record<DriftChoice, string> = { add_to_notion: 'Adding to Notion', link: 'Linking', mark_old: 'Marking as old', upscale: 'Upscaling', remake: 'Remaking' };
 const reason = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)).replace(/\.$/, '');
 
 const WRITERS: Partial<Record<DriftChoice, Writer>> = {

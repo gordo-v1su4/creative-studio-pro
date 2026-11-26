@@ -2,6 +2,7 @@ import { kindOf, sameName, squash, type PrepKind } from './prep';
 import type { Project } from './schemas';
 import { REFERENCE_FOLDERS, referenceCode } from './series-tree';
 import type { PrepStanding } from './drift-standing';
+import { MIN_LONG_EDGE } from './media';
 
 /**
  * The drift check's comparison rule (Drift 03, GitHub #32 / V1S-510; spec GitHub #28; ADR 0012). Notion's
@@ -12,18 +13,22 @@ import type { PrepStanding } from './drift-standing';
 
 export interface DriftNotionRef { page_id: string; name: string; kind: string }
 /** One name a project's Prep holds, spelled as it is there (two spellings of one place are two entries). */
-export interface DriftPrepEntry { project_id: string; project_title: string; kind: PrepKind; name: string; reference_page_id: string | null }
+export interface DriftPrepEntry {
+	project_id: string; project_title: string; kind: PrepKind; name: string; reference_page_id: string | null;
+	/** Drift 08: the sheet made in Prep and not yet in Review Room (its size, its Prep URL and Prep key), or null. */
+	picture?: { width: number; height: number; url: string; entry_key: string } | null;
+}
 /** One asset in a Review Room reference folder (`refs:characters`, `refs:locations`, `refs:props`). */
 export interface DriftSheet { asset_id: string; code: string | null; folder_key: string; title: string; /** Marked old (Drift 04): kept as history, never drift. */ old?: boolean }
 export interface DriftInput { show_code: string | undefined; notion: DriftNotionRef[]; prep: DriftPrepEntry[]; sheets: DriftSheet[] }
 
-export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old';
+export type DriftChoice = 'add_to_notion' | 'link' | 'mark_old' | 'upscale' | 'remake';
 /** Where an item is missing (it is never found in Notion: anything in Notion is in step or is not drift). */
 export type DriftPlace = 'notion' | 'review_room';
 export interface DriftItem {
 	key: string;
 	kind: PrepKind;
-	type: 'only_in_prep' | 'only_in_review_room';
+	type: 'only_in_prep' | 'only_in_review_room' | 'picture_too_small';
 	/** The proposed name: straight apostrophes, no " - ". The operator can edit it before it is written. */
 	name: string;
 	/** Every spelling found, in the order found. */
@@ -33,6 +38,8 @@ export interface DriftItem {
 	/** A Notion reference whose name is close (Bryson → Bryson Vane): proposed, never decided. */
 	link_to: { page_id: string; name: string } | null;
 	choices: DriftChoice[];
+	/** Drift 08: a picture under 2048 px on its long edge, where it is in Prep, and its Notion page (null until added). */
+	picture?: { width: number; height: number; url: string; entry_key: string; project_id: string; reference_page_id: string | null };
 }
 
 /** What the check returns: the items, and what it read to find them. */
@@ -124,6 +131,25 @@ export function driftItems(input: DriftInput): DriftItem[] {
 			key: `sheet:${sheet.code}`, kind, type: 'only_in_review_room', name, spellings: [name],
 			found: { prep: [], review_room: { asset_id: sheet.asset_id, code: sheet.code } },
 			missing: ['notion'], link_to: link, choices: link ? ['link', 'mark_old'] : ['mark_old']
+		});
+	}
+	// Pictures (Drift 08): a Prep sheet under 2048 px on its long edge is its own item, so adding to Notion never waits on it.
+	// A reference whose sheet is already in Review Room (by its code) has no picture to send; an old sheet (Drift 04) is history, not its sheet.
+	const sheetCodes = new Set(input.sheets.flatMap((sheet) => (sheet.code && !sheet.old ? [sheet.code] : [])));
+	const small = new Set<string>();
+	for (const entry of input.prep) {
+		const picture = entry.picture;
+		if (!picture || Math.max(picture.width, picture.height) >= MIN_LONG_EDGE) continue;
+		if (sheetCodes.has(referenceCode(input.show_code, folderOf(entry.kind), entry.name))) continue;
+		const key = `picture:${entry.kind}:${squash(entry.name)}`;
+		if (small.has(key)) continue;
+		small.add(key);
+		const page = entry.reference_page_id && notionPages.has(entry.reference_page_id) ? entry.reference_page_id : null;
+		items.push({
+			key, kind: entry.kind, type: 'picture_too_small', name: entry.name, spellings: [entry.name],
+			found: { prep: [{ project_id: entry.project_id, project_title: entry.project_title }], review_room: null },
+			missing: ['review_room'], link_to: null, choices: ['upscale', 'remake'],
+			picture: { ...picture, project_id: entry.project_id, reference_page_id: page }
 		});
 	}
 	return items.map((item, i) => ({ item, i })).sort((a, b) => KIND_ORDER[a.item.kind] - KIND_ORDER[b.item.kind] || a.i - b.i).map(({ item }) => item);

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { RequestHandler } from './$types';
 import { getGateway, getNotionToken, getPrepDeps, getProjectStore, getReferenceFileDeps, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
 import { checkSeriesDrift } from '$lib/server/drift';
+import { probeMedia } from '$lib/server/media-probe';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries, importEpisode, treeEpisodes } from '$lib/server/series';
 import { syncSeriesToNotion, trashQueuedPages } from '$lib/server/notion-sync';
@@ -16,7 +17,7 @@ import { notionFailure } from '../notion-errors';
  */
 async function driftAfter(seriesId: string) {
 	try {
-		const checked = await checkSeriesDrift({ ...(await getPrepDeps()), client: getReferenceFileDeps()?.client ?? null }, seriesId);
+		const checked = await checkSeriesDrift({ ...(await getPrepDeps()), client: getReferenceFileDeps()?.client ?? null, probe: probeMedia }, seriesId);
 		return checked ? (checked.ok ? { project_id: checked.project_id, report: checked.report } : { error: checked.message }) : null;
 	} catch (cause) { return { error: cause instanceof Error ? cause.message : 'The drift check failed' }; }
 }
