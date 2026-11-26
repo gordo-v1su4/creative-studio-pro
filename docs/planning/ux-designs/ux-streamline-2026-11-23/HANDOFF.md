@@ -9,23 +9,35 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 
 ### Next session starts here (2026-11-25)
 
-- **Grilled and decided (2026-11-25): ADR 0012**, Notion is the master of names, edited from the app, with a drift
-  check (supersedes 0010; glossary: Drift check, Old). The checker is built in **Prep's turn**, not now. Next:
-  `/to-tickets` from its spec (`specs/drift-check.md`, GitHub #28, Linear V1S-506), plus one ticket per approved audition screen, then work them the way
-  `AGENTS.md` ("From idea to built") says: tickets in GitHub and Linear, one session per ticket. From then on
-  this file points at open tickets instead of listing work.
+- **Drift check: decided (ADR 0012), specced and ticketed (2026-11-25).** Spec `specs/drift-check.md` = GitHub #28 /
+  Linear V1S-506. Work the tickets the way `AGENTS.md` ("From idea to built") says: one session per ticket whose
+  blockers are closed, both trackers updated as it goes. Built in Prep's turn of the screen order.
+
+  | Ticket | GitHub | Linear | Blocked by |
+  | --- | --- | --- | --- |
+  | 01 Keep the Notion trash queue across a re-check (bug) | #29 | V1S-507 | none |
+  | 02 Adding a reference in Prep writes Notion first | #30 | V1S-508 | none |
+  | 07 Keep the full-size sheet, send 2K | #31 | V1S-509 | none |
+  | 03 The drift check in the Agent chat, with "add to Notion" | #32 | V1S-510 | 02 |
+  | 04 Mark a stray sheet as old | #33 | V1S-511 | 03 |
+  | 05 Link a stray sheet to its Notion reference | #34 | V1S-515 | 04 |
+  | 06 A rename in Notion is caught | #35 | V1S-516 | 04 |
+  | 08 Undersized picture: upscale (price first) or remake | #36 | V1S-512 | 03, 07 |
+  | 09 The check runs by itself; Prep shows each reference's standing | #37 | V1S-513 | 03 |
+  | 10 Answer several items at once | #38 | V1S-514 | 03 |
+  | 11 Bring in TR110's sixteen, fix the three strays (ready-for-human, real writes) | #39 | V1S-517 | 05, 08, 10 |
+
+  Still to ticket: one per approved audition screen (`issues/01`–`03`).
 - **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
   under a master prompt that keeps it to the house structure, free to talk creatively ("does this sequence work
   together? let me watch it"), cost and quality to be tried. That reopens ADR 0009. Look at OpenAI's realtime API
   and Trigger.dev's realtime voice support then, not before.
-- **Bug found while grilling:** `connectSeries` (`src/lib/server/series.ts:99`) rebuilds the series record without
-  `notion_trash`, so every refresh or sync drops the queue of shot pages waiting to be trashed in Notion.
 - **Auditions are the mocks now**, built on TR130's real material, in the old session's scratchpad (`cards/`:
   `shots.html`, `story.html`, `prep.html`, served by a temporary `look-preview` entry in `.claude/launch.json`,
   since removed). The scratchpad may be gone; the decisions are in `issues/01`–`04`. If the files are gone,
   rebuild from those notes, not from memory.
-- **Nothing was built in the app and nothing is committed.** Don't send TR110's sixteen references or the three
-  stray Review Room sheets (Lucian Vale, Bryson, Kai's sunglasses) by hand; the checker is meant to fix them.
+- **Nothing was built in the app yet.** Don't send TR110's sixteen references or the three
+  stray Review Room sheets (Lucian Vale, Bryson, Kai's sunglasses) by hand; ticket 11 (#39, V1S-517) does that.
 
 ### How to work now
 
