@@ -5,7 +5,7 @@ import type { ProjectStore } from '$lib/adapters/project-store';
 import type { Project, StillSend } from '$lib/domain/schemas';
 import { approvalProblems, episodeSpend, stillApproval, type StillApproval } from '$lib/domain/stills';
 import { type ImageGenerator } from './higgsfield';
-import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 
 /**
  * One still through the approval step (V1S-373): quote shows the operator the prompt, the references in attach
@@ -32,7 +32,7 @@ const fail = (status: number, message: string, reasons?: string[]): Failure => (
 export const NO_CLI = 'The Higgsfield CLI was not found; install it and run "higgsfield auth login" (see Settings)';
 
 export async function quoteStill(deps: Pick<StillDeps, 'images'>, project: Project, input: StillInput): Promise<StillApproval> {
-	const model = IMAGE_MODELS[input.model ?? 'gpt_image_2_5'];
+	const model = IMAGE_MODELS[input.model ?? DEFAULT_IMAGE_MODEL];
 	const blocked = [...(input.blocked ?? [])];
 	let credits: number | null = null;
 	if (!deps.images) blocked.push(NO_CLI);
@@ -60,7 +60,7 @@ export async function sendStill(deps: StillDeps, input: StillInput & { project_i
 	let jobId: string;
 	try { ({ job_id: jobId } = await deps.images!.submit({ prompt: now.prompt, references: now.references.map((ref) => ref.file), aspect_ratio: input.aspect_ratio, ...(input.model ? { model: input.model } : {}) })); }
 	catch (cause) { return fail(502, cause instanceof Error ? cause.message : 'Send failed'); }
-	const model = IMAGE_MODELS[input.model ?? 'gpt_image_2_5'];
+	const model = IMAGE_MODELS[input.model ?? DEFAULT_IMAGE_MODEL];
 	const recorded = await deps.gateway.recordStillSend(project.project_id, project.version, {
 		job_id: jobId, purpose: input.purpose, model: model.job_type, resolution: model.resolution, credits: now.credits ?? 0,
 		prompt: now.prompt.slice(0, 20_000), references: now.references.map((ref) => ref.name.slice(0, 300)).slice(0, 16), approval_key: now.approval_key, sent_at: new Date().toISOString()

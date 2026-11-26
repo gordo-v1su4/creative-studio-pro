@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { SeedanceRequest } from '$lib/domain/animate';
-import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
 
 /**
  * Video generator seam (Animate) and its Higgsfield implementation through
@@ -93,7 +93,7 @@ const STATUS: Record<string, GenerationStatus> = {
 /** The job id in whatever shape `generate create` printed (an object, a list, or {jobs:[…]}). */
 export function jobIdOf(value: unknown): string | null {
 	const first = Array.isArray(value) ? value[0] : (value as { jobs?: unknown[] })?.jobs?.[0] ?? value;
-	// GPT Image 2.5 answers with a plain list of job ids (2026-10-25).
+	// Some image jobs answer with a plain list of job ids (GPT Image 2.5, 2026-10-25).
 	if (typeof first === 'string') return first.trim() || null;
 	const id = (first as { id?: unknown; job_id?: unknown })?.id ?? (first as { job_id?: unknown })?.job_id;
 	return typeof id === 'string' && id ? id : null;
@@ -142,11 +142,10 @@ export function createHiggsfieldSfx(run: CliRunner): SoundEffectGenerator {
 }
 
 /**
- * Every still (V1S-373, ADR 0003): references, keyframes and grids are GPT Image 2.5 Sunburst (not the default Flare)
- * at 2K, high quality, on
- * the operator's account. References attach in the order given (image 1, image 2…).
+ * Every still (V1S-373, ADR 0003; V1S-522): references, keyframes and grids are ChatGPT Image 2.6 Sunburst at 2K,
+ * high quality, on the operator's account, unless Prep picked Nano Banana Pro. References attach in the order given.
  */
-export const STILL_MODEL = IMAGE_MODELS.gpt_image_2_5;
+export const STILL_MODEL = IMAGE_MODELS[DEFAULT_IMAGE_MODEL];
 /** Grids are square (2×2 or 3×3); other stills say their own aspect. */
 export interface StillRequest { prompt: string; references: string[]; aspect_ratio?: string; model?: ImageModelId }
 export interface ImageGenerator {
@@ -156,10 +155,9 @@ export interface ImageGenerator {
 }
 
 export function stillArgs(request: StillRequest, promptFile: string): string[] {
-	const model = IMAGE_MODELS[request.model ?? 'gpt_image_2_5'];
+	const model = IMAGE_MODELS[request.model ?? DEFAULT_IMAGE_MODEL];
 	return [
 		model.job_type, '--prompt', `@${promptFile}`, '--aspect_ratio', request.aspect_ratio ?? '1:1',
-		...('variant' in model ? ['--variant', model.variant] : []),
 		...('quality' in model ? ['--quality', model.quality] : []), '--resolution', model.resolution,
 		...request.references.slice(0, 14).flatMap((file) => ['--image-references', file])
 	];

@@ -19,7 +19,7 @@ import { seriesReferenceIds } from '$lib/domain/shot-references';
 
 /**
  * Grid stills (V1S-278): a scene's shots without a still, up to nine per grid, each grid one square still
- * (GPT Image 2.5 at 2K since V1S-373). Quote lints every grid and builds its approval (prompt, references in
+ * (ChatGPT Image 2.6 at 2K since V1S-522). Quote lints every grid and builds its approval (prompt, references in
  * attach order, credits, the episode's running total); send goes through the approval step (nothing is spent
  * while a prompt is blocked, the price rose, or the prompt changed since the approval); settle downloads the
  * grid, splits it with the splitter service and adds one still take per shot, each remembering its grid and panel.

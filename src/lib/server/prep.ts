@@ -7,7 +7,7 @@ import {
 	type PrepEntry, type PrepFile, type PrepState, type ReferenceSpec, type ScaleCheck, type PrepKind, type PrepScene
 } from '$lib/domain/prep';
 import type { StillApproval } from '$lib/domain/stills';
-import { IMAGE_MODELS, type ImageModelId } from '$lib/domain/image-models';
+import { IMAGE_MODELS, WORDING_26, highFrequencyWords, needsCleanWording, soften26, type ImageModelId } from '$lib/domain/image-models';
 import { generateStructured, type AgentModelClient, type ModelImage } from './model-provider';
 import { readAgentSkill, readPromptingGuide } from './agent-skills';
 import { quoteStill, sendStill, settleStill, type StillDeps } from './stills';
@@ -20,7 +20,7 @@ import { characterSheetInputsSchema, fillCharacterSheet, type CharacterSheetInpu
 /**
  * Prep (V1S-374): list what an episode needs, take source images, let the Agent draft each reference spec with
  * the app's ONE SHOT skill, write the prompt from the approved spec, make the sheet through the approval card
- * (GPT Image 2.5, 2K), stamp the exact name on it and land it in the series' `_References` (the References
+ * (ChatGPT Image 2.6 Sunburst, 2K), stamp the exact name on it and land it in the series' `_References` (the References
  * drawer). A sheet made outside the app with the skill can be attached instead. State lives in
  * `<project>/prep.json`; source images and sheets under `<project>/files/prep/`.
  */
@@ -295,6 +295,7 @@ async function skillSystem(builder?: PrepState['workflow']): Promise<string> {
 
 function entryContext(view: PrepView, project: Project, record: SeriesRecord | null): string {
 	const scenes = (project.series?.scenes ?? []).filter((scene) => view.entry.scenes.some((s) => s.page_id === scene.page_id));
+	const attached = renderSources(view.state);
 	const mentions = scenes.map((scene) => {
 		const text = [scene.summary, scene.story_beats].join('\n');
 		const first = view.entry.name.split(/\s+/)[0];
@@ -305,7 +306,7 @@ function entryContext(view: PrepView, project: Project, record: SeriesRecord | n
 	return [
 		`Reference: ${view.entry.name} (${view.entry.kind})${view.entry.role ? ` — ${view.entry.role}` : ''}`,
 		`Template: ${view.template}`,
-		`Source images attached: ${view.state.sources.length ? view.state.sources.map((s, i) => `image ${i + 1} = ${s.name}`).join(', ') : 'none'}`,
+		`Source images attached to the render: ${attached.length ? attached.map((s, i) => `image ${i + 1} = ${s.name}`).join(', ') : 'none'}`,
 		`The season (setting and look):\n${story}`,
 		`Scenes in this episode that use it:\n${mentions || '(none listed)'}`
 		, `This production's story and direction:\n${project.production.premise}`
@@ -318,9 +319,9 @@ function zPrompt(value: unknown): string {
 	return prompt;
 }
 
-async function sourceImages(state: PrepState): Promise<ModelImage[]> {
+async function sourceImages(state: PrepState, sources = state.sources): Promise<ModelImage[]> {
 	const out: ModelImage[] = [];
-	for (const source of state.sources.slice(0, 6)) {
+	for (const source of sources.slice(0, 6)) {
 		const ext = extname(source.file).toLowerCase();
 		try { out.push({ data: new Uint8Array(await readFile(source.file)), mediaType: ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg' }); } catch { /* a missing file is skipped */ }
 	}
@@ -386,7 +387,7 @@ export async function saveSpec(deps: Pick<PrepDeps, 'projectRoot' | 'series'>, p
 /** The identity and hand-off fields a character spec carries (ONE SHOT settings-and-qc.md, File 11). */
 const IDENTITY_FIELDS = ', "identity": {"sex": "male|female|…", "age": 19, "height_cm": 178, "build": "lean wiry free-runner", "face": "the face in one clause", "eyes": "amber eyes", "hair": "bleached platinum curls", "marks": "two silver lower-lip rings"}, "owned_element": "what supernatural element is theirs, or empty", "owned_colour": {"name": "amber", "hex": "#D98A2B"}, "powers": ["named powers, stable names"], "ownership_lock": "one sentence: how the element shows physically and what it is never mistaken for"';
 /** How the writer splits the attached images (ONE SHOT settings-and-qc: every reference image gets exactly one job, named). */
-const IMAGE_JOBS = 'Look at every attached image and give each one exactly one job, named in the prompt as "Image N controls …" (never "combine these naturally"). The image with the closest, sharpest view of the face controls the face; the image that shows the whole body best controls the body: build, muscle, proportions (leg length against torso) and the wardrobe as it sits on the body. Any other image gets its own named job, or is named as not used. Take no background, weather or light from any image.';
+const IMAGE_JOBS = 'Image 1 is the one reference attached (one reference beats several): name its job in the prompt as "Image 1 controls …", and say plainly what to keep from it and what to fix or change. Take no background, weather or light from it.';
 const IDENTITY_RULES = '\nEvery character has an age and a height in centimetres: take them from the story, a data card on a source image, or the build you can see; never leave them out. Write face, eyes, hair and marks as short clauses, the way the CHARACTER hand-off line reads.';
 
 /** The look sections every character sheet prompt carries (oneshot-image-prompts output format). */
@@ -394,8 +395,11 @@ export const SHEET_SECTIONS = ['GRADE', 'CAMERA', 'REALISM', 'LOCKS', 'AVOID'] a
 
 /** QC on a reference prompt before the approval card (V1S-374). */
 export function prepQc(prompt: string, view: PrepView): string[] {
-	if (view.state.workflow) return joeyPromptIssues(prompt, view.state);
-	const out: string[] = [];
+	const words = needsCleanWording(view.state.image_model) ? highFrequencyWords(prompt) : [];
+	const wording = words.length ? [`${IMAGE_MODELS[view.state.image_model].label} comes back splotchy with high-frequency wording: take out ${words.map((word) => `"${word}"`).join(', ')} (they may only appear under AVOID)`] : [];
+	if (view.state.workflow) return [...joeyPromptIssues(prompt, view.state), ...wording];
+	const out: string[] = [...wording];
+	const attached = renderSources(view.state);
 	const preserveBody = !!view.state.body_source_url;
 	if (!prompt.includes(view.entry.name)) out.push(`The prompt must call it by its exact name, "${view.entry.name}"`);
 	if (/\bneon\b/i.test(prompt)) out.push('The prompt uses the word "neon"; describe the light another way');
@@ -422,8 +426,8 @@ export function prepQc(prompt: string, view: PrepView): string[] {
 	}
 	// The skill's look blocks, each as its own labelled section, so every sheet says how it should look.
 	if (view.entry.kind === 'character') for (const section of SHEET_SECTIONS) if (!new RegExp(`^\\s*\\**${section}\\**\\s*:`, 'mi').test(prompt)) out.push(`The ${section} section is missing ("${section}: …" on its own line)`);
-	for (const [i, source] of view.state.sources.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`, 'i').test(prompt) && view.state.sources.length) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
-	if (view.state.sources.length > 1 && !/\bimage \d+ controls\b/i.test(prompt)) out.push('Give each attached image its one job in the prompt ("Image N controls …")');
+	for (const [i, source] of attached.entries()) if (!new RegExp(`\\bimage ${i + 1}\\b`, 'i').test(prompt)) { out.push(`Source image ${i + 1} (${source.name}) is attached but the prompt never names "image ${i + 1}"`); break; }
+	if (attached.length > 1 && !/\bimage \d+ controls\b/i.test(prompt)) out.push('Give each attached image its one job in the prompt ("Image N controls …")');
 	return out;
 }
 
@@ -461,13 +465,25 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 		const client = await deps.agent(project);
 		if (!client) return fail(503, 'No Agent model is configured');
 		const { workflow, spec, sources } = view.state;
-		const prompt = await generateStructured(client, { system: await skillSystem(workflow), prompt: `Write the full image prompt for the confirmed ${workflow.stage} task. Return JSON only {"prompt":"the whole prompt"}. Follow the skill's complete structure and verbatim closes. Do not put names, image tags, aspect ratios or ages in the image prompt. Metadata names remain outside it. Do not append the older ONE SHOT hand-off line. Render photoreal unless the owner explicitly requests animation.\nFacts:\n${JSON.stringify(spec)}\nApproved predecessor reference: ${workflow.approved_source_url ?? 'none required at this station'}\nAttached references in order:\n${sources.map((source, i) => `${i + 1}: ${source.name}${source.url === workflow.approved_source_url ? ' (approved predecessor)' : ''}`).join('\n')}\nProduction context:\n${entryContext(view, project, found.record)}`, images: await sourceImages(view.state), maxOutputTokens: 6000, timeoutMs: 180_000 }, value => zPrompt(value));
-		const issues = prepQc(prompt, view);
+		const attached = renderSources(view.state);
+		const cleanWording = needsCleanWording(view.state.image_model);
+		const references = attached.length
+			? `Attached to the render, in order:\n${attached.map((source, i) => `${i + 1}: ${source.name}${source.url === workflow.approved_source_url ? ' (approved predecessor)' : ''}`).join('\n')}`
+			: `Nothing is attached to the render: it is text only (a location prompt works best with no reference), so describe the place fully in words.${sources.length ? ` The sources are shown to you only to look at:\n${sources.map((source, i) => `${i + 1}: ${source.name}`).join('\n')}` : ''}`;
+		const finish = cleanWording ? `\nThe render is ${IMAGE_MODELS[view.state.image_model].label}. ${WORDING_26} This overrides the skill's finish lines and contrast doctrine: keep their lens, film rendition, lifted blacks and low contrast, but write no grain and no micro contrast or razor texture.` : '';
+		const ask = `Write the full image prompt for the confirmed ${workflow.stage} task. Return JSON only {"prompt":"the whole prompt"}. Follow the skill's complete structure and verbatim closes. Do not put names, image tags, aspect ratios or ages in the image prompt. Metadata names remain outside it. Do not append the older ONE SHOT hand-off line. Render photoreal unless the owner explicitly requests animation.${finish}\nFacts:\n${JSON.stringify(spec)}\nApproved predecessor reference: ${workflow.approved_source_url ?? 'none required at this station'}\n${references}\nProduction context:\n${entryContext(view, project, found.record)}`;
+		const system = await skillSystem(workflow);
+		const images = await sourceImages(view.state);
+		const write = async (text: string) => { const prompt = await generateStructured(client, { system, prompt: text, images, maxOutputTokens: 6000, timeoutMs: 180_000 }, value => zPrompt(value)); return cleanWording ? soften26(prompt) : prompt; };
+		let prompt = await write(ask);
+		let issues = prepQc(prompt, view);
+		for (let round = 0; issues.length && round < 2; round++, issues = prepQc(prompt, view)) prompt = await write(`${ask}\n\nYOUR PROMPT:\n${prompt}\n\nTHE QC FOUND (fix every one, change nothing else):\n${issues.map((issue) => `- ${issue}`).join('\n')}\n\nReturn JSON only {"prompt":"the whole corrected prompt"}`);
 		if (issues.length) return fail(422, 'The reference prompt needs correction', issues);
 		return { ok: true, prep: await update(deps.projectRoot, project.project_id, key, state => ({ ...state, workflow, prompt, prompt_edited: false })) };
 	}
 	const preserveBody = view.entry.kind === 'character' && !!view.state.body_source_url;
-	const bodyIndex = view.state.sources.findIndex((source) => source.url === view.state.body_source_url) + 1;
+	const attached = renderSources(view.state);
+	const bodyIndex = attached.findIndex((source) => source.url === view.state.body_source_url) + 1;
 	if (preserveBody && !bodyIndex) return fail(400, 'The selected body reference is no longer attached');
 	const gaps = factsGaps(view.state.spec, view.entry.kind, preserveBody);
 	if (!view.state.spec || gaps.length) return fail(400, `Fill in ${gaps.join(', ')} first`);
@@ -476,16 +492,16 @@ export async function writePrompt(deps: PrepDeps, project: Project, key: string)
 		: 'NO BODY REFERENCE: the attached images, if any, control the face or wardrobe only. Create a detailed coherent body from the facts: height in centimetres, build and natural proportions. Use the same full-person scale and foot baseline for front and rear; omit the front head above the collarbones without enlarging or moving the body upward, leaving empty background above the shoulders. Do not pretend an unseen body is being preserved.';
 	const client = await deps.agent(project);
 	if (!client) return fail(503, 'No Agent model is set up for this project (Settings)');
-	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec, preserveBody)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for ${IMAGE_MODELS[view.state.image_model].label} at 2K${'quality' in IMAGE_MODELS[view.state.image_model] ? ', high quality' : ''}. Call it by its exact name. ${view.state.sources.length ? `${view.state.sources.length} source image${view.state.sources.length > 1 ? 's are' : ' is'} attached, in this order: ${view.state.sources.map((s, i) => `image ${i + 1}`).join(', ')}; refer to them as "image 1", "image 2"… exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. ${bodyInstructions} Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age from the facts and its looks from the images. When a body reference is selected, omit all body descriptions and measurements. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec, preserveBody)}` : ''} Never use the word "neon", not even in the AVOID line. Return only JSON: {"prompt": "the whole prompt"}`;
+	const ask = `${entryContext(view, project, found.record)}\n\nTHE FACTS (what the pictures cannot say):\n${factsText(view.state.spec, preserveBody)}\n\nWrite the finished image prompt with template ${view.template}, exactly as the skill's output format says, for ${IMAGE_MODELS[view.state.image_model].label} at 2K${'quality' in IMAGE_MODELS[view.state.image_model] ? ', high quality' : ''}. Call it by its exact name. ${attached.length ? `${attached.length} source image${attached.length > 1 ? 's are' : ' is'} attached, in this order: ${attached.map((s, i) => `image ${i + 1}`).join(', ')}; refer to ${attached.length > 1 ? 'them as "image 1", "image 2"…' : 'it as "image 1"'} exactly. ${IMAGE_JOBS}` : 'No images are attached.'}${view.entry.kind === 'character' ? ` The first (left) panel is the straight-on face close-up: face square to the camera, looking into the lens, never three-quarter. Every character sheet sits on the house near-white seamless studio backdrop, the same for the whole cast: never a location, a night exterior or a dark studio (the season look is for shots, not sheets). Give the look as its own labelled sections, each on its own line: GRADE:, CAMERA:, REALISM:, LOCKS: and AVOID:. GRADE is muted natural colour like the rest of the cast: true skin tones and real clothing colours, gently muted. ${bodyInstructions} Mouth closed. Keep AVOID short; it lists fangs and leg lengthening. The SUBJECT takes age from the facts and its looks from the images. When a body reference is selected, omit all body descriptions and measurements. End the prompt with this CHARACTER hand-off line, word for word, on its own line: ${handOffLine(view.state.spec, preserveBody)}` : ''} Never use the word "neon", not even in the AVOID line.${needsCleanWording(view.state.image_model) ? ` ${WORDING_26} This overrides any grain or micro-detail line in the skill or the house look.` : ''} Return only JSON: {"prompt": "the whole prompt"}`;
 	const system = await skillSystem();
 	const parse = (value: unknown) => {
 		// The skill's output format puts the prompt in a "copy box"; the fences are not part of the prompt.
 		const text = String((value as { prompt?: unknown })?.prompt ?? '').replace(/^\s*```[\w-]*\s*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 		if (text.length < 80) throw new Error('prompt: too short');
-		return { prompt: text };
+		return { prompt: needsCleanWording(view.state.image_model) ? soften26(text) : text };
 	};
 	// The writer sees the images themselves: that is how it gives each one its job.
-	const images = await sourceImages(view.state);
+	const images = await sourceImages(view.state, attached);
 	let { prompt } = await generateStructured(client, { system, prompt: ask, images, maxOutputTokens: 3000, timeoutMs: 180_000 }, parse);
 	// The QC runs before the operator sees the card; the Agent fixes what it finds itself (up to two rounds).
 	for (let round = 0, issues = prepQc(prompt, view); issues.length && round < 2; round++, issues = prepQc(prompt, view)) {
@@ -503,21 +519,30 @@ export async function editPrompt(deps: Pick<PrepDeps, 'projectRoot'>, projectId:
 
 // ---- make it: approval card, send, settle ----
 const ASPECTS = new Set(['1:1', '3:2', '2:3', '4:3', '3:4', '16:9', '9:16', '21:9', '4:5', '5:4']);
-/** The skill's output ends with a SETTINGS line naming the aspect ("GPT Image 2.5, 3:2 landscape"); else the kind's default. */
+/** The skill's output ends with a SETTINGS line naming the aspect ("ChatGPT Image 2.6, 3:2 landscape"); else the kind's default. */
 export function aspectOf(prompt: string | null, kind: PrepView['entry']['kind']): string {
 	// Every character sheet is 16:9, so the drawer's headshot (the left third) is the same frame for everyone.
 	if (kind === 'character') return '16:9';
 	const named = prompt?.match(/^SETTINGS:[^\n]*?\b(\d{1,2}:\d{1,2})\b/m)?.[1];
 	return named && ASPECTS.has(named) ? named : prepAspect(kind);
 }
-function sheetSources(state: PrepState) {
-	if (state.workflow?.builder !== 'castkit-v1' || state.workflow.stage !== 'sheet') return state.sources;
-	return [state.workflow.approved_source_url, state.sheet_inputs?.wardrobe_source_url].flatMap(url => state.sources.find(source => source.url === url) ?? []);
+/**
+ * What a render attaches (V1S-522). One reference, even a poor one, plus a prompt saying what to fix beats several:
+ * the approved predecessor or the chosen body reference, else the first source. A Scenecraft environment master is
+ * text only (the sources stay in Prep to look at). The Castkit sheet keeps its fixed identity + wardrobe pair.
+ */
+export function renderSources(state: PrepState): PrepState['sources'] {
+	const flow = state.workflow;
+	const find = (url: string | null | undefined) => state.sources.filter((source) => source.url === url);
+	if (flow?.builder === 'castkit-v1' && flow.stage === 'sheet') return [flow.approved_source_url, state.sheet_inputs?.wardrobe_source_url].flatMap(url => find(url));
+	if (flow?.builder === 'scenecraft-v1' && flow.stage === 'environment') return [];
+	const chosen = flow ? find(flow.approved_source_url) : find(state.body_source_url);
+	return (chosen.length ? chosen : state.sources).slice(0, 1);
 }
 const stillInput = (view: PrepView) => ({
 	model: view.state.image_model,
 	prompt: view.state.prompt ?? '',
-	attached: sheetSources(view.state).map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
+	attached: renderSources(view.state).map((source, i) => ({ name: `${view.entry.name} — source image ${i + 1} (${source.name})`, file: source.file, url: source.url })),
 	aspect_ratio: view.state.workflow?.builder === 'castkit-v1' && view.state.workflow.stage !== 'sheet' ? '3:4' : aspectOf(view.state.prompt, view.entry.kind),
 	blocked: view.state.prompt ? prepQc(view.state.prompt, view) : ['Write the prompt first']
 });

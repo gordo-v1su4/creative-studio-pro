@@ -11,6 +11,7 @@ import type { AgentModelClient } from '../../src/lib/server/model-provider';
 import { uploadReferences, type GenerationStatus, type StillRequest } from '../../src/lib/server/higgsfield';
 import { addPrepEntry, setPrepWorkflow, useCurrentAsSource, setSheetInputs, editPrompt, setPrepVersionRemoved } from '../../src/lib/server/prep';
 import { characterSheetInputsSchema, fillCharacterSheet } from '../../src/lib/domain/character-sheet';
+import { RETIRED_IMAGE_MODELS } from '../../src/lib/domain/image-models';
 import { addSource, aspectOf, attachOutside, usePrepVersion, draftSpec, readPrep, removeSource, prepQc, prepView, quotePrep, saveSpec, sendPrep, setBodySource, setImageModel, settlePrep, writePrompt, type PrepDeps } from '../../src/lib/server/prep';
 
 const roots: string[] = [];
@@ -275,6 +276,8 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		const project = async () => (await deps.store.readProject(projectId))!;
 		await draftSpec(deps, await project(), 'r-mara');
 		await writePrompt(deps, await project(), 'r-mara');
+		// Start from the other model, so the change makes the earlier approval stale.
+		await setImageModel(deps, await project(), 'r-mara', model === 'gpt_image_2_6' ? 'nano_banana_pro' : 'gpt_image_2_6');
 		const before = await quotePrep(deps, await project(), 'r-mara');
 		if (!before.ok) throw new Error(before.message);
 		const changed = await setImageModel(deps, await project(), 'r-mara', model);
@@ -297,7 +300,7 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(submitted[0].model).toBe(model);
 		expect(submitted[0].aspect_ratio).toBe('16:9');
 		expect((await project()).production.still_sends?.[0].model).toBe(model);
-		expect((await setImageModel(deps, await project(), 'r-mara', 'gpt_image_2_5')).ok).toBeFalse();
+		expect((await setImageModel(deps, await project(), 'r-mara', Object.keys(RETIRED_IMAGE_MODELS)[0] as never)).ok).toBeFalse();
 	});
 	test('an explicit original body omits physique facts and blocks their reintroduction, while portraits keep the design path', async () => {
 		const { deps, projectId, asks } = await setup();
@@ -364,7 +367,7 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect([quoted.approval.blocked, quoted.approval.credits, quoted.approval.aspect_ratio]).toEqual([[], 2.75, '16:9']);
 		const sent = await sendPrep(deps, await project(), 'r-mara', { approval_key: quoted.approval.approval_key, confirmed_credits: 2.75 });
 		if (!sent.ok) throw new Error(sent.message);
-		expect(submitted[0]).toEqual({ prompt: PROMPT, references: [], aspect_ratio: '16:9', model: 'gpt_image_2_5' });
+		expect(submitted[0]).toEqual({ prompt: PROMPT, references: [], aspect_ratio: '16:9', model: 'gpt_image_2_6' });
 		expect((await project()).production.still_sends?.map((s) => [s.purpose, s.credits])).toEqual([['reference', 2.75]]);
 
 		expect(await settlePrep(deps, await project(), 'r-mara')).toEqual({ ok: true, pending: true });
@@ -400,14 +403,12 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(prepQc(PROMPT.replace('collarbones', 'chin'), view!).join(' ')).toContain('collarbones');
 		expect(prepQc(PROMPT.replace(HAND_OFF, ''), view!).join(' ')).toContain('CHARACTER hand-off line');
 		expect(prepQc(PROMPT.replace('near-white seamless studio backdrop', 'rainy street at night'), view!).join(' ')).toContain('near-white seamless studio backdrop');
-		// Two images: each needs its named job ("Image N controls …"), which the writer decides by looking at them.
+		// Two sources: only one is attached to the render (one reference beats several, V1S-522), so the prompt names image 1 only.
 		const second = await addSource(deps, projectId, 'r-mara', { file_name: 'body.png', bytes: new Uint8Array([4, 5, 6]) });
 		if (!second.ok) throw new Error(second.message);
 		const two = await prepView(deps, await project());
 		const twoView = two.ok ? two.items[0] : null;
-		const named = PROMPT.replace('Create a', 'Using image 1 and image 2, create a');
-		expect(prepQc(named, twoView!).join(' ')).toContain('Image N controls');
-		expect(prepQc(named.replace('Using', 'Image 1 controls the face; image 2 controls the body. Using'), twoView!).join(' ')).not.toContain('Image N controls');
+		expect(prepQc(PROMPT.replace('Create a', 'Using image 1, create a'), twoView!)).toEqual([]);
 		await removeSource(deps, projectId, 'r-mara', second.prep.entries['r-mara'].sources[1].url);
 		// Removing the source takes it (and its copy) off the entry and back to T1, spec cleared.
 		const removed = await removeSource(deps, projectId, 'r-mara', added.prep.entries['r-mara'].sources[0].url);
@@ -418,8 +419,8 @@ describe('Prep end to end against fakes (V1S-374)', () => {
 		expect(prepQc(`${PROMPT} image 1 neon glow`, view!).join(' ')).toContain('"neon"');
 		// The skill's SETTINGS line names the canvas; without one the kind's default applies.
 		// Character sheets are always 16:9 (the drawer's headshot frame); other kinds take the skill's SETTINGS aspect.
-		expect(aspectOf(`${PROMPT}\nSETTINGS: GPT Image 2.5, 3:2 landscape, high quality.`, 'character')).toBe('16:9');
-		expect(aspectOf('SETTINGS: GPT Image 2.5, 3:2 landscape.', 'location')).toBe('3:2');
+		expect(aspectOf(`${PROMPT}\nSETTINGS: ChatGPT Image 2.6, 3:2 landscape, high quality.`, 'character')).toBe('16:9');
+		expect(aspectOf('SETTINGS: ChatGPT Image 2.6, 3:2 landscape.', 'location')).toBe('3:2');
 		expect(aspectOf(PROMPT, 'character')).toBe('16:9');
 	});
 	test('prep.json stores paths relative to the project, and a project made on another machine still finds its files', async () => {
@@ -485,5 +486,96 @@ describe('Drift 07: a Prep sheet larger than 2K (V1S-509)', () => {
 		expect(file).toMatchObject({ width: 2048, height: 1152 });
 		expect(file.source_image).toMatchObject({ file_name: basename(attached.prep.entries['r-mara'].result!.source_file!), width: 4096, height: 2304 });
 		expect(new Uint8Array(await readFile(join(root, 'sources', file.source_image!.folder, file.source_image!.file_name)))).toEqual(new Uint8Array([4, 0, 9, 6]));
+	});
+});
+
+describe('one reference, text-only locations, 2.6 wording (V1S-522)', () => {
+	test('a Prep render attaches one reference, the body reference when one is chosen', async () => {
+		const { deps, projectId, submitted } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		await draftSpec(deps, await project(), 'r-mara');
+		await addSource(deps, projectId, 'r-mara', { file_name: 'face.png', bytes: new Uint8Array([1]) });
+		const added = await addSource(deps, projectId, 'r-mara', { file_name: 'body.png', bytes: new Uint8Array([2]) });
+		if (!added.ok) throw new Error(added.message);
+		const [face, body] = added.prep.entries['r-mara'].sources;
+		const named = PROMPT.replace('Create a', 'Image 1 controls the face. Create a');
+		deps.agent = async () => ({ choice: { provider: 'kimi', model: 'k3' } as never, generate: async ({ prompt, images }) => { expect(images).toHaveLength(1); expect(prompt).toContain('1 source image is attached'); return JSON.stringify({ prompt: named }); } });
+		const written = await writePrompt(deps, await project(), 'r-mara');
+		if (!written.ok) throw new Error(written.message);
+		const quoted = await quotePrep(deps, await project(), 'r-mara');
+		if (!quoted.ok) throw new Error(quoted.message);
+		expect(quoted.approval.references.map((ref) => ref.file)).toEqual([face.file]);
+		expect(quoted.approval.blocked).toEqual([]);
+		const sent = await sendPrep(deps, await project(), 'r-mara', { approval_key: quoted.approval.approval_key, confirmed_credits: 2.75 });
+		if (!sent.ok) throw new Error(sent.message);
+		expect(submitted[0].references).toEqual([face.file]);
+		// A chosen body reference is the one attached instead.
+		const prep = await readPrep(deps.projectRoot, projectId);
+		await writeFile(join(deps.projectRoot, projectId, 'prep.json'), JSON.stringify({ ...prep, entries: { ...prep.entries, 'r-mara': { ...prep.entries['r-mara'], job: null } } }), 'utf8');
+		await setBodySource(deps, projectId, 'r-mara', body.url);
+		await editPrompt(deps, projectId, 'r-mara', named);
+		const again = await quotePrep(deps, await project(), 'r-mara');
+		if (!again.ok) throw new Error(again.message);
+		expect(again.approval.references.map((ref) => ref.file)).toEqual([body.file]);
+	});
+
+	test('a prompt for 2.6 with high-frequency wording is blocked before spend; Nano Banana Pro is not held to it', async () => {
+		const { deps, projectId, asks } = await setup();
+		const project = async () => (await deps.store.readProject(projectId))!;
+		await draftSpec(deps, await project(), 'r-mara');
+		await writePrompt(deps, await project(), 'r-mara');
+		expect(asks.at(-1)).toContain('splotchy');
+		const listed = await prepView(deps, await project());
+		if (!listed.ok) throw new Error(listed.message);
+		const view = listed.items[0];
+		expect(view.state.image_model).toBe('gpt_image_2_6');
+		expect(prepQc(PROMPT, view)).toEqual([]);
+		const gritty = PROMPT.replace('REALISM: real skin pores, real fabric.', 'REALISM: razor texture, heavy film grain, micro detail.');
+		expect(prepQc(gritty, view).join(' ')).toContain('high-frequency');
+		await editPrompt(deps, projectId, 'r-mara', gritty);
+		const quoted = await quotePrep(deps, await project(), 'r-mara');
+		expect(quoted.ok && quoted.approval.blocked.join(' ')).toContain('high-frequency');
+		await setImageModel(deps, await project(), 'r-mara', 'nano_banana_pro');
+		const banana = await prepView(deps, await project());
+		if (!banana.ok) throw new Error(banana.message);
+		expect(prepQc(gritty, banana.items[0])).toEqual([]);
+	});
+
+	test('a Scenecraft environment master sends no source images to the render; coverage attaches only the approved master', async () => {
+		const { deps } = await setup();
+		const created = await deps.gateway.createProject({ command: 'create_project', title: 'Trailer', brief: '', creative_focus: 'full room', created_by: 'test' });
+		if (!created.ok) throw new Error(created.error.message);
+		const saved = await deps.gateway.saveProduction({ command: 'save_production', project_id: created.data.project_id, expected_version: created.data.version, production: { ...created.data.production, story_plan: { title: 'Trailer', sections: [{ id: 'act', title: 'Act 1', summary: '', moments: [{ id: 'm', title: 'Gym', beat: 'The gym at night.', duration_s: 8, characters: [], location: 'Campus gym', approved: false, shots: [] }] }] } } });
+		if (!saved.ok) throw new Error(saved.error.message);
+		const trailer = saved.data;
+		const listed = await prepView(deps, trailer);
+		if (!listed.ok) throw new Error(listed.message);
+		const key = listed.items.find((item) => item.entry.kind === 'location')!.entry.key;
+		await saveSpec(deps, trailer, key, { spec: referenceSpecSchema.parse({ name: 'Campus gym', kind: 'location', template: 'W3', notes: 'A college gym, bleachers on the left.' }), approve: false });
+		await addSource(deps, trailer.project_id, key, { file_name: 'plate-a.png', bytes: new Uint8Array([1]) });
+		const added = await addSource(deps, trailer.project_id, key, { file_name: 'plate-b.png', bytes: new Uint8Array([2]) });
+		if (!added.ok) throw new Error(added.message);
+		const ready = await setPrepWorkflow(deps, trailer, key, { stage: 'environment', confirm: true });
+		if (!ready.ok) throw new Error(ready.message);
+		const finish = 'A wide view of the college gym, bleachers on the left. Color-negative motion-picture film rendition, heavy fine grain across the entire frame and heaviest in the lifted shadows. Low macro contrast with blacks lifted at every depth; high micro contrast with razor texture in every surface — wood, metal, glass.\nNO ON-SCREEN TEXT: no captions, no logos.';
+		let ask = '';
+		deps.agent = async () => ({ choice: { provider: 'kimi', model: 'k3' } as never, generate: async ({ prompt }) => { ask = prompt; return JSON.stringify({ prompt: finish }); } });
+		const written = await writePrompt(deps, trailer, key);
+		if (!written.ok) throw new Error(written.ok === false ? written.message + (written.reasons ?? []).join('; ') : '');
+		expect(ask).toContain('splotchy');
+		expect(ask).toContain('text only');
+		const prompt = written.prep.entries[key].prompt!;
+		expect(prompt).not.toMatch(/grain|razor|micro contrast/i);
+		const quoted = await quotePrep(deps, trailer, key);
+		if (!quoted.ok) throw new Error(quoted.message);
+		expect(quoted.approval.references).toEqual([]);
+		expect(quoted.approval.blocked).toEqual([]);
+		const [, master] = added.prep.entries[key].sources;
+		const coverage = await setPrepWorkflow(deps, trailer, key, { stage: 'coverage', approved_source_url: master.url, confirm: true });
+		if (!coverage.ok) throw new Error(coverage.message);
+		await editPrompt(deps, trailer.project_id, key, 'A reverse angle of the same college gym, from the bleachers toward the doors, the same light and colour as the master.\nNO ON-SCREEN TEXT: none.');
+		const angle = await quotePrep(deps, trailer, key);
+		if (!angle.ok) throw new Error(angle.message);
+		expect(angle.approval.references.map((ref) => ref.file)).toEqual([master.file]);
 	});
 });

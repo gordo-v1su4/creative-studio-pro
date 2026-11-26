@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { approvalProblems, episodeSpend, stillApproval } from '../../src/lib/domain/stills';
 import { jobIdOf, stillArgs, STILL_MODEL } from '../../src/lib/server/higgsfield';
 
-const base = { prompt: 'Kai from image 1 on the roof.', attached: [{ name: 'Kai "Hoodie" Santana', file: 'C:/refs/kai.png', url: '/r/kai' }, { name: 'Video Haven', file: 'C:/refs/vh.png' }], model: 'GPT Image 2.5', resolution: '2K', aspect_ratio: '16:9', credits: 2.75, spent: 10, blocked: [] };
+const base = { prompt: 'Kai from image 1 on the roof.', attached: [{ name: 'Kai "Hoodie" Santana', file: 'C:/refs/kai.png', url: '/r/kai' }, { name: 'Video Haven', file: 'C:/refs/vh.png' }], model: 'ChatGPT Image 2.6 Sunburst', resolution: '2K', aspect_ratio: '16:9', credits: 2.75, spent: 10, blocked: [] };
 
 describe('the still approval step (V1S-373)', () => {
 	test('lists the references in attach order with their exact names, and the running total', () => {
@@ -27,17 +27,17 @@ describe('the still approval step (V1S-373)', () => {
 		expect(episodeSpend({})).toBe(0);
 	});
 
-	test('a job id comes back whatever shape the CLI prints (GPT Image 2.5 prints a plain list of ids)', () => {
+	test('a job id comes back whatever shape the CLI prints (some jobs print a plain list of ids)', () => {
 		expect(jobIdOf(['1dd55c04-3b6a-4013-bb58-3e6c27c02b13'])).toBe('1dd55c04-3b6a-4013-bb58-3e6c27c02b13');
 		expect(jobIdOf({ id: 'a' })).toBe('a');
 		expect(jobIdOf({ jobs: [{ job_id: 'b' }] })).toBe('b');
 		expect(jobIdOf([])).toBeNull();
 	});
 
-	test('stills go to GPT Image 2.5 at 2K, high quality, references in order', () => {
-		expect(STILL_MODEL).toMatchObject({ job_type: 'gpt_image_2_5', variant: 'sunburst', quality: 'high', resolution: '2k' });
+	test('stills go to ChatGPT Image 2.6 Sunburst at 2K, high quality, references in order', () => {
+		expect(STILL_MODEL).toMatchObject({ job_type: 'gpt_image_2_6', quality: 'high', resolution: '2k' });
 		expect(stillArgs({ prompt: 'x', references: ['a.png', 'b.png'], aspect_ratio: '16:9' }, 'p.json')).toEqual([
-			'gpt_image_2_5', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--variant', 'sunburst', '--quality', 'high', '--resolution', '2k', '--image-references', 'a.png', '--image-references', 'b.png'
+			'gpt_image_2_6', '--prompt', '@p.json', '--aspect_ratio', '16:9', '--quality', 'high', '--resolution', '2k', '--image-references', 'a.png', '--image-references', 'b.png'
 		]);
 	});
 	test('Nano Banana Pro uses its own flags without GPT quality or variant', () => {

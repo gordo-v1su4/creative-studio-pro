@@ -60,14 +60,18 @@ exists.
 - Locations carry distances: where each landmark stands and how far, in
   metres. A place with no metres collapses in scale.
 
-## 4. References: one job per image
+## 4. References: one reference, one job
 
-- Every attached image has exactly one named job, said in the prompt:
-  "image 1 controls the face; image 2 controls the body, build and wardrobe;
-  image 3 controls the light and colour only".
-- **When there is a face picture and a body picture, the face comes from the
-  closest, sharpest face picture and the body, muscles and clothes from the
-  full-body picture.** Never let the body image's small, soft face win.
+- **Attach one reference, not several** (operator, 2026-11-26). One image, even
+  a blurry or poor one, plus a prompt that says what to keep and what to fix,
+  works better than several. Prep attaches one: the chosen body reference or
+  approved predecessor, else the first source. (The Castkit sheet's fixed
+  identity + wardrobe pair is the one exception.)
+- **A location prompt works best with no reference.** A reference makes the
+  model copy it. A new location master (Scenecraft environment) is text only:
+  describe the place fully in words; the sources stay in Prep to look at.
+- The one attached image has one named job, said in the prompt: "image 1
+  controls the face", and the prompt says what to fix from it.
 - Whatever an image shows, the model copies, including what you did not want
   (wet hair from a rain close-up, a pose, a background). If an image carries
   something unwanted, give its job narrowly ("take only the face structure from
@@ -194,6 +198,31 @@ power as a physical event in four parts:
 | Bodies melt in a fight | Two actions per beat, no separation | One action per beat; they part after contact |
 | Unwanted music | Nothing said about sound | SOUND lists real sounds only |
 | Wet hair, wrong pose copied | A reference image carried it | Narrow that image's job or replace it |
+| A location comes back as a copy of the plate | A reference was attached | No reference: describe the place in words |
+| 2.6 comes back splotchy | High-frequency words (grain, grit, razor texture, micro detail) | Take them out (section 12) |
+
+## 12. Image models and 2.6 wording
+
+- **New images (from scratch): ChatGPT Image 2.6 Sunburst, 2K, 16:9, high.**
+  This is the default. GPT Image 2.5 is retired.
+- **Altering a picture** (the same look at a new angle or a new resolution):
+  Nano Banana Pro. Ask for the other angle; never "reproduce exactly".
+- **No high-frequency wording for 2.6.** 2.6 comes back splotchy with it, worst
+  with a reference attached. Never write "grungy", "dirt", "lots of detail",
+  "micro detail", "micro contrast", "razor texture", "grain" of any weight
+  (heavy grain, fine film grain, grainy shadows) or "hyper-detailed", outside
+  the AVOID line. Say what the surface is and how light falls on it instead
+  (worn varnish on the floor, scuffs along the baseline). This overrides any
+  grain or micro-detail line in a skill or the house look.
+- **Scenecraft's fixed finish lines, 2.6-safe.** Keep the lens, the film
+  rendition, low contrast, lifted blacks and soft highlight roll-off; write
+  "smooth even tonality across the whole frame" in place of "heavy fine grain
+  across the entire frame and heaviest in the lifted shadows", and "natural
+  true-scale texture in every surface" in place of "high micro contrast with
+  razor texture in every surface". Blacks are "lifted", never "lifted and
+  grainy". Prep makes these swaps itself on every prompt it writes for 2.6, and its prompt
+  check blocks a 2.6
+  prompt that still carries the words.
 
 ## Sources
 

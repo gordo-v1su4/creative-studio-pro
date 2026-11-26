@@ -68,13 +68,13 @@ describe('grid stills against fakes', () => {
 		const quoted = await quoteGrids(deps, project, 'g1');
 		if (!quoted.ok) throw new Error(quoted.message);
 		const approval = quoted.grids[0].approval;
-		expect([approval.model, approval.resolution, approval.aspect_ratio, approval.credits, approval.episode_spent, approval.episode_after]).toEqual(['GPT Image 2.5 Sunburst', '2K', '16:9', 4, 0, 4]);
+		expect([approval.model, approval.resolution, approval.aspect_ratio, approval.credits, approval.episode_spent, approval.episode_after]).toEqual(['ChatGPT Image 2.6 Sunburst', '2K', '16:9', 4, 0, 4]);
 		const sent = await sendGrid(deps, { project_id: project.project_id, group_id: 'g1', chunk: 0, confirmed_credits: 4, approval_key: approval.approval_key });
 		if (!sent.ok) throw new Error(sent.message);
 		expect(sent.card_ids).toEqual(['c0', 'c1']);
 		// The spend is logged on the project, so the next approval shows the episode's running total.
 		const logged = (await deps.store.readProject(project.project_id))!;
-		expect(logged.production.still_sends?.map((send) => [send.job_id, send.purpose, send.model, send.credits])).toEqual([['job-grid-1', 'grid', 'gpt_image_2_5', 4]]);
+		expect(logged.production.still_sends?.map((send) => [send.job_id, send.purpose, send.model, send.credits])).toEqual([['job-grid-1', 'grid', 'gpt_image_2_6', 4]]);
 		expect((await settleGrid(deps, { project_id: project.project_id, job_id: sent.job_id, card_ids: sent.card_ids }))).toEqual({ ok: true, pending: true });
 		setStatus('completed');
 		const settled = await settleGrid(deps, { project_id: project.project_id, job_id: sent.job_id, card_ids: sent.card_ids });

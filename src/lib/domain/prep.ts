@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IMAGE_MODEL_IDS } from './image-models';
+import { DEFAULT_IMAGE_MODEL, IMAGE_MODEL_IDS, currentImageModel } from './image-models';
 import { characterSheetInputsSchema } from './character-sheet';
 
 /**
@@ -207,7 +207,8 @@ export const prepSourceSchema =z.object({ name: z.string().min(1).max(300), file
 export const prepStateSchema = z.object({
 	sheet_inputs: characterSheetInputsSchema.optional(),
 	workflow: z.object({ builder: z.enum(['castkit-v1', 'scenecraft-v1']), stage: z.enum(['face_lock', 'outfit', 'sheet', 'environment', 'coverage']), approved_source_url: z.string().max(1000).nullable().default(null), confirmed: z.boolean().default(false) }).optional(),
-	image_model: z.enum(IMAGE_MODEL_IDS).default('gpt_image_2_5'),
+	/** A choice saved on a retired model (GPT Image 2.5) reads as its replacement. */
+	image_model: z.preprocess(currentImageModel, z.enum(IMAGE_MODEL_IDS).default(DEFAULT_IMAGE_MODEL)),
 	sources: z.array(prepSourceSchema).max(12).default([]),
 	/** Explicit source role: portraits must not silently become body references. */
 	body_source_url: z.string().max(1000).nullable().default(null),

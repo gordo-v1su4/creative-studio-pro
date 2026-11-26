@@ -1,13 +1,15 @@
 FILE 04 — MODEL SETTINGS TO APPEND TO EVERY OUTPUT
 ==================================================
-GPT IMAGE 2 / 2.5
-- Models: GPT Image 2; GPT Image 2.5 Flare (fast) and Sunburst (quality). Start
-  on Sunburst for sheets, then test Flare for speed.
+CHATGPT IMAGE 2.6 / NANO BANANA PRO
+- Models: ChatGPT Image 2.6 Sunburst for new images (2K, 16:9, high); Nano
+  Banana Pro to alter a picture (new angle or resolution). GPT Image 2.5 is
+  retired. No grain, razor-texture or micro-detail words for 2.6 (they make it
+  splotchy; PROMPTING-GUIDE.md section 12).
 - quality: high for sheets. xhigh/max only if a specific fault survives at high.
 - size: 3-panel plate 2048x1152 (2K landscape). 4-panel 3840x2160 if detail is
   needed. Close-up 1024x1536 or 2160x3840. Edges multiples of 16, max 3840.
-- Edits: image inputs always run at high fidelity (omit input_fidelity); up to 16
-  reference images; name each one's role.
+- Edits: image inputs always run at high fidelity (omit input_fidelity); attach one
+  reference (one, plus what to fix, beats several); name its role.
 - Iterate: pass the previous output back, request ONE change, restate the
   preserve list. If a region must stay pixel-identical, composite it instead.
 

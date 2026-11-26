@@ -289,7 +289,7 @@
 									{/if}
 									{#if !fitting}
 										<div class="flex flex-wrap gap-2">
-											<button type="button" class="key" onclick={() => void quoteGridStills(scene.group_id)} disabled={!!batching} title="Stills first: this scene's shots without a still, up to nine per square 2K grid (GPT Image 2.5), then split into one still per shot">{batching === 'grid' ? 'Checking…' : 'Grid stills…'}</button>
+											<button type="button" class="key" onclick={() => void quoteGridStills(scene.group_id)} disabled={!!batching} title="Stills first: this scene's shots without a still, up to nine per square 2K grid (ChatGPT Image 2.6), then split into one still per shot">{batching === 'grid' ? 'Checking…' : 'Grid stills…'}</button>
 											<button type="button" class="key" onclick={() => void quoteScene(scene.group_id)} disabled={!!batching} title="Price and check this scene's shots as one batch of 480p drafts">{batching === 'quote' ? 'Checking…' : 'Animate scene (480p drafts)…'}</button>
 										</div>
 									{/if}

@@ -205,7 +205,7 @@ export async function getPrepDeps(): Promise<PrepDeps> {
 	};
 }
 
-/** Grid stills (V1S-278): GPT Image 2.5 through the Higgsfield CLI (V1S-373), split by the splitter service. */
+/** Grid stills (V1S-278): ChatGPT Image 2.6 through the Higgsfield CLI (V1S-373), split by the splitter service. */
 export async function getGridDeps(): Promise<GridDeps> {
 	const bin = higgsfieldCliPath(env.HIGGSFIELD_CLI);
 	const animate = await getAnimateDeps();
