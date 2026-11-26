@@ -1,13 +1,25 @@
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
-import { getGateway, getNotionToken, getProjectStore, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
+import { getGateway, getNotionToken, getPrepDeps, getProjectStore, getReferenceFileDeps, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
+import { checkSeriesDrift } from '$lib/server/drift';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries, importEpisode, treeEpisodes } from '$lib/server/series';
 import { syncSeriesToNotion, trashQueuedPages } from '$lib/server/notion-sync';
 import { createReviewRoomClient, ReviewRoomError, syncSeriesTree } from '$lib/server/review-room';
 import { seriesTree } from '$lib/domain/series-tree';
 import { notionFailure } from '../notion-errors';
+
+/**
+ * Drift 09 (GitHub #37 / V1S-513, ADR 0012): the drift check runs after every re-check and sync (and never on a
+ * timer). It only reads; a check that cannot run is said beside the result and never fails the re-check.
+ */
+async function driftAfter(seriesId: string) {
+	try {
+		const checked = await checkSeriesDrift({ ...(await getPrepDeps()), client: getReferenceFileDeps()?.client ?? null }, seriesId);
+		return checked ? (checked.ok ? { project_id: checked.project_id, report: checked.report } : { error: checked.message }) : null;
+	} catch (cause) { return { error: cause instanceof Error ? cause.message : 'The drift check failed' }; }
+}
 
 const fail = (status: number, message: string) => json({ ok: false, error: { code: status === 404 ? 'NOT_FOUND' : 'INVALID_COMMAND', message } }, { status });
 
@@ -78,7 +90,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const api = createNotionApi(token);
 	try {
 		if (body.data.action === 'refresh') {
-			return json({ ok: true, data: await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title)) });
+			const data = await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title));
+			return json({ ok: true, data, drift: await driftAfter(data.series_id) });
 		}
 		if (body.data.action === 'sync') {
 			let fresh = await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title));
@@ -97,7 +110,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 					folders = { created: synced.created, renamed: synced.renamed };
 				} catch (cause) { folderError = cause instanceof Error ? cause.message : 'Review Room sync failed'; }
 			}
-			return json({ ok: true, data: saved, notion, folders, folder_error: folderError });
+			return json({ ok: true, data: saved, notion, folders, folder_error: folderError, drift: await driftAfter(saved.series_id) });
 		}
 		const existing = record.episode_projects[body.data.episode_page_id];
 		if (existing && (await getProjectStore().readProject(existing))) return fail(400, 'That episode is already imported; open its project');

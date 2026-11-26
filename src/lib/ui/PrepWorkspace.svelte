@@ -9,6 +9,9 @@
 	import SheetTemplateFields from './SheetTemplateFields.svelte';
 	import StillApprovalCard from './StillApprovalCard.svelte';
 	import Pick from './controls/Pick.svelte';
+	import { seriesIdOf } from '$lib/domain/drift';
+	import type { Standing } from '$lib/domain/drift-standing';
+	import { agentWork } from '$lib/ui/story/agent-work.svelte';
 
 	/**
 	 * Prep (V1S-374): the references an episode needs, as a dependency graph per entry — source images →
@@ -66,6 +69,22 @@
 		} catch (cause) { error = cause instanceof Error ? cause.message : 'Could not change the reference project'; }
 		finally { referenceBusy = false; }
 	}
+	/**
+	 * Drift 09 (GitHub #37 / V1S-513, ADR 0012): opening Prep runs the drift check, once per project opened and never
+	 * on a timer (if the Agent is busy, as soon as it is free). Its findings go to the Agent's chat; here each entry
+	 * shows where it stands, with the "only in this project" count.
+	 */
+	let checkedFor: string | null = null;
+	$effect(() => {
+		const id = project.project_id;
+		if (checkedFor === id || agentWork.busy !== null || !seriesIdOf(project)) return;
+		checkedFor = id;
+		void agentWork.checkDrift(project);
+	});
+	const standing = $derived(agentWork.standing?.project_id === project.project_id ? agentWork.standing : null);
+	const standingOf = $derived(new Map(standing?.entries.map((entry) => [entry.key, entry.standing]) ?? []));
+	const STANDING: Record<Standing, string> = { in_review_room: 'In Review Room', waiting_for_picture: 'Waiting for a picture', missing_from_notion: 'Missing from Notion' };
+	const standingCount = (which: Standing) => standing?.entries.filter((entry) => entry.standing === which).length ?? 0;
 	/** The picture shown big (click any picture; Esc or a click closes it). */
 	let zoom = $state<{ src: string; alt: string } | null>(null);
 
@@ -235,6 +254,7 @@
 				</div>
 				{#if referenceProject}<p class="lede">Every reference from {referenceProject.title} is listed below, read from that project in place (nothing is copied). Use one as a source to refresh it for this project; {referenceProject.title} stays intact.</p>{/if}
 			{/if}
+			{#if standing}<p class="standings" aria-label="Where the references stand"><span>{standingCount('in_review_room')} in Review Room</span><span>{standingCount('waiting_for_picture')} waiting for a picture</span><span class={standing.only_here ? 'missing_from_notion' : ''}>{standing.only_here} only in this project</span>{#if !standing.review_room_read}<span>Review Room not read here</span>{/if}</p>{/if}
 		</div>
 		<div><span class="mono">project spend {spent} cr</span>{#if onContinue}<button type="button" class="key" onclick={onContinue}>Continue to shot plan</button>{/if}</div>
 	</header>
@@ -243,7 +263,7 @@
 
 	{#each sections as section (section.kind)}
 		<div class="section-head"><span class="cap">{section.label}</span><span class="line"></span><span class="mono">{section.list.length}</span></div>
-		<form class="add" onsubmit={async (event) => { event.preventDefault(); const name = newNames[section.kind].trim(); if (name && await call(`add-${section.kind}`, 'Adding…', { action: 'add_entry', kind: section.kind, name })) newNames[section.kind] = ''; }}>
+		<form class="add" onsubmit={async (event) => { event.preventDefault(); const name = newNames[section.kind].trim(); if (name && await call(`add-${section.kind}`, 'Adding…', { action: 'add_entry', kind: section.kind, name })) { newNames[section.kind] = ''; void agentWork.recheck(project); } }}>
 			<input bind:value={newNames[section.kind]} placeholder={`Name this ${section.singular}`} aria-label={`New ${section.singular} name`} maxlength="200" />
 			<button type="submit" class="key" disabled={!newNames[section.kind].trim() || !!busy[`add-${section.kind}`]}>Add {section.singular}</button>
 		</form>
@@ -253,6 +273,7 @@
 			<article class={['entry', stage === 'made' && 'made']} aria-label={item.entry.name}>
 				<div class="entry-head">
 					<b class="name">{item.entry.name}</b>
+					{#if standingOf.get(item.entry.key)}{@const at = standingOf.get(item.entry.key)!}<span class={['standing', at]}>{STANDING[at]}</span>{/if}
 					<span class="chip">{item.state.result ? 'Reference made' : item.state.sources.length ? 'Images supplied' : item.current ? 'Existing reference available' : 'Needs image or design'}</span>
 					{#if item.entry.role}<span class="role">{item.entry.role}</span>{/if}
 					<span class={['chip', stage]}>{item.state.workflow?.stage === 'sheet' && stage === 'sources' ? (item.state.prompt ? 'Ready to price' : 'Template inputs') : stageLabel[stage]}</span>
@@ -466,6 +487,12 @@
 	.entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 	.name { color: var(--color-nr-ink); font-size: 13.5px; font-weight: 600; }
 	.role { color: var(--color-nr-muted); font-size: 12px; }
+	/* Drift 09: where a reference stands, as coloured text with the word; no box, one line. */
+	.standing { color: var(--color-ink-3); font: 9.5px/1 var(--font-mono); letter-spacing: 0.11em; text-transform: uppercase; white-space: nowrap; }
+	.standing.in_review_room { color: var(--color-teal); }
+	.standing.waiting_for_picture { color: var(--color-amber); }
+	.standing.missing_from_notion, .standings .missing_from_notion { color: #ff7a6b; }
+	.standings { display: flex; gap: 0 14px; overflow: hidden; text-overflow: ellipsis; margin-top: 6px; color: var(--color-ink-3); font: 9.5px/1.6 var(--font-mono); letter-spacing: 0.11em; text-transform: uppercase; white-space: nowrap; }
 	.chip { border: 1px solid var(--color-nr-line); border-radius: 2px; padding: 0 6px; color: var(--color-nr-dim); font: 10px/16px var(--font-mono); }
 	.chip.spec, .chip.approved, .chip.prompt { border-color: color-mix(in srgb, #4ab8ff 45%, transparent); color: #4ab8ff; }
 	.chip.sent { border-color: color-mix(in srgb, #8174e8 50%, transparent); color: #a99ff2; }

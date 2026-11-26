@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import type { SeriesRecord } from '$lib/server/series';
 	import SeriesCodes from '$lib/ui/SeriesCodes.svelte';
+	import type { DriftReport } from '$lib/domain/drift';
+	import { agentWork } from '$lib/ui/story/agent-work.svelte';
 
 	/**
 	 * Series from Notion. Connect a show by its root page (the only page the Creative Studio Pro connection
@@ -40,7 +42,24 @@
 		const done = await call('/api/series', { root }, 'connect');
 		if (done) { root = ''; note = 'Connected. Check the template below, then import an episode.'; }
 	}
-	const refresh = (id: string) => void call(`/api/series/${id}`, { action: 'refresh' }, `refresh:${id}`);
+	/**
+	 * Drift 09 (ADR 0012): every re-check and sync runs the drift check. Its result goes to the Agent of the project it
+	 * ran from, and here it is one quiet line: in step, or how many things are out of step and where to see them.
+	 */
+	type DriftAfter = { project_id: string; report: DriftReport } | { error: string } | null;
+	/** Posts the check to the Agent of the project it ran from, and returns the one line said here. */
+	function postDrift(drift: DriftAfter): string {
+		if (!drift) return '';
+		if ('error' in drift) return ` The drift check could not run: ${drift.error}`;
+		agentWork.postDrift(drift.project_id, drift);
+		const count = drift.report.items.length;
+		const where = drift.report.read.projects.find((one) => one.project_id === drift.project_id)?.title ?? 'the project';
+		return count ? ` ${count === 1 ? 'One thing is' : `${count} things are`} out of step with Notion; the Agent lists ${count === 1 ? 'it' : 'them'} in ${where}.` : ' Notion, Prep and Review Room are in step.';
+	}
+	async function refresh(id: string) {
+		const done = await call(`/api/series/${id}`, { action: 'refresh' }, `refresh:${id}`);
+		if (done) note = `Re-checked.${postDrift(done.drift as DriftAfter)}`;
+	}
 	async function sync(id: string) {
 		const done = await call(`/api/series/${id}`, { action: 'sync' }, `sync:${id}`);
 		if (!done) return;
@@ -48,7 +67,8 @@
 		const folders = done.folders as { created: number; renamed: number } | null;
 		note = `Synced with Notion: ${n.episodes} episode${n.episodes === 1 ? '' : 's'}, ${n.scenes} scene${n.scenes === 1 ? '' : 's'} and ${n.shots_updated + n.shots_created} shot${n.shots_updated + n.shots_created === 1 ? '' : 's'} written (${n.shots_created} new), ${n.pulled} shot${n.pulled === 1 ? '' : 's'} updated from Notion edits${n.scenes_refreshed ? `, ${n.scenes_refreshed} scene${n.scenes_refreshed === 1 ? '' : 's'} refreshed from Notion (Action, Dialogue, links)` : ''}.`
 			+ (folders ? ` Review Room: ${folders.created} folder${folders.created === 1 ? '' : 's'} created, ${folders.renamed} renamed.` : '')
-			+ (done.folder_error ? ` Review Room folders failed: ${done.folder_error}` : '');
+			+ (done.folder_error ? ` Review Room folders failed: ${done.folder_error}` : '')
+			+ postDrift(done.drift as DriftAfter);
 	}
 	const setRuntime = (id: string, minutes: number) => void call(`/api/series/${id}`, { action: 'runtime', runtime_min: minutes }, `runtime:${id}`);
 	async function importEpisode(id: string, episodePageId: string) {
@@ -99,7 +119,7 @@
 					<a class="text-[11px] text-nr-dim" href={notionUrl(s.notion_root_id)} target="_blank" rel="noreferrer">open in Notion ↗</a>
 					<span class="grow"></span>
 					<span class="text-[11px] text-nr-faint">checked {new Date(s.checked_at).toLocaleString()}</span>
-					<button type="button" class="key" onclick={() => refresh(s.series_id)} disabled={!!busy}>{busy === `refresh:${s.series_id}` ? 'Re-checking…' : 'Re-check'}</button>
+					<button type="button" class="key" onclick={() => void refresh(s.series_id)} disabled={!!busy}>{busy === `refresh:${s.series_id}` ? 'Re-checking…' : 'Re-check'}</button>
 					<button type="button" class="key accent" onclick={() => void sync(s.series_id)} disabled={!!busy || !allOk(s)} title="Read Notion, write the codes and shots back to it, then create or rename the Review Room folders">{busy === `sync:${s.series_id}` ? 'Syncing…' : 'Sync'}</button>
 				</div>
 

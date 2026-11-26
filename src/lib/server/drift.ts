@@ -8,6 +8,7 @@ import { REFERENCE_FOLDERS } from '$lib/domain/series-tree';
 import type { ReviewRoomClient } from './review-room';
 import { isHandle } from '$lib/domain/handles';
 import { richText } from './story-writer';
+import { prepStanding, type StandingPrepEntry } from '$lib/domain/drift-standing';
 
 /**
  * The drift check's server side (spec GitHub #28 / V1S-506, ADR 0012). Notion is the master of names: Drift 02
@@ -123,12 +124,15 @@ export async function checkDrift(deps: CheckDriftDeps, project: Project): Promis
 	const projects = [project, ...others.toSorted((a, b) => a.title.localeCompare(b.title))];
 	const prep: DriftPrepEntry[] = [];
 	const skipped: string[] = [];
+	/** The asking project's entries as its Prep lists them, for where each stands (Drift 09). */
+	const own: StandingPrepEntry[] = [];
 	for (const entry of projects) {
 		// One project's Prep that cannot be read is named in the report; it does not stop the check of the rest.
 		const view = await prepView(deps, entry).catch((cause) => fail(500, reason(cause)));
 		if (!view.ok) { skipped.push(entry.title); continue; }
 		const at = { project_id: entry.project_id, project_title: entry.title };
 		for (const item of view.items) prep.push({ ...at, kind: item.entry.kind, name: item.entry.name, reference_page_id: item.entry.reference_page_id });
+		if (entry === project) for (const item of view.items) own.push({ key: item.entry.key, kind: item.entry.kind, name: item.entry.name, reference_page_id: item.entry.reference_page_id });
 		// Work kept under a second spelling of the same entry (Mara’s / Mara's dorm room) is listed once in Prep;
 		// its other spelling is still in the file, so the check shows both.
 		for (const key of Object.keys((await readPrep(deps.projectRoot, entry.project_id)).entries)) {
@@ -149,6 +153,29 @@ export async function checkDrift(deps: CheckDriftDeps, project: Project): Promis
 		} catch (cause) { return fail(502, `Review Room could not be read: ${reason(cause)}`); }
 	}
 
-	const items = driftItems({ show_code: record.show_code, notion: notion.map(({ page_id, name, kind }) => ({ page_id, name, kind })), prep, sheets: sheets ?? [] });
-	return { ok: true, report: { series_title: record.title, items, read: { notion: notion.length, projects: projects.map((entry) => ({ project_id: entry.project_id, title: entry.title })), sheets: sheets?.length ?? null, skipped } } };
+	const refs = notion.map(({ page_id, name, kind }) => ({ page_id, name, kind }));
+	const items = driftItems({ show_code: record.show_code, notion: refs, prep, sheets: sheets ?? [] });
+	const standing = { project_id: project.project_id, review_room_read: sheets !== null, ...prepStanding({ show_code: record.show_code, notion: refs, prep: own, sheets: sheets ?? [], sent: Object.keys(record.reference_files ?? {}) }) };
+	return { ok: true, report: { series_title: record.title, items, standing, read: { notion: notion.length, projects: projects.map((entry) => ({ project_id: entry.project_id, title: entry.title })), sheets: sheets?.length ?? null, skipped } } };
+}
+
+/**
+ * The check after a series re-check or sync (Drift 09, ADR 0012): run from one of the series' projects (its first
+ * imported episode, else any project built from it), since the check covers every project of the series either
+ * way. Null when the series has no project yet. It only reads, like `checkDrift`.
+ */
+export async function checkSeriesDrift(deps: CheckDriftDeps, seriesId: string): Promise<({ ok: true; project_id: string; report: DriftReport }) | Failure | null> {
+	const record = await deps.series.read(seriesId);
+	if (!record) return null;
+	let project: Project | null = null;
+	for (const id of Object.values(record.episode_projects)) { project = await deps.store.readProject(id).catch(() => null); if (project) break; }
+	if (!project) {
+		for (const summary of await deps.store.listProjects()) {
+			const read = await deps.store.readProject(summary.project_id).catch(() => null);
+			if (read && seriesIdOf(read) === seriesId) { project = read; break; }
+		}
+	}
+	if (!project) return null;
+	const checked = await checkDrift(deps, project);
+	return checked.ok ? { ok: true, project_id: project.project_id, report: checked.report } : checked;
 }
