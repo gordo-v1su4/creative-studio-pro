@@ -29,7 +29,7 @@ The operator looked at the local copy beside the agreed mocks and said the app i
 
   Also from Drift 01's review: #40 / V1S-518, a series re-check keeps every app-owned field and loses no write made meanwhile, **done `4d973c9`**.
 
-  Open from ticket 11: #41 / V1S-519, Higgsfield CLI calls from the app hang (not started, no blockers); #42 / V1S-520, render new 2K sheets for four TR110 locations with Scenecraft V1 (ready-for-human, real spend). Done: #43 / V1S-521, Upscale dropped from the drift message (`52774e8`); small sheets are only remade.
+  Open from ticket 11: #42 / V1S-520, new 2K sheets for four TR110 locations, **on hold (operator, 2026-11-26)**: Campus gym was rendered twice (GPT 2.5, then Nano Banana Pro; 4.25 credits; both kept as saved versions in Prep, neither sent to Review Room) and the operator is digging out existing high-res gym pictures; the other three are untouched. When it resumes: a new Scenecraft plate on ChatGPT 2.6 Sunburst, not a copy of an old picture. #44 / V1S-522, retire GPT Image 2.5 (Prep's default today) and keep high-frequency words out of 2.6 prompts, not started. Done: #41 / V1S-519 (`32f5388`), Higgsfield CLI calls no longer hang; #43 / V1S-521 (`52774e8`), Upscale dropped. The Higgsfield CLI on this Mac is now signed into the operator's own account (Private workspace).
 
   Still to ticket: one per approved audition screen (`issues/01`–`03`).
 - **Voice, open for the voice slice:** the operator now wants the voice Agent to answer with its own voice model
