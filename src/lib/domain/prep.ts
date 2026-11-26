@@ -222,6 +222,16 @@ export const prepStateSchema = z.object({
 	sheet_names: z.array(z.string().max(300)).max(20).default([]),
 	output_names: z.record(z.string(), z.string().max(300)).optional(),
 	removed_versions: z.array(z.string().max(300)).optional(),
+	/**
+	 * Drift 08: an upscale of a sheet under 2048 px, sent on a yes to its price. `file` (relative to the project folder)
+	 * is the upscaled sheet once it is back, shown beside the original; `sent` once it went to Review Room on a second yes.
+	 */
+	upscale: z.object({
+		job_id: z.string().min(1).max(200), sent_at: z.string(), credits: z.number().nonnegative(),
+		from: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }),
+		file: z.string().max(1000).optional(), url: z.string().max(1000).optional(),
+		width: z.number().int().positive().optional(), height: z.number().int().positive().optional(), sent: z.boolean().default(false)
+	}).optional(),
 	result: z.object({ file: z.string(), source_file: z.string().optional(), url: z.string(), made_at: z.string(), outside: z.boolean().default(false), uploaded: z.boolean().default(false), note: z.string().max(500).default(''), scale: scaleCheckSchema.optional() }).nullable().default(null)
 });
 export type PrepState = z.infer<typeof prepStateSchema>;

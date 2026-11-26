@@ -35,6 +35,7 @@
 	import { nextLine } from '$lib/domain/next-line';
 	import { sceneLabel, shotCodeOf, storyNextLine } from '$lib/domain/story-levels';
 	import type { ProductionTab } from '$lib/ui/ProductionWorkspace.svelte';
+	import { agentWork } from '$lib/ui/story/agent-work.svelte';
 	import { ui } from '$lib/ui/app-state.svelte';
 	import { stageName } from '$lib/domain/gates';
 	import { voiceStatusColor, voiceSurfaceStatus } from '$lib/ui/voice-display';
@@ -222,6 +223,12 @@
 		{ label: 'Runs', href: '/runs', hint: 'Agent and generation runs, with their cost and results' },
 		{ label: 'Settings', href: '/settings', hint: 'App settings: the Agent\'s model, video generation (Higgsfield), the sound-effects folder' }
 	];
+
+	// Drift 08: "remake" in the Agent's drift message opens Prep of the project it was found in, once.
+	$effect(() => {
+		const want = agentWork.openPrep;
+		if (want && activeProject?.project_id === want) { agentWork.openPrep = null; openWorkspace('prep'); }
+	});
 
 	function openWorkspace(tab: WorkspaceTab) {
 		canvasOpen = tab === 'canvas';
