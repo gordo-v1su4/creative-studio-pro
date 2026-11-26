@@ -103,6 +103,7 @@ export async function connectSeries(api: NotionApi, store: SeriesStore, rootId: 
 		runtime_min: existing?.runtime_min ?? 10, episode_projects: existing?.episode_projects ?? {},
 		show_code: existing?.show_code ?? suggestCode(title), codes_locked_at: existing?.codes_locked_at ?? null,
 		story_beats: read.story_beats, references: read.references, review_room: existing?.review_room, reference_files: existing?.reference_files,
+		notion_trash: existing?.notion_trash,
 		checked_at: now, created_at: existing?.created_at ?? now
 	});
 }
