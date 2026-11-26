@@ -10,7 +10,8 @@
 	 * beats, episode outlines and this episode's scenes into Notion; each write shows inline with its link.
 	 */
 	/** `onDrift`: "what's out of step?" runs the drift check (Drift 03) instead of going to the model. */
-	let { projectId, onDrift }: { projectId: string; onDrift?: () => void } = $props();
+	/** `onDriftWords`: "add all six" answers the drift message's items (Drift 10); true when the words were that. */
+	let { projectId, onDrift, onDriftWords }: { projectId: string; onDrift?: () => void; onDriftWords?: (text: string) => boolean } = $props();
 	const chat = $derived(new Chat({ transport: new DefaultChatTransport({ api: `/api/projects/${projectId}/agent/chat` }) }));
 	let input = $state('');
 	const busy = $derived(chat.status === 'submitted' || chat.status === 'streaming');
@@ -20,6 +21,7 @@
 		if (!text || busy) return;
 		input = '';
 		if (onDrift && isDriftQuestion(text)) return onDrift();
+		if (onDriftWords?.(text)) return;
 		void chat.sendMessage({ text });
 	}
 	const toolLabel = (type: string) => type.replace(/^tool-/, '').replaceAll('_', ' ');

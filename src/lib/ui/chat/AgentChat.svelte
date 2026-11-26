@@ -13,6 +13,7 @@
 	import DriftMessage from './DriftMessage.svelte';
 	import { agentWork } from '$lib/ui/story/agent-work.svelte';
 	import { isDriftQuestion, seriesIdOf } from '$lib/domain/drift';
+	import { batchAnswer } from '$lib/domain/drift-batch';
 	import EffectsProposal from '$lib/ui/cut/EffectsProposal.svelte';
 	import { soundDesk } from '$lib/ui/cut/sound-desk.svelte';
 
@@ -56,7 +57,8 @@
 	/** A project of a series (imported, or built from its story) can always ask "what's out of step?" (Drift 03), with or without an interview question. */
 	let inSeries = $derived(Boolean(project && seriesIdOf(project)));
 	let asksDrift = $derived(inSeries && isDriftQuestion(composer));
-	let canSubmit = $derived(!busy && (asksDrift || Boolean(pendingQuestion && (
+	let answersDrift = $derived(Boolean(project && agentWork.drift?.projectId === project.project_id && batchAnswer(composer, agentWork.drift.report.items)));
+	let canSubmit = $derived(!busy && (asksDrift || answersDrift || Boolean(pendingQuestion && (
 		decision.options.length === 0 ? composer.trim() : selectedChoice === 'E' ? otherAnswer.trim() : selectedChoice
 	))));
 	function checkDrift() {
@@ -141,6 +143,8 @@
 
 	async function submit() {
 		if (asksDrift) return checkDrift();
+		// Drift 10: "add all six" answers the drift message's items in one go.
+		if (project && agentWork.answerWords(project, composer)) { composer = ''; return; }
 		if (!project || !pendingQuestion || !canSubmit || busy) return;
 		const option = decision.options.find((candidate) => candidate.key === selectedChoice);
 		const primary = selectedChoice === 'E' ? `E. ${otherAnswer.trim()}` : option ? `${option.key}. ${option.text}` : composer.trim();
@@ -238,7 +242,7 @@
 		{#if project && soundDesk.open}<EffectsProposal />{:else if project && !project.series}<AgentActions {project} buttons={more} />{:else if project}<AgentActions {project} buttons={false} />{/if}
 		{#if project}<DriftMessage {project} />{/if}
 		{#if mode === 'story' && project}
-			<div class="min-h-0 grow px-3 py-3"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} onDrift={inSeries ? checkDrift : undefined} /></div></div>
+			<div class="min-h-0 grow px-3 py-3"><div class="mx-auto h-full max-w-2xl"><StoryChat projectId={project.project_id} onDrift={inSeries ? checkDrift : undefined} onDriftWords={inSeries ? (text) => agentWork.answerWords(project!, text) : undefined} /></div></div>
 		{:else}
 		<div class="agent-transcript min-h-0 grow overflow-y-auto px-3 py-3" aria-live="polite">
 			{#if !project}
