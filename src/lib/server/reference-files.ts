@@ -75,14 +75,9 @@ export async function uploadReference(deps: ReferenceFileDeps, seriesId: string,
 	const cached = join(deps.cacheDir, `${uploaded.versionId}${extname(input.file_name).toLowerCase()}`);
 	await writeFile(cached, input.bytes);
 	await deps.prepareReference?.(cached);
-	const fresh = (await deps.store.read(seriesId)) ?? record;
-	const saved = await deps.store.write({
-		...fresh,
-		reference_files: {
-			...(fresh.reference_files ?? {}),
-			[reference.page_id]: { asset_id: uploaded.assetId, version_id: uploaded.versionId, version: uploaded.version, code, file_name: input.file_name, mime_type: type, width: probed.width, height: probed.height, uploaded_at: new Date().toISOString() }
-		}
-	});
+	const file = { asset_id: uploaded.assetId, version_id: uploaded.versionId, version: uploaded.version, code, file_name: input.file_name, mime_type: type, width: probed.width, height: probed.height, uploaded_at: new Date().toISOString() };
+	// V1S-518: saved onto the record as it is now, so a re-check or another write during the upload is kept.
+	const saved = await deps.store.upsert(seriesId, (current) => ({ ...(current ?? record), reference_files: { ...((current ?? record).reference_files ?? {}), [reference.page_id]: file } }));
 	return { ok: true, record: saved };
 }
 

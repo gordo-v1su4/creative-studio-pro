@@ -179,7 +179,7 @@ export async function pullTakes(deps: PushDeps, projectId: string): Promise<{ ok
 	const quiet = feed.assets.length === 0 && feed.versions.length === 0 && (feed.removedAssets ?? []).length === 0;
 	if (processing || quiet || String(feed.cursor) === String(room.cursor ?? '')) { /* keep the stored cursor */ }
 	else if (project.review_room) project = await deps.store.updateProject(projectId, project.version, (current) => ({ ...current, review_room: { ...current.review_room!, cursor: feed.cursor } }));
-	else if (record?.review_room) await deps.series.write({ ...record, review_room: { ...record.review_room, cursor: feed.cursor } });
+	else if (record?.review_room) await deps.series.update(record.series_id, (current) => (current.review_room ? { ...current, review_room: { ...current.review_room, cursor: feed.cursor } } : current));
 	return { ok: true, project, added, picked, misfiled, changed: [...touched] };
 }
 
@@ -229,7 +229,7 @@ export async function pushTake(deps: PushDeps, projectId: string, takeId: string
 		});
 		const marked = await deps.gateway.markTakeStored(projectId, project.version, takeId, { asset_id: stored.assetId, version_id: stored.versionId, version: stored.version, code });
 		if (!marked.ok) return { ok: false, status: 409, message: `Stored as ${code} v${stored.version}, but noting it failed: ${marked.error.message}` };
-		if (record && !record.codes_locked_at) await deps.series.write({ ...record, codes_locked_at: new Date().toISOString() });
+		if (record && !record.codes_locked_at) await deps.series.update(record.series_id, (current) => (current.codes_locked_at ? current : { ...current, codes_locked_at: new Date().toISOString() }));
 		return { ok: true, project: marked.data, code, version: stored.version };
 	} finally {
 		await rm(work, { recursive: true, force: true });

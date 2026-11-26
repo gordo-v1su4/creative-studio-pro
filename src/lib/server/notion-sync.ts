@@ -3,7 +3,7 @@ import { episodeCode, formatShotCode, shotNumberText } from '$lib/domain/shot-co
 import type { Project, StoryCard } from '$lib/domain/schemas';
 import type { ProjectCommandGateway } from '$lib/application/gateway';
 import type { NotionApi } from '$lib/server/notion';
-import type { SeriesRecord } from '$lib/server/series';
+import type { SeriesRecord, SeriesStore } from '$lib/server/series';
 
 /**
  * The app → Notion sync (V1S-325, ADR 0002). Deterministic, no LLM. The app owns the codes: Show code,
@@ -118,6 +118,20 @@ export async function drainNotionTrash(api: NotionApi, record: SeriesRecord): Pr
 		}
 	}
 	return { record: { ...record, notion_trash: left }, trashed, error };
+}
+
+/**
+ * Drains the stored series' trash queue and saves what is still pending. The save takes off only the pages
+ * this drain settled, from the record as it is then, so a page queued meanwhile stays queued (V1S-518).
+ */
+export async function trashQueuedPages(api: NotionApi, store: SeriesStore, seriesId: string): Promise<{ record: SeriesRecord; trashed: number; error: string | null }> {
+	const queued = await store.read(seriesId);
+	if (!queued) throw new Error('Series not found');
+	const drained = await drainNotionTrash(api, queued);
+	const left = new Set(drained.record.notion_trash);
+	const settled = new Set((queued.notion_trash ?? []).filter((page) => !left.has(page)));
+	const record = await store.update(seriesId, (current) => ({ ...current, notion_trash: (current.notion_trash ?? []).filter((page) => !settled.has(page)) }));
+	return { record, trashed: drained.trashed, error: drained.error };
 }
 
 /** Sync one series and its imported episodes with Notion. `readProject` / `gateway` reach the episode projects. */

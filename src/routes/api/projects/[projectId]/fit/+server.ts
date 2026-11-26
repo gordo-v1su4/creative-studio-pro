@@ -9,7 +9,7 @@ import { awaitingApproval, fitPlan, proposedCards, removeShots } from '$lib/doma
 import { keyframeOf, PROMPT_PENDING, shotSpecSchema, specLine } from '$lib/domain/shot-spec';
 import { getGateway, getNotionToken, getProjectRoot, getProjectStore, getSeriesStore, resolveProjectModel } from '$lib/server/config';
 import { createNotionApi } from '$lib/server/notion';
-import { drainNotionTrash, removedShotPages } from '$lib/server/notion-sync';
+import { removedShotPages, trashQueuedPages } from '$lib/server/notion-sync';
 import { commandStatus } from '$lib/server/http';
 import { createOpenAICompatibleClient } from '$lib/server/model-provider';
 import { projectRules } from '$lib/server/animate';
@@ -58,13 +58,13 @@ function stream(run: (send: (event: Record<string, unknown>) => void) => Promise
 async function trashRemoved(before: Project, after: Project): Promise<{ shots_trashed: number; trash_error: string | null }> {
 	const pages = removedShotPages(before.production.cards, after.production.cards);
 	const store = getSeriesStore();
-	const record = pages.length && before.series ? await store.read(before.series.series_id) : null;
-	if (!record) return { shots_trashed: 0, trash_error: null };
-	const queued = await store.write({ ...record, notion_trash: [...new Set([...(record.notion_trash ?? []), ...pages])] });
+	const seriesId = pages.length && before.series ? before.series.series_id : null;
+	if (!seriesId || !(await store.read(seriesId))) return { shots_trashed: 0, trash_error: null };
+	// V1S-518: queue against the record as it is at save time, so a re-check or another take-out meanwhile is kept.
+	await store.update(seriesId, (record) => ({ ...record, notion_trash: [...new Set([...(record.notion_trash ?? []), ...pages])] }));
 	const token = await getNotionToken();
 	if (!token) return { shots_trashed: 0, trash_error: 'No Notion key is set; the shot pages go to Trash on the next Sync after one is entered in Settings' };
-	const trash = await drainNotionTrash(createNotionApi(token), queued);
-	await store.write(trash.record);
+	const trash = await trashQueuedPages(createNotionApi(token), store, seriesId);
 	return { shots_trashed: trash.trashed, trash_error: trash.error };
 }
 

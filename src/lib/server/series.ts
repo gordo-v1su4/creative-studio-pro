@@ -15,7 +15,8 @@ import { readEpisode, readSeries, type NotionApi } from '$lib/server/notion';
  * for, and which project each imported episode became. Stored beside the projects, never inside one.
  */
 const checkSchema = z.object({ ok: z.boolean(), missing: z.array(z.string()), wrongType: z.array(z.string()), optionalMissing: z.array(z.string()) });
-export const seriesRecordSchema = z.object({
+/** Loose (V1S-518): a field this build does not know (written by a newer one) is kept, never stripped on read or write. */
+export const seriesRecordSchema = z.looseObject({
 	schema_version: z.literal(1),
 	series_id: z.string().min(1).max(64),
 	title: z.string().min(1).max(300),
@@ -64,6 +65,16 @@ export const seriesRecordSchema = z.object({
 });
 export type SeriesRecord = z.infer<typeof seriesRecordSchema>;
 
+/** One writer at a time per series file (V1S-518), across every SeriesStore on the same folder, in this process. */
+const writeQueues = new Map<string, Promise<unknown>>();
+function oneAtATime<T>(key: string, task: () => Promise<T>): Promise<T> {
+	const run = (writeQueues.get(key) ?? Promise.resolve()).then(task, task);
+	const tail = run.catch(() => undefined);
+	writeQueues.set(key, tail);
+	void tail.then(() => { if (writeQueues.get(key) === tail) writeQueues.delete(key); });
+	return run;
+}
+
 export class SeriesStore {
 	constructor(private readonly folder: string) {}
 	static beside(projectRoot: string) { return new SeriesStore(join(dirname(projectRoot), 'series')); }
@@ -77,8 +88,30 @@ export class SeriesStore {
 	async read(id: string): Promise<SeriesRecord | null> {
 		try { return seriesRecordSchema.parse(JSON.parse(await readFile(this.path(id), 'utf8'))); } catch { return null; }
 	}
+	/** Replaces the whole record. Prefer `update` when the new record is built from one read earlier. */
 	async write(record: SeriesRecord): Promise<SeriesRecord> {
 		const valid = seriesRecordSchema.parse(record);
+		return oneAtATime(this.path(valid.series_id), () => this.save(valid));
+	}
+	/**
+	 * Reads the record as it is now, changes it and saves it, with no other write in between (V1S-518).
+	 * `change` must not call the store itself (it would wait on its own turn). Throws when there is no record.
+	 */
+	async update(id: string, change: (current: SeriesRecord) => SeriesRecord | Promise<SeriesRecord>): Promise<SeriesRecord> {
+		return this.upsert(id, (current) => {
+			if (!current) throw new Error('Series not found');
+			return change(current);
+		});
+	}
+	/** As `update`, but `change` also runs when there is no record yet (null), to make the first one. */
+	async upsert(id: string, change: (current: SeriesRecord | null) => SeriesRecord | Promise<SeriesRecord>): Promise<SeriesRecord> {
+		return oneAtATime(this.path(id), async () => {
+			const next = seriesRecordSchema.parse(await change(await this.read(id)));
+			if (this.path(next.series_id) !== this.path(id)) throw new Error('A series update cannot change the series id');
+			return this.save(next);
+		});
+	}
+	private async save(valid: SeriesRecord): Promise<SeriesRecord> {
 		await mkdir(this.folder, { recursive: true });
 		const target = this.path(valid.series_id);
 		await writeFile(`${target}.tmp`, JSON.stringify(valid, null, '\t'));
@@ -90,21 +123,22 @@ export class SeriesStore {
 /** The series title: the root page's title, else the story page's, else a plain fallback. */
 const titleFrom = (rootTitle: string | null, story: SeriesRecord['story']) => rootTitle?.trim() || story?.title.replace(/\s*[—-].*$/, '').trim() || 'Notion series';
 
-/** Connect (or re-check) a series from its Notion root page. */
+/**
+ * Connect (or re-check) a series from its Notion root page. Only the parts read from Notion are replaced; every
+ * other field of the stored record is kept as it is at save time, so a write made during the Notion read survives (V1S-518).
+ */
 export async function connectSeries(api: NotionApi, store: SeriesStore, rootId: string, rootTitle: string | null): Promise<SeriesRecord> {
 	const read = await readSeries(api, rootId);
-	const existing = await store.read(read.root_id);
-	const now = new Date().toISOString();
 	const title = titleFrom(rootTitle, read.story);
-	return store.write({
-		schema_version: 1, series_id: read.root_id, title, notion_root_id: read.root_id,
-		sources: read.sources, databases: read.databases, checks: read.checks, story: read.story,
-		episodes: read.episodes.map(({ scene_count, ...episode }) => ({ ...episode, scene_count })),
-		runtime_min: existing?.runtime_min ?? 10, episode_projects: existing?.episode_projects ?? {},
-		show_code: existing?.show_code ?? suggestCode(title), codes_locked_at: existing?.codes_locked_at ?? null,
-		story_beats: read.story_beats, references: read.references, review_room: existing?.review_room, reference_files: existing?.reference_files,
-		notion_trash: existing?.notion_trash,
-		checked_at: now, created_at: existing?.created_at ?? now
+	return store.upsert(read.root_id, (existing) => {
+		const now = new Date().toISOString();
+		const fromNotion = {
+			title, notion_root_id: read.root_id, sources: read.sources, databases: read.databases, checks: read.checks, story: read.story,
+			episodes: read.episodes.map(({ scene_count, ...episode }) => ({ ...episode, scene_count })),
+			story_beats: read.story_beats, references: read.references, checked_at: now
+		};
+		if (existing) return { ...existing, ...fromNotion, show_code: existing.show_code ?? suggestCode(title), codes_locked_at: existing.codes_locked_at ?? null };
+		return { schema_version: 1, series_id: read.root_id, ...fromNotion, runtime_min: 10, episode_projects: {}, show_code: suggestCode(title), codes_locked_at: null, created_at: now };
 	});
 }
 
@@ -142,6 +176,6 @@ export async function importEpisode(api: NotionApi, store: SeriesStore, gateway:
 		groups: board.groups, cards: board.cards, title: episode.title.slice(0, 200), logline: episode.summary.slice(0, 2000)
 	});
 	if (!imported.ok) throw new Error(imported.error.message);
-	const saved = await store.write({ ...record, episode_projects: { ...record.episode_projects, [episode.page_id]: imported.data.project_id } });
+	const saved = await store.update(record.series_id, (current) => ({ ...current, episode_projects: { ...current.episode_projects, [episode.page_id]: imported.data.project_id } }));
 	return { project: imported.data, layout, record: saved };
 }

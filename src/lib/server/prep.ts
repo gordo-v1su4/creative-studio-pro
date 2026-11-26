@@ -569,8 +569,7 @@ async function land(deps: PrepDeps, project: Project, view: PrepView, file: stri
 			if (deps.notion) {
 				try {
 					await deps.notion.updatePage(pageId, { 'Name on sheet': { checkbox: true }, 'File name': { rich_text: [{ type: 'text', text: { content: `${name}.png` } }] } });
-					const record = await deps.series.read(project.series!.series_id);
-					if (record?.references) await deps.series.write({ ...record, references: { ...record.references, items: record.references.items.map((item) => (item.page_id === pageId ? { ...item, name_on_sheet: true, file_name: `${name}.png` } : item)) } });
+					await deps.series.update(project.series!.series_id, (record) => (record.references ? { ...record, references: { ...record.references, items: record.references.items.map((item) => (item.page_id === pageId ? { ...item, name_on_sheet: true, file_name: `${name}.png` } : item)) } } : record));
 				} catch (cause) { note = `In the drawer; Notion's Name on sheet could not be ticked: ${cause instanceof Error ? cause.message : 'Notion refused'}`; }
 			}
 		}

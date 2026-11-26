@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ProjectStore } from '../../src/lib/adapters/project-store';
@@ -444,6 +444,61 @@ describe('Notion sync (V1S-325)', () => {
 		expect(drained.trashed).toBe(2);
 		expect(drained.record.notion_trash).toEqual([]);
 		expect(api.rows['ds-shots']).toHaveLength(shotRows - 2);
+	});
+
+	test('a re-check replaces only what it read from Notion and keeps a field it does not know (V1S-518)', async () => {
+		const { api, store, project } = await setup();
+		const id = project.series!.series_id;
+		const path = join((store as unknown as { folder: string }).folder, `${id}.json`);
+		const stored = JSON.parse(await readFile(path, 'utf8'));
+		await writeFile(path, JSON.stringify({ ...stored, future_field: { kept: true }, runtime_min: 15 }));
+		api.rows['ds-episodes'][0].properties.Summary = rich('Kai breaks blood law, again.') as never;
+
+		const fresh = await connectSeries(api, store, ROOT, 'Blood Rush');
+		const saved = JSON.parse(await readFile(path, 'utf8'));
+		expect(saved.future_field).toEqual({ kept: true });
+		expect((fresh as Record<string, unknown>).future_field).toEqual({ kept: true });
+		expect(saved.runtime_min).toBe(15);
+		expect(saved.episode_projects).toEqual(stored.episode_projects);
+		expect(saved.episodes[0].summary).toBe('Kai breaks blood law, again.');
+	});
+
+	test('a write that lands while a re-check is under way is not lost, and the re-check still lands (V1S-518)', async () => {
+		const { api, store, project } = await setup();
+		const id = project.series!.series_id;
+		api.rows['ds-episodes'][0].properties.Summary = rich('Kai breaks blood law, again.') as never;
+		// A Fit take-out has read the record and is still queueing a shot page when the re-check saves.
+		let release!: () => void;
+		const held = new Promise<void>((resolve) => { release = resolve; });
+		const takeOut = store.update(id, async (record) => { await held; return { ...record, notion_trash: [...(record.notion_trash ?? []), 'sh-9'] }; });
+		const recheck = connectSeries(api, store, ROOT, 'Blood Rush');
+		await Bun.sleep(10);
+		release();
+		const [, fresh] = await Promise.all([takeOut, recheck]);
+		expect(fresh.notion_trash).toEqual(['sh-9']);
+		const saved = (await store.read(id))!;
+		expect(saved.notion_trash).toEqual(['sh-9']);
+		expect(saved.episodes[0].summary).toBe('Kai breaks blood law, again.');
+	});
+
+	test('trashing the queue keeps a page queued while Notion was being called (V1S-518)', async () => {
+		const { api, store, project } = await setup();
+		const { trashQueuedPages } = await import('../../src/lib/server/notion-sync');
+		const id = project.series!.series_id;
+		await store.update(id, (record) => ({ ...record, notion_trash: ['sh-1'] }));
+		const trash = api.trashPage.bind(api);
+		api.trashPage = async (page) => { await store.update(id, (record) => ({ ...record, notion_trash: [...(record.notion_trash ?? []), 'sh-2'] })); return trash(page); };
+		const out = await trashQueuedPages(api, store, id);
+		expect(out.trashed).toBe(1);
+		expect((await store.read(id))!.notion_trash).toEqual(['sh-2']);
+	});
+
+	test('series updates run one at a time, so two queued pages both stay (V1S-518)', async () => {
+		const { store, project } = await setup();
+		const id = project.series!.series_id;
+		const queue = (page: string) => store.update(id, async (record) => { await Bun.sleep(5); return { ...record, notion_trash: [...(record.notion_trash ?? []), page] }; });
+		await Promise.all([queue('a'), queue('b')]);
+		expect((await store.read(id))!.notion_trash!.toSorted()).toEqual(['a', 'b']);
 	});
 
 	test('a story pass written in Notion after the import reaches the episode on sync, and only once', async () => {

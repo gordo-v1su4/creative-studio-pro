@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { getGateway, getNotionToken, getProjectStore, getReviewRoomConfig, getSeriesStore } from '$lib/server/config';
 import { createNotionApi, pageTitle } from '$lib/server/notion';
 import { connectSeries, importEpisode, treeEpisodes } from '$lib/server/series';
-import { drainNotionTrash, syncSeriesToNotion } from '$lib/server/notion-sync';
+import { syncSeriesToNotion, trashQueuedPages } from '$lib/server/notion-sync';
 import { createReviewRoomClient, ReviewRoomError, syncSeriesTree } from '$lib/server/review-room';
 import { seriesTree } from '$lib/domain/series-tree';
 import { notionFailure } from '../notion-errors';
@@ -39,14 +39,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	if (!record) return fail(404, 'Series not found');
 	const body = bodySchema.safeParse(await request.json().catch(() => null));
 	if (!body.success) return fail(400, body.error.issues[0]?.message ?? 'Invalid request');
-	if (body.data.action === 'runtime') return json({ ok: true, data: await store.write({ ...record, runtime_min: body.data.runtime_min }) });
+	// V1S-518: each save changes the record as it is then, so a re-check or another write meanwhile is kept.
+	const id = record.series_id;
+	if (body.data.action === 'runtime') { const runtime_min = body.data.runtime_min; return json({ ok: true, data: await store.update(id, (current) => ({ ...current, runtime_min })) }); }
 	if (body.data.action === 'show_code') {
 		if (record.codes_locked_at) return fail(400, 'The codes are locked; the show code can no longer change');
-		return json({ ok: true, data: await store.write({ ...record, show_code: body.data.show_code }) });
+		const show_code = body.data.show_code;
+		return json({ ok: true, data: await store.update(id, (current) => (current.codes_locked_at ? current : { ...current, show_code })) });
 	}
 	if (body.data.action === 'lock_codes') {
 		if (!record.show_code) return fail(400, 'Set a show code before locking');
-		return json({ ok: true, data: record.codes_locked_at ? record : await store.write({ ...record, codes_locked_at: new Date().toISOString() }) });
+		return json({ ok: true, data: record.codes_locked_at ? record : await store.update(id, (current) => (current.codes_locked_at ? current : { ...current, codes_locked_at: new Date().toISOString() })) });
 	}
 	if (body.data.action === 'review_room_sync') {
 		const config = getReviewRoomConfig();
@@ -57,7 +60,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		try {
 			const episodes = await treeEpisodes(record, (id) => getProjectStore().readProject(id));
 			const synced = await syncSeriesTree(createReviewRoomClient(config), record.series_id, projectId, seriesTree(episodes), known);
-			const saved = await store.write({ ...record, review_room: { project_id: projectId, folders: synced.folders, synced_at: new Date().toISOString() } });
+			const saved = await store.update(id, (current) => ({ ...current, review_room: { project_id: projectId, folders: synced.folders, synced_at: new Date().toISOString() } }));
 			return json({ ok: true, data: saved, created: synced.created, renamed: synced.renamed, folders: Object.keys(synced.folders).length });
 		} catch (cause) {
 			const status = cause instanceof ReviewRoomError ? cause.status : 502;
@@ -81,15 +84,16 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			let fresh = await connectSeries(api, store, record.notion_root_id, await pageTitle(token, record.notion_root_id).catch(() => record.title));
 			const readProject = (id: string) => getProjectStore().readProject(id);
 			// V1S-371: shot pages left over from a take-out go to Notion's Trash first.
-			const trash = fresh.notion_trash?.length ? await drainNotionTrash(api, fresh) : null;
-			if (trash) fresh = await store.write(trash.record);
+			const trash = fresh.notion_trash?.length ? await trashQueuedPages(api, store, fresh.series_id) : null;
+			if (trash) fresh = trash.record;
 			const notion = { ...(await syncSeriesToNotion(api, fresh, readProject, getGateway())), shots_trashed: trash?.trashed ?? 0, trash_error: trash?.error ?? null };
 			let saved = fresh, folders: { created: number; renamed: number } | null = null, folderError: string | null = null;
 			const config = getReviewRoomConfig();
 			if (config && fresh.review_room?.project_id) {
 				try {
 					const synced = await syncSeriesTree(createReviewRoomClient(config), fresh.series_id, fresh.review_room.project_id, seriesTree(await treeEpisodes(fresh, readProject)), fresh.review_room.folders);
-					saved = await store.write({ ...fresh, review_room: { ...fresh.review_room, folders: synced.folders, synced_at: new Date().toISOString() } });
+					const room = fresh.review_room;
+					saved = await store.update(id, (current) => ({ ...current, review_room: { ...(current.review_room ?? room), folders: synced.folders, synced_at: new Date().toISOString() } }));
 					folders = { created: synced.created, renamed: synced.renamed };
 				} catch (cause) { folderError = cause instanceof Error ? cause.message : 'Review Room sync failed'; }
 			}
