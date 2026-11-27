@@ -64,6 +64,10 @@ fix needs no ticket; anything built from a spec does (below).
    writes where it stands on the ticket (both trackers) and hands the rest to
    a new session. Nothing to do lives only in `HANDOFF.md`: the handoff points
    at open tickets, and the tickets are the to-do list.
+6. **When a spec's last ticket closes, the orchestrator offers `/retro`** in
+   that same thread, before it ends, while all the evidence is still there.
+   Also offer it at the end of a long working day, or when the same kind of
+   mistake has happened twice. The operator starts it by typing `/retro`.
 
 Still true: releases, pushes to `main` and anything that changes real data
 need the operator's word each time.
