@@ -42,8 +42,10 @@ no API key, $0).
 
 ## Workflow
 
-Commit straight to `main` and push. No feature branches and no PRs. A small
-fix needs no ticket; anything built from a spec does (below).
+**Work lands on `ux-streamline`** (see "Streamlined UI in progress" below), with
+no PRs. Pushing to `main` and releasing to the App VM happen only on the
+operator's word in the thread they are talking to, each time. A small fix
+needs no ticket; anything built from a spec does (below).
 
 **From idea to built, the same way every time:**
 
@@ -56,6 +58,9 @@ fix needs no ticket; anything built from a spec does (below).
    new session per ticket whose blockers are all closed, and builds nothing
    itself. It reviews each session's diff before calling a ticket done, then
    opens the next unblocked ticket, without asking whether to continue.
+   Tickets that touch the same files run one after another; only tickets on
+   separate files run in parallel, each in its own worktree. `/to-tickets` names
+   the files each ticket is likely to touch so the orchestrator can tell.
 4. Each ticket session runs `/implement` on its one ticket. It comments on both
    trackers when it starts and at every stopping point, and closes both with
    the commit hash when done, ticking the ticket in its plan.
@@ -69,8 +74,9 @@ fix needs no ticket; anything built from a spec does (below).
    Also offer it at the end of a long working day, or when the same kind of
    mistake has happened twice. The operator starts it by typing `/retro`.
 
-Still true: releases, pushes to `main` and anything that changes real data
-need the operator's word each time.
+Anything that changes real data (Notion, Review Room, Hosted Studio) or spends
+credits needs the operator's word each time. A session for another project
+works in its own checkout or worktree, never this folder.
 
 **Streamlined UI in progress.** Until its plan is finished, work lands the way
 `docs/planning/ux-designs/ux-streamline-2026-11-23/PLAN.md` says ("How the work
@@ -89,9 +95,6 @@ table of the Hermes vault note `04-Projects/Creative Studio Pro/README.md`, and
 proxmox-home documents where it is and how it works. `bun run check:env` checks
 the names (never values); it runs as the git pre-commit hook (`.githooks`, set by
 `bun install`) and as a Claude Code Stop hook.
-
-**Chunks and PRs.** This repo commits to `main` when a chunk (ticket) is complete
-and verified. Repos that use PRs open one only when the whole chunk is done.
 
 ## Agent skills
 

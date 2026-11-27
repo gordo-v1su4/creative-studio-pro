@@ -4,3 +4,12 @@ bun scripts/check-env.ts || {
 	echo "pre-commit: fix the env documentation above, then commit again." >&2
 	exit 1
 }
+
+# Type check when the commit touches code (doc-only commits stay fast).
+if git diff --cached --name-only --diff-filter=ACMR | grep -Eq '\.(ts|svelte|js)$'; then
+	bun run check >/tmp/csp-precommit-check.txt 2>&1 || {
+		tail -20 /tmp/csp-precommit-check.txt >&2
+		echo "pre-commit: bun run check found type errors; fix them, then commit again." >&2
+		exit 1
+	}
+fi

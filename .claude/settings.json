@@ -1,4 +1,18 @@
 {
+  "permissions": {
+    "ask": [
+      "Bash(git push origin main)",
+      "Bash(git push origin main *)",
+      "Bash(git push * main)",
+      "Bash(git push * main *)",
+      "Bash(git push * HEAD:main*)",
+      "Bash(git push * *:main*)",
+      "Bash(scripts/release-studio.sh*)",
+      "Bash(./scripts/release-studio.sh*)",
+      "Bash(bash scripts/release-studio.sh*)",
+      "Bash(sh scripts/release-studio.sh*)"
+    ]
+  },
   "hooks": {
     "Stop": [
       {
